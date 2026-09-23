@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./projections": "./src/projections.ts",
-    "./events": "./src/events.ts"
+    "./events": "./src/events.ts",
+    "./policy-types": "./src/policy-types.ts"
   },
   "dependencies": {
     "zod": "^4.6.5"

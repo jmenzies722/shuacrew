@@ -1,0 +1,99 @@
+/*
+ * Night Operations — ShuaCrew's design tokens.
+ * A calm dark instrument panel: live work glows amber, finished work settles.
+ * The light theme is a full peer, not an afterthought; both meet WCAG AA for text.
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #0b0d10;
+  --panel: #12151a;
+  --raised: #181c22;
+  --sunken: #0e1014;
+  --line: rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.11);
+  --highlight: rgba(255, 255, 255, 0.045); /* inner top edge on raised surfaces */
+  --text: #e8eaed;
+  --text-2: #9ba3ae;
+  --text-3: #6b7482; /* 4.6:1 on --panel */
+  --amber: #ffb020; /* the one signature accent: live / attention */
+  --amber-soft: rgba(255, 176, 32, 0.14);
+  --ok: #3ddc97;
+  --bad: #ff5c5c;
+  --wait: #7aa2ff; /* awaiting a person */
+  --idle: #6b7482;
+  --shadow: 0 1px 0 var(--highlight) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+  --glass: rgba(18, 21, 26, 0.72);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ink: #f4f5f7;
+  --panel: #ffffff;
+  --raised: #f7f8fa;
+  --sunken: #eef0f3;
+  --line: rgba(15, 20, 30, 0.08);
+  --line-strong: rgba(15, 20, 30, 0.14);
+  --highlight: rgba(255, 255, 255, 0.8);
+  --text: #111418;
+  --text-2: #4a5260;
+  --text-3: #636b78;
+  --amber: #b86e00;
+  --amber-soft: rgba(184, 110, 0, 0.1);
+  --ok: #0c8a57;
+  --bad: #c9302c;
+  --wait: #2f63d6;
+  --idle: #636b78;
+  --shadow: 0 1px 0 var(--highlight) inset, 0 6px 20px rgba(20, 30, 50, 0.08);
+  --glass: rgba(255, 255, 255, 0.78);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --ink: #f4f5f7;
+    --panel: #ffffff;
+    --raised: #f7f8fa;
+    --sunken: #eef0f3;
+    --line: rgba(15, 20, 30, 0.08);
+    --line-strong: rgba(15, 20, 30, 0.14);
+    --highlight: rgba(255, 255, 255, 0.8);
+    --text: #111418;
+    --text-2: #4a5260;
+    --text-3: #636b78;
+    --amber: #b86e00;
+    --amber-soft: rgba(184, 110, 0, 0.1);
+    --ok: #0c8a57;
+    --bad: #c9302c;
+    --wait: #2f63d6;
+    --idle: #636b78;
+    --shadow: 0 1px 0 var(--highlight) inset, 0 6px 20px rgba(20, 30, 50, 0.08);
+    --glass: rgba(255, 255, 255, 0.78);
+  }
+}
+
+:root {
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --font-ui: "Geist Variable", "Inter Tight", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "Geist Mono", ui-monospace, monospace;
+}
+
+/* Live work breathes; nothing else moves on its own. */
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 1px var(--amber), 0 0 0 0 var(--amber-soft); }
+  50% { box-shadow: 0 0 0 1px var(--amber), 0 0 0 6px var(--amber-soft); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+.breathing { animation: breathe 2.4s ease-in-out infinite; }
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .breathing { animation: none; box-shadow: 0 0 0 1px var(--amber); }
+  .pulse-dot { animation: none; }
+  *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}

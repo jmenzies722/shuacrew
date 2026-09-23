@@ -27,6 +27,8 @@ export interface RunView {
   turns: number;
   /** The newest line the agent wrote — the card's ticker. */
   ticker: string;
+  /** The raw end of the text stream, kept so chunks join correctly; the ticker is derived from it. */
+  tail: string;
   /** The tool running right now, if any — the card's chip. */
   currentTool?: string;
   toolCalls: number;
@@ -102,6 +104,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         priority: 0,
         turns: 0,
         ticker: "",
+        tail: "",
         toolCalls: 0,
         failedTools: 0,
         files: [],
@@ -139,14 +142,21 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       if (run) {
         run.turns = Math.max(run.turns, event.body.turn);
         run.ticker = "";
+        run.tail = "";
       }
       break;
     case "agent.delta":
-      // Streamed chunks often end mid-sentence with a space: keep the raw tail, never trim it.
-      if (run) run.ticker = tailLine(run.ticker + event.body.text);
+      // Chunks end mid-sentence (keep the space) or on a newline (keep the line before it).
+      if (run) {
+        run.tail = (run.tail + event.body.text).slice(-600);
+        run.ticker = lastLine(run.tail);
+      }
       break;
     case "agent.message":
-      if (run) run.ticker = lastLine(event.body.text);
+      if (run) {
+        run.tail = "";
+        run.ticker = lastLine(event.body.text);
+      }
       break;
     case "tool.called":
       if (run) {
@@ -237,13 +247,9 @@ export function fold(events: Iterable<AnyEvent>, until = Number.POSITIVE_INFINIT
   return state;
 }
 
-function tailLine(text: string): string {
-  const cut = text.lastIndexOf("\n");
-  return (cut >= 0 ? text.slice(cut + 1) : text).slice(-240);
-}
-
+/** The last line with something on it — a trailing newline doesn't blank the ticker. */
 function lastLine(text: string): string {
-  const lines = text.trimEnd().split("\n");
+  const lines = text.split("\n").filter((line) => line.trim());
   return (lines[lines.length - 1] ?? "").slice(-240);
 }
 

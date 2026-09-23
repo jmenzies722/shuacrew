@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "@shuacrew/ui/tokens.css";
+
+@source "../../../packages/ui/src";
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--text);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-amber: var(--amber);
+  --color-ok: var(--ok);
+  --color-bad: var(--bad);
+  --color-wait: var(--wait);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-feature-settings: "tnum" 1, "ss01" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--amber-soft);
+}
+
+/* In the base layer, so a component's own utilities can still refine or remove it. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "calt" 0;
+}
+
+/* Rendered agent prose. */
+.prose-agent p { margin: 0 0 0.6em; line-height: 1.6; }
+.prose-agent p:last-child { margin-bottom: 0; }
+.prose-agent code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.05em 0.35em;
+}
+.prose-agent pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.prose-agent strong { color: var(--text); font-weight: 600; }
+.prose-agent ul { margin: 0.2em 0 0.6em 1.1em; padding: 0; }
+.prose-agent li { margin: 0.15em 0; }

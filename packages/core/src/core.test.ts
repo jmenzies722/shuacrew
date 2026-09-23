@@ -123,7 +123,7 @@ describe("projections", () => {
       ev("run.status", { status: "running" }),
       ev("tool.called", { id: "t1", tool: "Bash", input: { command: "pnpm test" } }),
       ev("agent.delta", { turn: 1, text: "Running the suite…\nFound it: " }),
-      ev("agent.delta", { turn: 1, text: "a real timer" }),
+      ev("agent.delta", { turn: 1, text: "a real timer\n" }), // a trailing newline must not blank it
       ev("approval.requested", { id: "q1", tool: "Bash", input: {}, risk: "high", reason: "push", rule: "ask.outward" }),
       ev("usage.recorded", { runtime: "claude", inputTokens: 100, outputTokens: 20, contextUsed: 5000, contextLimit: 200000 }),
     ]);
