@@ -1,0 +1,19 @@
+{
+  "name": "@shuacrew/gateway",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "demo": "tsx src/demo.ts"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.4",
+    "@fastify/websocket": "^11.3.1",
+    "@shuacrew/core": "workspace:*",
+    "@shuacrew/runtimes": "workspace:*",
+    "croner": "^10.0.1",
+    "fastify": "^5.12.5"
+  }
+}

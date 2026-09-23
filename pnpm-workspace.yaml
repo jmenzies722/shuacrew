@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "apps-kit"
+# Only these packages may run install scripts (they fetch or build native binaries).
+allowBuilds:
+  esbuild: true
+  better-sqlite3: true
+  "@tailwindcss/oxide": true
+  "@parcel/watcher": true

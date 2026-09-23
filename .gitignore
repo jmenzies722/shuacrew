@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+.shuacrew-data/
+apps/desktop/src-tauri/target/
+.DS_Store
+.env
+.env.*
