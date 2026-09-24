@@ -1,4 +1,5 @@
 // Screenshots of the live dashboard, driven headless (never takes focus).
+// Needs a gateway started with SHUACREW_DEMO=1 (the scripted runtime is off in real use).
 // Usage: node scripts/shots.mjs <outDir> [base=http://127.0.0.1:7421]
 import { chromium } from "@playwright/test";
 

@@ -46,8 +46,11 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  */
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
-  const id = params.id;
   const [changes, setChanges] = useState(true);
+  // A link to a session that's been archived (or never existed) opens a new one instead of hanging.
+  const known = useLive((s) => (params.id ? Boolean(s.crew.runs[params.id]) : true));
+  const loaded = useLive((s) => s.crew.head > 0);
+  const id = params.id && (known || !loaded) ? params.id : undefined;
   return (
     <div className={`grid h-full gap-2 p-2 pt-0 ${id && changes ? "grid-cols-[300px_minmax(0,1fr)_320px]" : "grid-cols-[300px_minmax(0,1fr)]"} max-[1150px]:grid-cols-[260px_minmax(0,1fr)] max-[760px]:grid-cols-1`}>
       <SessionsPanel selected={id} />
@@ -201,14 +204,62 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
           <IconButton title={changes ? "Hide changes" : "Show changes"} onClick={onToggleChanges} active={changes}>
             <FileDiff size={15} />
           </IconButton>
-          <Link to="/runs/$id" params={{ id: run.id }} className="grid h-7 w-7 place-items-center rounded-[7px] text-fg-3 hover:bg-raised hover:text-fg" title="Inspect: timeline, graph, terminal, cost">
-            <Ellipsis size={15} />
-          </Link>
+          <SessionMenu run={run} working={working} />
         </div>
       </header>
       <Thread items={items} working={working} />
       <Composer run={run} />
     </section>
+  );
+}
+
+/** The session's "…": inspect it in depth, or put it away. */
+function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !menu.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+  const archive = async () => {
+    try {
+      await api(`/api/runs/${run.id}/archive`, { body: {} });
+      setOpen(false);
+      navigate({ to: "/" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <div ref={menu} className="relative">
+      <IconButton title="More" onClick={() => setOpen((v) => !v)} active={open}>
+        <Ellipsis size={15} />
+      </IconButton>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-[10px] border border-line-strong bg-raised py-1 text-[12.5px] shadow-[0_18px_50px_rgba(0,0,0,.35)]" role="menu">
+          <Link to="/runs/$id" params={{ id: run.id }} role="menuitem" className="block px-3 py-1.5 hover:bg-ink">
+            Inspect — timeline, graph, terminal, cost
+          </Link>
+          {run.status === "reviewing" && (
+            <Link to="/review/$id" params={{ id: run.id }} role="menuitem" className="block px-3 py-1.5 hover:bg-ink">
+              Review & merge
+            </Link>
+          )}
+          <button role="menuitem" onClick={() => void navigator.clipboard?.writeText(run.id).then(() => setOpen(false))} className="block w-full px-3 py-1.5 text-left hover:bg-ink">
+            Copy session id
+          </button>
+          <div className="my-1 h-px bg-line" />
+          <button role="menuitem" disabled={working} onClick={() => void archive()} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={working ? "Stop it first" : undefined}>
+            Archive session
+          </button>
+          {error && <div className="px-3 pb-1.5 text-[11.5px] text-bad">{error}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 

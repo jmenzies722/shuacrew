@@ -1,11 +1,11 @@
 import { Eyebrow, Panel, StatusGlyph, StatusPill, formatTokens, since } from "@shuacrew/ui";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { useMemo } from "react";
 import { AgentCard } from "../components/AgentCard";
-import { launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
+import { newSession } from "../shell/Shell";
 
 /** Home: what's running, what needs you, what just finished, what it's costing. */
 export function MissionControl() {
@@ -164,25 +164,13 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
   );
 }
 
-/** An empty screen teaches: three one-click ways to see the crew work. */
+/** An empty screen teaches: three ways to put the crew to work. */
 function EmptyCrew() {
-  const openLaunch = useLive((s) => s.openLaunch);
+  const navigate = useNavigate();
   const starters = [
-    {
-      title: "Watch a demo run",
-      detail: "The scripted runtime fixes a flaky test and asks before pushing — no usage spent.",
-      action: () => launchRun({ ask: "Fix the flaky upload retry test and push the fix", runtime: "mock" }),
-    },
-    {
-      title: "Three agents in parallel",
-      detail: "See live cards breathe side by side, with subagents and an approval.",
-      action: async () => {
-        await launchRun({ ask: "Investigate the timeout in parallel with subagents", runtime: "mock" });
-        await launchRun({ ask: "Fix the flaky upload retry test and ship it", runtime: "mock" });
-        await launchRun({ ask: "Audit the upload path for other real timers", runtime: "mock" });
-      },
-    },
-    { title: "Real work", detail: "Describe a task for Claude or Codex on your own subscription.", action: () => openLaunch() },
+    { title: "Start a session", detail: "Say what you want done. Claude or Codex works on it on your own plan and asks before anything risky.", action: () => newSession(navigate) },
+    { title: "Hand over a whole task", detail: "Turn on Task in the composer: it plans steps, checks each one, retries what fails and checkpoints as it goes.", action: () => newSession(navigate) },
+    { title: "Put work on a schedule", detail: "“Weekdays 9am: triage new issues” — schedules, webhooks and heartbeats run while you're away.", action: () => navigate({ to: "/schedules" }) },
   ];
   return (
     <div className="grid grid-cols-3 gap-3 max-[1100px]:grid-cols-1">

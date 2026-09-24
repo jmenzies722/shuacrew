@@ -47,6 +47,8 @@ export const bodies = {
   "run.worktree": z.object({ path: z.string(), branch: z.string(), base: z.string() }),
   "run.routed": route.extend({ reason: z.string() }),
   "run.priority": z.object({ priority: z.number() }),
+  // Put away: gone from every list, still in the audit chain.
+  "run.archived": z.object({ reason: z.string().default("") }),
   "run.followup": z.object({ text: z.string(), by: z.string().default("you") }), // another turn, same run
   "run.session": z.object({ runtime: RuntimeId, id: z.string() }), // the runtime's own conversation, for resume
 

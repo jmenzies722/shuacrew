@@ -136,6 +136,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         run.effort = event.body.effort ?? run.effort;
       }
       break;
+    case "run.archived":
+      if (event.run) delete state.runs[event.run];
+      break;
     case "run.priority":
       if (run) run.priority = event.body.priority;
       break;

@@ -36,7 +36,10 @@ function runtimeConfig(): RuntimeConfig {
   }
 }
 
-/** Claude and Codex on the person's own subscriptions by default; the mock for demos and tests. */
+/**
+ * Claude and Codex on the person's own subscriptions. The scripted mock exists only when asked for
+ * (`SHUACREW_DEMO=1`, as `pnpm demo` and the screenshot scripts do) — never in real use.
+ */
 export async function registry(): Promise<Map<string, Runtime>> {
   const config = runtimeConfig();
   const runtimes = new Map<string, Runtime>();
@@ -46,7 +49,7 @@ export async function registry(): Promise<Map<string, Runtime>> {
     const id = agent.id.startsWith("acp:") ? agent.id : `acp:${agent.id}`;
     runtimes.set(id, new AcpRuntime({ id, label: agent.label, command: agent.command, args: agent.args ?? [], authMode: agent.authMode }));
   }
-  runtimes.set("mock", new MockRuntime());
+  if (process.env.SHUACREW_DEMO === "1") runtimes.set("mock", new MockRuntime());
   return runtimes;
 }
 

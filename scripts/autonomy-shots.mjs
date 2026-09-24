@@ -1,4 +1,5 @@
 // Schedules & Triggers and a task run, both themes plus narrow. Headless — never takes focus.
+// Needs a gateway started with SHUACREW_DEMO=1 (the scripted runtime is off in real use).
 // Usage: node scripts/autonomy-shots.mjs <outDir> [base]
 import { chromium } from "@playwright/test";
 

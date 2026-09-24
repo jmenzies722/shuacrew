@@ -1,4 +1,5 @@
 // Review cockpit screenshots: two parallel repo runs → review → merge. Headless.
+// Needs a gateway started with SHUACREW_DEMO=1 (the scripted runtime is off in real use).
 import { chromium } from "@playwright/test";
 const [out, base, repo] = process.argv.slice(2);
 const post = (p, b) => fetch(base + p, { method: "POST", headers: { "Content-Type": "application/json", "X-ShuaCrew": "1" }, body: JSON.stringify(b) }).then((r) => r.json());

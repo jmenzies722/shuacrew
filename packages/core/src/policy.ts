@@ -215,6 +215,24 @@ function forcePushToProtected(call: ToolCall, ctx: PolicyContext): boolean {
 
 const SAFE = /^(ls|pwd|cat|head|tail|wc|file|stat|which|echo|printf|date|tree|du|df|grep|rg|ag|fd|find|sort|uniq|cut|diff|jq|yq|sed\s+-n|awk|git\s+(status|diff|log|show|branch|rev-parse|remote\s+-v|blame|ls-files|stash\s+list|add|commit|switch|checkout\s+-b|fetch|worktree\s+list)|pytest|python3?\s+-m\s+(pytest|compileall)|uv\s+(run|sync|lock|add|tree)|ruff|mypy|pyright|swift\s+(build|test|package\s+resolve)|xcodebuild|cargo\s+(build|test|check|clippy|fmt)|go\s+(build|test|vet|fmt)|(npm|pnpm|yarn|bun)\s+(run|test|install|ci|i|exec|dlx\s+tsc)\b|npx\s+(tsc|vitest|eslint|prettier)|tsc|vitest|eslint|prettier|make|mkdir|touch|terraform\s+(fmt|validate|plan|init|show|output)|terragrunt\s+(plan|validate|init)|kubectl\s+(get|describe|logs|top|explain|version|api-resources|config\s+(view|get-contexts|current-context))|oc\s+(get|describe|logs|status|whoami))\b/;
 
+/**
+ * The command a segment runs, as written by an agent that dodges aliases (`\grep`) or spells out
+ * system paths (`/bin/ls`). Only system bin directories are unwrapped: `./ls` or `~/bin/ls` could be
+ * anything, and a `PATH=` prefix changes what runs, so those stay unrecognised and are asked about.
+ */
+export function bareCommand(segment: string): string {
+  return segment
+    .replace(/^\\(?=\w)/, "")
+    .replace(/^(?:\/usr)?(?:\/local)?\/s?bin\/(?=\w)/, "")
+    .replace(/^\/opt\/homebrew\/bin\/(?=\w)/, "");
+}
+
+/** Writes to a file through the shell (`> file`, `>> file`, `tee file`) — never "just looking". */
+export function redirectsToFile(segment: string): boolean {
+  const cleaned = segment.replace(/\d?>&\d/g, "").replace(/\d?>{1,2}\s*\/dev\/null\b/g, "").replace(/'[^']*'|"[^"]*"/g, "''");
+  return />/.test(cleaned) || /^tee\b/.test(cleaned);
+}
+
 const ASK_ALWAYS = /^(git\s+(push|reset\s+--hard|clean\s+-[a-z]*f|rebase|branch\s+-D|tag\s+-d)|gh\s+(pr\s+(create|merge|close)|release|repo\s+(create|delete))|glab\s+(mr\s+(create|merge)|release)|npm\s+publish|pnpm\s+publish|cargo\s+publish|uv\s+publish|twine\s+upload|docker\s+(push|rm|rmi|system\s+prune)|aws\s|gcloud\s|az\s|vercel\s|fly\s+deploy|rm\s|mv\s|cp\s)/;
 
 export function defaultRules(): Rule[] {
@@ -282,7 +300,7 @@ export function defaultRules(): Rule[] {
       description: "outward-facing or hard to undo (push, publish, deploy, delete, move)",
       verdict: "ask",
       risk: "high",
-      matches: (call) => segments(shell(call)).some((s) => ASK_ALWAYS.test(s)),
+      matches: (call) => segments(shell(call)).some((s) => ASK_ALWAYS.test(bareCommand(s))),
     },
     {
       id: "allow.read",
@@ -314,7 +332,7 @@ export function defaultRules(): Rule[] {
         return (
           call.kind === "shell" &&
           parts.length > 0 &&
-          parts.every((s) => SAFE.test(s) || isCdInto(s, ctx))
+          parts.every((s) => (SAFE.test(bareCommand(s)) && !redirectsToFile(s)) || isCdInto(s, ctx))
         );
       },
     },

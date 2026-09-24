@@ -30,6 +30,8 @@ type Json = Record<string, any>; // SDK message shapes are wide unions; the tran
 export class ClaudeTranslator {
   private calls = new Map<string, { tool: string; input: Json; subagent?: string }>();
   private streamed = false; // text arrived as deltas: don't repeat it from the assembled message
+  /** What the newest main-agent call was sent: the conversation's real size right now. */
+  private lastContext?: number;
   sessionId?: string;
   model?: string;
 
@@ -56,6 +58,8 @@ export class ClaudeTranslator {
       case "assistant": {
         const content: Json[] = message.message?.content ?? [];
         const subagent = message.parent_tool_use_id ?? undefined;
+        const call = message.message?.usage;
+        if (!subagent && call) this.lastContext = (call.input_tokens ?? 0) + (call.cache_read_input_tokens ?? 0) + (call.cache_creation_input_tokens ?? 0) || this.lastContext;
         if (message.error === "rate_limit") {
           out.push({ type: "limited", until: Date.now() + 30 * 60_000, message: "Claude usage limit reached" });
           break;
@@ -104,14 +108,15 @@ export class ClaudeTranslator {
         const usage = message.usage ?? {};
         const models: Json = message.modelUsage ?? {};
         const window = Object.values(models).find((m: Json) => m?.contextWindow)?.contextWindow as number | undefined;
-        const input = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+        // The result's usage is summed over every call in the turn — cache reads repeat on each one —
+        // so it says what the turn cost, not how full the context is. That's the newest call's input.
         out.push({
           type: "usage",
           inputTokens: usage.input_tokens ?? 0,
           outputTokens: usage.output_tokens ?? 0,
           cacheTokens: (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
           costUsd: message.total_cost_usd,
-          contextUsed: input || undefined,
+          contextUsed: this.lastContext,
           contextLimit: window,
         });
         if (message.is_error) {

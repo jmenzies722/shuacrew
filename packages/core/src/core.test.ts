@@ -61,6 +61,21 @@ const ctx = defaultContext(WS, { roots: ["/work"], protected: ["/work/sealed"], 
 const global: Layer = { name: "global", rules: defaultRules() };
 const verdict = (tool: string, input: unknown, layers: Layer[] = [global]) => decide(normalise(tool, input), ctx, layers).verdict;
 
+describe("reading chains", () => {
+  it("lets an agent look around without asking, however it spells the command", () => {
+    expect(verdict("Bash", { command: 'cd /work/app && wc -l docs/a.md && /bin/ls docs && git diff && \\grep -nE "^#{1,3} " docs/a.md | head -60' })).toBe("allow");
+    expect(verdict("Bash", { command: "/usr/bin/find . -name '*.ts' | sort" })).toBe("allow");
+  });
+  it("asks when a look writes a file, or runs something it can't identify", () => {
+    expect(verdict("Bash", { command: "echo hi > ~/notes.txt" })).toBe("ask");
+    expect(verdict("Bash", { command: "cat a.md | tee /tmp/out" })).toBe("ask");
+    expect(verdict("Bash", { command: "ls 2>&1 >/dev/null" })).toBe("allow");
+    expect(verdict("Bash", { command: "./bin/ls" })).toBe("ask");
+    expect(verdict("Bash", { command: "PATH=/tmp/evil ls" })).toBe("ask");
+    expect(verdict("Bash", { command: "/bin/rm -r build" })).toBe("ask");
+  });
+});
+
 describe("the policy engine", () => {
   it.each([
     ["Read", { file_path: "/etc/hosts" }, "allow"],

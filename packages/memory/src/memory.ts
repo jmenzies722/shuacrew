@@ -101,6 +101,9 @@ export function applyMemory(m: MemoryView, e: AnyEvent): MemoryView {
       if (s) s.status = e.body.accept ? "accepted" : "rejected";
       break;
     }
+    case "run.archived":
+      m.asks = m.asks.filter((a) => a.run !== e.run); // an archived session proposes no skills
+      break;
     case "run.created":
       // Step and subagent runs belong to their parent; incognito runs are never learned from.
       if (e.run && !e.body.parent && !e.body.incognito) m.asks.push({ run: e.run, text: e.body.ask, repo: e.body.repo, at: e.at });

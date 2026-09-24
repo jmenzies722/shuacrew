@@ -26,13 +26,14 @@ describe("Claude's stream", () => {
     const events = [
       { type: "system", subtype: "init", session_id: "s-1", model: "claude-opus-5-5", apiKeySource: "none" },
       { type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_delta", delta: { type: "text_delta", text: "Looking " } } },
-      { type: "assistant", parent_tool_use_id: null, message: { content: [{ type: "text", text: "Looking " }, { type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/r/a.ts" } }, { type: "tool_use", id: "t2", name: "Bash", input: { command: "pnpm test" } }] } },
+      { type: "assistant", parent_tool_use_id: null, message: { usage: { input_tokens: 10, cache_read_input_tokens: 900 }, content: [{ type: "text", text: "Looking " }, { type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/r/a.ts" } }, { type: "tool_use", id: "t2", name: "Bash", input: { command: "pnpm test" } }] } },
       { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }, { type: "tool_result", tool_use_id: "t2", is_error: true, content: [{ type: "text", text: "1 failed" }] }] } },
-      { type: "result", subtype: "success", is_error: false, result: "Fixed.", duration_ms: 1200, total_cost_usd: 0.12, usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900 }, modelUsage: { "claude-opus-5-5": { contextWindow: 1_000_000 } } },
+      { type: "result", subtype: "success", is_error: false, result: "Fixed.", duration_ms: 1200, total_cost_usd: 0.12, usage: { input_tokens: 30, output_tokens: 5, cache_read_input_tokens: 2700 }, modelUsage: { "claude-opus-5-5": { contextWindow: 1_000_000 } } },
     ].flatMap((m) => t.translate(m));
     expect(events.map((e) => e.type)).toEqual(["session", "text", "tool-call", "tool-call", "tool-result", "file", "tool-result", "check", "usage", "checkpoint", "done"]);
     expect(events.find((e) => e.type === "check")).toMatchObject({ command: "pnpm test", exitCode: 1 });
-    expect(events.find((e) => e.type === "usage")).toMatchObject({ contextUsed: 910, contextLimit: 1_000_000 });
+    // Context is the newest call's input (910), not the turn's summed usage (2,730).
+    expect(events.find((e) => e.type === "usage")).toMatchObject({ contextUsed: 910, contextLimit: 1_000_000, inputTokens: 30 });
   });
 
   it("turns a rejected rate-limit window into a pause with its reset time", () => {

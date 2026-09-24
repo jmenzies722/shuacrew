@@ -140,6 +140,16 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     return { ok: true };
   });
 
+  app.post<{ Params: { id: string } }>("/api/runs/:id/archive", async (request, reply) => {
+    const run = state.runs[request.params.id];
+    if (!run) return reply.code(404).send({ error: "no such session" });
+    if (["running", "planning", "queued", "awaiting_approval"].includes(run.status)) {
+      return reply.code(409).send({ error: "stop the session before archiving it" });
+    }
+    store.append("run.archived", { reason: "archived by you" }, { run: run.id });
+    return { ok: true };
+  });
+
   app.post<{ Params: { id: string }; Body: { priority?: number } }>("/api/runs/:id/priority", async (request) => {
     store.append("run.priority", { priority: Number(request.body?.priority ?? 0) }, { run: request.params.id });
     supervisor.pump();
@@ -365,7 +375,17 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   }
 
   if (options.webRoot && existsSync(options.webRoot)) {
-    await app.register(fastifyStatic, { root: options.webRoot, prefix: "/", wildcard: false, maxAge: "1h", immutable: false });
+    // The shell must always be revalidated so a new build shows up on the next load; the hashed
+    // assets it points at never change, so they're cached for good.
+    await app.register(fastifyStatic, {
+      root: options.webRoot,
+      prefix: "/",
+      wildcard: false,
+      cacheControl: false,
+      setHeaders: (response, file) => {
+        response.header("Cache-Control", file.includes(`${path.sep}assets${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache");
+      },
+    });
     // wildcard:false indexes files at startup, so assets from a rebuild made while running land here:
     // serve them if they exist now. A missing asset is a 404, never the HTML shell.
     const webRoot = options.webRoot;

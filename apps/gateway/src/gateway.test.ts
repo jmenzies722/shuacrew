@@ -309,3 +309,47 @@ describe("web shell", () => {
     }
   });
 });
+
+describe("web shell caching", () => {
+  it("revalidates the shell every time and caches hashed assets for good", async () => {
+    const store = new EventStore(":memory:");
+    const supervisor = new Supervisor(store, new Map(), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    const web = mkdtempSync(path.join(os.tmpdir(), "shua-web-"));
+    writeFileSync(path.join(web, "index.html"), "<!doctype html>shell");
+    execFileSync("mkdir", [path.join(web, "assets")]);
+    writeFileSync(path.join(web, "assets", "app-abc.js"), "export {}");
+    const { app } = await createServer({ store, supervisor, runtimes: new Map(), webRoot: web });
+    try {
+      expect((await app.inject({ url: "/" })).headers["cache-control"]).toBe("no-cache");
+      expect((await app.inject({ url: "/sessions/r_1" })).headers["cache-control"]).toBe("no-cache");
+      expect((await app.inject({ url: "/assets/app-abc.js" })).headers["cache-control"]).toContain("immutable");
+      expect((await app.inject({ url: "/api/health" })).json().build).toMatch(/^\d+$/);
+    } finally {
+      await app.close();
+      supervisor.shutdown();
+      store.close();
+    }
+  });
+});
+
+describe("archiving a session", () => {
+  it("puts an idle session away, keeps the audit chain whole, and refuses while it works", async () => {
+    const store = new EventStore(":memory:");
+    const supervisor = new Supervisor(store, new Map([["mock", new MockRuntime({ pace: 40 })]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    const { app } = await createServer({ store, supervisor, runtimes: new Map() });
+    try {
+      const run = supervisor.launch({ ask: "Audit the sync path", runtime: "mock" });
+      const post = () => app.inject({ method: "POST", url: `/api/runs/${run}/archive`, headers: { "x-shuacrew": "1", "content-type": "application/json" }, payload: "{}" });
+      expect((await post()).statusCode).toBe(409);
+      while (!["done", "reviewing"].includes(fold(store.read(0)).runs[run]?.status ?? "")) await new Promise((r) => setTimeout(r, 20));
+      expect((await post()).statusCode).toBe(200);
+      expect(fold(store.read(0)).runs[run]).toBeUndefined();
+      expect((await app.inject({ url: "/api/snapshot" })).json().runs[run]).toBeUndefined();
+      expect(store.verify().ok).toBe(true);
+    } finally {
+      await app.close();
+      supervisor.shutdown();
+      store.close();
+    }
+  });
+});
