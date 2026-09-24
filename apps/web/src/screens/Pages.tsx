@@ -112,6 +112,7 @@ export function Settings() {
   return (
     <Page title="Settings" subtitle="Runtimes, appearance and data. Nothing leaves this machine unless you turn it on.">
       <Appearance />
+      <AlwaysOn />
       <Panel className="p-5">
         <div className="mb-3 flex items-center">
           <Eyebrow>Runtimes</Eyebrow>
@@ -135,6 +136,40 @@ export function Settings() {
         </div>
       </Panel>
     </Page>
+  );
+}
+
+/** Whether the gateway runs as the login service — so work continues with the window closed. */
+function AlwaysOn() {
+  const [health, setHealth] = useState<{ service?: boolean; pid?: number; uptimeS?: number } | null>(null);
+  useEffect(() => {
+    const load = () => void api<{ service?: boolean; pid?: number; uptimeS?: number }>("/api/health").then(setHealth).catch(() => setHealth(null));
+    load();
+    const t = setInterval(load, 10_000);
+    return () => clearInterval(t);
+  }, []);
+  const up = health?.uptimeS ?? 0;
+  const since = up < 3600 ? `${Math.max(1, Math.round(up / 60))} min` : up < 86400 ? `${Math.round(up / 3600)} h` : `${Math.round(up / 86400)} days`;
+  return (
+    <Panel className="p-5">
+      <div className="mb-3 flex items-center gap-3">
+        <Eyebrow>Always on</Eyebrow>
+        {health && <StatusGlyph tone={health.service ? "ok" : "wait"} />}
+        <span className="text-[12.5px] text-fg-2">
+          {!health ? "Checking…" : health.service ? `On — starts at login and restarts itself. Up ${since}.` : `Off — the gateway runs only while something started it (up ${since}).`}
+        </span>
+      </div>
+      <p className="max-w-[720px] text-[12.5px] leading-relaxed text-fg-3">
+        With it on, playbooks, schedules, heartbeats and revenue syncs keep going when the window is closed, and after a restart. It runs as you, on this Mac only, with your agents' subscriptions — no keys, nothing listening beyond 127.0.0.1.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2 text-[12px]">
+        {(health?.service ? ["pnpm service status", "pnpm service restart", "pnpm service logs", "pnpm service uninstall"] : ["pnpm service install"]).map((c) => (
+          <code key={c} className="mono rounded-[7px] border border-line bg-sunken px-2 py-1 text-fg-2">
+            {c}
+          </code>
+        ))}
+      </div>
+    </Panel>
   );
 }
 

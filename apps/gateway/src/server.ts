@@ -171,6 +171,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     version: options.version ?? "0.1.0",
     rssMb: Math.round(process.memoryUsage().rss / 1e6),
     pendingApprovals: Object.keys(state.approvals).length,
+    // Run by the launchd agent (starts at login, restarts itself), or started by hand / the app.
+    service: process.env.SHUACREW_SERVICE === "1",
+    pid: process.pid,
+    uptimeS: Math.round(process.uptime()),
   }));
 
   app.get("/api/snapshot", async () => state);

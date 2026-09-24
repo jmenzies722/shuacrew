@@ -66,8 +66,25 @@ enum Launcher {
             .first { FileManager.default.fileExists(atPath: $0.appending(path: "apps/gateway/src/main.ts").path) }
     }
 
+    static let serviceLabel = "com.shuacrew.gateway"
+    static var servicePlist: URL { URL(fileURLWithPath: NSHomeDirectory() + "/Library/LaunchAgents/\(serviceLabel).plist") }
+
     static func ensureRunning(_ gateway: Gateway) async throws {
         if await gateway.healthy() { return }
+        // The always-on service owns the gateway: wake it rather than start a second one that
+        // would fight it for the port.
+        if FileManager.default.fileExists(atPath: servicePlist.path) {
+            let kick = Process()
+            kick.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            kick.arguments = ["kickstart", "gui/\(getuid())/\(serviceLabel)"]
+            try? kick.run()
+            kick.waitUntilExit()
+            for _ in 0..<80 {
+                try await Task.sleep(for: .milliseconds(250))
+                if await gateway.healthy() { return }
+            }
+            throw GatewayError.unreachable("The always-on gateway didn't answer within 20 seconds. Run `pnpm service status`, or see \(log.path).")
+        }
         guard let repo = repo() else {
             throw GatewayError.unreachable("Can't find the ShuaCrew repo. Set SHUACREW_REPO, or keep it at ~/Developer/projects/shuacrew.")
         }

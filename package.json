@@ -14,7 +14,8 @@
     "typecheck": "pnpm -r --parallel exec tsc --noEmit -p .",
     "lint": "eslint .",
     "demo": "pnpm --filter @shuacrew/gateway demo",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "service": "sh scripts/service.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

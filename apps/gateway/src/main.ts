@@ -3,7 +3,7 @@
  * approvals and policy, and serves the dashboard. Everything it knows is in its event log, so a
  * restart is a replay: runs that were mid-flight are re-queued and resume their conversations.
  */
-import { mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync, truncateSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,7 +61,22 @@ export async function registry(): Promise<Map<string, Runtime>> {
   return runtimes;
 }
 
+/**
+ * Under launchd the log is our stdout, opened for appending before we start, so it can't be renamed
+ * away: past 20 MB, keep a copy and empty it in place (a crash loop can't fill the disk).
+ */
+function trimLog(file = process.env.SHUACREW_LOG) {
+  try {
+    if (!file || !existsSync(file) || statSync(file).size < 20 * 1024 * 1024) return;
+    copyFileSync(file, `${file}.1`);
+    truncateSync(file, 0);
+  } catch {
+    // a log we can't trim is not a reason not to start
+  }
+}
+
 export async function boot(options: { port?: number; host?: string } = {}) {
+  trimLog();
   const home = dataDir();
   const workspace = path.join(home, "workspace");
   mkdirSync(workspace, { recursive: true });
