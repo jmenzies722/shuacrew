@@ -6,7 +6,8 @@
  * another site can't set that header without a CORS preflight this server never approves, which is
  * the CSRF defence. The dashboard is served with a strict CSP (no inline script, no remote origins).
  */
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
@@ -155,11 +156,46 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     const text = request.body?.text?.trim();
     if (!text) return reply.code(400).send({ error: "empty message" });
     try {
-      supervisor.followUp(request.params.id, text);
+      return { ok: true, id: supervisor.followUp(request.params.id, text) };
     } catch (error) {
       return reply.code(409).send({ error: (error as Error).message });
     }
-    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string; followup: string } }>("/api/runs/:id/followups/:followup/withdraw", async (request, reply) => {
+    try {
+      supervisor.withdraw(request.params.id, request.params.followup);
+      return { ok: true };
+    } catch (error) {
+      return reply.code(409).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { turn?: number } }>("/api/runs/:id/fork", async (request, reply) => {
+    const run = state.runs[request.params.id];
+    if (!run) return reply.code(404).send({ error: "no such session" });
+    return { id: supervisor.fork(run.id, Math.max(1, Math.floor(Number(request.body?.turn ?? run.turns)))) };
+  });
+
+  // A file a session mentions, for the side panel. Only inside that session's worktree or repo,
+  // and only what the agent policy would let an agent read — never ~/.ssh, .env and the like.
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>("/api/runs/:id/file", async (request, reply) => {
+    const run = state.runs[request.params.id];
+    const asked = request.query.path;
+    if (!run || !asked) return reply.code(404).send({ error: "no such file" });
+    const roots = [run.worktree?.path, run.repo].filter((r): r is string => Boolean(r));
+    if (!roots.length) return reply.code(404).send({ error: "this session has no project folder" });
+    const expanded = asked.replace(/^~(?=\/|$)/, os.homedir());
+    const candidates = path.isAbsolute(expanded) ? [expanded] : roots.map((root) => path.join(root, expanded));
+    // A path the agent saw in its worktree may be named by the repo path, and the other way round.
+    const mapped = candidates.flatMap((c) => (run.repo && run.worktree && c.startsWith(run.repo + path.sep) ? [path.join(run.worktree.path, c.slice(run.repo.length)), c] : [c]));
+    const file = mapped.map((c) => path.resolve(c)).find((c) => roots.some((root) => c === root || c.startsWith(path.resolve(root) + path.sep)) && existsSync(c));
+    if (!file) return reply.code(404).send({ error: "not in this session's project" });
+    const verdict = decide(normalise("Read", { file_path: file }), defaultContext(roots[0]!), [{ name: "global", rules: defaultRules() }]);
+    if (verdict.verdict === "deny") return reply.code(403).send({ error: verdict.reason });
+    const size = statSync(file).size;
+    if (size > 1_000_000) return reply.code(413).send({ error: "too large to preview" });
+    return { path: file, relative: path.relative(roots.find((r) => file.startsWith(path.resolve(r)))!, file), content: readFileSync(file, "utf8") };
   });
 
   app.post<{ Params: { id: string } }>("/api/runs/:id/cancel", async (request) => {

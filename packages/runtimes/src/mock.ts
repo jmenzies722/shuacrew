@@ -102,7 +102,10 @@ export class MockRuntime implements Runtime {
     // Each run edits its own file (named from the ask), so parallel runs don't collide.
     const inRepo = existsSync(path.join(run.cwd, ".git"));
     const own = inRepo ? `src/${slug(run.ask)}.ts` : "src/upload.ts";
-    yield { type: "tool-call", id: "t4", tool: "Edit", input: { file_path: `${run.cwd}/${own}` } };
+    // Shaped like Claude's own Edit call, so the thread shows a real before/after diff.
+    const before = "export function retry(attempts = 2): number {\n  const started = Date.now();\n  for (let i = 0; i < attempts; i++) {\n    if (Date.now() - started > 5000) return i;\n  }\n  return attempts;\n}";
+    const after = "export function retry(clock: { now(): number }, attempts = 2): number {\n  const started = clock.now();\n  for (let i = 0; i < attempts; i++) {\n    if (clock.now() - started > 5000) return i;\n  }\n  return attempts;\n}";
+    yield { type: "tool-call", id: "t4", tool: "Edit", input: { file_path: `${run.cwd}/${own}`, old_string: before, new_string: after } };
     const edit = await ctx.approve("Edit", { file_path: `${run.cwd}/${own}` });
     await wait();
     if (edit.allow && inRepo) {

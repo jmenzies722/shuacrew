@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, CircleDot, Copy, FileCode2, GitPullRequest, Ticket } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { Token } from "../lib/highlight";
 
@@ -59,6 +59,7 @@ function blocks(text: string, streaming?: boolean): ReactNode[] {
       while (i < lines.length && lines[i]!.includes("|") && lines[i]!.trim()) rows.push(cells(lines[i++]!));
       out.push(
         <div key={key()} className="table-wrap">
+          <TableActions head={head} rows={rows} />
           <table>
             <thead>
               <tr>{head.map((h, k) => <th key={k}>{inline(h)}</th>)}</tr>
@@ -125,18 +126,70 @@ function inline(line: string): ReactNode[] {
     if (match.index > last) out.push(line.slice(last, match.index));
     const t = match[0];
     const k = match.index;
-    if (t.startsWith("`")) out.push(<code key={k}>{t.slice(1, -1)}</code>);
+    if (t.startsWith("`")) {
+      const code = t.slice(1, -1);
+      out.push(FILE.test(code) ? <FileLink key={k} spec={code} /> : <code key={k}>{code}</code>);
+    }
     else if (t.startsWith("**") || t.startsWith("__")) out.push(<strong key={k}>{inline(t.slice(2, -2))}</strong>);
     else if (t.startsWith("~~")) out.push(<del key={k}>{t.slice(2, -2)}</del>);
     else if (t.startsWith("[")) {
       const label = t.slice(1, t.indexOf("]"));
       out.push(<a key={k} href={match[2]} target="_blank" rel="noreferrer noopener">{label}</a>);
-    } else if (t.startsWith("http")) out.push(<a key={k} href={t} target="_blank" rel="noreferrer noopener">{t.replace(/^https?:\/\//, "")}</a>);
+    } else if (t.startsWith("http")) out.push(issueChip(t, k) ?? <a key={k} href={t} target="_blank" rel="noreferrer noopener">{t.replace(/^https?:\/\//, "")}</a>);
     else out.push(<em key={k}>{t.slice(1, -1)}</em>);
     last = k + t.length;
   }
   if (last < line.length) out.push(line.slice(last));
   return out;
+}
+
+/** `src/upload.ts`, `~/app/main.swift:42`, `./README.md` — something a person would want to open. */
+const FILE = /^(?:~|\.{1,2})?\/?(?:[\w@.+-]+\/)*[\w@+-][\w@.+-]*\.[a-zA-Z][\w]{0,7}(?::\d+(?::\d+)?)?$/;
+
+/** A path in the agent's reply: click to see the file, at the line it named. */
+function FileLink({ spec }: { spec: string }) {
+  const [, file, line] = /^(.*?)(?::(\d+))?(?::\d+)?$/.exec(spec) ?? [];
+  if (!file?.includes("/") && !/\.(ts|tsx|js|jsx|py|swift|go|rs|md|json|ya?ml|toml|css|html|sh|sql)$/.test(file ?? "")) return <code>{spec}</code>;
+  return (
+    <button
+      className="file-link"
+      onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:open-file", { detail: { path: file, line: line ? Number(line) : undefined } }))}
+      title={`Open ${file}${line ? ` at line ${line}` : ""}`}
+    >
+      <FileCode2 size={12} />
+      {spec}
+    </button>
+  );
+}
+
+/** GitHub / GitLab / Jira issues and pull requests as chips instead of long URLs. */
+function issueChip(url: string, key: number): ReactNode | null {
+  const gh = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)/.exec(url);
+  const gl = /^https?:\/\/gitlab\.[\w.]+\/(.+?)\/-\/(issues|merge_requests)\/(\d+)/.exec(url);
+  const jira = /^https?:\/\/[\w.-]+\.atlassian\.net\/browse\/([A-Z][A-Z0-9]+-\d+)/.exec(url);
+  const [label, Icon] = gh ? [`${gh[1]}#${gh[3]}`, gh[2] === "pull" ? GitPullRequest : CircleDot] : gl ? [`${gl[1]!.split("/").pop()}${gl[2] === "issues" ? "#" : "!"}${gl[3]}`, gl[2] === "issues" ? CircleDot : GitPullRequest] : jira ? [jira[1]!, Ticket] : [null, null];
+  if (!label || !Icon) return null;
+  return (
+    <a key={key} href={url} target="_blank" rel="noreferrer noopener" className="issue-chip">
+      <Icon size={12} />
+      {label}
+    </a>
+  );
+}
+
+function TableActions({ head, rows }: { head: string[]; rows: string[][] }) {
+  const [done, setDone] = useState("");
+  const copy = (kind: "md" | "csv") => {
+    const md = [head, head.map(() => "---"), ...rows].map((r) => `| ${r.join(" | ")} |`).join("\n");
+    const csv = [head, ...rows].map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n");
+    void navigator.clipboard?.writeText(kind === "md" ? md : csv).then(() => (setDone(kind), setTimeout(() => setDone(""), 1300)));
+  };
+  return (
+    <div className="table-actions">
+      <button onClick={() => copy("md")}>{done === "md" ? "Copied" : "Copy as Markdown"}</button>
+      <button onClick={() => copy("csv")}>{done === "csv" ? "Copied" : "Copy as CSV"}</button>
+    </div>
+  );
 }
 
 /** Code the agent wrote or quoted: highlighted, labelled, one click to copy. */
@@ -176,6 +229,14 @@ export function CodeBlock({ code, lang, open, label, maxLines = 40 }: { code: st
           ))}
         </code>
       </pre>
+      {(all || shown.length <= maxLines) && shown.length > 25 && (
+        <div className="code-head code-foot">
+          <span className="mono">{shown.length} lines</span>
+          <button onClick={() => void navigator.clipboard?.writeText(code).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1400)))} className="ml-auto flex items-center gap-1 hover:text-fg">
+            {copied ? <Check size={12} className="text-ok" /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
       {shown.length > maxLines && (
         <button onClick={() => setAll((v) => !v)} className="code-more">
           {all ? "Show less" : `Show all ${shown.length} lines`}

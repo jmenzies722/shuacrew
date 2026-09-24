@@ -23,7 +23,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
-import { conversation } from "../lib/conversation";
+import { conversation, queued } from "../lib/conversation";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 
@@ -95,6 +95,11 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
   const [changes, setChanges] = useState(true);
+  useEffect(() => {
+    const show = () => setChanges(true);
+    window.addEventListener("shuacrew:open-file", show);
+    return () => window.removeEventListener("shuacrew:open-file", show);
+  }, []);
   // A link to a session that's been archived (or never existed) opens a new one instead of hanging.
   const known = useLive((s) => (params.id ? Boolean(s.crew.runs[params.id]) : true));
   const loaded = useLive((s) => s.crew.head > 0);
@@ -259,7 +264,8 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
           <SessionMenu run={run} working={working} />
         </div>
       </header>
-      <Thread items={items} working={working} />
+      <Thread items={items} working={working} run={run} />
+      <Queue run={run} events={events ?? []} />
       <Composer run={run} />
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
@@ -313,6 +319,53 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Messages you sent while it worked: they go with the next turn — edit or take them back until then. */
+function Queue({ run, events }: { run: RunView; events: import("@shuacrew/core/events").AnyEvent[] }) {
+  const waiting = queued(events);
+  if (!waiting.length) return null;
+  const withdraw = (id: string) => api(`/api/runs/${run.id}/followups/${id}/withdraw`, { body: {} });
+  return (
+    <div className="mx-auto w-full max-w-[820px] px-4">
+      <div className="queue">
+        <div className="queue-head">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" /> Queued — sent together when this turn ends
+        </div>
+        {waiting.map((q, i) => (
+          <div key={q.id ?? i} className="queue-item">
+            <span className="min-w-0 flex-1 truncate">{q.text}</span>
+            {q.id && (
+              <>
+                <button onClick={() => void withdraw(q.id!)?.then(() => window.dispatchEvent(new CustomEvent("shuacrew:insert", { detail: q.text })))} title="Edit (takes it back into the composer)">
+                  Edit
+                </button>
+                <button onClick={() => void withdraw(q.id!)} title="Take it back" aria-label="Withdraw message">
+                  ×
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** How full the agent's context is: a ring that turns amber, then red, as it fills. */
+function ContextMeter({ used, limit }: { used?: number; limit?: number }) {
+  if (!used || !limit) return null;
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+  const color = pct > 85 ? "var(--bad)" : pct > 65 ? "var(--amber)" : "var(--text-3)";
+  return (
+    <span className="flex items-center gap-1.5 text-[11.5px] text-fg-3" title={`${formatTokens(used)} of ${formatTokens(limit)} context used`}>
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+        <circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--line-strong)" strokeWidth="2" />
+        <circle cx="7" cy="7" r="5.5" fill="none" stroke={color} strokeWidth="2" strokeDasharray={`${(pct / 100) * 34.6} 34.6`} transform="rotate(-90 7 7)" strokeLinecap="round" />
+      </svg>
+      <span className="mono">{pct}%</span>
+    </span>
   );
 }
 
@@ -542,8 +595,10 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
             {run?.worktree && (
               <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>
                 <GitBranch size={12} /> {run.worktree.branch}
+                {run.files.length > 0 && <span className="text-amber">· {run.files.length} changed</span>}
               </span>
             )}
+            {run && <ContextMeter used={run.usage.contextUsed} limit={run.usage.contextLimit} />}
             <div className="ml-auto flex items-center gap-2">
               {error && <span className={`text-[12px] ${/^(Learned|Scheduled)/.test(error) ? "text-ok" : "text-bad"}`}>{error}</span>}
               {working && !text.trim() && run ? (
@@ -635,7 +690,15 @@ function Select({ value, onChange, options }: { value: string; onChange: (v: str
 
 function ChangesPanel({ id }: { id: string }) {
   const run = useLive((s) => s.crew.runs[id]);
+  const [file, setFile] = useState<{ path: string; line?: number } | null>(null);
+  useEffect(() => {
+    const open = (e: Event) => setFile((e as CustomEvent<{ path: string; line?: number }>).detail);
+    window.addEventListener("shuacrew:open-file", open);
+    return () => window.removeEventListener("shuacrew:open-file", open);
+  }, []);
+  useEffect(() => setFile(null), [id]);
   if (!run) return null;
+  if (file) return <FileViewer run={id} file={file} onBack={() => setFile(null)} />;
   const tokens = run.usage.inputTokens + run.usage.outputTokens;
   return (
     <aside className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-[1150px]:hidden" aria-label="Changes">
@@ -653,11 +716,11 @@ function ChangesPanel({ id }: { id: string }) {
         <Section title={`${run.files.length} file${run.files.length === 1 ? "" : "s"} changed`}>
           {run.files.length === 0 && <Empty>Nothing changed yet</Empty>}
           {run.files.map((f) => (
-            <Link key={f} to="/review/$id" params={{ id }} className="flex items-center gap-2 rounded-[6px] px-1.5 py-1 text-[12px] hover:bg-raised" title={f}>
+            <button key={f} onClick={() => setFile({ path: f })} className="flex w-full items-center gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-raised" title={f}>
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber" />
               <span className="mono min-w-0 flex-1 truncate [direction:rtl] text-left">{f}</span>
               <span className="text-[11px] text-fg-3">M</span>
-            </Link>
+            </button>
           ))}
         </Section>
         <Section title="Checks">
@@ -690,6 +753,49 @@ function ChangesPanel({ id }: { id: string }) {
         <Link to="/runs/$id" params={{ id }} className="mt-2 inline-block text-[12px] text-fg-3 hover:text-amber">
           Inspect timeline, graph and terminal →
         </Link>
+      </div>
+    </aside>
+  );
+}
+
+/** A file the session mentioned or changed, highlighted, scrolled to the line it named. */
+function FileViewer({ run, file, onBack }: { run: string; file: { path: string; line?: number }; onBack: () => void }) {
+  const [data, setData] = useState<{ relative: string; content: string } | { error: string } | null>(null);
+  const [lines, setLines] = useState<import("../lib/highlight").Token[][] | null>(null);
+  const target = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setData(null);
+    setLines(null);
+    api<{ relative: string; content: string }>(`/api/runs/${run}/file?path=${encodeURIComponent(file.path)}`)
+      .then((d) => {
+        setData(d);
+        void import("../lib/highlight").then((m) => setLines(m.highlight(d.content, d.relative)));
+      })
+      .catch((e: Error) => setData({ error: e.message }));
+  }, [run, file.path]);
+  useEffect(() => {
+    if (lines) target.current?.scrollIntoView({ block: "center" });
+  }, [lines]);
+  const plain: import("../lib/highlight").Token[][] = data && "content" in data ? data.content.split("\n").map((text) => [{ text }]) : [];
+  const shown = lines ?? plain;
+  return (
+    <aside className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-[1150px]:hidden" aria-label="File">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
+        <button onClick={onBack} className="rounded-[6px] px-1.5 py-1 text-[12px] text-fg-3 hover:bg-raised hover:text-fg">← Changes</button>
+        <span className="mono min-w-0 flex-1 truncate text-right text-[12px] text-fg-2" title={file.path}>
+          {data && "relative" in data ? data.relative : file.path}
+          {file.line ? `:${file.line}` : ""}
+        </span>
+      </div>
+      <div className="file-view min-h-0 flex-1 overflow-auto">
+        {!data && <div className="p-4 text-[12px] text-fg-3">Opening…</div>}
+        {data && "error" in data && <div className="p-4 text-[12px] text-bad">{data.error}</div>}
+        {shown.map((tokens, n) => (
+          <div key={n} ref={file.line === n + 1 ? target : undefined} className={`file-line ${file.line === n + 1 ? "is-target" : ""}`}>
+            <span className="file-n">{n + 1}</span>
+            <span className="file-code">{tokens.length ? tokens.map((t, j) => ("className" in t && t.className ? <span key={j} className={t.className}>{t.text}</span> : t.text)) : "\u200b"}</span>
+          </div>
+        ))}
       </div>
     </aside>
   );

@@ -1,4 +1,4 @@
-import { Button, Chip } from "@shuacrew/ui";
+import { Button, Chip, formatTokens } from "@shuacrew/ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Bot,
@@ -19,12 +19,20 @@ import {
   SquareTerminal,
   Wrench,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { RunView } from "@shuacrew/core/projections";
+import { Columns2, GitFork, Pencil, RotateCcw, Rows2, Sparkles, X } from "lucide-react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { parseAnsi } from "../lib/ansi";
-import { decideApproval } from "../lib/api";
+import { api, decideApproval, followUp } from "../lib/api";
 import type { Item } from "../lib/conversation";
+import { suggestions } from "../lib/followups";
+import { DiffView, diffStat } from "./DiffView";
 import { describe } from "../shell/CommandPalette";
 import { CodeBlock, Markdown } from "./Markdown";
+
+/** What every card in a thread may need: the session it belongs to, and whether it's working. */
+const ThreadContext = createContext<{ run?: RunView; working: boolean }>({ working: false });
 
 type Step = Extract<Item, { kind: "tool" | "files" | "check" | "subagent" | "denied" | "checkpoint" | "thought" }>;
 type Block = { kind: "item"; key: string; item: Item } | { kind: "work"; key: string; steps: Step[]; live: boolean };
@@ -46,8 +54,9 @@ function toBlocks(items: Item[], working: boolean): Block[] {
 }
 
 /** A run's conversation, virtualised so a thousand-turn session scrolls like a short one. */
-export function Thread({ items, working, empty }: { items: Item[]; working: boolean; empty?: ReactNode }) {
+export function Thread({ items, working, empty, run }: { items: Item[]; working: boolean; empty?: ReactNode; run?: RunView }) {
   const blocks = useMemo(() => toBlocks(items, working), [items, working]);
+  const context = useMemo(() => ({ run, working }), [run, working]);
   const parent = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const virtualizer = useVirtualizer({
@@ -65,7 +74,19 @@ export function Thread({ items, working, empty }: { items: Item[]; working: bool
   }, [blocks.length, growth, virtualizer]);
 
   const waiting = working && (!last || last.kind === "ask");
+  // The last reply's own options, as pills — only once the turn has finished.
+  const pills = useMemo(() => {
+    if (working || !run || last?.kind !== "finished") return [];
+    const reply = [...items].reverse().find((i): i is Extract<Item, { kind: "prose" }> => i.kind === "prose");
+    return reply ? suggestions(reply.text) : [];
+  }, [items, working, run, last]);
+  const turns = useMemo(() => blocks.flatMap((b, index) => (b.kind === "item" && b.item.kind === "ask" ? [{ index, text: b.item.text, turn: b.item.turn }] : [])), [blocks]);
+
   return (
+    <ThreadContext.Provider value={context}>
+    <div className="relative flex min-h-0 flex-1">
+    {turns.length > 1 && <Minimap turns={turns} onJump={(index) => ((stick.current = false), virtualizer.scrollToIndex(index, { align: "start" }))} />}
+    <Find blocks={blocks} scroller={parent} onJump={(index) => ((stick.current = false), virtualizer.scrollToIndex(index, { align: "center" }))} />
     <div
       ref={parent}
       className="min-h-0 flex-1 overflow-y-auto"
@@ -95,6 +116,145 @@ export function Thread({ items, working, empty }: { items: Item[]; working: bool
           <span className="shimmer-text">Thinking…</span>
         </div>
       )}
+      {pills.length > 0 && run && <FollowUps options={pills} run={run} />}
+    </div>
+    </div>
+    </ThreadContext.Provider>
+  );
+}
+
+/** One click sends the reply's own suggestion as your next message. */
+function FollowUps({ options, run }: { options: string[]; run: RunView }) {
+  const [sent, setSent] = useState<string | null>(null);
+  return (
+    <div className="mx-auto flex max-w-[820px] flex-wrap gap-2 px-6 pb-6">
+      {options.map((o) => (
+        <button
+          key={o}
+          disabled={sent !== null}
+          onClick={() => {
+            setSent(o);
+            void followUp(run.id, o).catch(() => setSent(null));
+          }}
+          className={`followup-pill ${sent === o ? "is-sent" : ""}`}
+        >
+          <Sparkles size={12} />
+          {o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One mark per turn down the left edge; hover to preview what you asked, click to jump there. */
+function Minimap({ turns, onJump }: { turns: Array<{ index: number; text: string; turn: number }>; onJump: (index: number) => void }) {
+  const [hover, setHover] = useState<number | null>(null);
+  return (
+    <nav className="minimap" aria-label="Turns">
+      {turns.map((t, i) => (
+        <button key={t.index} className="minimap-mark" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)} onClick={() => onJump(t.index)} aria-label={`Turn ${t.turn}: ${t.text.slice(0, 60)}`}>
+          <span />
+          {hover === i && (
+            <span className="minimap-preview">
+              <span className="text-fg-3">Turn {t.turn}</span>
+              {t.text.slice(0, 140)}
+            </span>
+          )}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/**
+ * ⌘F inside a conversation: every match, next and previous, painted with the CSS Highlight API
+ * so the text never reflows. Searches the whole thread, not just what's on screen.
+ */
+function Find({ blocks, scroller, onJump }: { blocks: Block[]; scroller: React.RefObject<HTMLDivElement | null>; onJump: (index: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [at, setAt] = useState(0);
+  const input = useRef<HTMLInputElement>(null);
+  const text = (b: Block) =>
+    b.kind === "item"
+      ? "text" in b.item ? String(b.item.text) : ""
+      : b.steps.map((st) => (st.kind === "tool" ? `${describe(st.input)} ${st.output ?? ""}` : "text" in st ? String(st.text) : "")).join(" ");
+  const hits = useMemo(() => (query.trim().length < 2 ? [] : blocks.flatMap((b, i) => (text(b).toLowerCase().includes(query.toLowerCase()) ? [i] : []))), [blocks, query]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f" && scroller.current?.closest("section")?.contains(document.activeElement ?? document.body)) {
+        e.preventDefault();
+        if (open) input.current?.select();
+        setOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [scroller, open]);
+
+  // Paint matches in whatever is rendered; repaint as rows scroll into view.
+  useEffect(() => {
+    const registry = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+    const HighlightCtor = (window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
+    if (!registry || !HighlightCtor) return;
+    const paint = () => {
+      const root = scroller.current;
+      if (!open || !root || query.trim().length < 2) return registry.delete("find");
+      const ranges: Range[] = [];
+      const needle = query.toLowerCase();
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const hay = node.textContent?.toLowerCase() ?? "";
+        for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) {
+          const r = document.createRange();
+          r.setStart(node, i);
+          r.setEnd(node, i + needle.length);
+          ranges.push(r);
+        }
+      }
+      registry.set("find", new HighlightCtor(...ranges));
+    };
+    paint();
+    const el = scroller.current;
+    el?.addEventListener("scroll", paint, { passive: true });
+    return () => {
+      el?.removeEventListener("scroll", paint);
+      registry.delete("find");
+    };
+  }, [open, query, hits, at, scroller]);
+
+  if (!open) return null;
+  const go = (d: number) => {
+    if (!hits.length) return;
+    const next = (at + d + hits.length) % hits.length;
+    setAt(next);
+    onJump(hits[next]!);
+  };
+  return (
+    <div className="find-bar" role="search">
+      <Search size={13} className="text-fg-3" />
+      <input
+        ref={input}
+        autoFocus
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setAt(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") go(e.shiftKey ? -1 : 1);
+          if (e.key === "Escape") setOpen(false);
+        }}
+        placeholder="Find in conversation"
+        aria-label="Find in conversation"
+      />
+      <span className="mono text-[11px] text-fg-3">{query.trim().length < 2 ? "" : hits.length ? `${at + 1}/${hits.length}` : "0"}</span>
+      <button onClick={() => go(-1)} aria-label="Previous match" className="find-btn">↑</button>
+      <button onClick={() => go(1)} aria-label="Next match" className="find-btn">↓</button>
+      <button onClick={() => setOpen(false)} aria-label="Close find" className="find-btn">
+        <X size={12} />
+      </button>
     </div>
   );
 }
@@ -104,9 +264,13 @@ export function Thread({ items, working, empty }: { items: Item[]; working: bool
 export const Row = memo(function Row({ item }: { item: Item }) {
   switch (item.kind) {
     case "ask":
+      return <UserMessage item={item} />;
+    case "compacted":
       return (
-        <div className="mt-6 flex justify-end">
-          <div className="max-w-[78%] whitespace-pre-wrap rounded-[18px] rounded-br-[6px] border border-line bg-raised px-4 py-2.5 text-[14px] leading-relaxed text-fg shadow-[0_1px_0_rgba(255,255,255,.03)_inset]">{item.text}</div>
+        <div className="compacted-card">
+          <Sparkles size={13} className="text-amber" />
+          <span className="font-medium text-fg-2">Context compacted</span>
+          <span className="text-fg-3">— older turns were summarised so the agent keeps room to work</span>
         </div>
       );
     case "prose":
@@ -127,12 +291,116 @@ export const Row = memo(function Row({ item }: { item: Item }) {
   }
 });
 
-function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
+/** What you asked — copy it, or edit it and send it again. */
+function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
+  const { run, working } = useContext(ThreadContext);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.text);
+  const [copied, setCopied] = useState(false);
+  const send = async () => {
+    if (!run || !draft.trim()) return;
+    await followUp(run.id, draft.trim());
+    setEditing(false);
+  };
+  if (editing) {
+    return (
+      <div className="mt-6 flex justify-end">
+        <div className="edit-bubble">
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus rows={Math.min(8, draft.split("\n").length + 1)} onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) (e.preventDefault(), void send());
+            if (e.key === "Escape") setEditing(false);
+          }} aria-label="Edit your message" />
+          <div className="flex items-center justify-end gap-1.5">
+            <span className="mr-auto text-[11px] text-fg-3">Sends as a new message — the original stays in the history</span>
+            <Button size="s" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="s" variant="primary" onClick={() => void send()} disabled={!draft.trim()}>{working ? "Queue" : "Send"}</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="flex items-center gap-2 pb-3 pt-0.5 text-[11.5px] text-fg-3">
-      <span className="h-1 w-1 rounded-full bg-fg-3" />
-      <span className="mono">{item.route}</span>
-      {item.durationMs !== undefined && <span>· {fmtMs(item.durationMs)}</span>}
+    <div className="group mt-6 flex flex-col items-end" data-turn={item.turn}>
+      <div className="user-bubble">{item.text}</div>
+      <div className="msg-actions">
+        <button onClick={() => void navigator.clipboard?.writeText(item.text).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1200)))} title="Copy">
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+        {run && (
+          <button onClick={() => (setDraft(item.text), setEditing(true))} title="Edit and send again">
+            <Pencil size={12} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+let lessonCache: Promise<Record<string, string>> | null = null; // id → text, loaded once
+const lessonTexts = () =>
+  (lessonCache ??= api<{ lessons: Array<{ id: string; text: string }> }>("/api/memory")
+    .then((m) => Object.fromEntries(m.lessons.map((l) => [l.id, l.text])))
+    .catch((): Record<string, string> => ((lessonCache = null), {})));
+
+/** The end of a turn: who answered, how long it took, what it cost, what it was taught — and what next. */
+function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
+  const { run, working } = useContext(ThreadContext);
+  const navigate = useNavigate();
+  const [lessons, setLessons] = useState<string[]>([]);
+  const [showLessons, setShowLessons] = useState(false);
+  const [busy, setBusy] = useState("");
+  useEffect(() => {
+    if (item.lessons.length) void lessonTexts().then((all) => setLessons(item.lessons.map((id) => all[id] ?? "a lesson since forgotten")));
+  }, [item.lessons]);
+  const retry = async () => {
+    if (!run) return;
+    setBusy("retry");
+    await followUp(run.id, "Try that again — take a different approach this time.").finally(() => setBusy(""));
+  };
+  const fork = async () => {
+    if (!run) return;
+    setBusy("fork");
+    try {
+      const { id } = await api<{ id: string }>(`/api/runs/${run.id}/fork`, { body: { turn: item.turn } });
+      navigate({ to: "/sessions/$id", params: { id } });
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <div className="turn-footer group">
+      <span className="turn-model">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber" />
+        {item.runtime === "claude" ? "Claude" : item.runtime === "codex" ? "Codex" : item.runtime}
+        {item.model && <span className="mono text-fg-3">{item.model}</span>}
+      </span>
+      {item.durationMs !== undefined && <span>{fmtMs(item.durationMs)}</span>}
+      {item.tokens !== undefined && <span className="mono">{formatTokens(item.tokens)} tok</span>}
+      {item.commit && <span className="mono" title="The checkpoint this turn committed">⎇ {item.commit.slice(0, 7)}</span>}
+      {item.lessons.length > 0 && (
+        <span className="relative">
+          <button className="lesson-chip" onClick={() => setShowLessons((v) => !v)} aria-expanded={showLessons}>
+            <Sparkles size={11} /> {item.lessons.length} lesson{item.lessons.length === 1 ? "" : "s"} applied
+          </button>
+          {showLessons && (
+            <span className="lesson-pop" role="dialog" aria-label="Lessons this turn was given">
+              {lessons.map((l, i) => (
+                <span key={i} className="block py-0.5">• {l}</span>
+              ))}
+            </span>
+          )}
+        </span>
+      )}
+      {run && !working && (
+        <span className="turn-actions">
+          <button onClick={() => void retry()} disabled={busy !== ""} title="Ask it to try again">
+            <RotateCcw size={12} /> Retry
+          </button>
+          <button onClick={() => void fork()} disabled={busy !== ""} title="Branch a new session from this point">
+            <GitFork size={12} /> Fork from here
+          </button>
+        </span>
+      )}
     </div>
   );
 }
@@ -261,6 +529,20 @@ function StepRow({ step }: { step: Step }) {
   }
 }
 
+/** What a command is, in a word — the way you'd describe it to someone. */
+function shellKind(command: string): string | null {
+  const c = command.replace(/^(cd\s+\S+\s*&&\s*)+/, "").trim();
+  const git = /^git\s+(\w[\w-]*)/.exec(c);
+  if (git) return `git ${git[1]}`;
+  if (/\b(test|vitest|jest|pytest|go test|cargo test|swift test|xcodebuild test)\b/.test(c)) return "tests";
+  if (/^(pnpm|npm|yarn|bun)\s+(i|install|add|ci)\b|^(pip|uv)\s+(install|add|sync)\b|^brew install\b/.test(c)) return "install";
+  if (/\b(build|tsc|compile)\b/.test(c)) return "build";
+  if (/\b(lint|eslint|ruff|prettier|fmt|clippy)\b/.test(c)) return "lint";
+  if (/^(gh|glab)\s/.test(c)) return c.split(/\s+/).slice(0, 2).join(" ");
+  if (/^(curl|wget)\b/.test(c)) return "network";
+  return null;
+}
+
 /** A command, shown the way it ran: prompt, colours, exit status. */
 function ShellCard({ step }: { step: Extract<Step, { kind: "tool" }> }) {
   const [full, setFull] = useState(false);
@@ -276,6 +558,7 @@ function ShellCard({ step }: { step: Extract<Step, { kind: "tool" }> }) {
       <div className="shell-head">
         <span className="shell-prompt">❯</span>
         <span className="mono min-w-0 flex-1 truncate text-fg">{command}</span>
+        {shellKind(command) && <span className="shell-kind">{shellKind(command)}</span>}
         <button onClick={() => void navigator.clipboard?.writeText(command).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1200)))} className="shell-icon" aria-label="Copy command">
           {copied ? <Check size={12} /> : <Copy size={12} />}
         </button>
@@ -305,52 +588,80 @@ function ShellCard({ step }: { step: Extract<Step, { kind: "tool" }> }) {
   );
 }
 
-/** An edit, as a file card: where, how much, and the change itself. */
+/** An edit, as a file card: where, how much, and the change itself — unified or side by side. */
 function FileCard({ step }: { step: Extract<Step, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
+  const [split, setSplit] = useState(() => {
+    try {
+      return localStorage.getItem("shuacrew.diffSplit") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const { run } = useContext(ThreadContext);
   const input = (step.input ?? {}) as Record<string, unknown>;
-  const file = pathOf(step.input) ?? "file";
+  const absolute = pathOf(step.input, false) ?? "file";
+  // Named from the project root, the way you'd say it — not the worktree's temp path.
+  const root = [run?.worktree?.path, run?.repo].find((r) => r && absolute.startsWith(r + "/"));
+  const file = root ? absolute.slice(root.length + 1) : (pathOf(step.input) ?? "file");
   const before = typeof input.old_string === "string" ? input.old_string : "";
   const after = typeof input.new_string === "string" ? input.new_string : typeof input.content === "string" ? input.content : "";
-  const removed = before ? before.split("\n").length : 0;
-  const added = after ? after.split("\n").length : 0;
+  const { added, removed } = useMemo(() => diffStat(before, after), [before, after]);
   const created = /^(write|create)/i.test(step.tool) && !before;
   const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
   const name = file.slice(dir.length);
   const Icon = created ? FilePlus2 : FilePen;
+  const toggleSplit = () =>
+    setSplit((v) => {
+      try {
+        localStorage.setItem("shuacrew.diffSplit", v ? "0" : "1");
+      } catch {
+        /* per-browser nicety only */
+      }
+      return !v;
+    });
   return (
     <div className={`file-card ${step.ok === false ? "is-failed" : ""}`}>
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px]" aria-expanded={open}>
-        <Icon size={14} className={step.ok === undefined ? "text-amber" : step.ok ? "text-fg-2" : "text-bad"} />
-        <span className="text-fg-3">{created ? "Created" : "Edited"}</span>
-        <span className="mono min-w-0 flex-1 truncate">
-          <span className="text-fg-3">{dir}</span>
-          <span className="text-fg">{name}</span>
-        </span>
-        {(added > 0 || removed > 0) && (
-          <span className="mono shrink-0 text-[11.5px]">
-            <span className="text-ok">+{added}</span> <span className="text-bad">−{removed}</span>
+      <div className="flex items-center gap-2.5 px-3 py-2 text-[12.5px]">
+        <button
+          onClick={() => (before || after ? setOpen((v) => !v) : window.dispatchEvent(new CustomEvent("shuacrew:open-file", { detail: { path: absolute } })))}
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          aria-expanded={open}
+        >
+          <Icon size={14} className={step.ok === undefined ? "text-amber" : step.ok ? "text-fg-2" : "text-bad"} />
+          <span className="text-fg-3">{created ? "Created" : "Edited"}</span>
+          <span className="mono min-w-0 flex-1 truncate">
+            <span className="text-fg-3">{dir}</span>
+            <span className="text-fg">{name}</span>
           </span>
+          {(added > 0 || removed > 0) && (
+            <span className="diff-stat mono shrink-0">
+              <span className="text-ok">+{added}</span>
+              <span className="text-bad">−{removed}</span>
+              <DiffBar added={added} removed={removed} />
+            </span>
+          )}
+          {step.ok === undefined && <LoaderCircle size={13} className="animate-spin text-amber" />}
+          <ChevronRight size={13} className={`shrink-0 text-fg-3 transition-transform ${open ? "rotate-90" : ""}`} />
+        </button>
+        {open && before && (
+          <button onClick={toggleSplit} className="file-tool" title={split ? "Unified diff" : "Side by side"} aria-label={split ? "Unified diff" : "Side by side"}>
+            {split ? <Rows2 size={13} /> : <Columns2 size={13} />}
+          </button>
         )}
-        {step.ok === undefined && <LoaderCircle size={13} className="animate-spin text-amber" />}
-        <ChevronRight size={13} className={`text-fg-3 transition-transform ${open ? "rotate-90" : ""}`} />
-      </button>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:open-file", { detail: { path: absolute } }))}
+          className="file-tool"
+          title="Open the file"
+          aria-label="Open the file"
+        >
+          <FileText size={13} />
+        </button>
+      </div>
       {open &&
+        (before || after) &&
         (before ? (
-          <pre className="diff-body">
-            {before.split("\n").map((l, i) => (
-              <div key={`-${i}`} className="diff-del">
-                <span className="diff-sign">−</span>
-                {l}
-              </div>
-            ))}
-            {after.split("\n").map((l, i) => (
-              <div key={`+${i}`} className="diff-add">
-                <span className="diff-sign">+</span>
-                {l}
-              </div>
-            ))}
-          </pre>
+          <DiffView before={before} after={after} file={name} split={split} />
         ) : (
           <div className="px-2 pb-2">
             <CodeBlock code={after} lang={name} label={name} maxLines={30} />
@@ -358,6 +669,19 @@ function FileCard({ step }: { step: Extract<Step, { kind: "tool" }> }) {
         ))}
       {step.ok === false && step.output && <div className="mono border-t border-line px-3 py-1.5 text-[11.5px] text-bad">{step.output.split("\n")[0]}</div>}
     </div>
+  );
+}
+
+/** Five blocks, GitHub-style: how much of the change was added vs removed. */
+function DiffBar({ added, removed }: { added: number; removed: number }) {
+  const total = added + removed || 1;
+  const green = Math.round((added / total) * 5);
+  return (
+    <span className="diff-bar" aria-hidden>
+      {Array.from({ length: 5 }, (_, i) => (
+        <span key={i} className={i < green ? "bg-ok" : "bg-bad"} />
+      ))}
+    </span>
   );
 }
 
@@ -384,11 +708,15 @@ function ToolLine({ step }: { step: Extract<Step, { kind: "tool" }> }) {
 
 function Thought({ step }: { step: Extract<Step, { kind: "thought" }> }) {
   const [open, setOpen] = useState(false);
+  const { working } = useContext(ThreadContext);
+  const live = working && step.streaming;
+  const preview = step.text.trim().split("\n").filter(Boolean).pop() ?? "";
   return (
     <div className="py-0.5">
-      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 text-[12.5px] text-fg-3 hover:text-fg-2" aria-expanded={open}>
-        <Brain size={14} />
-        <span className="italic">Thinking</span>
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full min-w-0 items-center gap-2 text-left text-[12.5px] text-fg-3 hover:text-fg-2" aria-expanded={open}>
+        <Brain size={14} className={live ? "text-amber" : undefined} />
+        <span className={live ? "shimmer-text font-medium" : "italic"}>Thought process</span>
+        {!open && preview && <span className="min-w-0 flex-1 truncate italic opacity-80">{preview}</span>}
         <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
       {open && <div className="ml-6 mt-1 whitespace-pre-wrap border-l border-line pl-3 text-[12.5px] italic leading-relaxed text-fg-3">{step.text}</div>}
@@ -432,10 +760,10 @@ function ApprovalCard({ item }: { item: Extract<Item, { kind: "approval" }> }) {
   );
 }
 
-function pathOf(input: unknown): string | undefined {
+function pathOf(input: unknown, tidy = true): string | undefined {
   const i = (input ?? {}) as Record<string, unknown>;
   const p = i.file_path ?? i.path ?? i.filePath;
-  return typeof p === "string" ? p.replace(/^\/Users\/[^/]+/, "~") : undefined;
+  return typeof p === "string" ? (tidy ? p.replace(/^\/Users\/[^/]+/, "~") : p) : undefined;
 }
 
 export function fmtMs(ms: number): string {

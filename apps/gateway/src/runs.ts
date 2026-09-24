@@ -41,6 +41,7 @@ export interface LaunchSpec {
   incognito?: boolean;
   /** Record the run but never execute it (a task's parent: its steps do the work). */
   hold?: boolean;
+  forkOf?: { run: string; turn: number; commit?: string };
 }
 
 interface Waiting {
@@ -109,13 +110,43 @@ export class Supervisor {
         // "held" is part of the fact, so a restart knows never to execute this run itself.
         labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : [])],
         incognito: spec.incognito ?? false,
+        forkOf: spec.forkOf,
       },
       { run: id },
     );
     if (spec.approveAll) this.approveAll.add(id);
     if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
+    else if (spec.forkOf) this.rec("run.status", { status: "done", reason: "forked — waiting for your first message" }, { run: id });
     else queueMicrotask(() => this.pump());
     return id;
+  }
+
+  /**
+   * A new session that carries this one's conversation up to `turn`, and — in a repo — its own
+   * branch starting at that turn's checkpoint. It waits for your first message.
+   */
+  fork(run: string, turn: number): string {
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    if (created?.kind !== "run.created") throw new Error(`no run ${run}`);
+    const checkpoint = [...this.store.forRun(run)].reverse().find((e) => e.kind === "checkpoint.created" && e.body.turn <= turn);
+    const commit = checkpoint?.kind === "checkpoint.created" ? checkpoint.body.commit : undefined;
+    return this.launch({
+      ask: this.recap(run, turn, "You are continuing a ShuaCrew session from an earlier point. Here is the conversation up to there:"),
+      title: `↳ ${created.body.title}`,
+      repo: created.body.repo,
+      project: created.body.project,
+      runtime: created.body.runtime,
+      model: created.body.model,
+      effort: created.body.effort,
+      labels: ["fork"],
+      forkOf: { run, turn, commit },
+    });
+  }
+
+  /** Take back a queued message before its turn starts. */
+  withdraw(run: string, id: string): void {
+    if (!this.unanswered(run, true).some((f) => f.id === id)) throw new Error("that message has already been answered");
+    this.rec("run.followup.withdrawn", { id }, { run });
   }
 
   cancel(run: string, reason = "cancelled by you"): void {
@@ -172,7 +203,7 @@ export class Supervisor {
         if (existing && existing.kind === "run.worktree") {
           cwd = existing.body.path;
         } else {
-          const tree = await this.worktrees.create(spec.repo, runId);
+          const tree = await this.worktrees.create(spec.repo, runId, spec.forkOf?.commit);
           cwd = tree.path;
           this.rec("run.worktree", tree, { run: runId });
         }
@@ -196,7 +227,8 @@ export class Supervisor {
     const model = this.modelFor(runId, runtime.id, spec.model);
     const run: RunSpec = {
       id: runId,
-      ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : ask,
+      // A fork's first turn carries the conversation it branched from; a moved run gets a recap.
+      ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : spec.forkOf && turn === 1 ? `${spec.ask}\n\n---\n\n${ask}` : ask,
       cwd,
       model,
       effort: spec.effort,
@@ -339,10 +371,11 @@ export class Supervisor {
   }
 
   /** What another agent needs to carry on: what was asked, what was said, what changed. */
-  private recap(run: string): string {
-    const lines = ["You are continuing a ShuaCrew run that another agent started. Here is where it stands:"];
+  private recap(run: string, uptoTurn = Number.POSITIVE_INFINITY, opening = "You are continuing a ShuaCrew run that another agent started. Here is where it stands:"): string {
+    const lines = [opening];
     const files = new Set<string>();
     for (const e of this.store.forRun(run)) {
+      if (e.kind === "turn.started" && e.body.turn > uptoTurn) break;
       if (e.kind === "turn.started") lines.push(`\n> ${e.body.text.split("\n")[0]}`);
       if (e.kind === "agent.message" && e.body.final) lines.push(e.body.text.slice(0, 600));
       if (e.kind === "file.changed") files.add(e.body.path);
@@ -493,23 +526,28 @@ export class Supervisor {
   // ── follow-ups ──────────────────────────────────────────────────────────────────────
 
   /** Send another message to a run: a new turn in the same runtime conversation. */
-  followUp(run: string, text: string, by = "you"): void {
+  followUp(run: string, text: string, by = "you"): string {
     if (!this.status(run)) throw new Error(`no run ${run}`);
-    this.rec("run.followup", { text, by }, { run });
+    const id = `f_${randomUUID().slice(0, 8)}`;
+    this.rec("run.followup", { id, text, by }, { run });
     // Mid-turn, a message waits its turn: the one after this answers everything queued.
-    if (this.active.has(run)) return;
+    if (this.active.has(run)) return id;
     this.setStatus(run, "queued", "follow-up");
     this.pump();
+    return id;
   }
 
-  /** Follow-ups no turn has started on yet, oldest first. */
-  private unanswered(run: string): string[] {
-    let pending: string[] = [];
+  /** Follow-ups no turn has started on yet (and not taken back), oldest first. */
+  private unanswered(run: string): string[];
+  private unanswered(run: string, detailed: true): Array<{ id?: string; text: string }>;
+  private unanswered(run: string, detailed?: boolean): Array<string | { id?: string; text: string }> {
+    let pending: Array<{ id?: string; text: string }> = [];
     for (const e of this.store.forRun(run)) {
-      if (e.kind === "run.followup") pending.push(e.body.text);
+      if (e.kind === "run.followup") pending.push({ id: e.body.id, text: e.body.text });
+      if (e.kind === "run.followup.withdrawn") pending = pending.filter((f) => f.id !== e.body.id);
       if (e.kind === "turn.started") pending = [];
     }
-    return pending;
+    return detailed ? pending : pending.map((f) => f.text);
   }
 
   /**

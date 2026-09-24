@@ -18,7 +18,20 @@ export type Item =
   | { kind: "checkpoint"; seq: number; turn: number; commit?: string; note: string }
   | { kind: "note"; seq: number; text: string; tone: "live" | "bad" | "idle" | "wait" }
   | { kind: "thought"; seq: number; turn: number; text: string; streaming: boolean }
-  | { kind: "finished"; seq: number; durationMs?: number; route: string };
+  | { kind: "compacted"; seq: number; text: string }
+  | {
+      kind: "finished";
+      seq: number;
+      turn: number;
+      durationMs?: number;
+      route: string;
+      runtime?: string;
+      model?: string;
+      tokens?: number;
+      commit?: string;
+      /** Lesson ids this turn was given (the text comes from memory). */
+      lessons: string[];
+    };
 
 export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINITY): Item[] {
   const items: Item[] = [];
@@ -26,6 +39,11 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
   const subagents = new Map<string, number>();
   const approvals = new Map<string, number>();
   let prose: Extract<Item, { kind: "prose" }> | null = null;
+  // What the current turn has gathered for its footer.
+  let turn = 0;
+  let lessons: string[] = [];
+  let tokens = 0;
+  let commit: string | undefined;
 
   const endProse = () => {
     if (prose) prose.streaming = false;
@@ -37,10 +55,19 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
     switch (e.kind) {
       case "turn.started":
         endProse();
+        turn = e.body.turn;
+        lessons = [];
+        tokens = 0;
+        commit = undefined;
         items.push({ kind: "ask", seq: e.seq, turn: e.body.turn, text: e.body.text, by: e.body.by, at: e.at });
         break;
       case "agent.thinking": {
         endProse();
+        // The runtime's note that it compacted the conversation gets a card of its own.
+        if (/^Compacted the conversation/.test(e.body.text)) {
+          items.push({ kind: "compacted", seq: e.seq, text: e.body.text });
+          break;
+        }
         const last = items[items.length - 1];
         if (last?.kind === "thought" && last.turn === e.body.turn) last.text += e.body.text;
         else items.push({ kind: "thought", seq: e.seq, turn: e.body.turn, text: e.body.text, streaming: true });
@@ -133,7 +160,14 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         items.push({ kind: "note", seq: e.seq, text: `${verb} step ${e.body.index + 1}${e.body.status !== "passed" && e.body.detail ? ` — ${e.body.detail}` : ""}`, tone });
         break;
       }
+      case "lesson.applied":
+        lessons.push(e.body.id);
+        break;
+      case "usage.recorded":
+        tokens += e.body.inputTokens + e.body.outputTokens;
+        break;
       case "checkpoint.created":
+        commit = e.body.commit ?? commit;
         items.push({ kind: "checkpoint", seq: e.seq, turn: e.body.turn, commit: e.body.commit, note: e.body.note });
         break;
       case "runtime.limited":
@@ -149,7 +183,18 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         break;
       case "turn.completed":
         endProse();
-        items.push({ kind: "finished", seq: e.seq, durationMs: e.body.durationMs, route: [e.body.route.runtime, e.body.route.model, e.body.route.effort].filter(Boolean).join(" · ") });
+        items.push({
+          kind: "finished",
+          seq: e.seq,
+          turn: e.body.turn ?? turn,
+          durationMs: e.body.durationMs,
+          route: [e.body.route.runtime, e.body.route.model, e.body.route.effort].filter(Boolean).join(" · "),
+          runtime: e.body.route.runtime,
+          model: e.body.route.model,
+          tokens: tokens || undefined,
+          commit,
+          lessons: [...lessons],
+        });
         break;
       case "run.status":
         if (e.body.status === "cancelled") items.push({ kind: "note", seq: e.seq, text: e.body.reason ?? "Cancelled", tone: "idle" });
@@ -159,4 +204,15 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
     }
   }
   return items;
+}
+
+/** Messages sent while the agent worked, still waiting for their turn (withdrawn ones excluded). */
+export function queued(events: AnyEvent[]): Array<{ id?: string; text: string }> {
+  let pending: Array<{ id?: string; text: string }> = [];
+  for (const e of events) {
+    if (e.kind === "run.followup") pending.push({ id: e.body.id, text: e.body.text });
+    if (e.kind === "run.followup.withdrawn") pending = pending.filter((f) => f.id !== e.body.id);
+    if (e.kind === "turn.started") pending = [];
+  }
+  return pending;
 }

@@ -28,13 +28,14 @@ export interface Worktree {
 export class Worktrees {
   constructor(private root = path.join(process.env.SHUACREW_HOME ?? path.join(os.homedir(), ".shuacrew"), "worktrees")) {}
 
-  async create(repo: string, runId: string): Promise<Worktree> {
+  /** A new branch for the run, from the repo's current branch — or from `from` (a fork's checkpoint). */
+  async create(repo: string, runId: string, from?: string): Promise<Worktree> {
     const top = await git(repo, "rev-parse", "--show-toplevel");
     const base = await git(top, "rev-parse", "--abbrev-ref", "HEAD");
     const branch = `shua/${runId}`;
     const where = path.join(this.root, path.basename(top), runId);
     mkdirSync(path.dirname(where), { recursive: true });
-    await git(top, "worktree", "add", "-b", branch, where, base === "HEAD" ? "HEAD" : base);
+    await git(top, "worktree", "add", "-b", branch, where, from ?? (base === "HEAD" ? "HEAD" : base));
     return { path: where, branch, base };
   }
 
