@@ -147,18 +147,18 @@ function SessionsPanel({ selected }: { selected?: string }) {
   const empty = !groups.needs.length && !groups.working.length && !groups.recent.length && !groups.older.length;
 
   return (
-    <aside className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-[760px]:hidden" aria-label="Sessions">
+    <aside className="side-pane flex min-h-0 flex-col max-[760px]:hidden" aria-label="Sessions">
       <div className="flex items-center gap-2 px-3.5 pb-2.5 pt-3.5">
         <h2 className="text-[15px] font-semibold">Sessions</h2>
         <button
           onClick={() => navigate({ to: "/" })}
-          className="ml-auto flex h-7 items-center gap-1 rounded-[8px] bg-amber px-2.5 text-[12.5px] font-semibold text-[var(--on-accent)] hover:brightness-110"
+          className="new-btn ml-auto"
           title="New session (⌘N)"
         >
           <Plus size={14} strokeWidth={2.5} /> New
         </button>
       </div>
-      <label className="mx-3.5 mb-2 flex h-8 items-center gap-2 rounded-[8px] border border-line bg-ink px-2.5 text-[12.5px] text-fg-3 focus-within:border-amber">
+      <label className="pane-search mx-3.5 mb-2">
         <Search size={13} />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sessions…" className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-3" />
       </label>
@@ -266,7 +266,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
 
   return (
-    <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel" aria-label="Conversation">
+    <section className="sheet flex min-h-0 flex-col" aria-label="Conversation">
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
         <h1 className="min-w-0 truncate text-[14px] font-semibold">{run.title}</h1>
         <StatusPill status={run.status} />
@@ -550,24 +550,25 @@ function NewSession() {
     { icon: Sparkles, text: "Look at my most recent project and suggest the next three things to build" },
   ];
   return (
-    <section className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel" aria-label="New session">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[640px] px-6 pb-6 pt-[10vh]">
-          <img src="/icon.svg" alt="" className="h-11 w-11" />
-          <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.02em]">What should the crew work on?</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed text-fg-2">No project to set up — just say what you want. ShuaCrew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
-          <div className="mt-6 flex flex-col gap-2">
+    <section className="sheet flex min-h-0 flex-col" aria-label="New session">
+      <div className="hero min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center px-6 pb-[12vh] pt-10">
+          <div className="hero-mark">
+            <img src="/icon.svg" alt="" />
+          </div>
+          <h1 className="hero-title">What should the crew work on?</h1>
+          <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
+          <Composer seed={seed} hero />
+          <div className="hero-ideas">
             {ideas.map(({ icon: Icon, text }) => (
-              <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="group flex items-center gap-3 rounded-[10px] border border-line bg-ink px-3.5 py-3 text-left text-[13px] text-fg-2 transition hover:border-amber hover:text-fg">
-                <Icon size={16} className="shrink-0 text-amber" />
-                <span className="flex-1">{text}</span>
-                <ArrowUp size={14} className="text-fg-3 group-hover:text-amber" />
+              <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea">
+                <Icon size={14} className="shrink-0 text-amber" />
+                <span className="line-clamp-2">{text}</span>
               </button>
             ))}
           </div>
         </div>
       </div>
-      <Composer seed={seed} />
       {terminal && <Drawer onClose={() => setTerminal(false)} />}
     </section>
   );
@@ -589,7 +590,7 @@ const RECENT = "shuacrew.recentRepos";
 let runtimeCache: Promise<RuntimeInfo[]> | null = null;
 const loadRuntimes = () => (runtimeCache ??= api<RuntimeInfo[]>("/api/runtimes").catch(() => ((runtimeCache = null), [])));
 
-function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: number } }) {
+function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n: number }; hero?: boolean }) {
   const navigate = useNavigate();
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -799,8 +800,8 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
   };
 
   return (
-    <div className="shrink-0 px-4 pb-3 pt-1">
-      <div className="relative mx-auto max-w-[820px]">
+    <div className={hero ? "mt-7" : "shrink-0 px-4 pb-3 pt-1"}>
+      <div className={`relative mx-auto ${hero ? "" : "max-w-[820px]"}`}>
         {slash.length > 0 && (
           <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-[12px] border border-line-strong bg-raised shadow-[0_18px_50px_rgba(0,0,0,.35)]" role="listbox" aria-label="Commands">
             {slash.map((c, i) => (
@@ -825,7 +826,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
             Drop to attach — the agent gets the file
           </div>
         )}
-        <div className="rounded-[16px] border border-line-strong bg-ink px-3.5 pb-2.5 pt-3 transition focus-within:border-[color-mix(in_srgb,var(--amber)_55%,var(--line-strong))]">
+        <div className={`composer-box ${hero ? "is-hero" : ""}`}>
           {files.length > 0 && (
             <div className="mb-2.5 flex flex-wrap gap-2">
               {files.map((f) => (
@@ -1019,7 +1020,7 @@ function ChangesPanel({ id }: { id: string }) {
   if (file) return <FileViewer run={id} file={file} onBack={() => setFile(null)} />;
   const tokens = run.usage.inputTokens + run.usage.outputTokens;
   return (
-    <aside className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-[1150px]:hidden" aria-label="Changes">
+    <aside className="sheet flex min-h-0 flex-col max-[1150px]:hidden" aria-label="Changes">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4">
         <span className="flex items-center gap-1.5 rounded-[7px] bg-[var(--amber-soft)] px-2 py-1 text-[12.5px] font-medium text-amber">
           <FileDiff size={13} /> Changes
@@ -1097,7 +1098,7 @@ function FileViewer({ run, file, onBack }: { run: string; file: { path: string; 
   const plain: import("../lib/highlight").Token[][] = data && "content" in data ? data.content.split("\n").map((text) => [{ text }]) : [];
   const shown = lines ?? plain;
   return (
-    <aside className="flex min-h-0 flex-col rounded-[14px] border border-line bg-panel max-[1150px]:hidden" aria-label="File">
+    <aside className="sheet flex min-h-0 flex-col max-[1150px]:hidden" aria-label="File">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
         <button onClick={onBack} className="rounded-[6px] px-1.5 py-1 text-[12px] text-fg-3 hover:bg-raised hover:text-fg">← Changes</button>
         <span className="mono min-w-0 flex-1 truncate text-right text-[12px] text-fg-2" title={file.path}>

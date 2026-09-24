@@ -669,3 +669,34 @@ body {
 .tl-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; margin-top: 10px; max-height: 360px; overflow-y: auto; }
 .tl-tool { border-radius: 9px; padding: 7px 9px; background: var(--sunken); border: 1px solid var(--line); }
 [data-palette="frost"] .tl-card, [data-palette="frost"] .tl-row { -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+
+/* ── Sleek pass: sheets, panes, hero, composer ────────────────────── */
+/* A sheet is where work happens: one soft surface, a hairline, depth from shadow not borders. */
+.sheet { border-radius: 16px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 18px 50px -34px rgba(0, 0, 0, .7); overflow: hidden; }
+/* The session list sits in the chrome, not in a box. */
+.side-pane { background: transparent; }
+.side-pane h2 { font-size: 13px; letter-spacing: .01em; color: var(--text-2); font-weight: 600; }
+.new-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 9px; font-size: 12.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background .15s, box-shadow .15s; }
+.new-btn:hover { background: color-mix(in srgb, var(--text) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, var(--line-strong)); }
+.new-btn svg { color: var(--amber); }
+.pane-search { display: flex; height: 32px; align-items: center; gap: 8px; border-radius: 9px; padding: 0 10px; font-size: 12.5px; color: var(--text-3); background: color-mix(in srgb, var(--text) 4.5%, transparent); transition: background .15s, box-shadow .15s; }
+.pane-search:focus-within { background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+
+/* The home: a quiet centre with the composer front and middle. */
+.hero-mark { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; margin: 0 auto; background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--amber) 22%, transparent), transparent 70%), color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong), 0 10px 40px -12px color-mix(in srgb, var(--amber) 40%, transparent); }
+.hero-mark img { width: 30px; height: 30px; }
+.hero-title { margin-top: 20px; text-align: center; font-size: 30px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; background: linear-gradient(180deg, var(--text), color-mix(in srgb, var(--text) 72%, transparent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-sub { margin: 10px auto 0; max-width: 520px; text-align: center; font-size: 14px; line-height: 1.55; color: var(--text-3); }
+.hero-ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+@media (max-width: 700px) { .hero-ideas { grid-template-columns: 1fr; } }
+.hero-idea { display: flex; align-items: flex-start; gap: 9px; border-radius: 12px; padding: 10px 12px; text-align: left; font-size: 12.5px; line-height: 1.45; color: var(--text-2); background: color-mix(in srgb, var(--text) 3.5%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, color .15s, box-shadow .15s, transform .15s; }
+.hero-idea svg { margin-top: 2px; }
+.hero-idea:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); transform: translateY(-1px); }
+
+/* The composer: glass, a hairline, and a glow only while you're typing. */
+.composer-box { border-radius: 18px; padding: 12px 14px 10px; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong), 0 14px 40px -26px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .03); transition: box-shadow .2s, background .2s; }
+.composer-box:focus-within { box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 26%, var(--line-strong)), 0 0 0 4px color-mix(in srgb, var(--amber) 5%, transparent), 0 18px 50px -26px rgba(0, 0, 0, .85), inset 0 1px 0 rgba(255, 255, 255, .03); }
+.composer-box.is-hero { border-radius: 20px; padding: 16px 16px 12px; }
+.composer-box.is-hero textarea { min-height: 52px; font-size: 15px; }
+[data-palette="frost"] .composer-box { background: rgba(255, 255, 255, 0.04); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%); }
+[data-palette="frost"] .sheet { background: rgba(255, 255, 255, 0.025); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%); box-shadow: 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, .04), 0 24px 60px -40px rgba(0, 0, 0, .9); }
