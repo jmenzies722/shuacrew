@@ -64,6 +64,14 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         public var detail: String { failed ? (note.isEmpty ? title : "\(title) — \(note)") : (who.isEmpty ? title : "\(who) · \(title)") }
     }
 
+    /// Today's morning briefing, when there is one.
+    public struct Briefing: Decodable, Equatable, Sendable {
+        public let id: String
+        public let day: String
+        public let headline: String
+        public init(id: String, day: String, headline: String) { self.id = id; self.day = day; self.headline = headline }
+    }
+
     public let running: Int
     public let awaiting: Int
     public let reviewing: Int
@@ -71,8 +79,9 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
     public let limited: [String]
     public let recent: [Finished]
     public let reviews: [Review]
+    public let briefing: Briefing?
 
-    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews }
+    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -83,11 +92,12 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         limited = try c.decode([String].self, forKey: .limited)
         recent = try c.decodeIfPresent([Finished].self, forKey: .recent) ?? [] // older gateways don't send it
         reviews = try c.decodeIfPresent([Review].self, forKey: .reviews) ?? []
+        briefing = try c.decodeIfPresent(Briefing.self, forKey: .briefing)
     }
 
     public init(running: Int, awaiting: Int, reviewing: Int, approvals: [Approval], limited: [String], recent: [Finished] = [], reviews: [Review] = []) {
         self.running = running; self.awaiting = awaiting; self.reviewing = reviewing; self.approvals = approvals; self.limited = limited
-        self.recent = recent; self.reviews = reviews
+        self.recent = recent; self.reviews = reviews; self.briefing = nil
     }
 
     /// Everything that is waiting on you: tool approvals and playbook gates.

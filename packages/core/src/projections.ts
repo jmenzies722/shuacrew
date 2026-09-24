@@ -165,6 +165,15 @@ export interface PlayView {
   updatedAt: number;
 }
 
+export interface BriefingView {
+  id: string;
+  day: string;
+  since: number;
+  headline: string;
+  sections: Array<{ title: string; items: Array<{ text: string; href?: string; tone?: "ok" | "bad" | "wait" | "live" | "idle" }> }>;
+  at: number;
+}
+
 export interface CrewState {
   head: number;
   members: Record<string, CrewMember>;
@@ -173,6 +182,7 @@ export interface CrewState {
   playbooks: Record<string, PlaybookDef>; // yours; the built-in library is added by the gateway
   plays: Record<string, PlayView>;
   ventures: Record<string, VentureView>;
+  briefing?: BriefingView;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -342,6 +352,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       v.updatedAt = event.at;
       break;
     }
+    case "briefing.created":
+      state.briefing = { ...event.body, at: event.at };
+      break;
     case "playbook.set":
       state.playbooks[event.body.id] = event.body;
       break;

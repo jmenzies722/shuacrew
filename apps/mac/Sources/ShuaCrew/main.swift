@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let gateway = Gateway()
     private var window: MainWindow!
     private var tray: Tray?
+    private var quick: QuickPanel?
+    private var hotKey: HotKey?
     /// For headless checks: no Dock icon, no menu-bar item, never takes focus.
     private let quiet = ProcessInfo.processInfo.environment["SHUACREW_NO_ACTIVATE"] == "1"
 
@@ -20,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.showWindow(nil)
             NSApp.activate()
             tray = Tray(gateway: gateway, window: window, notifications: true)
+            // ⌥Space, anywhere: ask the crew, or clear what's waiting on you.
+            let quick = QuickPanel(gateway: gateway, window: window)
+            self.quick = quick
+            hotKey = HotKey { [weak quick] in Task { @MainActor in quick?.toggle() } }
         }
         window.start()
         tray?.start()
@@ -35,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         window.rememberPath()
     }
+
+    @objc private func quickAsk() { quick?.show() }
 
     // MARK: menus
 
@@ -60,6 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let file = submenu(main, "File")
         file.addItem(item("New Session…", "n", #selector(newRun)))
         file.addItem(item("Command Palette…", "k", #selector(palette)))
+        let ask = item("Quick Ask…", " ", #selector(quickAsk))
+        ask.keyEquivalentModifierMask = [.option]
+        file.addItem(ask)
         file.addItem(.separator())
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
@@ -76,8 +87,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let view = submenu(main, "View")
         let screens: [(String, String, String)] = [
-            ("Mission Control", "1", "/"), ("Board", "2", "/board"), ("Specs", "3", "/specs"), ("Schedules", "4", "/schedules"),
-            ("Memory", "5", "/memory"), ("Integrations", "6", "/integrations"), ("Policy & Audit", "7", "/policy"),
+            ("Sessions", "1", "/"), ("Ventures", "2", "/ventures"), ("Crew", "3", "/crew"), ("Crew Floor", "4", "/floor"),
+            ("Playbooks", "5", "/playbooks"), ("Library", "6", "/library"), ("Tools & Skills", "7", "/integrations"),
+            ("Memory", "8", "/memory"), ("Policy & Audit", "9", "/policy"),
         ]
         for (title, key, path) in screens { view.addItem(item(title, key, #selector(go(_:)), path)) }
         view.addItem(.separator())

@@ -267,7 +267,7 @@ export function parseMoney(text?: string): number | undefined {
 
 export function formatMoney(n: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase(), maximumFractionDigits: n >= 1000 ? 0 : 2 }).format(n);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase(), minimumFractionDigits: Number.isInteger(n) || n >= 1000 ? 0 : 2, maximumFractionDigits: n >= 1000 ? 0 : 2 }).format(n);
   } catch {
     return `${n.toFixed(2)} ${currency.toUpperCase()}`;
   }

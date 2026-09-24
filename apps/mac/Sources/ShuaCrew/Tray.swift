@@ -48,6 +48,11 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         }
         finished.formUnion(next.recent.map(\.key))
         reviewed.formUnion(next.reviews.map(\.key))
+        // Each morning's briefing announces itself once — even across app restarts.
+        if let briefing = next.briefing, UserDefaults.standard.string(forKey: "lastBriefing") != briefing.id {
+            UserDefaults.standard.set(briefing.id, forKey: "lastBriefing")
+            notify(briefing)
+        }
         primed = true
         let gone = notified.subtracting(next.approvals.map(\.id))
         if !gone.isEmpty { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: Array(gone)) }
@@ -76,6 +81,12 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         let headline = NSMenuItem(title: status.headline, action: nil, keyEquivalent: "")
         headline.isEnabled = false
         menu.addItem(headline)
+        if let briefing = status.briefing {
+            let today = NSMenuItem(title: "Today: \(briefing.headline.prefix(70))", action: #selector(openHome), keyEquivalent: "")
+            today.target = self
+            today.image = NSImage(systemSymbolName: "sunrise", accessibilityDescription: nil)
+            menu.addItem(today)
+        }
         if !status.limited.isEmpty {
             let limited = NSMenuItem(title: "Usage limit: \(status.limited.joined(separator: ", "))", action: nil, keyEquivalent: "")
             limited.isEnabled = false
@@ -147,6 +158,11 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         window.navigate("/plays/\(play)")
     }
     @objc private func approvePhase(_ sender: NSMenuItem) { approve(sender.representedObject as? String) }
+    @objc private func openHome() {
+        NSApp.activate()
+        window.showWindow(nil)
+        window.navigate("/")
+    }
 
     /// "play#index" → approve that gate, then refresh.
     private func approve(_ ref: String?) {
@@ -213,6 +229,16 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: outcome.key, content: content, trigger: nil))
     }
 
+    private func notify(_ briefing: CrewStatus.Briefing) {
+        guard notifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Your morning briefing"
+        content.body = briefing.headline
+        content.sound = .default
+        content.userInfo = ["home": true]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: briefing.id, content: content, trigger: nil))
+    }
+
     private func notify(_ review: CrewStatus.Review) {
         guard notifications else { return }
         let content = UNMutableNotificationContent()
@@ -232,6 +258,10 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         let phase = info["phase"] as? String
         if response.actionIdentifier == "APPROVE_PHASE" {
             await MainActor.run { approve(phase) }
+            return
+        }
+        if info["home"] as? Bool == true {
+            await MainActor.run { openHome() }
             return
         }
         if !play.isEmpty, response.actionIdentifier == UNNotificationDefaultActionIdentifier {

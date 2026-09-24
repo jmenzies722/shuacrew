@@ -43,3 +43,11 @@ import Testing
     #expect(status.newReviews(since: ["p_1:1:1:review"]).isEmpty)
     #expect(status.newReviews(since: []).count == 1)
 }
+
+@Test func carriesTodaysBriefing() throws {
+    let json = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"briefing":{"id":"b_1","day":"2026-09-24","headline":"2 things need you · MRR $132"}}"#
+    let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+    #expect(status.briefing?.headline == "2 things need you · MRR $132")
+    let none = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"briefing":null}"#
+    #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(none.utf8)).briefing == nil)
+}

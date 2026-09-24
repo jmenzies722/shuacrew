@@ -123,7 +123,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     tasks: new TaskRunner(store, supervisor),
   };
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const { app, hub, state } = await createServer({
+  const { app, hub, state, briefing } = await createServer({
     store,
     supervisor,
     runtimes,
@@ -150,11 +150,12 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   autonomy.tasks.recover();
   plays.recover();
   ventures.schedule();
+  briefing?.schedule();
   autonomy.scheduler.sync();
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, skills, terminals, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, skills, briefing, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -170,6 +171,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.plays.stop();
     gateway.ventures.stop();
     gateway.skills.stop();
+    gateway.briefing?.stop();
     gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();

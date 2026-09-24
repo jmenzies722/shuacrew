@@ -36,6 +36,12 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 }
 
 export function Shell() {
+  const quick = useRouterState({ select: (s) => s.location.pathname === "/quick" });
+  if (quick) return <Outlet />; // the ⌥Space panel: just the page, no app frame
+  return <Frame />;
+}
+
+function Frame() {
   useGlobalKeys();
   return (
     <div className="grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>

@@ -25,6 +25,8 @@ import {
   Users,
   X,
   Zap,
+  RefreshCw,
+  Sunrise,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
@@ -568,6 +570,7 @@ function NewSession() {
               </button>
             ))}
           </div>
+          <TodayBriefing />
           <GettingStarted />
         </div>
       </div>
@@ -1229,5 +1232,66 @@ function GettingStarted() {
         ))}
       </div>
     </div>
+  );
+}
+
+/** This morning's briefing: what happened while you were away and what needs you, one tap each. */
+function TodayBriefing() {
+  const briefing = useLive((s) => s.crew.briefing);
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const today = new Date();
+  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const make = () => (setBusy(true), void api("/api/briefing", { body: {} }).finally(() => setBusy(false)));
+  if (!briefing || briefing.day !== day) {
+    return (
+      <button className="brief-make" onClick={make} disabled={busy}>
+        <Sunrise size={14} className="text-fg-3" /> {busy ? "Putting it together…" : "Make today's briefing"}
+        <span className="ml-auto text-[11.5px] text-fg-3">it arrives by itself at 8:00</span>
+      </button>
+    );
+  }
+  const go = (href?: string) => {
+    if (!href) return;
+    const [path, hash] = href.split("#");
+    navigate({ to: path!, ...(hash ? { hash } : {}) });
+  };
+  return (
+    <section className="brief">
+      <div className="flex items-center gap-2.5">
+        <Sunrise size={15} className="shrink-0 text-fg-2" />
+        <button className="min-w-0 flex-1 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <span className="block text-[12px] font-semibold uppercase tracking-[0.07em] text-fg-3">
+            Today · {new Date(briefing.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          </span>
+          <span className="block truncate text-[14px] font-semibold text-fg">{briefing.headline}</span>
+        </button>
+        <button className="member-icon" title="Refresh the briefing" aria-label="Refresh the briefing" onClick={make} disabled={busy}>
+          <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
+        </button>
+        <button className="member-icon" onClick={() => setOpen((v) => !v)} aria-label={open ? "Collapse" : "Expand"}>
+          <ChevronDown size={14} className={`transition ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && briefing.sections.length > 0 && (
+        <div className="mt-3 grid gap-3">
+          {briefing.sections.map((section) => (
+            <div key={section.title}>
+              <div className="brief-title">{section.title}</div>
+              <div className="grid gap-0.5">
+                {section.items.map((item, i) => (
+                  <button key={i} className={`brief-item is-${item.tone ?? "idle"}`} onClick={() => go(item.href)} disabled={!item.href}>
+                    <span className="brief-dot" />
+                    <span className="min-w-0 flex-1 truncate">{item.text}</span>
+                    {item.href && <span className="brief-go">→</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

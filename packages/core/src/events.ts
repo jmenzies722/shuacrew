@@ -240,6 +240,19 @@ export const bodies = {
     subscriptions: z.number().int().optional(),
     error: z.string().optional(),
   }),
+  // The morning briefing: a digest built from the log (no model), one per day.
+  "briefing.created": z.object({
+    id: z.string(),
+    day: z.string(), // YYYY-MM-DD, local
+    since: z.number(),
+    headline: z.string(),
+    sections: z.array(
+      z.object({
+        title: z.string(),
+        items: z.array(z.object({ text: z.string(), href: z.string().optional(), tone: z.enum(["ok", "bad", "wait", "live", "idle"]).optional() })),
+      }),
+    ),
+  }),
   "playbook.set": PlaybookDef,
   "playbook.removed": z.object({ id: z.string() }),
   "play.started": z.object({

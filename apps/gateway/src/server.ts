@@ -26,6 +26,7 @@ import type { Mcp } from "./mcp.js";
 import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
 import type { Plays } from "./plays.js";
+import { Briefing } from "./briefing.js";
 import type { Skills } from "./skills.js";
 import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
@@ -47,6 +48,8 @@ export interface ServerOptions {
   crew?: Crew;
   library?: Library;
   plays?: Plays;
+  /** When the morning briefing runs (cron, local time); false for none. */
+  briefingAt?: string | false;
   skills?: Skills;
   ventures?: Ventures;
   tools?: ToolServer;
@@ -56,7 +59,7 @@ export interface ServerOptions {
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
-export async function createServer(options: ServerOptions): Promise<{ app: FastifyInstance; hub: Hub; merges: MergeQueue; state: () => CrewState }> {
+export async function createServer(options: ServerOptions): Promise<{ app: FastifyInstance; hub: Hub; merges: MergeQueue; state: () => CrewState; briefing?: Briefing }> {
   const { store, supervisor } = options;
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK.has(host) && !options.token) {
@@ -180,6 +183,13 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   }));
 
   app.get("/api/snapshot", async () => state);
+
+  // The morning briefing: today's digest, or make one now.
+  const briefing = options.briefingAt === false ? undefined : new Briefing(store, () => state, options.briefingAt ?? "0 8 * * *");
+  if (briefing) {
+    app.get("/api/briefing", async () => state.briefing ?? null);
+    app.post("/api/briefing", async () => briefing.create());
+  }
 
   // The crew's recent activity — what agents did, not every streamed token — for the live floor.
   const ACTIVITY = new Set(["run.created", "run.status", "turn.started", "turn.completed", "tool.called", "tool.returned", "file.changed", "check.ran", "subagent.started", "subagent.finished", "approval.requested", "approval.decided", "merge.landed", "merge.failed", "pr.opened", "agent.thinking"]);
@@ -767,6 +777,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 20)
         .map((r) => ({ id: r.id, title: r.title, status: r.status, reason: r.statusReason ?? "", files: r.files.length, at: r.updatedAt })),
+      // Today's briefing, so the menu bar can announce it once.
+      briefing: state.briefing ? { id: state.briefing.id, day: state.briefing.day, headline: state.briefing.headline } : null,
       // Playbook phases waiting at a gate for you (and plays that stopped), for the menu bar and notifications.
       reviews: Object.values(state.plays).flatMap((play) =>
         play.phases.flatMap((phase, index) => {
@@ -958,7 +970,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     });
   }
 
-  return { app, hub, merges, state: () => state };
+  return { app, hub, merges, state: () => state, briefing };
 }
 
 function loopbackHost(host: string | undefined): boolean {

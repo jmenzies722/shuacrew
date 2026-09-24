@@ -2,7 +2,7 @@
  * The Mac app's side of the bridge. In a browser none of this exists and every call is a no-op,
  * so the page works the same in both.
  */
-type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] };
+type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "quickClose" } | { type: "quickOpen"; path: string } | { type: "quickResize"; height: number };
 
 interface Handler {
   postMessage(message: Message): void;
@@ -56,4 +56,17 @@ export function watchTitleBar(bar: HTMLElement): () => void {
     mutations.disconnect();
     window.removeEventListener("resize", report);
   };
+}
+
+/** The ⌥Space panel: close it, or open something in the main window (in a browser: just go there). */
+export function quickClose() {
+  handler()?.postMessage({ type: "quickClose" });
+}
+export function quickOpen(path: string) {
+  const native = handler();
+  if (native) native.postMessage({ type: "quickOpen", path });
+  else window.location.assign(path);
+}
+export function quickResize(height: number) {
+  handler()?.postMessage({ type: "quickResize", height });
 }
