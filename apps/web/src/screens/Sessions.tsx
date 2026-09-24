@@ -442,12 +442,6 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
           </div>
         )}
         <div className="rounded-[16px] border border-line-strong bg-ink px-3.5 pb-2.5 pt-3 transition focus-within:border-[color-mix(in_srgb,var(--amber)_55%,var(--line-strong))]">
-          {(task || autopilot) && (
-            <div className="mb-2 flex gap-1.5">
-              {task && <Toggle on onClick={() => setTask(false)} icon={<ListChecks size={12} />} label="Task · plan, check, retry" />}
-              {autopilot && <Toggle on onClick={() => setAutopilot(false)} icon={<ShieldCheck size={12} />} label="Autopilot" />}
-            </div>
-          )}
           <textarea
             ref={field}
             value={text}
