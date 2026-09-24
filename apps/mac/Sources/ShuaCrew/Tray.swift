@@ -12,6 +12,7 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
     private var status = CrewStatus.empty
     private var notified: Set<String> = []
     private var finished: Set<String> = []
+    private var reviewed: Set<String> = []
     private var primed = false
     private var timer: Timer?
     private let notifications: Bool
@@ -43,8 +44,10 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         if primed {
             for approval in fresh { notify(approval) }
             for outcome in next.newlyFinished(since: finished) { notify(outcome) }
+            for review in next.newReviews(since: reviewed) { notify(review) }
         }
         finished.formUnion(next.recent.map(\.key))
+        reviewed.formUnion(next.reviews.map(\.key))
         primed = true
         let gone = notified.subtracting(next.approvals.map(\.id))
         if !gone.isEmpty { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: Array(gone)) }
@@ -56,9 +59,9 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func render() {
-        NSApp.dockTile.badgeLabel = status.awaiting > 0 ? "\(status.awaiting)" : nil
+        NSApp.dockTile.badgeLabel = status.needsYou > 0 ? "\(status.needsYou)" : nil
         if let badge = status.badge {
-            let color: NSColor = status.awaiting > 0 ? Self.amber : .labelColor
+            let color: NSColor = status.needsYou > 0 ? Self.amber : .labelColor
             item.button?.attributedTitle = NSAttributedString(string: " \(badge)", attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold), .foregroundColor: color,
             ])
@@ -100,6 +103,22 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
                 menu.addItem(entry)
             }
         }
+        if !status.reviews.isEmpty {
+            menu.addItem(.separator())
+            for review in status.reviews.prefix(8) {
+                let entry = NSMenuItem(title: "\(review.phase) — \(review.title.prefix(50))", action: nil, keyEquivalent: "")
+                entry.image = NSImage(systemSymbolName: review.failed ? "xmark.octagon" : "checklist", accessibilityDescription: nil)
+                let sub = NSMenu()
+                let who = NSMenuItem(title: review.detail, action: nil, keyEquivalent: "")
+                who.isEnabled = false
+                sub.addItem(who)
+                sub.addItem(.separator())
+                if !review.failed { sub.addItem(action(review.last ? "Approve & Finish" : "Approve & Continue", #selector(approvePhase(_:)), "\(review.play)#\(review.index)")) }
+                sub.addItem(action("Open Playbook", #selector(openPlay(_:)), review.play))
+                entry.submenu = sub
+                menu.addItem(entry)
+            }
+        }
         menu.addItem(.separator())
         menu.addItem(action("Open ShuaCrew", #selector(open), nil))
         menu.addItem(action("New Session…", #selector(newRun), nil))
@@ -122,6 +141,23 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         NSApp.activate()
         window.navigate("/sessions/\(run)")
     }
+    @objc private func openPlay(_ sender: NSMenuItem) {
+        guard let play = sender.representedObject as? String else { return }
+        NSApp.activate()
+        window.navigate("/plays/\(play)")
+    }
+    @objc private func approvePhase(_ sender: NSMenuItem) { approve(sender.representedObject as? String) }
+
+    /// "play#index" → approve that gate, then refresh.
+    private func approve(_ ref: String?) {
+        guard let ref, let hash = ref.lastIndex(of: "#"), let index = Int(ref[ref.index(after: hash)...]) else { return }
+        let play = String(ref[..<hash])
+        Task {
+            try? await gateway.approvePhase(play, index: index)
+            await poll()
+        }
+    }
+
     @objc private func open() {
         NSApp.activate()
         window.showWindow(nil)
@@ -146,7 +182,11 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         let allow = UNNotificationAction(identifier: "ALLOW", title: "Allow")
         let deny = UNNotificationAction(identifier: "DENY", title: "Deny", options: [.destructive])
-        center.setNotificationCategories([UNNotificationCategory(identifier: "APPROVAL", actions: [allow, deny], intentIdentifiers: [])])
+        let approvePhase = UNNotificationAction(identifier: "APPROVE_PHASE", title: "Approve & Continue")
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "APPROVAL", actions: [allow, deny], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "REVIEW", actions: [approvePhase], intentIdentifiers: []),
+        ])
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
@@ -173,10 +213,34 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: outcome.key, content: content, trigger: nil))
     }
 
+    private func notify(_ review: CrewStatus.Review) {
+        guard notifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = review.headline
+        content.body = review.detail
+        content.sound = review.failed ? .defaultCritical : .default
+        if !review.failed { content.categoryIdentifier = "REVIEW" }
+        content.userInfo = ["play": review.play, "phase": "\(review.play)#\(review.index)"]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: review.key, content: content, trigger: nil))
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
         let approval = info["approval"] as? String
         let run = info["run"] as? String ?? ""
+        let play = info["play"] as? String ?? ""
+        let phase = info["phase"] as? String
+        if response.actionIdentifier == "APPROVE_PHASE" {
+            await MainActor.run { approve(phase) }
+            return
+        }
+        if !play.isEmpty, response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            await MainActor.run {
+                NSApp.activate()
+                window.navigate("/plays/\(play)")
+            }
+            return
+        }
         switch response.actionIdentifier {
         case "ALLOW": await MainActor.run { decide(approval, allow: true) }
         case "DENY": await MainActor.run { decide(approval, allow: false) }

@@ -39,7 +39,7 @@ const post = (app: Awaited<ReturnType<typeof world>>["app"], url: string, body: 
 
 describe("playbooks", () => {
   it("runs phases in order through the crew, carrying context and stopping at gates", async () => {
-    const { plays, seen } = await world();
+    const { plays, seen, app } = await world();
     expect(() => plays.start({ playbook: "validate-idea", inputs: {} })).toThrow(/The idea is needed/);
     const play = plays.start({ playbook: "validate-idea", inputs: { idea: "Steady paychecks for freelancers" } });
     expect(play.title).toBe("Validate an idea — Steady paychecks for freelancers");
@@ -61,6 +61,11 @@ describe("playbooks", () => {
     expect(plays.get(play.id)!.phases[1]!.status).toBe("running");
     await until(() => plays.get(play.id)!.phases[1]!.status === "review");
     expect(plays.get(play.id)!.phases[1]!.runs).toHaveLength(1);
+
+    // The menu bar sees the gate (once per round), and no "finished" noise for phase sessions.
+    const status = (await app.inject({ method: "GET", url: "/api/status" })).json();
+    expect(status.reviews).toEqual([expect.objectContaining({ play: play.id, index: 1, phase: "Customer pains", status: "review", who: "🔎 Rhea", last: false })]);
+    expect(status.recent.filter((r: { id: string }) => plays.get(play.id)!.phases.some((p) => p.run === r.id))).toEqual([]);
 
     plays.approve(play.id, 1);
     await until(() => plays.get(play.id)!.phases[2]!.status === "review");

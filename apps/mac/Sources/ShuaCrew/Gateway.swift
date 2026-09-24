@@ -43,6 +43,19 @@ final class Gateway: @unchecked Sendable {
     }
 }
 
+extension Gateway {
+    /// Approve a playbook phase waiting at its gate, from a notification or the menu bar.
+    func approvePhase(_ play: String, index: Int) async throws {
+        var request = URLRequest(url: base.appending(path: "api/plays/\(play)/approve"))
+        request.httpMethod = "POST"
+        request.setValue("1", forHTTPHeaderField: "X-ShuaCrew")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["index": index])
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw GatewayError.refused("The gateway didn't accept that approval.") }
+    }
+}
+
 enum GatewayError: LocalizedError {
     case refused(String), unreachable(String)
     var errorDescription: String? {

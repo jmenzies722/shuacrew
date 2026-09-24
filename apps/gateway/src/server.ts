@@ -760,10 +760,19 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       limited: Object.entries(state.limited).flatMap(([key, l]) => (l.credits ? [] : [key])),
       // What just finished, for "ready for review" / "failed" notifications.
       recent: runs
-        .filter((r) => !r.parent && ["reviewing", "done", "failed", "merged"].includes(r.status) && Date.now() - r.updatedAt < 30 * 60_000)
+        // A playbook's phases announce themselves as reviews (below), not as finished sessions.
+        .filter((r) => !r.parent && !r.labels.includes("play") && ["reviewing", "done", "failed", "merged"].includes(r.status) && Date.now() - r.updatedAt < 30 * 60_000)
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 20)
         .map((r) => ({ id: r.id, title: r.title, status: r.status, reason: r.statusReason ?? "", files: r.files.length, at: r.updatedAt })),
+      // Playbook phases waiting at a gate for you (and plays that stopped), for the menu bar and notifications.
+      reviews: Object.values(state.plays).flatMap((play) =>
+        play.phases.flatMap((phase, index) => {
+          if (phase.status !== "review" && !(phase.status === "failed" && play.status === "failed")) return [];
+          const member = phase.member ? state.members[phase.member] : undefined;
+          return [{ play: play.id, index, key: `${play.id}:${index}:${phase.runs.length}:${phase.status}`, title: play.title, phase: phase.name, status: phase.status, who: member ? `${member.emoji} ${member.name}`.trim() : "", note: phase.note ?? "", last: index === play.phases.length - 1 }];
+        }),
+      ),
     };
   });
 

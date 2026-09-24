@@ -32,3 +32,14 @@ import Testing
     let old = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[]}"#
     #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(old.utf8)).recent.isEmpty)
 }
+
+@Test func playbookGatesWaitOnYouAndNotifyOnce() throws {
+    let json = #"{"running":1,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"reviews":[{"play":"p_1","index":1,"key":"p_1:1:1:review","title":"Validate an idea — Fern","phase":"Customer pains","status":"review","who":"🔎 Rhea","note":"","last":false}]}"#
+    let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+    #expect(status.headline == "1 running · 1 playbook review")
+    #expect(status.badge == "1") // a gate waiting on you outranks what's busy
+    #expect(status.reviews.first?.headline == "Customer pains is ready for your review")
+    #expect(status.reviews.first?.detail == "🔎 Rhea · Validate an idea — Fern")
+    #expect(status.newReviews(since: ["p_1:1:1:review"]).isEmpty)
+    #expect(status.newReviews(since: []).count == 1)
+}

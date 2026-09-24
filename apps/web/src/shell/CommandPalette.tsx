@@ -17,6 +17,8 @@ export function CommandPalette() {
   const setOpen = useLive((s) => s.setPalette);
   const runs = useLive((s) => s.crew.runs);
   const approvals = useLive((s) => s.crew.approvals);
+  const ventures = useLive((s) => s.crew.ventures);
+  const plays = useLive((s) => s.crew.plays);
   const openLaunch = useLive((s) => s.openLaunch);
   const setAppearance = useLive((s) => s.setAppearance);
   const navigate = useNavigate();
@@ -109,6 +111,32 @@ export function CommandPalette() {
                       >
                         /mcp {s.name}
                         <span className="ml-auto text-[11px] text-fg-3">mcp</span>
+                      </Item>
+                    ))}
+                  </Group>
+                )}
+                {Object.values(plays).some((p) => p.status === "waiting") && (
+                  <Group heading="Waiting for your review">
+                    {Object.values(plays)
+                      .filter((p) => p.status === "waiting")
+                      .map((p) => {
+                        const phase = p.phases.find((x) => x.status === "review");
+                        return (
+                          <Item key={p.id} value={`review ${p.title} ${phase?.name ?? ""}`} onSelect={() => go(`/plays/${p.id}`)}>
+                            <span className="shrink-0">{p.emoji}</span>
+                            <span className="truncate">{phase?.name ?? "Review"} · {p.title}</span>
+                            <span className="ml-auto text-[11px] text-amber">review</span>
+                          </Item>
+                        );
+                      })}
+                  </Group>
+                )}
+                {Object.keys(ventures).length > 0 && (
+                  <Group heading="Ventures">
+                    {Object.values(ventures).map((v) => (
+                      <Item key={v.id} value={`venture ${v.name} ${v.pitch}`} onSelect={() => go(`/ventures/${v.id}`)}>
+                        <span className="shrink-0">{v.emoji}</span> {v.name}
+                        <span className="ml-auto text-[11px] text-fg-3">{v.stage}</span>
                       </Item>
                     ))}
                   </Group>

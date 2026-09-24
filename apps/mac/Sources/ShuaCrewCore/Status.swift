@@ -45,14 +45,34 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         }
     }
 
+    /// A playbook phase waiting at its gate for you (or one that stopped).
+    public struct Review: Decodable, Equatable, Sendable {
+        public let play: String
+        public let index: Int
+        public let key: String
+        public let title: String
+        public let phase: String
+        public let status: String
+        public let who: String
+        public let note: String
+        public let last: Bool
+        public init(play: String, index: Int, key: String, title: String, phase: String, status: String, who: String, note: String, last: Bool) {
+            self.play = play; self.index = index; self.key = key; self.title = title; self.phase = phase; self.status = status; self.who = who; self.note = note; self.last = last
+        }
+        public var failed: Bool { status == "failed" }
+        public var headline: String { failed ? "\(phase) stopped" : "\(phase) is ready for your review" }
+        public var detail: String { failed ? (note.isEmpty ? title : "\(title) — \(note)") : (who.isEmpty ? title : "\(who) · \(title)") }
+    }
+
     public let running: Int
     public let awaiting: Int
     public let reviewing: Int
     public let approvals: [Approval]
     public let limited: [String]
     public let recent: [Finished]
+    public let reviews: [Review]
 
-    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent }
+    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -62,11 +82,20 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         approvals = try c.decode([Approval].self, forKey: .approvals)
         limited = try c.decode([String].self, forKey: .limited)
         recent = try c.decodeIfPresent([Finished].self, forKey: .recent) ?? [] // older gateways don't send it
+        reviews = try c.decodeIfPresent([Review].self, forKey: .reviews) ?? []
     }
 
-    public init(running: Int, awaiting: Int, reviewing: Int, approvals: [Approval], limited: [String], recent: [Finished] = []) {
+    public init(running: Int, awaiting: Int, reviewing: Int, approvals: [Approval], limited: [String], recent: [Finished] = [], reviews: [Review] = []) {
         self.running = running; self.awaiting = awaiting; self.reviewing = reviewing; self.approvals = approvals; self.limited = limited
-        self.recent = recent
+        self.recent = recent; self.reviews = reviews
+    }
+
+    /// Everything that is waiting on you: tool approvals and playbook gates.
+    public var needsYou: Int { awaiting + reviews.count }
+
+    /// Playbook gates not seen before — each notifies once.
+    public func newReviews(since seen: Set<String>) -> [Review] {
+        reviews.filter { !seen.contains($0.key) }
     }
 
     public static let empty = CrewStatus(running: 0, awaiting: 0, reviewing: 0, approvals: [], limited: [])
@@ -76,13 +105,14 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         var parts: [String] = []
         if running > 0 { parts.append("\(running) running") }
         if awaiting > 0 { parts.append("\(awaiting) awaiting you") }
+        if !reviews.isEmpty { parts.append("\(reviews.count) playbook review\(reviews.count == 1 ? "" : "s")") }
         if reviewing > 0 { parts.append("\(reviewing) to review") }
         return parts.isEmpty ? "All quiet" : parts.joined(separator: " · ")
     }
 
     /// The number beside the menu-bar icon: approvals first (they block work), then running.
     public var badge: String? {
-        if awaiting > 0 { return "\(awaiting)" }
+        if needsYou > 0 { return "\(needsYou)" }
         if running > 0 { return "\(running)" }
         return nil
     }
