@@ -82,7 +82,10 @@ export class Library {
     private root: string,
   ) {
     mkdirSync(root, { recursive: true, mode: 0o700 });
-    this.index = new DatabaseSync(path.join(root, "index.db"));
+    chmodSync(root, 0o700);
+    const db = path.join(root, "index.db");
+    this.index = new DatabaseSync(db);
+    chmodSync(db, 0o600); // it holds the text of your documents
     this.index.exec(`
       create table if not exists docs (id text not null, type text not null, title text not null, file text not null, text text not null);
       create index if not exists docs_id on docs(id);

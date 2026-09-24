@@ -35,6 +35,7 @@ describe("the library", () => {
     const first = library.save({ title: "Habit apps — pricing", content: "# Pricing\n\nStreaks charges $4.99 a month. Habitica is free with a subscription tier.", run: "r_1", member: "researcher" });
     expect(first).toMatchObject({ version: 1, kind: "doc", file: "habit-apps-pricing.md", member: "researcher", run: "r_1" });
     expect(statSync(library.fileOf(first.id)!).mode & 0o777).toBe(0o600);
+    expect(statSync(path.join(path.dirname(library.fileOf(first.id)!), "../../../index.db")).mode & 0o777).toBe(0o600);
 
     const second = library.save({ id: first.id, title: "Habit apps — pricing", content: "# Pricing v2\n\nStreaks $4.99/mo; Fabulous $39.99/yr." });
     expect(second.version).toBe(2);
