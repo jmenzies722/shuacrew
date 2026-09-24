@@ -158,6 +158,15 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   app.get("/api/snapshot", async () => state);
 
+  // The crew's recent activity — what agents did, not every streamed token — for the live floor.
+  const ACTIVITY = new Set(["run.created", "run.status", "turn.started", "turn.completed", "tool.called", "tool.returned", "file.changed", "check.ran", "subagent.started", "subagent.finished", "approval.requested", "approval.decided", "merge.landed", "merge.failed", "pr.opened", "agent.thinking"]);
+  app.get<{ Querystring: { limit?: string } }>("/api/activity", async (request) => {
+    const limit = Math.min(2000, Math.max(1, Number(request.query.limit ?? 800)));
+    const out = [];
+    for (const e of store.read(Math.max(0, store.head - 20_000))) if (ACTIVITY.has(e.kind)) out.push(e);
+    return out.slice(-limit);
+  });
+
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>("/api/runs/:id/events", async (request) =>
     store.forRun(request.params.id, Number(request.query.after ?? 0)),
   );

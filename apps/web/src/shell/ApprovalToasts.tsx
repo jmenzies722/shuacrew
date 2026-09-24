@@ -21,7 +21,8 @@ export function ApprovalToasts() {
   // On the sessions screens approvals live in the thread, the Needs-you group and the bell;
   // a floating toast there would only cover the composer.
   const path = useRouterState({ select: (r) => r.location.pathname });
-  const onSessions = path === "/" || path.startsWith("/sessions");
+  // Sessions and the crew floor answer approvals in place; a toast there would only cover things.
+  const onSessions = path === "/" || path.startsWith("/sessions") || path === "/floor";
   const top = onSessions ? undefined : list[list.length - 1];
 
   useEffect(() => {

@@ -431,6 +431,7 @@ export class TaskRunner {
     if (status !== "running") this.store.append("run.status", { status: "running", reason: `step ${next + 1} of ${plan.steps.length}` }, { run: id });
     const run = this.supervisor.launch({
       ask: `You are doing step ${next + 1} of ${plan.steps.length} of the task "${created.body.title}".\n\nGoal: ${created.body.ask}\n\nThis step: ${plan.steps[next]}\n\nDo only this step.${plan.validate ? ` It must leave \`${plan.validate}\` passing.` : ""}`,
+      title: `Step ${next + 1} · ${plan.steps[next]}`,
       parent: id,
       repo: created.body.repo,
       runtime: created.body.runtime,

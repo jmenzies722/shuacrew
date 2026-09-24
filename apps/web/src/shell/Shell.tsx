@@ -1,6 +1,6 @@
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { SquareTerminal } from "lucide-react";
+import { SquareTerminal, Waypoints } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { watchTitleBar } from "../lib/native";
@@ -12,6 +12,7 @@ import { LaunchSheet } from "./LaunchSheet";
 
 export const NAV = [
   { to: "/", label: "Sessions", icon: MessagesSquare, key: "s" },
+  { to: "/floor", label: "Crew floor — agents working, live", icon: Waypoints, key: "f" },
   { to: "/terminal", label: "Terminal", icon: SquareTerminal, key: "t" },
   { to: "/activity", label: "Activity", icon: Radar, key: "m" },
   { to: "/board", label: "Board", icon: KanbanSquare, key: "b" },

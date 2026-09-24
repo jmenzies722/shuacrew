@@ -19,6 +19,8 @@ interface Live {
   crew: CrewState;
   connection: Connection;
   runEvents: Record<string, AnyEvent[]>;
+  /** The crew's recent activity across every session (no streamed tokens), newest last. */
+  activity: AnyEvent[];
   theme: Theme;
   appearance: Appearance;
   setAppearance(change: Partial<Appearance>): void;
@@ -47,6 +49,7 @@ export const useLive = create<Live>((set, get) => ({
   crew: emptyState(),
   connection: "connecting",
   runEvents: {},
+  activity: [],
   theme: themeOf(loadAppearance()),
   appearance: loadAppearance(),
   launchOpen: false,
@@ -115,13 +118,15 @@ function flush(): void {
   if (!pending.length) return;
   const batch = pending;
   pending = [];
-  const { crew, runEvents } = useLive.getState();
+  const { crew, runEvents, activity } = useLive.getState();
+  const acted: AnyEvent[] = [];
   const touched = new Set<string>();
   let approvalsChanged = false;
   let loadedChanged: Record<string, AnyEvent[]> | null = null;
   for (const event of batch) {
     if (event.seq <= crew.head) continue;
     apply(crew, event);
+    if (ACTIVITY.has(event.kind)) acted.push(event);
     if (event.run) touched.add(event.run);
     if (event.kind.startsWith("approval.")) approvalsChanged = true;
     if (event.run && runEvents[event.run]) {
@@ -141,13 +146,16 @@ function flush(): void {
       today: { ...crew.today },
     },
     ...(loadedChanged ? { runEvents: loadedChanged } : {}),
+    ...(acted.length ? { activity: [...activity, ...acted].slice(-1500) } : {}),
   });
 }
 
+const ACTIVITY = new Set(["run.created", "run.status", "turn.started", "turn.completed", "tool.called", "tool.returned", "file.changed", "check.ran", "subagent.started", "subagent.finished", "approval.requested", "approval.decided", "merge.landed", "merge.failed", "pr.opened", "agent.thinking"]);
+
 export async function connect(): Promise<void> {
   try {
-    const snapshot = await api<CrewState>("/api/snapshot");
-    useLive.setState({ crew: snapshot });
+    const [snapshot, activity] = await Promise.all([api<CrewState>("/api/snapshot"), api<AnyEvent[]>("/api/activity").catch(() => [])]);
+    useLive.setState({ crew: snapshot, activity });
   } catch {
     useLive.setState({ connection: "offline" });
   }
