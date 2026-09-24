@@ -17,6 +17,7 @@ import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./auto
 import { Mcp } from "./mcp.js";
 import { Library } from "./library.js";
 import { Plays } from "./plays.js";
+import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
@@ -70,6 +71,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const crew = new Crew(store);
   const mcp = new Mcp(store, path.join(home, "mcp-auth.json"));
   const library = new Library(store, path.join(home, "library"));
+  const ventures = new Ventures(store, path.join(home, "venture-keys.json"));
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   // The library's tool server lives on this gateway; each run reaches it with its own token.
@@ -91,6 +93,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     crew,
     mcpServers: withLibrary,
     toolHint: LIBRARY_HINT,
+    ventureBrief: (id) => ventures.brief(id),
     mcpList: () => mcp.list(),
   });
   const plays = new Plays(store, supervisor);
@@ -117,6 +120,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     library,
     tools,
     plays,
+    ventures,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
   });
@@ -125,11 +129,12 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const resumed = supervisor.recover();
   autonomy.tasks.recover();
   plays.recover();
+  ventures.schedule();
   autonomy.scheduler.sync();
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, terminals, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -143,6 +148,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.crew?.stop();
     gateway.library.stop();
     gateway.plays.stop();
+    gateway.ventures.stop();
     gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();

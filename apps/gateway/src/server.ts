@@ -26,6 +26,7 @@ import type { Mcp } from "./mcp.js";
 import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
 import type { Plays } from "./plays.js";
+import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
 import { fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
@@ -45,6 +46,7 @@ export interface ServerOptions {
   crew?: Crew;
   library?: Library;
   plays?: Plays;
+  ventures?: Ventures;
   tools?: ToolServer;
   terminals?: Terminals;
   uploads?: Uploads;
@@ -186,13 +188,15 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     store.forRun(request.params.id, Number(request.query.after ?? 0)),
   );
 
-  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string } }>(
+  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string; venture?: string } }>(
     "/api/runs",
     async (request, reply) => {
       const body = request.body ?? {};
       if (!body.ask?.trim()) return reply.code(400).send({ error: "say what you want done" });
       if (body.runtime && !options.runtimes.has(body.runtime)) return reply.code(400).send({ error: `no runtime ${body.runtime}` });
-      const id = supervisor.launch({ ...body, ask: body.ask });
+      const venture = body.venture ? options.ventures?.get(body.venture) : undefined;
+      if (body.venture && !venture) return reply.code(400).send({ error: `no venture ${body.venture}` });
+      const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo });
       return { id };
     },
   );
@@ -481,8 +485,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.get("/api/playbooks", async () => plays.playbooks());
     app.post("/api/playbooks", async (request, reply) => attempt(reply, () => plays.save(request.body)));
     app.delete<{ Params: { id: string } }>("/api/playbooks/:id", async (request, reply) => attempt(reply, () => plays.remove(request.params.id)));
-    app.post<{ Body: { playbook?: string; inputs?: Record<string, string>; title?: string; repo?: string } }>("/api/plays", async (request, reply) =>
-      attempt(reply, () => plays.start({ playbook: request.body?.playbook ?? "", inputs: request.body?.inputs, title: request.body?.title, repo: request.body?.repo })),
+    app.post<{ Body: { playbook?: string; inputs?: Record<string, string>; title?: string; repo?: string; venture?: string } }>("/api/plays", async (request, reply) =>
+      attempt(reply, () => {
+        const venture = request.body?.venture ? options.ventures?.get(request.body.venture) : undefined;
+        if (request.body?.venture && !venture) throw new Error(`no venture ${request.body.venture}`);
+        return plays.start({ playbook: request.body?.playbook ?? "", inputs: request.body?.inputs, title: request.body?.title, repo: request.body?.repo || venture?.repo, venture: venture?.id });
+      }),
     );
     app.post<{ Params: { id: string }; Body: { index?: number } }>("/api/plays/:id/approve", async (request, reply) => attempt(reply, () => plays.approve(request.params.id, Number(request.body?.index))));
     app.post<{ Params: { id: string }; Body: { index?: number; feedback?: string } }>("/api/plays/:id/revise", async (request, reply) =>
@@ -491,6 +499,45 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.post<{ Params: { id: string }; Body: { from?: number } }>("/api/plays/:id/restart", async (request, reply) => attempt(reply, () => plays.restart(request.params.id, Number(request.body?.from ?? 0))));
     app.post<{ Params: { id: string }; Body: { index?: number } }>("/api/plays/:id/skip", async (request, reply) => attempt(reply, () => plays.skip(request.params.id, Number(request.body?.index))));
     app.post<{ Params: { id: string } }>("/api/plays/:id/cancel", async (request, reply) => attempt(reply, () => plays.cancel(request.params.id)));
+  }
+
+  if (options.ventures) {
+    const ventures = options.ventures;
+    const attempt = async <T>(reply: FastifyReply, work: () => T | Promise<T>) => {
+      try {
+        return (await work()) ?? { ok: true };
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    };
+    app.get("/api/ventures/stages", async () => ({ stages: STAGES, next: NEXT }));
+    app.post<{ Body: Parameters<Ventures["set"]>[0] }>("/api/ventures", async (request, reply) => attempt(reply, () => ventures.set(request.body ?? { name: "" })));
+    app.delete<{ Params: { id: string } }>("/api/ventures/:id", async (request, reply) => attempt(reply, () => ventures.remove(request.params.id)));
+    app.post<{ Params: { id: string }; Body: { stage?: string; note?: string } }>("/api/ventures/:id/stage", async (request, reply) =>
+      attempt(reply, () => {
+        const stage = request.body?.stage as Parameters<Ventures["stage"]>[1];
+        if (![...STAGES, "paused", "stopped"].includes(stage)) throw new Error("unknown stage");
+        return ventures.stage(request.params.id, stage, request.body?.note);
+      }),
+    );
+    app.post<{ Params: { id: string }; Body: { mrr?: number; revenue30d?: number; customers?: number; currency?: string } }>("/api/ventures/:id/metrics", async (request, reply) =>
+      attempt(reply, () => ventures.record(request.params.id, request.body ?? {})),
+    );
+    // The key is checked, written to a 0600 file and never echoed back.
+    app.post<{ Params: { id: string }; Body: { key?: string } }>("/api/ventures/:id/stripe", async (request, reply) => attempt(reply, () => ventures.connect(request.params.id, request.body?.key ?? "")));
+    app.delete<{ Params: { id: string } }>("/api/ventures/:id/stripe", async (request, reply) => attempt(reply, () => ventures.disconnect(request.params.id)));
+    app.post<{ Params: { id: string } }>("/api/ventures/:id/sync", async (request, reply) => attempt(reply, () => ventures.sync(request.params.id)));
+    // Ask the crew about this venture: a session that carries its brief.
+    app.post<{ Params: { id: string }; Body: { text?: string; member?: string } }>("/api/ventures/:id/ask", async (request, reply) =>
+      attempt(reply, () => {
+        const v = ventures.get(request.params.id);
+        if (!v) throw new Error("no such venture");
+        const text = request.body?.text?.trim();
+        if (!text) throw new Error("say what you want done");
+        const member = request.body?.member || options.crew?.route(text)?.id;
+        return { id: supervisor.launch({ ask: text, venture: v.id, member, repo: v.repo }) };
+      }),
+    );
   }
 
   // "Try now": lift a usage limit you believe has cleared. If it hasn't, the next call says so.

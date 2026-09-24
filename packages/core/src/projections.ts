@@ -11,6 +11,8 @@ export interface RunView {
   id: string;
   /** The crew member doing this work, if any. */
   member?: string;
+  /** The venture (startup) this work is for, if any. */
+  venture?: string;
   title: string;
   ask: string;
   project?: string;
@@ -114,8 +116,42 @@ export interface PhaseView extends PhaseDef {
   note?: string;
 }
 
+export type VentureStage = "idea" | "validating" | "building" | "launching" | "earning" | "paused" | "stopped";
+
+export interface VentureMetrics {
+  at: number;
+  source: "stripe" | "manual";
+  currency: string;
+  mrr?: number;
+  revenue30d?: number;
+  customers?: number;
+  subscriptions?: number;
+}
+
+export interface VentureView {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  pitch: string;
+  customer?: string;
+  goal?: string;
+  goalMrr?: number;
+  repo?: string;
+  website?: string;
+  stage: VentureStage;
+  stages: Array<{ stage: VentureStage; at: number; note?: string }>;
+  stripe?: { connected: boolean; account?: string; mode?: "live" | "test" };
+  metrics?: VentureMetrics; // the latest good reading
+  history: VentureMetrics[]; // the last 180 readings, oldest first
+  syncError?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface PlayView {
   id: string;
+  venture?: string;
   playbook: string;
   name: string;
   emoji: string;
@@ -136,6 +172,7 @@ export interface CrewState {
   knowledge: Record<string, KnowledgeView>;
   playbooks: Record<string, PlaybookDef>; // yours; the built-in library is added by the gateway
   plays: Record<string, PlayView>;
+  ventures: Record<string, VentureView>;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -143,7 +180,7 @@ export interface CrewState {
 }
 
 export function emptyState(): CrewState {
-  return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
+  return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
 }
 
 function dayOf(ms: number): string {
@@ -176,6 +213,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         effort: b.effort,
         parent: b.parent,
         member: b.member,
+        venture: b.venture ?? (b.parent ? state.runs[b.parent]?.venture : undefined),
         labels: b.labels,
         incognito: b.incognito,
         status: "queued",
@@ -255,6 +293,55 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "knowledge.removed":
       delete state.knowledge[event.body.id];
       break;
+    case "venture.set": {
+      const b = event.body;
+      const was = state.ventures[b.id];
+      state.ventures[b.id] = {
+        ...b,
+        stage: was?.stage ?? "idea",
+        stages: was?.stages ?? [{ stage: "idea", at: event.at }],
+        stripe: was?.stripe,
+        metrics: was?.metrics,
+        history: was?.history ?? [],
+        syncError: was?.syncError,
+        createdAt: was?.createdAt ?? event.at,
+        updatedAt: event.at,
+      };
+      break;
+    }
+    case "venture.stage": {
+      const v = state.ventures[event.body.id];
+      if (!v) break;
+      v.stage = event.body.stage;
+      v.stages = [...v.stages, { stage: event.body.stage, at: event.at, note: event.body.note }];
+      v.updatedAt = event.at;
+      break;
+    }
+    case "venture.removed":
+      delete state.ventures[event.body.id];
+      break;
+    case "venture.stripe": {
+      const v = state.ventures[event.body.id];
+      if (!v) break;
+      v.stripe = event.body.connected ? { connected: true, account: event.body.account, mode: event.body.mode } : undefined;
+      if (!event.body.connected) v.syncError = undefined;
+      v.updatedAt = event.at;
+      break;
+    }
+    case "venture.metrics": {
+      const v = state.ventures[event.body.id];
+      if (!v) break;
+      const { id: _id, error, ...reading } = event.body;
+      if (error) v.syncError = error;
+      else {
+        const m = { ...reading, at: event.at };
+        v.metrics = m;
+        v.history = [...v.history, m].slice(-180);
+        v.syncError = undefined;
+      }
+      v.updatedAt = event.at;
+      break;
+    }
     case "playbook.set":
       state.playbooks[event.body.id] = event.body;
       break;
@@ -264,7 +351,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "play.started": {
       const b = event.body;
       state.plays[b.id] = {
-        id: b.id, playbook: b.playbook, name: b.name, emoji: b.emoji, title: b.title, inputs: b.inputs, repo: b.repo,
+        id: b.id, playbook: b.playbook, name: b.name, emoji: b.emoji, title: b.title, inputs: b.inputs, repo: b.repo, venture: b.venture,
         status: "running", phases: b.phases.map((p) => ({ ...p, status: "pending", runs: [], artifacts: [] })), startedAt: event.at, updatedAt: event.at,
       };
       break;

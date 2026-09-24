@@ -10,6 +10,7 @@ import { CrewFloor } from "./screens/CrewFloor";
 import { CrewPage } from "./screens/CrewPage";
 import { Library } from "./screens/Library";
 import { PlayPage, Playbooks } from "./screens/Playbooks";
+import { VenturePage, Ventures } from "./screens/Ventures";
 import { Review } from "./screens/Review";
 import { RunDetail } from "./screens/RunDetail";
 import { Shell } from "./shell/Shell";
@@ -22,6 +23,8 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/activity", component: MissionControl }),
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),
   createRoute({ getParentRoute: () => root, path: "/floor", component: CrewFloor }),
+  createRoute({ getParentRoute: () => root, path: "/ventures", component: Ventures }),
+  createRoute({ getParentRoute: () => root, path: "/ventures/$id", component: VenturePage }),
   createRoute({ getParentRoute: () => root, path: "/crew", component: CrewPage }),
   createRoute({ getParentRoute: () => root, path: "/library", component: Library }),
   createRoute({ getParentRoute: () => root, path: "/playbooks", component: Playbooks }),

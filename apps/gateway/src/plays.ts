@@ -309,7 +309,7 @@ export class Plays {
     return this.state.plays[id];
   }
 
-  start(input: { playbook: string; inputs?: Record<string, string>; title?: string; repo?: string }): PlayView {
+  start(input: { playbook: string; inputs?: Record<string, string>; title?: string; repo?: string; venture?: string }): PlayView {
     const book = this.playbook(input.playbook);
     if (!book) throw new Error(`no playbook ${input.playbook}`);
     const inputs = Object.fromEntries(Object.entries(input.inputs ?? {}).map(([k, v]) => [k, String(v ?? "").trim()]));
@@ -318,7 +318,7 @@ export class Plays {
     const id = `p_${randomUUID().slice(0, 8)}`;
     const first = book.inputs[0] ? inputs[book.inputs[0].key] : "";
     const title = (input.title?.trim() || `${book.name}${first ? ` — ${shorten(first, 60)}` : ""}`).slice(0, 140);
-    this.store.append("play.started", { id, playbook: book.id, name: book.name, emoji: book.emoji, title, inputs, repo: input.repo?.trim() || undefined, phases: book.phases });
+    this.store.append("play.started", { id, playbook: book.id, name: book.name, emoji: book.emoji, title, inputs, repo: input.repo?.trim() || undefined, venture: input.venture || undefined, phases: book.phases });
     this.advance(id);
     return this.get(id)!;
   }
@@ -406,6 +406,7 @@ export class Plays {
       title: `${play.emoji ? `${play.emoji} ` : ""}${phase.name} · ${shorten(play.title, 60)}`,
       member: phase.member && this.state.members[phase.member] ? phase.member : undefined,
       repo: play.repo,
+      venture: play.venture,
       labels: ["play", `play:${id}`],
     });
     this.store.append("play.phase", { play: id, index, status: "running", run });

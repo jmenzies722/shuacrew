@@ -47,6 +47,8 @@ export interface LaunchSpec {
   forkOf?: { run: string; turn: number; commit?: string };
   /** A crew member to do this: its persona, model and lessons come along. */
   member?: string;
+  /** The venture this work is for: its brief comes along. */
+  venture?: string;
 }
 
 interface Waiting {
@@ -71,6 +73,8 @@ export interface SupervisorOptions {
   mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
   /** Told to every fresh conversation (what ShuaCrew's own tools are for). */
   toolHint?: string;
+  /** A venture's brief, for sessions working on it. */
+  ventureBrief?: (venture: string) => string | undefined;
   mcpList?: () => Array<{ name: string }>;
 }
 
@@ -134,6 +138,7 @@ export class Supervisor {
         incognito: spec.incognito ?? false,
         forkOf: spec.forkOf,
         member: member ? spec.member : undefined,
+        venture: spec.venture,
       },
       { run: id },
     );
@@ -261,7 +266,7 @@ export class Supervisor {
       effort: spec.effort,
       resume,
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, this.options.memory?.systemFor(runId, ask), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
+      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
       mcpServers: this.options.mcpServers?.(runtime.id, runId),
     };
 

@@ -64,6 +64,7 @@ export const bodies = {
     // A fork: the session and turn it branched from, and the commit its worktree starts at.
     forkOf: z.object({ run: z.string(), turn: z.number().int(), commit: z.string().optional() }).optional(),
     member: z.string().optional(), // the crew member doing this work
+    venture: z.string().optional(), // the startup this work is for
   }),
   "run.status": z.object({ status: RunStatus, reason: z.string().optional() }),
   /** ask stops for approval; auto lets those through. A deny still wins. */
@@ -213,6 +214,32 @@ export const bodies = {
   "knowledge.removed": z.object({ id: z.string() }),
 
   // playbooks: reusable multi-phase work, each phase done by a crew member, with gates you approve.
+  // ventures: a startup, from idea to revenue. Keys never go in the log — only whether one is connected.
+  "venture.set": z.object({
+    id: z.string(),
+    name: z.string(),
+    emoji: z.string().default(""),
+    color: z.string().default("#ffb020"),
+    pitch: z.string().default(""),
+    customer: z.string().optional(),
+    goal: z.string().optional(), // "$1k MRR by March"
+    goalMrr: z.number().optional(), // in the currency's major unit
+    repo: z.string().optional(),
+    website: z.string().optional(),
+  }),
+  "venture.stage": z.object({ id: z.string(), stage: z.enum(["idea", "validating", "building", "launching", "earning", "paused", "stopped"]), note: z.string().optional() }),
+  "venture.removed": z.object({ id: z.string() }),
+  "venture.stripe": z.object({ id: z.string(), connected: z.boolean(), account: z.string().optional(), mode: z.enum(["live", "test"]).optional() }),
+  "venture.metrics": z.object({
+    id: z.string(),
+    source: z.enum(["stripe", "manual"]),
+    currency: z.string().default("usd"),
+    mrr: z.number().optional(), // major units (dollars), normalised to a month
+    revenue30d: z.number().optional(),
+    customers: z.number().int().optional(),
+    subscriptions: z.number().int().optional(),
+    error: z.string().optional(),
+  }),
   "playbook.set": PlaybookDef,
   "playbook.removed": z.object({ id: z.string() }),
   "play.started": z.object({
@@ -223,6 +250,7 @@ export const bodies = {
     title: z.string(),
     inputs: z.record(z.string(), z.string()).default({}),
     repo: z.string().optional(),
+    venture: z.string().optional(),
     phases: z.array(PhaseDef),
   }),
   "play.phase": z.object({

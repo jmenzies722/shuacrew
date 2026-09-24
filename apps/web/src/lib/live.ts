@@ -170,6 +170,7 @@ function flush(): void {
       artifacts: { ...crew.artifacts },
       knowledge: { ...crew.knowledge },
       playbooks: { ...crew.playbooks },
+      ventures: Object.fromEntries(Object.entries(crew.ventures).map(([k, v]) => [k, { ...v }])),
       plays: Object.fromEntries(Object.entries(crew.plays).map(([k, v]) => [k, { ...v }])),
       today: { ...crew.today },
     },
