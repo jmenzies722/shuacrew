@@ -157,6 +157,14 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         }
     }
 
+    // MARK: microphone
+
+    /// The voice button in the composer: our own page may use the mic (macOS still asks you once).
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
+        let ours = origin.host == gateway.base.host && origin.port == (gateway.base.port ?? 80)
+        decisionHandler(ours && type == .microphone ? .grant : .deny)
+    }
+
     // MARK: navigation
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

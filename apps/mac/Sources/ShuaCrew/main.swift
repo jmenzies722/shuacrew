@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let gateway = Gateway()
     private var window: MainWindow!
     private var tray: Tray?
-    private var quick: QuickPanel?
     private var hotKey: HotKey?
     /// For headless checks: no Dock icon, no menu-bar item, never takes focus.
     private let quiet = ProcessInfo.processInfo.environment["SHUACREW_NO_ACTIVATE"] == "1"
@@ -22,10 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.showWindow(nil)
             NSApp.activate()
             tray = Tray(gateway: gateway, window: window, notifications: true)
-            // ⌥Space, anywhere: ask the crew, or clear what's waiting on you.
-            let quick = QuickPanel(gateway: gateway, window: window)
-            self.quick = quick
-            hotKey = HotKey { [weak quick] in Task { @MainActor in quick?.toggle() } }
+            // ⌥Space, anywhere: ShuaCrew comes forward with the message box ready; again, it hides.
+            hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
         }
         window.start()
         tray?.start()
@@ -42,7 +39,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.rememberPath()
     }
 
-    @objc private func quickAsk() { quick?.show() }
+    @objc private func quickAsk() { summon() }
+
+    /// Bring the app forward, ready to type — or, if it's already in front, put it away.
+    private func summon() {
+        if NSApp.isActive, window.window?.isKeyWindow == true {
+            NSApp.hide(nil)
+            return
+        }
+        NSApp.activate()
+        window.showWindow(nil)
+        window.page("window.dispatchEvent(new Event('shuacrew:compose'))")
+    }
 
     // MARK: menus
 
@@ -68,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let file = submenu(main, "File")
         file.addItem(item("New Session…", "n", #selector(newRun)))
         file.addItem(item("Command Palette…", "k", #selector(palette)))
-        let ask = item("Quick Ask…", " ", #selector(quickAsk))
+        let ask = item("Ask the Crew", " ", #selector(quickAsk))
         ask.keyEquivalentModifierMask = [.option]
         file.addItem(ask)
         file.addItem(.separator())

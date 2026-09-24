@@ -22,13 +22,10 @@ const Playbooks = lazyRouteComponent(() => import("./screens/Playbooks"), "Playb
 const VenturePage = lazyRouteComponent(() => import("./screens/Ventures"), "VenturePage");
 const Ventures = lazyRouteComponent(() => import("./screens/Ventures"), "Ventures");
 
-const QuickAsk = lazyRouteComponent(() => import("./screens/QuickAsk"), "QuickAsk");
-
 const root = createRootRoute({ component: Shell });
 
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: Sessions }),
-  createRoute({ getParentRoute: () => root, path: "/quick", component: QuickAsk }),
   createRoute({ getParentRoute: () => root, path: "/sessions/$id", component: Sessions }),
   createRoute({ getParentRoute: () => root, path: "/activity", component: MissionControl }),
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),

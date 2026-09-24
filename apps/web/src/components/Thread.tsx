@@ -382,8 +382,8 @@ function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
                   <FileText size={15} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block max-w-[180px] truncate text-[12px] text-fg">{f.name}</span>
-                  <span className="block text-[10.5px] uppercase text-fg-3">{f.name.split(".").pop()}</span>
+                  <span className="block max-w-[200px] truncate text-[12px] text-fg">{f.name}</span>
+                  <span className="block text-[10.5px] uppercase text-fg-3">{f.type.startsWith("video/") ? "video · frames + transcript" : f.type.startsWith("audio/") ? "voice note · transcribed" : f.name.split(".").pop()}</span>
                 </span>
               </a>
             ),

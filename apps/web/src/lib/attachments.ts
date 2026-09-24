@@ -9,6 +9,12 @@ export interface Attachment {
   path: string;
   size: number;
   type: string;
+  /** What the agent reads instead: a JPEG, a transcript, a video write-up (see the gateway's media.ts). */
+  agentPath?: string;
+  transcript?: string;
+  frames?: number;
+  duration?: number;
+  note?: string;
 }
 
 const MARK = "Attached files:";
@@ -31,7 +37,7 @@ export const size = (bytes: number) => (bytes < 1024 ? `${bytes} B` : bytes < 10
 export function withAttachments(text: string, files: Attachment[]): string {
   if (!files.length) return text;
   const body = text.trim() || "Take a look at the attached file" + (files.length > 1 ? "s." : ".");
-  return `${body}\n\n${MARK}\n${files.map((f) => `- ${f.path} (${f.type}, ${size(f.size)}) · ${f.id}`).join("\n")}`;
+  return `${body}\n\n${MARK}\n${files.map((f) => `- ${f.agentPath ?? f.path} (${f.type}, ${size(f.size)}) · ${f.id}`).join("\n")}`;
 }
 
 /** Split a message back into what you wrote and what you attached. */
@@ -42,7 +48,9 @@ export function splitAttachments(text: string): { body: string; files: Attachmen
   for (const line of text.slice(at + MARK.length + 3).split("\n")) {
     const m = LINE.exec(line.trim());
     if (!m) return { body: text, files: [] }; // not our block after all
-    files.push({ path: m[1]!, name: m[1]!.split("/").pop()!, type: m[2]!, size: 0, id: m[4]! });
+    // The agent may have been handed a derived file; show the name you attached.
+    const name = m[1]!.split("/").pop()!.replace(/\.(analysis|transcript)\.md$|\.agent\.jpg$/, "");
+    files.push({ path: m[1]!, name, type: m[2]!, size: 0, id: m[4]! });
   }
   return { body: text.slice(0, at), files };
 }

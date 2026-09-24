@@ -34,6 +34,7 @@ import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation, queued } from "../lib/conversation";
 import { pauseClock, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
+import { Dictation } from "../components/Dictation";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 
@@ -612,6 +613,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const [servers, setServers] = useState<Array<{ name: string }>>([]);
   const [files, setFiles] = useState<Array<{ key: string; name: string; size: number; preview?: string; done?: Attachment; failed?: string }>>([]);
   const [dropping, setDropping] = useState(false);
+  const [media, setMedia] = useState<{ voice: boolean; video: boolean; missing: string[] }>({ voice: false, video: false, missing: [] });
   const [member, setMember] = useState("");
   const [suggested, setSuggested] = useState("");
   const members = useLive((s) => s.crew.members);
@@ -662,6 +664,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     void loadRuntimes().then(setRuntimes);
     void api<{ skills: Array<{ name: string; status: string }> }>("/api/memory").then((m) => setSkills(m.skills.filter((s) => s.status === "accepted"))).catch(() => undefined);
     void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
+    void api<{ voice: boolean; video: boolean; missing: string[] }>("/api/media").then(setMedia).catch(() => undefined);
   }, []);
   useEffect(() => {
     if (seed?.text) {
@@ -839,7 +842,23 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   {f.preview ? <img src={f.preview} alt="" className="attach-thumb" /> : <span className="attach-icon"><FileIcon size={15} /></span>}
                   <span className="min-w-0">
                     <span className="block max-w-[160px] truncate text-[12px] text-fg">{f.name}</span>
-                    <span className="block text-[10.5px] text-fg-3">{f.failed ? "couldn't upload" : f.done ? fileSize(f.size) : "uploading…"}</span>
+                    <span className="block text-[10.5px] text-fg-3">
+                      {f.failed
+                        ? "couldn't upload"
+                        : !f.done
+                          ? /\.(mov|mp4|m4v|mkv)$/i.test(f.name)
+                            ? "reading the video…"
+                            : /\.(m4a|mp3|wav|aac|ogg|webm|caf|aiff?)$/i.test(f.name)
+                              ? "transcribing…"
+                              : "uploading…"
+                          : f.done.frames
+                            ? `${f.done.frames} frames${f.done.duration ? ` · ${Math.floor(f.done.duration / 60)}:${String(f.done.duration % 60).padStart(2, "0")}` : ""}${f.done.transcript ? " · transcribed" : ""}`
+                            : f.done.transcript
+                              ? "transcribed"
+                              : f.done.agentPath
+                                ? "ready for the agent"
+                                : fileSize(f.size)}
+                    </span>
                   </span>
                   <button onClick={() => setFiles((all) => all.filter((x) => x.key !== f.key))} className="attach-x" aria-label={`Remove ${f.name}`}>
                     ×
@@ -904,9 +923,10 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
           />
           <div className="mt-2 flex items-center gap-1.5">
             <input ref={picker} type="file" multiple hidden onChange={(e) => (e.target.files && attach(e.target.files), (e.target.value = ""))} />
-            <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach files (or drop / paste them)" aria-label="Attach files">
+            <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach photos, videos, voice notes or files (or drop / paste them)" aria-label="Attach files">
               <Paperclip size={14} />
             </button>
+            <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
             {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
             {run?.worktree && (

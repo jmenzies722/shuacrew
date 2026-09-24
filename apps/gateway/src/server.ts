@@ -6,7 +6,7 @@
  * another site can't set that header without a CORS preflight this server never approves, which is
  * the CSRF defence. The dashboard is served with a strict CSP (no inline script, no remote origins).
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
@@ -19,6 +19,7 @@ import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
 import type { Terminals } from "./terminals.js";
 import { MAX_UPLOAD, type Uploads } from "./uploads.js";
+import { status as mediaStatus, transcribe } from "./media.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import { Specs } from "./specs.js";
@@ -129,12 +130,32 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_UPLOAD }, (_request, body, done) => done(null, body));
     app.post<{ Querystring: { name?: string }; Body: Buffer }>("/api/uploads", { bodyLimit: MAX_UPLOAD }, async (request, reply) => {
       if (!Buffer.isBuffer(request.body) || !request.body.length) return reply.code(400).send({ error: "empty file" });
-      return uploads.save(request.query.name ?? "file", request.body);
+      // Photos, voice notes and videos come back ready for an agent (see media.ts).
+      return uploads.process(uploads.save(request.query.name ?? "file", request.body));
     });
+    // Dictation: speech in, text out — nothing kept.
+    app.post<{ Querystring: { name?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
+      if (!Buffer.isBuffer(request.body) || !request.body.length) return reply.code(400).send({ error: "no audio" });
+      const ext = (request.query.name ?? "voice.webm").split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "webm";
+      const file = path.join(os.tmpdir(), `shuacrew-dictation-${Date.now()}.${ext}`);
+      writeFileSync(file, request.body, { mode: 0o600 });
+      try {
+        return { text: await transcribe(file) };
+      } catch (error) {
+        return reply.code(422).send({ error: (error as Error).message });
+      } finally {
+        rmSync(file, { force: true });
+      }
+    });
+    app.get("/api/media", async () => mediaStatus());
     // Only what was uploaded here, only by id — for thumbnails and "open".
     app.get<{ Params: { id: string } }>("/api/uploads/:id", async (request, reply) => {
       const upload = uploads.get(request.params.id);
       if (!upload || !existsSync(upload.path)) return reply.code(404).send({ error: "no such file" });
+      // A photo's thumbnail is its JPEG: browsers can't show HEIC.
+      if (upload.agentPath?.endsWith(".agent.jpg") && existsSync(upload.agentPath)) {
+        return reply.header("Content-Type", "image/jpeg").header("Cache-Control", "private, max-age=31536000, immutable").send(readFileSync(upload.agentPath));
+      }
       reply.header("Content-Type", upload.type).header("Cache-Control", "private, max-age=31536000, immutable");
       reply.header("Content-Disposition", `${upload.type.startsWith("image/") || upload.type === "application/pdf" ? "inline" : "attachment"}; filename="${upload.name}"`);
       if (upload.type === "image/svg+xml") reply.header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'"); // SVG can carry script
