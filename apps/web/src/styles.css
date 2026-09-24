@@ -848,3 +848,18 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .logo-mark .logo-orbit, .logo-mark .logo-core, .stagger > *, [data-palette="frost"] #main::before, .milestone::after, .milestone-burst i, .pub-dot, .needs-dot { animation: none !important; }
   .spot::after, .spot::before { display: none; }
 }
+
+/* Replay */
+.replay { border-radius: 18px; padding: 10px 10px 8px; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong), 0 14px 40px -26px rgba(0,0,0,.8); }
+[data-palette="frost"] .replay { background: rgba(255,255,255,.04); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%); }
+.replay-btn { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; color: var(--text-2); transition: background .15s, color .15s; }
+.replay-btn:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.replay-btn.is-play { color: #0b0b0c; background: var(--text); }
+.replay-btn.is-play:hover { background: var(--text); opacity: .9; }
+.replay-speed { flex-shrink: 0; height: 24px; min-width: 34px; border-radius: 7px; padding: 0 6px; font-family: var(--font-mono); font-size: 11px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.replay-track { position: relative; flex: 1; min-width: 0; height: 30px; margin: 0 6px; }
+.replay-track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.replay-fill { position: absolute; left: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--text) 45%, transparent), var(--text)); transition: width .12s linear; }
+.replay-tick { position: absolute; top: 50%; width: 2px; height: 10px; margin: -5px 0 0 -1px; border-radius: 2px; background: color-mix(in srgb, var(--text) 35%, transparent); pointer-events: none; }
+.replay-track input { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.replay-track:hover .replay-fill { box-shadow: 0 0 12px color-mix(in srgb, var(--text) 30%, transparent); }

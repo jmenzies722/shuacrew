@@ -25,6 +25,7 @@ import {
   Users,
   X,
   Zap,
+  History,
   RefreshCw,
   Sunrise,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import { conversation, queued } from "../lib/conversation";
 import { pauseClock, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
+import { ReplayBar } from "../components/Replay";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
@@ -263,7 +265,8 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
     void loadRun(id);
   }, [id, loadRun]);
   const [scrub, setScrub] = useState<number | null>(null);
-  useEffect(() => setScrub(null), [id]);
+  const [replay, setReplay] = useState(false);
+  useEffect(() => (setScrub(null), setReplay(false)), [id]);
   const seqs = useMemo(() => (events ?? []).map((e) => e.seq), [events]);
   const items = useMemo(() => conversation(events ?? [], scrub ?? Number.POSITIVE_INFINITY), [events, scrub]);
   const [terminal, setTerminal] = useTerminal();
@@ -300,6 +303,11 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
               <CircleStop size={15} />
             </IconButton>
           )}
+          {seqs.length > 1 && (
+            <IconButton title="Replay this session" onClick={() => (setReplay((v) => !v), setScrub(null))} active={replay}>
+              <History size={15} />
+            </IconButton>
+          )}
           <IconButton title="Terminal (⌃`)" onClick={() => setTerminal((v) => !v)} active={terminal}>
             <SquareTerminal size={15} />
           </IconButton>
@@ -309,37 +317,18 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
           <SessionMenu run={run} working={working} />
         </div>
       </header>
-      {seqs.length > 1 && (
-        <div className="flex items-center gap-3 border-b border-line px-4 py-1.5">
-          <input
-            type="range"
-            min={0}
-            max={seqs.length - 1}
-            value={scrub === null ? seqs.length - 1 : Math.max(0, seqs.indexOf(scrub))}
-            onChange={(e) => {
-              const i = Number(e.target.value);
-              setScrub(i >= seqs.length - 1 ? null : (seqs[i] ?? null));
-            }}
-            className="h-1 min-w-0 flex-1 accent-[var(--amber)]"
-            aria-label="Scrub through this session"
-          />
-          <span className="mono w-16 text-right text-[11px] tabular-nums text-fg-3">
-            {scrub === null ? seqs.length : Math.max(1, seqs.indexOf(scrub) + 1)} / {seqs.length}
-          </span>
-        </div>
-      )}
-      {scrub !== null && (
-        <div className="flex items-center gap-3 border-b border-line bg-[var(--amber-soft)] px-4 py-2 text-[12.5px] text-amber">
-          Replaying up to event #{scrub} — the run is unchanged.
-          <button onClick={() => setScrub(null)} className="ml-auto underline">
-            Back to live
-          </button>
-        </div>
-      )}
       <Thread items={items} working={working && scrub === null} run={run} />
-      {scrub === null && <ReviewBar run={run} />}
-      {scrub === null && <Queue run={run} events={events ?? []} />}
-      {scrub === null && <Composer run={run} />}
+      {!replay && <ReviewBar run={run} />}
+      {!replay && <Queue run={run} events={events ?? []} />}
+      {replay ? (
+        <div className="shrink-0 px-4 pb-3 pt-1">
+          <div className="mx-auto max-w-[820px]">
+            <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} />
+          </div>
+        </div>
+      ) : (
+        <Composer run={run} />
+      )}
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
   );
