@@ -56,7 +56,7 @@ function TopBar() {
   const setPalette = useLive((s) => s.setPalette);
   const approvals = Object.values(crew.approvals).sort((a, b) => a.seq - b.seq);
   const running = selectLiveRuns(crew).filter((r) => r.status === "running" || r.status === "planning").length;
-  const limited = Object.entries(crew.limited);
+  const limited = Object.entries(crew.limited).filter(([, l]) => !l.credits); // "needs credits" isn't a window; the model picker says it
   useEffect(() => (bar.current ? watchTitleBar(bar.current) : undefined), []);
 
   return (

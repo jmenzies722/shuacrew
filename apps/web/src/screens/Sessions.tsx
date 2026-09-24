@@ -34,7 +34,7 @@ interface RuntimeInfo {
   id: string;
   label: string;
   authMode: string;
-  models: Array<{ id: string; label: string; tier: string }>;
+  models: Array<{ id: string; label: string; tier: string; unavailable?: string }>;
   limitedUntil: number | null;
 }
 
@@ -834,7 +834,14 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
                 }}
                 options={[{ value: "", label: "Auto agent" }, ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]}
               />
-              <Select value={model} onChange={setModel} options={[{ value: "", label: "auto model" }, ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.label }))]} />
+              <Select
+                value={model}
+                onChange={setModel}
+                options={[
+                  { value: "", label: "auto model" },
+                  ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.unavailable ? `${m.label} · ${m.unavailable}` : m.label, disabled: Boolean(m.unavailable) })),
+                ]}
+              />
               <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} />
             </span>
           </div>
@@ -858,11 +865,11 @@ function Toggle({ on, onClick, icon, label, title }: { on: boolean; onClick: () 
   );
 }
 
-function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
+function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string; disabled?: boolean }> }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className="cursor-pointer appearance-none bg-transparent text-[12px] text-fg-3 outline-none hover:text-fg">
       {options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} disabled={o.disabled}>
           {o.label}
         </option>
       ))}

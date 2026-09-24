@@ -425,7 +425,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         label: runtime.label,
         authMode: runtime.authMode,
         capabilities: runtime.capabilities,
-        models: runtime.models,
+        // Each model says if it can't be used right now ("needs credits", "out until …").
+        models: runtime.models.map((m) => ({ ...m, unavailable: supervisor.unavailableModels(runtime.id)[m.id] })),
         status: await runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })),
         limitedUntil: supervisor.limitedUntil(runtime.id) || null,
       })),
@@ -464,7 +465,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       approvals: Object.values(state.approvals)
         .sort((a, b) => a.seq - b.seq)
         .map((a) => ({ id: a.id, run: a.run, runTitle: (a.run && state.runs[a.run]?.title) || "", tool: a.tool, summary: summary(a.input), risk: a.risk, reason: a.reason })),
-      limited: Object.keys(state.limited),
+      // Only real usage windows; a model that needs paid credits isn't "limited", it's not in the plan.
+      limited: Object.entries(state.limited).flatMap(([key, l]) => (l.credits ? [] : [key])),
       // What just finished, for "ready for review" / "failed" notifications.
       recent: runs
         .filter((r) => !r.parent && ["reviewing", "done", "failed", "merged"].includes(r.status) && Date.now() - r.updatedAt < 30 * 60_000)

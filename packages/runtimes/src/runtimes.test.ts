@@ -20,6 +20,18 @@ async function collect(stream: AsyncIterable<RuntimeEvent>): Promise<RuntimeEven
   return out;
 }
 
+describe("a model that needs usage credits", () => {
+  it("is reported as unavailable on this plan, not as a usage window", () => {
+    const t = new ClaudeTranslator();
+    t.translate({ type: "system", subtype: "init", session_id: "s", model: "claude-fable-5-1" });
+    const [event] = t.translate({
+      type: "rate_limit_event",
+      rate_limit_info: { status: "rejected", resetsAt: 1790812800, overageDisabledReason: "out_of_credits", errorCode: "credits_required" },
+    });
+    expect(event).toMatchObject({ type: "limited", model: "claude-fable-5-1", credits: true, message: "claude-fable-5-1 needs usage credits on your plan" });
+  });
+});
+
 describe("Claude's stream", () => {
   it("becomes session, text, tools, files, checks, usage and done", () => {
     const t = new ClaudeTranslator();

@@ -60,7 +60,7 @@ export interface CrewState {
   head: number;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
-  limited: Record<string, { until: number; message: string }>;
+  limited: Record<string, { until: number; message: string; credits?: boolean }>;
   today: { day: string; tokens: number; costUsd: number; runs: number };
 }
 
@@ -249,7 +249,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, failed: event.body.reason };
       break;
     case "runtime.limited":
-      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message };
+      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message, credits: event.body.credits };
       break;
     case "runtime.restored":
       // A restore without a model lifts everything on that agent; with one, just that model.

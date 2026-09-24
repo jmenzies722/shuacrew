@@ -299,7 +299,7 @@ export class Supervisor {
             break;
           }
           case "limited":
-            this.limited(runId, runtime.id, event.until, event.message, event.model ?? model);
+            this.limited(runId, runtime.id, event.until, event.message, event.model ?? model, event.credits);
             ended = true;
             return;
           case "done":
@@ -385,17 +385,18 @@ export class Supervisor {
 
   // ── the usage window ────────────────────────────────────────────────────────────────
 
-  private limited(run: string, runtime: string, until: number, message: string, model?: string): void {
-    this.rec("runtime.limited", { runtime, model, until, message });
+  private limited(run: string, runtime: string, until: number, message: string, model?: string, credits?: boolean): void {
+    this.rec("runtime.limited", { runtime, model, until, message, credits });
     // Moves are capped, so a run never bounces between limits forever; past that it waits.
-    const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && e.body.reason.includes(" is out until ")).length;
+    const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && / is out until | needs usage credits /.test(e.body.reason)).length;
     const created = this.store.forRun(run).find((e) => e.kind === "run.created");
     const launched = created?.kind === "run.created" ? created.body.model : undefined;
     const what = model ?? runtime;
+    const why = credits ? `${what} needs usage credits on your plan` : `${what} is out until ${when(until)}`;
     // First choice: another model on the same agent (a weekly cap on one model isn't the account's).
     const sibling = this.options.failover !== false && moves < 3 && model ? this.pickModel(runtime, model, [model]) : undefined;
     if (sibling) {
-      this.rec("run.routed", { runtime, model: sibling, reason: `${what} is out until ${when(until)}` }, { run });
+      this.rec("run.routed", { runtime, model: sibling, reason: `${why} — using ${sibling}` }, { run });
       this.setStatus(run, "queued", `moved to ${sibling}`);
       this.pump();
       return;
@@ -405,7 +406,7 @@ export class Supervisor {
         ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
     if (other) {
-      this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${what} is out until ${when(until)}` }, { run });
+      this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${why} — moved to ${other}` }, { run });
       this.setStatus(run, "queued", `moved to ${other}`);
       this.pump();
       return;
@@ -445,6 +446,15 @@ export class Supervisor {
         .ofKinds("runtime.restored", l.seq)
         .some((e) => e.kind === "runtime.restored" && e.body.runtime === runtime && (!e.body.model || e.body.model === l.model));
     });
+  }
+
+  /** Models this agent can't use right now, and why — for the model picker. */
+  unavailableModels(runtime: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const credits = new Map<string, boolean>();
+    for (const e of this.store.ofKinds("runtime.limited")) if (e.kind === "runtime.limited" && e.body.runtime === runtime && e.body.model) credits.set(e.body.model, Boolean(e.body.credits));
+    for (const l of this.activeLimits(runtime)) if (l.model) out[l.model] = credits.get(l.model) ? "needs credits" : `out until ${when(l.until)}`;
+    return out;
   }
 
   /** When the agent (or one of its models) is available again; 0 when it is available now. */

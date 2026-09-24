@@ -100,7 +100,15 @@ export class ClaudeTranslator {
         const info = message.rate_limit_info ?? {};
         if (info.status === "rejected") {
           const until = typeof info.resetsAt === "number" ? (info.resetsAt < 1e12 ? info.resetsAt * 1000 : info.resetsAt) : Date.now() + 30 * 60_000;
-          out.push({ type: "limited", until, message: `Claude ${String(info.rateLimitType ?? "usage").replace(/_/g, " ")} limit reached`, model: this.model });
+          // "credits_required": this model isn't in the plan without paid usage credits — not a window.
+          const credits = info.errorCode === "credits_required";
+          out.push({
+            type: "limited",
+            until,
+            message: credits ? `${this.model ?? "This model"} needs usage credits on your plan` : `Claude ${String(info.rateLimitType ?? "usage").replace(/_/g, " ")} limit reached`,
+            model: this.model,
+            credits,
+          });
         }
         break;
       }
@@ -121,8 +129,8 @@ export class ClaudeTranslator {
         });
         if (message.is_error) {
           const errors = [...(message.errors ?? []), message.result ?? ""].join(" ");
-          const limited = message.api_error_status === 429 || /rate.?limit|usage limit|limit reached/i.test(errors);
-          if (limited) out.push({ type: "limited", ...(limitFrom(errors) ?? { until: Date.now() + 30 * 60_000 }), message: errors.trim() || "Claude usage limit", model: this.model });
+          const limited = message.api_error_status === 429 || /rate.?limit|usage limit|limit reached|usage credits/i.test(errors);
+          if (limited) out.push({ type: "limited", ...(limitFrom(errors) ?? { until: Date.now() + 30 * 60_000 }), message: errors.trim() || "Claude usage limit", model: this.model, credits: /usage credits/i.test(errors) });
           else out.push({ type: "error", message: errors.trim() || String(message.subtype) });
         } else {
           out.push({ type: "checkpoint", note: "turn complete" });

@@ -111,7 +111,8 @@ export const bodies = {
     contextLimit: z.number().optional(),
   }),
   // With a model, the limit is that model's own (e.g. a weekly cap on one model); without, the whole agent's.
-  "runtime.limited": z.object({ runtime: RuntimeId, model: z.string().optional(), until: z.number(), message: z.string() }),
+  // `credits`: not a usage window at all — the model needs paid usage credits on this plan.
+  "runtime.limited": z.object({ runtime: RuntimeId, model: z.string().optional(), until: z.number(), message: z.string(), credits: z.boolean().optional() }),
   "runtime.restored": z.object({ runtime: RuntimeId, model: z.string().optional() }),
 
   // review
