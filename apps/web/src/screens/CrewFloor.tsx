@@ -6,6 +6,7 @@ import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldA
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
+import { inScope, runRepo } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
 
@@ -62,9 +63,21 @@ function useNow(ms = 1000) {
 }
 
 export function CrewFloor() {
-  const runs = useLive((s) => s.crew.runs);
-  const approvals = useLive((s) => s.crew.approvals);
-  const activity = useLive((s) => s.activity);
+  const allRuns = useLive((s) => s.crew.runs);
+  const scope = useLive((s) => s.scope);
+  const runs = useMemo(() => {
+    if (!scope) return allRuns;
+    const out: Record<string, RunView> = {};
+    for (const run of Object.values(allRuns)) if (inScope(runRepo(run, allRuns), scope)) out[run.id] = run;
+    return out;
+  }, [allRuns, scope]);
+  const allApprovals = useLive((s) => s.crew.approvals);
+  const approvals = useMemo(
+    () => Object.fromEntries(Object.entries(allApprovals).filter(([, a]) => !scope || (a.run ? Boolean(runs[a.run]) : false))),
+    [allApprovals, runs, scope],
+  );
+  const allActivity = useLive((s) => s.activity);
+  const activity = useMemo(() => (scope ? allActivity.filter((e) => e.run && runs[e.run]) : allActivity), [allActivity, runs, scope]);
   const today = useLive((s) => s.crew.today);
   const now = useNow();
 

@@ -20,6 +20,8 @@ export interface RunSpec {
   system?: string;
   /** Subagents the runtime may delegate to. */
   agents?: Record<string, { description: string; prompt: string; model?: string }>;
+  /** MCP servers installed in ShuaCrew. Bearer headers stay in the gateway. Codex/Claude use a map; ACP uses a list. */
+  mcpServers?: Record<string, unknown> | unknown[];
 }
 
 export interface ApprovalAnswer {

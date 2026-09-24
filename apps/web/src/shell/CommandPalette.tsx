@@ -2,8 +2,8 @@ import { Kbd, StatusPill } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
-import { decideApproval } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, decideApproval } from "../lib/api";
 import { ACCENTS, PALETTES } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
@@ -21,6 +21,13 @@ export function CommandPalette() {
   const setAppearance = useLive((s) => s.setAppearance);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [skills, setSkills] = useState<Array<{ name: string; status: string }>>([]);
+  const [servers, setServers] = useState<Array<{ name: string }>>([]);
+  useEffect(() => {
+    if (!open) return;
+    void api<{ skills: Array<{ name: string; status: string }> }>("/api/memory").then((m) => setSkills(m.skills.filter((s) => s.status === "accepted"))).catch(() => undefined);
+    void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
+  }, [open]);
 
   const recent = useMemo(() => Object.values(runs).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30), [runs]);
   const close = () => {
@@ -30,6 +37,12 @@ export function CommandPalette() {
   const go = (to: string) => {
     navigate({ to });
     close();
+  };
+  const intoChat = (draft: string) => {
+    close();
+    const here = window.location.pathname;
+    if (here === "/" || here.startsWith("/sessions/")) window.dispatchEvent(new CustomEvent("shuacrew:compose", { detail: draft }));
+    else void navigate({ to: "/" }).then(() => window.dispatchEvent(new CustomEvent("shuacrew:compose", { detail: draft })));
   };
 
   return (
@@ -72,6 +85,30 @@ export function CommandPalette() {
                         <span className="text-wait">Approve</span>
                         <span className="mono truncate text-fg-2">{describe(a.input) || a.tool}</span>
                         <span className="ml-auto text-[11px] text-fg-3">{a.risk} risk</span>
+                      </Item>
+                    ))}
+                  </Group>
+                )}
+                {(skills.length > 0 || servers.length > 0) && (
+                  <Group heading="Use in chat">
+                    {skills.map((s) => (
+                      <Item
+                        key={`skill-${s.name}`}
+                        value={`skill ${s.name}`}
+                        onSelect={() => intoChat(`/skill ${s.name} `)}
+                      >
+                        /skill {s.name}
+                        <span className="ml-auto text-[11px] text-fg-3">skill</span>
+                      </Item>
+                    ))}
+                    {servers.map((s) => (
+                      <Item
+                        key={`mcp-${s.name}`}
+                        value={`mcp ${s.name}`}
+                        onSelect={() => intoChat(`/mcp ${s.name} `)}
+                      >
+                        /mcp {s.name}
+                        <span className="ml-auto text-[11px] text-fg-3">mcp</span>
                       </Item>
                     ))}
                   </Group>

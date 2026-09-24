@@ -3,25 +3,28 @@ import { Chip, Gauge, StatusPill, formatTokens, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { memo } from "react";
+import { pauseClock } from "../lib/crew";
+import { useLive } from "../lib/live";
 
 /**
  * A live agent at a glance: breathing while it works, its current tool, the last line it wrote,
  * how full its context is, and what it has used — without opening anything.
  */
 export const AgentCard = memo(function AgentCard({ run, compact = false }: { run: RunView; compact?: boolean }) {
+  const limited = useLive((s) => s.crew.limited);
   const live = run.status === "running" || run.status === "planning";
   const waiting = run.status === "awaiting_approval";
+  const pause = pauseClock(run, limited);
   const tokens = run.usage.inputTokens + run.usage.outputTokens;
   const subagents = run.subagents.filter((s) => !s.done).length;
   return (
     <motion.div layout layoutId={`run-${run.id}`} transition={{ type: "spring", stiffness: 500, damping: 40 }}>
-      <Link
-        to="/sessions/$id"
-        params={{ id: run.id }}
-        className={`group block rounded-[var(--radius-l)] border bg-panel p-3.5 transition-colors hover:border-line-strong ${live ? "breathing border-transparent" : waiting ? "border-[color-mix(in_srgb,var(--wait)_45%,transparent)]" : "border-line"}`}
+      <div
+        className={`group relative rounded-[var(--radius-l)] border bg-panel p-3.5 transition-colors hover:border-line-strong ${live ? "breathing border-transparent" : waiting ? "border-[color-mix(in_srgb,var(--wait)_45%,transparent)]" : "border-line"}`}
         style={{ boxShadow: live ? undefined : "var(--shadow)" }}
-        aria-label={`${run.title}, ${run.status}`}
       >
+        <Link to="/sessions/$id" params={{ id: run.id }} className="absolute inset-0 z-0 rounded-[inherit]" aria-label={`${run.title}, ${run.status}`} />
+        <div className="pointer-events-none relative z-10">
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <div className={`text-[13.5px] font-medium text-fg ${compact ? "line-clamp-2" : "truncate"}`}>{run.title}</div>
@@ -48,6 +51,12 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
             </Chip>
           )}
           {waiting && <Chip tone="wait">{run.pendingApprovals.length} awaiting you</Chip>}
+          {pause && <Chip tone="live">{pause}</Chip>}
+          {run.lessons.length > 0 && (
+            <Link to="/memory" className="pointer-events-auto relative" title="Lessons this run was given">
+              <Chip>{run.lessons.length === 1 ? "1 lesson" : `${run.lessons.length} lessons`}</Chip>
+            </Link>
+          )}
           {subagents > 0 && <Chip mono>{subagents} subagents</Chip>}
           {run.checks.length > 0 && (
             <Chip tone={run.checks[run.checks.length - 1]?.passed ? "ok" : "bad"} mono>
@@ -64,7 +73,8 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
             <span className="text-[11px] text-fg-3">{since(run.updatedAt)}</span>
           </span>
         </div>
-      </Link>
+        </div>
+      </div>
     </motion.div>
   );
 });

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
 import { useLive } from "../lib/live";
+import { policyLine } from "../lib/crew";
 import { describe } from "./CommandPalette";
 
 const RISK_COLOR: Record<string, string> = { low: "var(--text-3)", medium: "var(--wait)", high: "var(--amber)", critical: "var(--bad)" };
@@ -85,9 +86,10 @@ export function ApprovalToasts() {
               <pre className="mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-m)] border border-line bg-sunken p-2 text-[11.5px] text-fg">
                 {a.tool}: {describe(a.input) || JSON.stringify(a.input)}
               </pre>
+              <p className="mono mt-2 text-[11.5px] text-fg-2">{policyLine("ask", a.rule, a.layer)}</p>
               {explained === a.id && (
-                <p className="mt-2 text-[12px] leading-relaxed text-fg-2">
-                  {a.reason}. Decided by rule <span className="mono text-fg">{a.rule}</span>. Allowing runs it once; <em>Always</em> makes it a standing rule for this command.
+                <p className="mt-1.5 text-[12px] leading-relaxed text-fg-2">
+                  {a.reason}. Allowing runs it once; <em>Always</em> makes it a standing rule for this command.
                 </p>
               )}
               {confirmCritical === a.id && <p className="mt-2 text-[12px] text-bad">Critical: press Allow again to confirm.</p>}

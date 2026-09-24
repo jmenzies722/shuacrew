@@ -1,8 +1,9 @@
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { SquareTerminal, Waypoints } from "lucide-react";
-import { Bell, BookOpen, Cable, CalendarClock, FileText, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
 import { selectLiveRuns, useLive } from "../lib/live";
@@ -65,6 +66,7 @@ function TopBar() {
       <span className="flex h-7 items-center gap-1.5 rounded-[8px] bg-[var(--amber-soft)] px-2.5 text-[12px] font-medium text-fg" data-no-drag>
         <House size={13} className="text-amber" /> Local
       </span>
+      <RepoChip />
       <div className="flex flex-1 justify-center">
         <button
           onClick={() => setPalette(true)}
@@ -116,6 +118,59 @@ function TopBar() {
         {approvals.length > 0 && <span className="absolute right-0.5 top-0.5 min-w-[16px] rounded-full bg-amber px-1 text-center text-[10px] font-bold leading-4 text-[var(--on-accent)]">{approvals.length}</span>}
       </button>
     </header>
+  );
+}
+
+/** Same chip as Local. Narrows the floor, board, sessions and activity to one repo. */
+function RepoChip() {
+  const runs = useLive((s) => s.crew.runs);
+  const scope = useLive((s) => s.scope);
+  const setScope = useLive((s) => s.setScope);
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const repos = useMemo(() => {
+    const seen = new Set<string>();
+    for (const run of Object.values(runs)) if (run.repo) seen.add(run.repo);
+    return [...seen].sort((a, b) => repoName(a).localeCompare(repoName(b)));
+  }, [runs]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+  if (repos.length === 0) return null;
+  return (
+    <div ref={root} className="relative" data-no-drag>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-7 max-w-[180px] items-center gap-1.5 rounded-[8px] border px-2.5 text-[12px] font-medium ${scope ? "border-amber text-fg" : "border-line text-fg-2 hover:border-line-strong hover:text-fg"}`}
+        title={scope ?? "Every repo"}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <Folder size={13} className={scope ? "text-amber" : "text-fg-3"} />
+        <span className="truncate">{scope ? repoName(scope) : "All repos"}</span>
+      </button>
+      {open && (
+        <ul role="listbox" aria-label="Repo" className="absolute left-0 top-9 z-30 w-56 rounded-[var(--radius-l)] border border-line-strong bg-panel py-1" style={{ boxShadow: "var(--shadow)" }}>
+          <li>
+            <button role="option" aria-selected={scope === null} onClick={() => (setScope(null), setOpen(false))} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-raised">
+              <span className={`h-1.5 w-1.5 rounded-full ${scope === null ? "bg-amber" : "bg-transparent"}`} />
+              All repos
+            </button>
+          </li>
+          {repos.map((repo) => (
+            <li key={repo}>
+              <button role="option" aria-selected={scope === repo} title={repo} onClick={() => (setScope(repo), setOpen(false))} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-raised">
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${scope === repo ? "bg-amber" : "bg-transparent"}`} />
+                <span className="truncate">{repoName(repo)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

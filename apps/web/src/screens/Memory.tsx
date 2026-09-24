@@ -191,6 +191,7 @@ export function Memory() {
 
             <div>
               <Eyebrow className="mb-2.5">Skills</Eyebrow>
+              <InstallSkill onInstalled={() => void refresh()} />
               <Panel className="divide-y divide-line">
                 {skills.length === 0 && <div className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-3">When the same kind of ask comes back three times, Evolve drafts a skill here for you to approve. Nothing is used until you do.</div>}
                 {[...proposed, ...accepted].map((s) => (
@@ -218,6 +219,40 @@ export function Memory() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function InstallSkill({ onInstalled }: { onInstalled: () => void }) {
+  const [file, setFile] = useState("");
+  const [error, setError] = useState("");
+  return (
+    <div className="mb-2.5">
+      <div className="flex gap-2">
+        <input
+          value={file}
+          onChange={(e) => setFile(e.target.value)}
+          placeholder="Path to a SKILL.md"
+          className="mono h-8 min-w-0 flex-1 rounded-[var(--radius-m)] border border-line-strong bg-raised px-2.5 text-[12px] outline-none focus:border-amber"
+          aria-label="Skill file"
+        />
+        <Button
+          size="s"
+          disabled={!file.trim()}
+          onClick={() =>
+            void api("/api/memory/skills/install", { body: { path: file.trim() } })
+              .then(() => {
+                setFile("");
+                setError("");
+                onInstalled();
+              })
+              .catch((e: Error) => setError(e.message))
+          }
+        >
+          Install
+        </Button>
+      </div>
+      {error && <p className="mt-1 text-[12px] text-bad">{error}</p>}
     </div>
   );
 }

@@ -25,6 +25,7 @@ import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, 
 import { useNavigate } from "@tanstack/react-router";
 import { parseAnsi } from "../lib/ansi";
 import { api, decideApproval, followUp } from "../lib/api";
+import { policyLine } from "../lib/crew";
 import type { Item } from "../lib/conversation";
 import { suggestions } from "../lib/followups";
 import { splitAttachments } from "../lib/attachments";
@@ -650,7 +651,7 @@ function StepRow({ step }: { step: Step }) {
       return (
         <div className="flex items-center gap-2 rounded-[10px] bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] px-3 py-2 text-[12.5px] text-bad">
           <ShieldAlert size={14} /> Blocked {step.tool} — {step.reason}
-          <span className="mono ml-auto text-[11px] opacity-80">{step.rule}</span>
+          <span className="mono ml-auto text-[11px] opacity-80">{policyLine("deny", step.rule, step.layer)}</span>
         </div>
       );
     case "checkpoint":
@@ -877,6 +878,7 @@ function ApprovalCard({ item }: { item: Extract<Item, { kind: "approval" }> }) {
         </div>
       </div>
       <div className="mt-2 text-[12px] text-fg-3">{item.reason}</div>
+      <div className="mono mt-1 text-[11.5px] text-fg-2">{policyLine("ask", item.rule, item.layer)}</div>
       {!item.decided && (
         <div className="mt-3 flex gap-1.5">
           <Button variant="primary" size="s" onClick={() => void decideApproval(item.id, true)}>

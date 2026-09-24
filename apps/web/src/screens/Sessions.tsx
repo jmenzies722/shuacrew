@@ -17,6 +17,8 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  BookOpen,
+  Cable,
   Sparkles,
   SquareTerminal,
   Telescope,
@@ -26,6 +28,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation, queued } from "../lib/conversation";
+import { pauseClock, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
@@ -119,7 +122,9 @@ export function Sessions() {
 // ── sessions panel ──────────────────────────────────────────────────────────────────────────
 
 function SessionsPanel({ selected }: { selected?: string }) {
-  const runs = useLive((s) => s.crew.runs);
+  const all = useLive((s) => s.crew.runs);
+  const scope = useLive((s) => s.scope);
+  const runs = useMemo(() => scopeRuns(all, scope), [all, scope]);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [showOlder, setShowOlder] = useState(false);
@@ -188,7 +193,9 @@ function Group({ title, runs, selected, accent }: { title?: string; runs: RunVie
 }
 
 function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
+  const limited = useLive((s) => s.crew.limited);
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
+  const pause = pauseClock(run, limited);
   return (
     <Link
       to="/sessions/$id"
@@ -210,8 +217,8 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
           <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : run.ticker || "Thinking…"}</span>
         ) : run.status === "failed" ? (
           <span className="text-bad">{run.statusReason ?? "Failed"}</span>
-        ) : run.status === "paused" ? (
-          <span className="text-amber">Paused — {run.statusReason ?? "usage window"}</span>
+        ) : pause ? (
+          <span className="text-amber">{pause}</span>
         ) : (
           <span className="text-fg-3">{run.ticker || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
         )}
@@ -220,6 +227,7 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
         <Chip mono>{run.runtime}</Chip>
         {run.turns > 0 && <Chip>{`${run.turns} turn${run.turns === 1 ? "" : "s"}`}</Chip>}
         {run.usage.inputTokens + run.usage.outputTokens > 0 && <Chip mono>{formatTokens(run.usage.inputTokens + run.usage.outputTokens)}</Chip>}
+        {run.lessons.length > 0 && <Chip>{run.lessons.length === 1 ? "1 lesson" : `${run.lessons.length} lessons`}</Chip>}
         {run.status === "reviewing" && <Chip>review</Chip>}
       </div>
     </Link>
@@ -240,7 +248,10 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
   useEffect(() => {
     void loadRun(id);
   }, [id, loadRun]);
-  const items = useMemo(() => conversation(events ?? []), [events]);
+  const [scrub, setScrub] = useState<number | null>(null);
+  useEffect(() => setScrub(null), [id]);
+  const seqs = useMemo(() => (events ?? []).map((e) => e.seq), [events]);
+  const items = useMemo(() => conversation(events ?? [], scrub ?? Number.POSITIVE_INFINITY), [events, scrub]);
   const [terminal, setTerminal] = useTerminal();
   if (!run) return <section className="flex items-center justify-center rounded-[14px] border border-line bg-panel text-fg-3">Loading…</section>;
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
@@ -250,6 +261,16 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
         <h1 className="min-w-0 truncate text-[14px] font-semibold">{run.title}</h1>
         <StatusPill status={run.status} />
+        {run.permission === "auto" && (
+          <span className="shrink-0 text-[11.5px] text-amber" title="This session approves what policy would ask about. Deny rules still apply.">
+            Autopilot
+          </span>
+        )}
+        {run.lessons.length > 0 && (
+          <Link to="/memory" className="shrink-0 text-[11.5px] text-fg-2 hover:text-amber" title="Lessons this session was given">
+            {run.lessons.length === 1 ? "1 lesson" : `${run.lessons.length} lessons`}
+          </Link>
+        )}
         {(run.status === "paused" || (run.status === "queued" && run.statusReason?.startsWith("moved"))) && (
           <span className="truncate text-[11.5px] text-amber" title={run.statusReason}>
             {run.statusReason}
@@ -274,10 +295,37 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
           <SessionMenu run={run} working={working} />
         </div>
       </header>
-      <Thread items={items} working={working} run={run} />
-      <ReviewBar run={run} />
-      <Queue run={run} events={events ?? []} />
-      <Composer run={run} />
+      {seqs.length > 1 && (
+        <div className="flex items-center gap-3 border-b border-line px-4 py-1.5">
+          <input
+            type="range"
+            min={0}
+            max={seqs.length - 1}
+            value={scrub === null ? seqs.length - 1 : Math.max(0, seqs.indexOf(scrub))}
+            onChange={(e) => {
+              const i = Number(e.target.value);
+              setScrub(i >= seqs.length - 1 ? null : (seqs[i] ?? null));
+            }}
+            className="h-1 min-w-0 flex-1 accent-[var(--amber)]"
+            aria-label="Scrub through this session"
+          />
+          <span className="mono w-16 text-right text-[11px] tabular-nums text-fg-3">
+            {scrub === null ? seqs.length : Math.max(1, seqs.indexOf(scrub) + 1)} / {seqs.length}
+          </span>
+        </div>
+      )}
+      {scrub !== null && (
+        <div className="flex items-center gap-3 border-b border-line bg-[var(--amber-soft)] px-4 py-2 text-[12.5px] text-amber">
+          Replaying up to event #{scrub} — the run is unchanged.
+          <button onClick={() => setScrub(null)} className="ml-auto underline">
+            Back to live
+          </button>
+        </div>
+      )}
+      <Thread items={items} working={working && scrub === null} run={run} />
+      {scrub === null && <ReviewBar run={run} />}
+      {scrub === null && <Queue run={run} events={events ?? []} />}
+      {scrub === null && <Composer run={run} />}
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
   );
@@ -523,6 +571,8 @@ const COMMANDS = [
   { name: "learn", hint: "Teach a lesson every future run is told", icon: Sparkles },
   { name: "schedule", hint: "/schedule weekdays 9am: triage new issues", icon: Zap },
   { name: "autopilot", hint: "Approve what policy would ask about (deny rules still apply)", icon: ShieldCheck },
+  { name: "skill", hint: "/skill pdf summarise this — use an installed skill this turn", icon: BookOpen },
+  { name: "mcp", hint: "/mcp github open my PRs — use a connected server this turn", icon: Cable },
 ];
 const EFFORTS = ["low", "medium", "high", "max"];
 const RECENT = "shuacrew.recentRepos";
@@ -543,6 +593,8 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
   const [effort, setEffort] = useState("");
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [skills, setSkills] = useState<Array<{ name: string; status: string }>>([]);
+  const [servers, setServers] = useState<Array<{ name: string }>>([]);
   const [files, setFiles] = useState<Array<{ key: string; name: string; size: number; preview?: string; done?: Attachment; failed?: string }>>([]);
   const [dropping, setDropping] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -590,6 +642,8 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
 
   useEffect(() => {
     void loadRuntimes().then(setRuntimes);
+    void api<{ skills: Array<{ name: string; status: string }> }>("/api/memory").then((m) => setSkills(m.skills.filter((s) => s.status === "accepted"))).catch(() => undefined);
+    void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
   }, []);
   useEffect(() => {
     if (seed?.text) {
@@ -609,7 +663,11 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
   }, []);
   // ⌘N and "New Run…" land here.
   useEffect(() => {
-    const focus = () => field.current?.focus();
+    const focus = (e?: Event) => {
+      const detail = e instanceof CustomEvent && typeof e.detail === "string" ? e.detail : "";
+      if (detail) setText(detail);
+      field.current?.focus();
+    };
     focus();
     window.addEventListener("shuacrew:compose", focus);
     return () => window.removeEventListener("shuacrew:compose", focus);
@@ -621,7 +679,15 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [text]);
 
-  const slash = /^\/(\w*)$/.exec(text.trim()) && !text.includes(" ") ? COMMANDS.filter((c) => c.name.startsWith(text.trim().slice(1))) : [];
+  const slashPrefix = /^\/(\w*)$/.exec(text.trim());
+  const named = /^\/(skill|mcp)\s+(\S*)$/.exec(text);
+  const slash = slashPrefix && !text.includes(" ")
+    ? COMMANDS.filter((c) => c.name.startsWith(slashPrefix[1]!)).map((c) => ({ kind: "cmd" as const, name: c.name, hint: c.hint, icon: c.icon }))
+    : named?.[1] === "skill"
+      ? skills.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "skill" as const, name: s.name, hint: "Use this skill on the next message", icon: BookOpen }))
+      : named?.[1] === "mcp"
+        ? servers.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "mcp" as const, name: s.name, hint: "Use this server on the next message", icon: Cable }))
+        : [];
   const chosen = runtimes.find((r) => r.id === runtime);
   const recent = useMemo<string[]>(() => {
     try {
@@ -631,15 +697,26 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
     }
   }, []);
 
-  const pick = (name: string) => {
-    if (name === "task") {
+  const pick = (name: string, kind: "cmd" | "skill" | "mcp" = "cmd") => {
+    if (kind === "skill") setText(`/skill ${name} `);
+    else if (kind === "mcp") setText(`/mcp ${name} `);
+    else if (name === "task") {
       setTask(true);
       setText("");
     } else if (name === "autopilot") {
-      setAutopilot((v) => !v);
+      void cyclePermission();
       setText("");
     } else setText(`/${name} `);
     field.current?.focus();
+  };
+
+  const auto = run ? run.permission === "auto" : autopilot;
+  const cyclePermission = async () => {
+    if (!run) {
+      setAutopilot((v) => !v);
+      return;
+    }
+    await api(`/api/runs/${run.id}/permission`, { body: { mode: run.permission === "auto" ? "ask" : "auto" } });
   };
 
   const send = async () => {
@@ -671,7 +748,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
       const common = { repo: repo || undefined, runtime: runtime || undefined, model: model || undefined };
       const { id } = task
         ? await launchTask({ markdown: message.startsWith("#") ? message : `# ${message.split("\n")[0]}\n${message}`, ...common })
-        : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: autopilot });
+        : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto });
       if (repo) localStorage.setItem(RECENT, JSON.stringify([repo, ...recent.filter((r) => r !== repo)].slice(0, 8)));
       setText("");
       setFiles([]);
@@ -700,11 +777,11 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
                 role="option"
                 aria-selected={i === slashIndex}
                 onMouseEnter={() => setSlashIndex(i)}
-                onClick={() => pick(c.name)}
+                onClick={() => pick(c.name, c.kind)}
                 className={`flex w-full items-center gap-3 px-3.5 py-2 text-left text-[13px] ${i === slashIndex ? "bg-ink" : ""}`}
               >
                 <c.icon size={14} className="text-amber" />
-                <span className="mono text-fg">/{c.name}</span>
+                <span className="mono text-fg">{c.kind === "cmd" ? `/${c.name}` : c.name}</span>
                 <span className="truncate text-[12px] text-fg-3">{c.hint}</span>
               </button>
             ))}
@@ -748,7 +825,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
               }
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                if (slash.length) pick(slash[slashIndex]!.name);
+                if (slash.length) pick(slash[slashIndex]!.name, slash[slashIndex]!.kind);
                 else void send();
               }
             }}
@@ -770,12 +847,8 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
             <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach files (or drop / paste them)" aria-label="Attach files">
               <Paperclip size={14} />
             </button>
-            {!run && (
-              <>
-                <Toggle on={autopilot} onClick={() => setAutopilot((v) => !v)} icon={<ShieldCheck size={12} />} label={autopilot ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions; Autopilot approves what policy would ask about. Deny rules always apply." />
-                <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />
-              </>
-            )}
+            <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
+            {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
             {run?.worktree && (
               <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>
                 <GitBranch size={12} /> {run.worktree.branch}

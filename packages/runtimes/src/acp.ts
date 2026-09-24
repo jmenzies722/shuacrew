@@ -121,11 +121,11 @@ export class AcpRuntime implements Runtime {
     try {
       const init: Json = await connection.initialize({ protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } } } as never);
       if (run.resume && init.agentCapabilities?.loadSession) {
-        await connection.loadSession({ sessionId: run.resume, cwd: run.cwd, mcpServers: [] } as never);
+        await connection.loadSession({ sessionId: run.resume, cwd: run.cwd, mcpServers: (run.mcpServers as never) ?? [] } as never);
         sessionId = run.resume;
         queue.length = 0; // loading replays history as updates; this turn starts clean
       } else {
-        const created: Json = await connection.newSession({ cwd: run.cwd, mcpServers: [] } as never);
+        const created: Json = await connection.newSession({ cwd: run.cwd, mcpServers: (run.mcpServers as never) ?? [] } as never);
         sessionId = String(created.sessionId);
       }
       yield { type: "session", id: sessionId };

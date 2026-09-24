@@ -4,7 +4,9 @@
  * person makes, and runs the weekly Evolve pass. Every change is a fact in the log.
  */
 import { randomUUID } from "node:crypto";
-import type { AnyEvent } from "@shuacrew/core";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { decide, defaultContext, defaultRules, normalise, type AnyEvent } from "@shuacrew/core";
 import { applyMemory, correctionIn, foldMemory, live, recall, relevantSkills, render, runRecallEval, skillCandidates, type MemoryView } from "@shuacrew/memory";
 import { Cron } from "croner";
 import type { EventStore } from "./store.js";
@@ -64,6 +66,26 @@ export class Memory {
     this.store.append("lesson.retired", { id, reason });
   }
 
+  /** A SKILL.md the person picked is accepted immediately — they already chose it. */
+  installSkill(file: string): string {
+    // A skill is text the agent is handed: only Markdown, and never a secret (keys, .env, ~/.ssh).
+    if (!/\.md$/i.test(file)) throw new Error("a skill is a Markdown file (SKILL.md)");
+    const verdict = decide(normalise("Read", { file_path: file }), defaultContext(path.dirname(file)), [{ name: "global", rules: defaultRules() }]);
+    if (verdict.verdict === "deny") throw new Error(`can't use that file: ${verdict.reason}`);
+    const raw = readFileSync(file, "utf8");
+    const name = skillName(raw, file);
+    const id = `sk_${randomUUID().slice(0, 8)}`;
+    const body = raw.trim().slice(0, 8000);
+    if (!body) throw new Error("that skill file is empty");
+    this.store.append("skill.proposed", { id, name, body, from: [] });
+    this.store.append("skill.decided", { id, accept: true });
+    return id;
+  }
+
+  skills() {
+    return Object.values(this.view.skills);
+  }
+
   decideSkill(id: string, accept: boolean) {
     if (!this.view.skills[id]) throw new Error(`no skill ${id}`);
     this.store.append("skill.decided", { id, accept });
@@ -110,4 +132,13 @@ export class Memory {
     this.weekly?.stop();
     this.unsubscribe();
   }
+}
+
+/** Frontmatter `name:`, otherwise the first heading, otherwise the filename. */
+export function skillName(markdown: string, file: string): string {
+  const front = /^---\n([\s\S]*?)\n---/.exec(markdown)?.[1] ?? "";
+  const named = /^name:\s*(.+)$/m.exec(front)?.[1]?.trim();
+  const heading = /^#\s+(.+)$/m.exec(markdown)?.[1]?.trim();
+  const base = file.split("/").pop()?.replace(/\.md$/i, "") || "skill";
+  return (named || heading || base).slice(0, 80);
 }

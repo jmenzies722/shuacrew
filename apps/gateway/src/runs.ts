@@ -26,6 +26,7 @@ import {
 import type { ApprovalAnswer, Runtime, RunSpec } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
+import { expandAsk } from "./chat-commands.js";
 
 export interface LaunchSpec {
   ask: string;
@@ -41,6 +42,8 @@ export interface LaunchSpec {
   incognito?: boolean;
   /** Record the run but never execute it (a task's parent: its steps do the work). */
   hold?: boolean;
+  /** Work in the repo itself — spec drafts, not a branch. */
+  inPlace?: boolean;
   forkOf?: { run: string; turn: number; commit?: string };
 }
 
@@ -59,7 +62,10 @@ export interface SupervisorOptions {
   failover?: boolean;
   approvalTimeoutMs?: number;
   /** Lessons and skills for a conversation that is starting. */
-  memory?: { systemFor(run: string, ask: string): string | undefined };
+  memory?: { systemFor(run: string, ask: string): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
+  /** Installed MCP servers, already shaped for that runtime. */
+  mcpServers?: (runtime: string) => Record<string, unknown> | unknown[];
+  mcpList?: () => Array<{ name: string }>;
 }
 
 export class Supervisor {
@@ -74,7 +80,14 @@ export class Supervisor {
     private store: EventStore,
     private runtimes: Map<string, Runtime>,
     private options: SupervisorOptions,
-  ) {}
+  ) {
+    for (const event of this.store.ofKinds("run.permission")) {
+      if (event.kind === "run.permission" && event.run) {
+        if (event.body.mode === "auto") this.approveAll.add(event.run);
+        else this.approveAll.delete(event.run);
+      }
+    }
+  }
 
   /** Record a fact — unless the gateway is shutting down, when runs stop without a word so the
    * log still says they were running and the next boot resumes them. */
@@ -94,6 +107,7 @@ export class Supervisor {
   // ── launching ────────────────────────────────────────────────────────────────────────
 
   launch(spec: LaunchSpec): string {
+    this.expand(spec.ask);
     const id = `r_${randomUUID().slice(0, 8)}`;
     const runtime = spec.runtime ?? this.defaultRuntime();
     this.rec(
@@ -108,13 +122,16 @@ export class Supervisor {
         effort: spec.effort,
         parent: spec.parent,
         // "held" is part of the fact, so a restart knows never to execute this run itself.
-        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : [])],
+        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : []), ...(spec.inPlace ? ["in-place"] : [])],
         incognito: spec.incognito ?? false,
         forkOf: spec.forkOf,
       },
       { run: id },
     );
-    if (spec.approveAll) this.approveAll.add(id);
+    if (spec.approveAll) {
+      this.approveAll.add(id);
+      this.rec("run.permission", { mode: "auto" }, { run: id });
+    }
     if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
     else if (spec.forkOf) this.rec("run.status", { status: "done", reason: "forked — waiting for your first message" }, { run: id });
     else queueMicrotask(() => this.pump());
@@ -196,6 +213,8 @@ export class Supervisor {
       const parentTree = spec.parent ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
       if (parentTree?.kind === "run.worktree") {
         cwd = parentTree.body.path;
+      } else if (spec.repo && spec.labels.includes("in-place")) {
+        cwd = spec.repo;
       } else if (spec.repo) {
         const existing = this.store.forRun(runId).find((e) => e.kind === "run.worktree");
         if (existing && existing.kind === "run.worktree") {
@@ -214,8 +233,9 @@ export class Supervisor {
 
     this.setStatus(runId, "running");
     const turn = this.turns(runId) + 1;
-    const ask = this.currentAsk(runId, spec.ask);
-    this.rec("turn.started", { turn, text: ask, by: "you" }, { run: runId });
+    const spoken = this.currentAsk(runId, spec.ask);
+    const ask = this.expand(spoken);
+    this.rec("turn.started", { turn, text: spoken, by: "you" }, { run: runId });
     const started = Date.now();
     const policy = this.policyFor(runId, cwd);
     // A conversation id only means something to the runtime that owns it. A run that moved to
@@ -233,6 +253,7 @@ export class Supervisor {
       resume,
       // A resumed conversation already has its lessons; only a fresh one is told.
       system: resume ? undefined : this.options.memory?.systemFor(runId, ask),
+      mcpServers: this.options.mcpServers?.(runtime.id),
     };
 
     let ended = false;
@@ -524,7 +545,7 @@ export class Supervisor {
     const id = `a_${randomUUID().slice(0, 8)}`;
     this.rec(
       "approval.requested",
-      { id, tool, input, risk: decision.risk, reason: subagent ? `${decision.reason} · subagent ${subagent}` : decision.reason, rule: decision.rule },
+      { id, tool, input, risk: decision.risk, reason: subagent ? `${decision.reason} · subagent ${subagent}` : decision.reason, rule: decision.rule, layer: decision.layer },
       { run },
     );
     this.setStatus(run, "awaiting_approval");
@@ -544,6 +565,16 @@ export class Supervisor {
         },
       });
     });
+  }
+
+  /** Cycle this session: ask stops for approval, auto lets those through. A deny still wins. */
+  setPermission(run: string, mode: "ask" | "auto"): void {
+    if (!this.status(run) && !this.store.forRun(run).some((e) => e.kind === "run.created")) throw new Error(`no run ${run}`);
+    this.rec("run.permission", { mode }, { run });
+    if (mode === "auto") {
+      this.approveAll.add(run);
+      for (const [id, wait] of this.waiting) if (wait.run === run) this.decideApproval(id, true, "you (autopilot)");
+    } else this.approveAll.delete(run);
   }
 
   /** A person (or a timeout) answers an approval. Returns false when nothing was waiting. */
@@ -570,6 +601,7 @@ export class Supervisor {
   /** Send another message to a run: a new turn in the same runtime conversation. */
   followUp(run: string, text: string, by = "you"): string {
     if (!this.status(run)) throw new Error(`no run ${run}`);
+    this.expand(text);
     const id = `f_${randomUUID().slice(0, 8)}`;
     this.rec("run.followup", { id, text, by }, { run });
     // Mid-turn, a message waits its turn: the one after this answers everything queued.
@@ -601,6 +633,11 @@ export class Supervisor {
     if (pending.length) return pending.join("\n\n");
     const last = [...this.store.forRun(run)].reverse().find((e) => e.kind === "turn.started");
     return last?.kind === "turn.started" ? last.body.text : original;
+  }
+
+  /** `/skill` and `/mcp` stay as typed in the thread; the runtime gets the body or the named server. */
+  private expand(ask: string): string {
+    return expandAsk(ask, this.options.memory?.skills?.() ?? [], this.options.mcpList?.() ?? []);
   }
 
   // ── reading the log ─────────────────────────────────────────────────────────────────

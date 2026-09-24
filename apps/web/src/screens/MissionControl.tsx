@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { useMemo } from "react";
 import { AgentCard } from "../components/AgentCard";
+import { policyLine, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
 import { newSession } from "../shell/Shell";
@@ -10,8 +11,10 @@ import { newSession } from "../shell/Shell";
 /** Home: what's running, what needs you, what just finished, what it's costing. */
 export function MissionControl() {
   const crew = useLive((s) => s.crew);
+  const scope = useLive((s) => s.scope);
   const openLaunch = useLive((s) => s.openLaunch);
-  const runs = useMemo(() => Object.values(crew.runs), [crew.runs]);
+  const scoped = useMemo(() => scopeRuns(crew.runs, scope), [crew.runs, scope]);
+  const runs = useMemo(() => Object.values(scoped), [scoped]);
   const live = runs
     .filter((r) => ["running", "planning", "awaiting_approval", "paused", "queued"].includes(r.status) && !r.parent)
     .sort((a, b) => rank(a.status) - rank(b.status) || b.updatedAt - a.updatedAt);
@@ -19,7 +22,9 @@ export function MissionControl() {
     .filter((r) => ["done", "failed", "merged", "reviewing", "cancelled"].includes(r.status))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 8);
-  const approvals = Object.values(crew.approvals).sort((a, b) => b.seq - a.seq);
+  const approvals = Object.values(crew.approvals)
+    .filter((a) => !scope || (a.run ? Boolean(scoped[a.run]) : false))
+    .sort((a, b) => b.seq - a.seq);
   const byRuntime = useMemo(() => {
     const totals = new Map<string, number>();
     for (const r of runs) totals.set(r.runtime, (totals.get(r.runtime) ?? 0) + r.usage.inputTokens + r.usage.outputTokens);
@@ -103,6 +108,7 @@ export function MissionControl() {
                       <span className="ml-auto text-[11px] uppercase text-fg-3">{a.risk}</span>
                     </div>
                     <div className="mono mt-1 truncate text-[11.5px] text-fg-2">{describe(a.input)}</div>
+                    <div className="mono mt-0.5 truncate text-[11px] text-fg-3">{policyLine("ask", a.rule, a.layer)}</div>
                   </Link>
                 ))}
               </Panel>

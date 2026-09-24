@@ -13,8 +13,8 @@ export type Item =
   | { kind: "files"; seq: number; paths: string[] }
   | { kind: "check"; seq: number; command: string; passed: boolean; output: string }
   | { kind: "subagent"; seq: number; id: string; name: string; task: string; done: boolean; ok?: boolean; summary?: string }
-  | { kind: "approval"; seq: number; id: string; tool: string; input: unknown; risk: string; reason: string; rule: string; decided?: { allow: boolean; by: string } }
-  | { kind: "denied"; seq: number; tool: string; rule: string; reason: string }
+  | { kind: "approval"; seq: number; id: string; tool: string; input: unknown; risk: string; reason: string; rule: string; layer?: string; decided?: { allow: boolean; by: string } }
+  | { kind: "denied"; seq: number; tool: string; rule: string; layer?: string; reason: string }
   | { kind: "checkpoint"; seq: number; turn: number; commit?: string; note: string }
   | { kind: "note"; seq: number; text: string; tone: "live" | "bad" | "idle" | "wait" }
   | { kind: "thought"; seq: number; turn: number; text: string; streaming: boolean }
@@ -137,7 +137,7 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
       case "approval.requested":
         endProse();
         approvals.set(e.body.id, items.length);
-        items.push({ kind: "approval", seq: e.seq, id: e.body.id, tool: e.body.tool, input: e.body.input, risk: e.body.risk, reason: e.body.reason, rule: e.body.rule });
+        items.push({ kind: "approval", seq: e.seq, id: e.body.id, tool: e.body.tool, input: e.body.input, risk: e.body.risk, reason: e.body.reason, rule: e.body.rule, layer: e.body.layer });
         break;
       case "approval.decided": {
         const at = approvals.get(e.body.id);
@@ -148,7 +148,7 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
       case "policy.decided":
         if (e.body.verdict === "deny") {
           endProse();
-          items.push({ kind: "denied", seq: e.seq, tool: e.body.tool, rule: e.body.rule, reason: e.body.reason });
+          items.push({ kind: "denied", seq: e.seq, tool: e.body.tool, rule: e.body.rule, layer: e.body.layer, reason: e.body.reason });
         }
         break;
       case "task.planned":

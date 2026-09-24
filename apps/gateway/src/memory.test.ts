@@ -94,3 +94,16 @@ describe("follow-ups mid-turn", () => {
     expect(turns()[1]).toBe("Also check the retry path\n\nAnd keep it under 50 lines");
   });
 });
+
+describe("installing a skill from a file", () => {
+  it("takes Markdown, and refuses secrets or anything else", async () => {
+    const { memory } = world();
+    const dir = mkdtempSync(path.join(os.tmpdir(), "shua-skill-"));
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(path.join(dir, "SKILL.md"), "---\nname: release-notes\n---\nWrite release notes.");
+    writeFileSync(path.join(dir, ".env"), "SECRET=1");
+    expect(memory.installSkill(path.join(dir, "SKILL.md"))).toMatch(/^sk_/);
+    expect(() => memory.installSkill(path.join(dir, ".env"))).toThrow(/Markdown/);
+    expect(() => memory.installSkill(path.join(os.homedir(), ".ssh", "notes.md"))).toThrow(/can't use that file/);
+  });
+});

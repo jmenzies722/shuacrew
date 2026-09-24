@@ -12,6 +12,16 @@ import { create } from "zustand";
 import { api } from "./api";
 import { applyAppearance, loadAppearance, resolvePalette, saveAppearance, type Appearance } from "./appearance";
 
+const SCOPE_KEY = "shuacrew.scope";
+
+function loadScope(): string | null {
+  try {
+    return localStorage.getItem(SCOPE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 export type Connection = "connecting" | "live" | "offline";
 export type Theme = "system" | "dark" | "light";
 
@@ -28,6 +38,9 @@ interface Live {
   launchDraft: string;
   paletteOpen: boolean;
   keymapOpen: boolean;
+  /** Repo path narrowing the floor, board, sessions and activity. Null is every repo. */
+  scope: string | null;
+  setScope(scope: string | null): void;
   setTheme(theme: Theme): void;
   openLaunch(draft?: string): void;
   closeLaunch(): void;
@@ -56,6 +69,16 @@ export const useLive = create<Live>((set, get) => ({
   launchDraft: "",
   paletteOpen: false,
   keymapOpen: false,
+  scope: loadScope(),
+  setScope(scope) {
+    try {
+      if (scope) localStorage.setItem(SCOPE_KEY, scope);
+      else localStorage.removeItem(SCOPE_KEY);
+    } catch {
+      /* private mode */
+    }
+    set({ scope });
+  },
   setTheme(theme) {
     const current = get().appearance;
     get().setAppearance({ palette: theme === "system" ? "system" : theme === "dark" ? current.dark : current.light });

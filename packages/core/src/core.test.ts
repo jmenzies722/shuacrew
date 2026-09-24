@@ -171,6 +171,29 @@ describe("projections", () => {
     expect(COLUMNS.find((c) => c.statuses.includes(run.status))?.id).toBe("running");
   });
 
+  it("counts each lesson a run was given once, and keeps the policy layer on an approval", () => {
+    seq = 0;
+    const state = fold([
+      ev("run.created", { title: "t", ask: "a", runtime: "claude" }),
+      ev("lesson.applied", { id: "l1" }),
+      ev("lesson.applied", { id: "l1" }),
+      ev("lesson.applied", { id: "l2" }),
+      ev("approval.requested", { id: "q1", tool: "Bash", input: {}, risk: "high", reason: "push", rule: "git.push", layer: "project" }),
+    ]);
+    expect(state.runs.r1!.lessons).toEqual(["l1", "l2"]);
+    expect(state.approvals.q1).toMatchObject({ rule: "git.push", layer: "project" });
+  });
+
+  it("remembers whether a session asks or runs straight through", () => {
+    seq = 0;
+    const state = fold([
+      ev("run.created", { title: "t", ask: "a", runtime: "claude" }),
+      ev("run.permission", { mode: "auto" }),
+      ev("run.permission", { mode: "ask" }),
+    ]);
+    expect(state.runs.r1!.permission).toBe("ask");
+  });
+
   it("ignores events it has already applied, so reconnect overlap is harmless", () => {
     seq = 0;
     const created = ev("run.created", { title: "t", ask: "a", runtime: "mock" });

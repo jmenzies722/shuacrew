@@ -21,6 +21,8 @@ export interface RunView {
   incognito: boolean;
   status: RunStatus;
   statusReason?: string;
+  /** ask stops for approval; auto lets those through. Deny rules still win. */
+  permission: "ask" | "auto";
   createdAt: number;
   updatedAt: number;
   priority: number;
@@ -36,6 +38,8 @@ export interface RunView {
   files: string[];
   checks: Array<{ command: string; passed: boolean; seq: number }>;
   pendingApprovals: string[];
+  /** Lesson ids this run was given. The text lives in memory. */
+  lessons: string[];
   subagents: Array<{ id: string; name: string; task: string; done: boolean; ok?: boolean }>;
   checkpoints: Array<{ seq: number; turn: number; commit?: string }>;
   worktree?: { path: string; branch: string; base: string };
@@ -52,6 +56,7 @@ export interface ApprovalView {
   risk: string;
   reason: string;
   rule: string;
+  layer?: string;
   at: number;
   seq: number;
 }
@@ -100,6 +105,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         labels: b.labels,
         incognito: b.incognito,
         status: "queued",
+        permission: "ask",
         createdAt: event.at,
         updatedAt: event.at,
         priority: 0,
@@ -111,6 +117,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         files: [],
         checks: [],
         pendingApprovals: [],
+        lessons: [],
         subagents: [],
         checkpoints: [],
         usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
@@ -125,6 +132,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         run.statusReason = event.body.reason;
         if (!ACTIVE.includes(run.status)) run.currentTool = undefined;
       }
+      break;
+    case "run.permission":
+      if (run) run.permission = event.body.mode;
       break;
     case "run.worktree":
       if (run) run.worktree = event.body;
@@ -204,6 +214,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         risk: event.body.risk,
         reason: event.body.reason,
         rule: event.body.rule,
+        layer: event.body.layer,
         at: event.at,
         seq: event.seq,
       };
@@ -247,6 +258,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       break;
     case "merge.failed":
       if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, failed: event.body.reason };
+      break;
+    case "lesson.applied":
+      if (run && !run.lessons.includes(event.body.id)) run.lessons.push(event.body.id);
       break;
     case "runtime.limited":
       state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message, credits: event.body.credits };

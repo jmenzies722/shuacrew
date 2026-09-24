@@ -21,6 +21,9 @@ import type { Terminals } from "./terminals.js";
 import { MAX_UPLOAD, type Uploads } from "./uploads.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
+import { Specs } from "./specs.js";
+import type { Mcp } from "./mcp.js";
+import { fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
 
 export interface ServerOptions {
@@ -34,6 +37,7 @@ export interface ServerOptions {
   version?: string;
   autonomy?: { scheduler: Scheduler; webhooks: Webhooks; heartbeats: Heartbeats; tasks: TaskRunner };
   memory?: Memory;
+  mcp?: Mcp;
   terminals?: Terminals;
   uploads?: Uploads;
 }
@@ -233,6 +237,17 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     return { ok: true };
   });
 
+  app.post<{ Params: { id: string }; Body: { mode?: "ask" | "auto" } }>("/api/runs/:id/permission", async (request, reply) => {
+    const mode = request.body?.mode;
+    if (mode !== "ask" && mode !== "auto") return reply.code(400).send({ error: "mode is ask or auto" });
+    try {
+      supervisor.setPermission(request.params.id, mode);
+      return { ok: true, mode };
+    } catch (error) {
+      return reply.code(404).send({ error: (error as Error).message });
+    }
+  });
+
   app.post<{ Params: { id: string } }>("/api/runs/:id/archive", async (request, reply) => {
     const run = state.runs[request.params.id];
     if (!run) return reply.code(404).send({ error: "no such session" });
@@ -410,6 +425,50 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     });
   }
 
+  const specs = new Specs(store, (spec) => supervisor.launch(spec));
+  app.get("/api/specs", async () => specs.list());
+  app.get<{ Params: { id: string } }>("/api/specs/:id", async (request, reply) => {
+    const spec = specs.get(request.params.id);
+    return spec ?? reply.code(404).send({ error: "no such spec" });
+  });
+  app.post<{ Body: { ask?: string; repo?: string } }>("/api/specs", async (request, reply) => {
+    const ask = request.body?.ask?.trim();
+    const repo = request.body?.repo?.trim();
+    if (!ask) return reply.code(400).send({ error: "say what the spec is for" });
+    if (!repo) return reply.code(400).send({ error: "pick a repo" });
+    try {
+      return specs.open(ask, repo);
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message });
+    }
+  });
+  app.post<{ Params: { id: string }; Body: { line?: number; text?: string } }>("/api/specs/:id/comments", async (request, reply) => {
+    const text = request.body?.text?.trim();
+    const line = request.body?.line;
+    if (!text || !line) return reply.code(400).send({ error: "a comment needs a line and some text" });
+    try {
+      return specs.comment(request.params.id, line, text);
+    } catch (error) {
+      return reply.code(404).send({ error: (error as Error).message });
+    }
+  });
+  app.post<{ Params: { id: string } }>("/api/specs/:id/revise", async (request, reply) => {
+    try {
+      return specs.revise(request.params.id);
+    } catch (error) {
+      const message = (error as Error).message;
+      return reply.code(message === "no such spec" ? 404 : 400).send({ error: message });
+    }
+  });
+  app.post<{ Params: { id: string } }>("/api/specs/:id/approve", async (request, reply) => {
+    try {
+      return specs.approve(request.params.id);
+    } catch (error) {
+      const message = (error as Error).message;
+      return reply.code(message === "no such spec" ? 404 : 400).send({ error: message });
+    }
+  });
+
   app.post<{ Body: { tool?: string; input?: unknown; workspace?: string } }>("/api/policy/explain", async (request) => {
     const b = request.body ?? {};
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
@@ -496,6 +555,35 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         return reply.code(404).send({ error: (error as Error).message });
       }
     });
+    app.get("/api/skills/catalog", async (_request, reply) => {
+      try {
+        return await skillCatalog();
+      } catch (error) {
+        return reply.code(502).send({ error: (error as Error).message });
+      }
+    });
+    app.post<{ Body: { name?: string } }>("/api/skills/install", async (request, reply) => {
+      const name = request.body?.name?.trim();
+      if (!name) return reply.code(400).send({ error: "name a skill" });
+      try {
+        const { writeFileSync } = await import("node:fs");
+        const os = await import("node:os");
+        const file = path.join(os.tmpdir(), `shuacrew-skill-${name}.md`);
+        writeFileSync(file, await fetchSkill(name));
+        return { id: memory.installSkill(file) };
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    app.post<{ Body: { path?: string } }>("/api/memory/skills/install", async (request, reply) => {
+      const file = request.body?.path?.trim();
+      if (!file) return reply.code(400).send({ error: "give the path to a SKILL.md" });
+      try {
+        return { id: memory.installSkill(file) };
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
     app.post<{ Params: { id: string }; Body: { accept?: boolean } }>("/api/memory/skills/:id", async (request, reply) => {
       try {
         memory.decideSkill(request.params.id, request.body?.accept === true);
@@ -508,6 +596,48 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.get<{ Querystring: { ask?: string; project?: string } }>("/api/memory/recall", async (request) => {
       const { recall } = await import("@shuacrew/memory");
       return recall(memory.view, request.query.ask ?? "", request.query.project || undefined).map((r) => ({ id: r.lesson.id, text: r.lesson.text, score: r.score, shared: r.shared }));
+    });
+  }
+
+  if (options.mcp) {
+    const mcp = options.mcp;
+    app.get<{ Querystring: { q?: string } }>("/api/mcp/catalog", async (request, reply) => {
+      try {
+        return await mcpCatalog(request.query.q ?? "");
+      } catch (error) {
+        return reply.code(502).send({ error: (error as Error).message });
+      }
+    });
+    app.get("/api/mcp", async () => mcp.list());
+    app.post<{ Body: { name?: string; command?: string; args?: string[]; url?: string; auth?: "none" | "oauth" } }>("/api/mcp", async (request, reply) => {
+      try {
+        return mcp.add({ ...request.body, name: request.body?.name ?? "" });
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    app.delete<{ Params: { id: string } }>("/api/mcp/:id", async (request, reply) => {
+      try {
+        mcp.remove(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.post<{ Params: { id: string } }>("/api/mcp/:id/probe", async (request, reply) => {
+      try {
+        return await mcp.probe(request.params.id);
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.post<{ Params: { id: string } }>("/api/mcp/:id/signin", async (request, reply) => {
+      try {
+        await mcp.signIn(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
     });
   }
 

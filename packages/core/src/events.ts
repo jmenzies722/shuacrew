@@ -46,6 +46,8 @@ export const bodies = {
     forkOf: z.object({ run: z.string(), turn: z.number().int(), commit: z.string().optional() }).optional(),
   }),
   "run.status": z.object({ status: RunStatus, reason: z.string().optional() }),
+  /** ask stops for approval; auto lets those through. A deny still wins. */
+  "run.permission": z.object({ mode: z.enum(["ask", "auto"]) }),
   "run.worktree": z.object({ path: z.string(), branch: z.string(), base: z.string() }),
   "run.routed": route.extend({ reason: z.string() }),
   "run.priority": z.object({ priority: z.number() }),
@@ -84,6 +86,7 @@ export const bodies = {
     risk: Risk,
     reason: z.string(),
     rule: z.string(),
+    layer: z.string().optional(),
   }),
   "approval.decided": z.object({
     id: z.string(),
@@ -139,6 +142,17 @@ export const bodies = {
   "skill.proposed": z.object({ id: z.string(), name: z.string(), body: z.string(), from: z.array(z.string()).default([]) }),
   "skill.decided": z.object({ id: z.string(), accept: z.boolean() }),
 
+  // MCP servers ShuaCrew adds. Tokens never go in the log — only that a server exists and how it auths.
+  "mcp.set": z.object({
+    id: z.string(),
+    name: z.string(),
+    command: z.string().optional(),
+    args: z.array(z.string()).default([]),
+    url: z.string().optional(),
+    auth: z.enum(["none", "oauth"]).default("none"),
+  }),
+  "mcp.removed": z.object({ id: z.string() }),
+
   // unattended
   "schedule.set": z.object({
     id: z.string(),
@@ -174,6 +188,15 @@ export const bodies = {
   }),
   "schedule.fired": z.object({ id: z.string(), run: z.string().optional(), ok: z.boolean().optional() }),
   "trigger.received": z.object({ trigger: z.string(), source: z.string(), payload: z.unknown() }),
+
+  // specs — the phase is the fact; the markdown in .shuacrew/specs/ is what you review
+  "spec.opened": z.object({ id: z.string(), title: z.string(), ask: z.string(), repo: z.string() }),
+  "spec.advanced": z.object({ id: z.string(), phase: z.enum(["requirements", "design", "tasks"]) }),
+  "spec.approved": z.object({ id: z.string(), phase: z.enum(["requirements", "design", "tasks"]) }),
+  "spec.comment": z.object({ id: z.string(), phase: z.enum(["requirements", "design", "tasks"]), line: z.number().int(), text: z.string() }),
+  "spec.fanned": z.object({ id: z.string(), runs: z.array(z.string()) }),
+  /** A session is rewriting the current phase file in the repo, not in a worktree. */
+  "spec.planned": z.object({ id: z.string(), phase: z.enum(["requirements", "design", "tasks"]), run: z.string() }),
 
   // system
   "gateway.started": z.object({ pid: z.number(), version: z.string() }),

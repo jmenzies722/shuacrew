@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import { ACCENTS, PALETTES, resolvePalette, type Palette } from "../lib/appearance";
 import { useLive } from "../lib/live";
 
+export { Specs } from "./Specs";
+
 function Page({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
@@ -31,34 +33,7 @@ function Starter({ items }: { items: Array<{ title: string; detail: string; onCl
   );
 }
 
-export function Specs() {
-  const openLaunch = useLive((s) => s.openLaunch);
-  return (
-    <Page title="Specs" subtitle="Requirements → design → tasks, each phase approved here, then fanned out as runs on the board.">
-      <Starter
-        items={[
-          { title: "Start a spec", detail: "Describe a feature; the planner drafts EARS requirements for you to approve.", onClick: () => openLaunch("Draft a spec for: ") },
-          { title: "Spec from an issue", detail: "Paste an issue URL and turn it into requirements and tasks." },
-          { title: "Where specs live", detail: "In your repo under .shuacrew/specs/ — reviewed like code." },
-        ]}
-      />
-    </Page>
-  );
-}
-
-export function Integrations() {
-  return (
-    <Page title="Integrations & Apps" subtitle="MCP servers, Slack and Telegram, and installable Apps — each behind its own policy.">
-      <Starter
-        items={[
-          { title: "Connect Slack", detail: "Threads become sessions; approve runs with buttons. Outbound-only — no public port." },
-          { title: "Add an MCP server", detail: "GitLab, Jira, Confluence — with a health check and per-server policy." },
-          { title: "Install an App", detail: "GitLab MR tracker, Terraform plan reviewer with an apply gate." },
-        ]}
-      />
-    </Page>
-  );
-}
+export { Integrations } from "./Integrations";
 
 export function Policy() {
   const [verify, setVerify] = useState<{ ok: boolean; count: number; brokenAt?: number; why?: string } | null>(null);

@@ -13,6 +13,7 @@ import { Memory } from "./memory.js";
 import { Terminals } from "./terminals.js";
 import { Uploads } from "./uploads.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
+import { Mcp } from "./mcp.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -62,8 +63,15 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const store = new EventStore(path.join(home, "shuacrew.db"));
   const runtimes = await registry();
   const memory = new Memory(store);
+  const mcp = new Mcp(store, path.join(home, "mcp-auth.json"));
   const terminals = new Terminals();
-  const supervisor = new Supervisor(store, runtimes, { workspace, failover: true, memory });
+  const supervisor = new Supervisor(store, runtimes, {
+    workspace,
+    failover: true,
+    memory,
+    mcpServers: (id) => (id === "codex" ? mcp.forCodex() : id.startsWith("acp:") ? mcp.forAcp() : mcp.forClaude()),
+    mcpList: () => mcp.list(),
+  });
   const autonomy = {
     scheduler: new Scheduler(store, supervisor, workspace),
     webhooks: new Webhooks(store, supervisor, secretsPath(home)),
@@ -82,6 +90,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     version: VERSION,
     autonomy,
     memory,
+    mcp,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
   });

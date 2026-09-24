@@ -4,11 +4,14 @@ import { LayoutGroup } from "motion/react";
 import { useMemo, useState } from "react";
 import { AgentCard } from "../components/AgentCard";
 import { api } from "../lib/api";
+import { scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 
 /** Every run by where it stands. Cards glide between columns as their status changes. */
 export function Board() {
-  const runs = useLive((s) => s.crew.runs);
+  const crewRuns = useLive((s) => s.crew.runs);
+  const scope = useLive((s) => s.scope);
+  const runs = useMemo(() => scopeRuns(crewRuns, scope), [crewRuns, scope]);
   const [runtime, setRuntime] = useState("all");
   const all = useMemo(() => Object.values(runs).filter((r) => !r.parent), [runs]);
   const runtimes = useMemo(() => [...new Set(all.map((r) => r.runtime))], [all]);

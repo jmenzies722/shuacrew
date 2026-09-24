@@ -295,7 +295,14 @@ export class CodexRuntime implements Runtime {
     try {
       await peer.request("initialize", { clientInfo: { name: "shuacrew", title: "ShuaCrew", version: "0.1.0" }, capabilities: { experimentalApi: true } });
       peer.notify("initialized");
-      const overrides = { cwd: run.cwd, model: run.model, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: run.system };
+      const overrides = {
+        cwd: run.cwd,
+        model: run.model,
+        approvalPolicy: "untrusted",
+        sandbox: "workspace-write",
+        developerInstructions: run.system,
+        ...(run.mcpServers && !Array.isArray(run.mcpServers) && Object.keys(run.mcpServers).length ? { config: { mcp_servers: run.mcpServers } } : {}),
+      };
       const thread = threadId ? await peer.request("thread/resume", { threadId, ...overrides }) : await peer.request("thread/start", overrides);
       threadId = String(thread.thread?.id ?? threadId);
       yield { type: "session", id: threadId };

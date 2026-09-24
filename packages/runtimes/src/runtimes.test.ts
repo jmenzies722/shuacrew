@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { agentEnv } from "@shuacrew/core";
@@ -91,7 +91,10 @@ const leaked = ["OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY"].filter((
 rl.on("line", (line) => {
   const m = JSON.parse(line);
   if (m.method === "initialize") send({ id: m.id, result: { userAgent: "fake" } });
-  if (m.method === "thread/start") send({ id: m.id, result: { thread: { id: "th-1" } } });
+  if (m.method === "thread/start") {
+    require("node:fs").writeFileSync(process.cwd() + "/started.json", JSON.stringify(m.params ?? {}));
+    send({ id: m.id, result: { thread: { id: "th-1" } } });
+  }
   if (m.method === "turn/start") {
     send({ id: m.id, result: { turn: { id: "tu-1" } } });
     send({ method: "turn/started", params: { turn: { id: "tu-1" } } });
@@ -115,10 +118,11 @@ rl.on("line", (line) => {
     const env = { ...process.env, OPENAI_API_KEY: "sk-should-never-arrive" };
     const events = await collect(
       runtime.start(
-        { id: "r1", ask: "push it", cwd: dir },
+        { id: "r1", ask: "push it", cwd: dir, mcpServers: { github: { command: "true", args: [] } } },
         { signal: new AbortController().signal, env: agentEnv(env, "subscription"), approve: async (tool, input) => (asked.push(`${tool}:${(input as { command: string }).command}`), { allow: false, reason: "policy" }) },
       ),
     );
+    expect(JSON.parse(readFileSync(path.join(dir, "started.json"), "utf8")).config.mcp_servers).toEqual({ github: { command: "true", args: [] } });
     expect(asked).toEqual(["commandExecution:git push origin main"]);
     expect(events.find((e) => e.type === "tool-result")).toMatchObject({ ok: false });
     expect(events.find((e) => e.type === "done")).toMatchObject({ text: "leaked:" });
