@@ -436,3 +436,29 @@ body {
 .limit-chip { align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line-strong)); font-size: 11.5px; color: var(--amber); }
 .limit-try { border-radius: 999px; padding: 1px 7px; background: var(--amber-soft); color: var(--text); font-size: 10.5px; }
 .limit-chip:hover .limit-try { background: var(--amber); color: var(--on-accent); }
+
+/* ── The rail ─────────────────────────────────────────────────────────────────────────── */
+.rail { position: relative; z-index: 30; display: flex; flex-direction: column; gap: 6px; width: 56px; padding: 2px 8px 8px; transition: width .22s cubic-bezier(.2,.8,.2,1), background .22s, box-shadow .22s; overflow: hidden; }
+.rail.is-open { width: 232px; margin-right: -176px; background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(18px); box-shadow: 1px 0 0 var(--line-strong), 24px 0 60px -20px rgba(0,0,0,.45); border-radius: 0 14px 14px 0; }
+.rail-group { display: flex; flex-direction: column; gap: 2px; }
+.rail-group + .rail-group { padding-top: 6px; border-top: 1px solid var(--line); }
+.rail-label { height: 0; overflow: hidden; padding: 0 10px; font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); opacity: 0; transition: height .2s, opacity .15s; white-space: nowrap; }
+.rail.is-open .rail-label { height: 18px; opacity: 1; }
+.rail-item { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 1px; border-radius: 10px; color: var(--text-3); white-space: nowrap; transition: background .15s, color .15s; }
+.rail-item:hover { background: var(--panel); color: var(--text); }
+.rail.is-open .rail-item:hover { background: var(--raised); }
+.rail-item.is-active { background: var(--panel); color: var(--amber); box-shadow: inset 0 0 0 1px var(--line); }
+.rail-icon { position: relative; display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; }
+.rail-dot { position: absolute; right: 7px; top: 7px; width: 8px; height: 8px; border-radius: 999px; box-shadow: 0 0 0 2px var(--ink); }
+.rail-dot.is-wait { background: var(--wait); }
+.rail-dot.is-live { background: var(--amber); animation: breathe 1.6s ease-in-out infinite; }
+.rail-text { display: flex; min-width: 0; flex-direction: column; opacity: 0; transform: translateX(-4px); transition: opacity .15s, transform .2s; }
+.rail.is-open .rail-text { opacity: 1; transform: none; }
+.rail-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.rail-item.is-active .rail-name { color: var(--amber); }
+.rail-hint { font-size: 11px; color: var(--text-3); }
+.rail-count { margin-left: auto; margin-right: 8px; min-width: 20px; border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 600; text-align: center; opacity: 0; transition: opacity .15s; }
+.rail.is-open .rail-count { opacity: 1; }
+.rail-count.is-wait { background: color-mix(in srgb, var(--wait) 18%, transparent); color: var(--wait); }
+.rail-count.is-live { background: var(--amber-soft); color: var(--amber); }
+@media (prefers-reduced-motion: reduce) { .rail, .rail-text, .rail-label { transition: none; } }

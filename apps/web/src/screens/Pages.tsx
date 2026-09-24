@@ -101,7 +101,7 @@ export function Settings() {
   const test = async () => {
     setTesting(true);
     try {
-      setRuntimes(await api<RuntimeRow[]>("/api/runtimes"));
+      setRuntimes(await api<RuntimeRow[]>("/api/runtimes?fresh=1"));
     } finally {
       setTesting(false);
     }

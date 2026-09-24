@@ -477,7 +477,16 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   app.get("/api/audit/verify", async () => store.verify());
 
-  app.get("/api/runtimes", async () =>
+  // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
+  const statusCache = new Map<string, { at: number; value: Promise<unknown> }>();
+  const statusOf = (runtime: Runtime, fresh: boolean) => {
+    const hit = statusCache.get(runtime.id);
+    if (!fresh && hit && Date.now() - hit.at < 30_000) return hit.value;
+    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] }));
+    statusCache.set(runtime.id, { at: Date.now(), value });
+    return value;
+  };
+  app.get<{ Querystring: { fresh?: string } }>("/api/runtimes", async (request) =>
     Promise.all(
       [...options.runtimes.values()].map(async (runtime) => ({
         id: runtime.id,
@@ -486,7 +495,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         capabilities: runtime.capabilities,
         // Each model says if it can't be used right now ("needs credits", "out until …").
         models: runtime.models.map((m) => ({ ...m, unavailable: supervisor.unavailableModels(runtime.id)[m.id] })),
-        status: await runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })),
+        status: await statusOf(runtime, request.query.fresh === "1"),
         limitedUntil: supervisor.limitedUntil(runtime.id) || null,
       })),
     ),

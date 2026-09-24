@@ -13,17 +13,17 @@ import { KeymapOverlay } from "./KeymapOverlay";
 import { LaunchSheet } from "./LaunchSheet";
 
 export const NAV = [
-  { to: "/", label: "Sessions", icon: MessagesSquare, key: "s" },
-  { to: "/floor", label: "Crew floor — agents working, live", icon: Waypoints, key: "f" },
-  { to: "/terminal", label: "Terminal", icon: SquareTerminal, key: "t" },
-  { to: "/activity", label: "Activity", icon: Radar, key: "m" },
-  { to: "/board", label: "Board", icon: KanbanSquare, key: "b" },
-  { to: "/specs", label: "Specs", icon: FileText, key: "p" },
-  { to: "/schedules", label: "Schedules", icon: CalendarClock, key: "c" },
-  { to: "/memory", label: "Memory", icon: BookOpen, key: "y" },
-  { to: "/integrations", label: "Integrations", icon: Cable, key: "i" },
-  { to: "/policy", label: "Policy & Audit", icon: ShieldCheck, key: "a" },
-  { to: "/settings", label: "Settings", icon: Settings, key: "," },
+  { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
+  { to: "/floor", label: "Crew floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
+  { to: "/terminal", label: "Terminal", hint: "Your shells + ask the crew", icon: SquareTerminal, key: "t", group: "Work" },
+  { to: "/specs", label: "Specs", hint: "Requirements → tasks", icon: FileText, key: "p", group: "Plan" },
+  { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
+  { to: "/activity", label: "Activity", hint: "Today at a glance", icon: Radar, key: "m", group: "Plan" },
+  { to: "/memory", label: "Memory", hint: "Lessons and skills", icon: BookOpen, key: "y", group: "Brain" },
+  { to: "/schedules", label: "Schedules", hint: "Runs while you're away", icon: CalendarClock, key: "c", group: "Brain" },
+  { to: "/integrations", label: "Integrations", hint: "MCP servers and skills", icon: Cable, key: "i", group: "Brain" },
+  { to: "/policy", label: "Policy & Audit", hint: "What agents may do", icon: ShieldCheck, key: "a", group: "System" },
+  { to: "/settings", label: "Settings", hint: "Agents, look, data", icon: Settings, key: ",", group: "System" },
 ] as const;
 
 /** A fresh session: the Sessions page with the composer focused. ⌘N, the menu and the tray all land here. */
@@ -174,31 +174,46 @@ function RepoChip() {
   );
 }
 
+/**
+ * The rail: icons grouped by purpose. Hover (or focus) opens it into a labelled panel over the
+ * page — every icon explains itself, and the page never reflows.
+ */
 function IconRail() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const awaiting = useLive((s) => Object.keys(s.crew.approvals).length);
-  const main = NAV.filter((n) => n.to !== "/settings");
-  const settings = NAV.find((n) => n.to === "/settings")!;
-  const item = ({ to, label, icon: Icon }: (typeof NAV)[number]) => {
-    const active = to === "/" ? path === "/" || path.startsWith("/sessions") : path.startsWith(to);
-    return (
-      <Link
-        key={to}
-        to={to}
-        title={label}
-        aria-label={label}
-        aria-current={active ? "page" : undefined}
-        className={`relative grid h-10 w-10 place-items-center rounded-[10px] transition-colors ${active ? "bg-panel text-amber" : "text-fg-3 hover:bg-panel hover:text-fg"}`}
-      >
-        <Icon size={18} strokeWidth={1.75} />
-        {to === "/" && awaiting > 0 && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-wait ring-2 ring-ink" />}
-      </Link>
-    );
+  const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hover = (on: boolean) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(on), on ? 280 : 120);
   };
+  const groups = ["Work", "Plan", "Brain", "System"] as const;
+  const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
   return (
-    <nav aria-label="Primary" className="flex flex-col items-center gap-1 pb-2">
-      {main.map(item)}
-      <div className="mt-auto">{item(settings)}</div>
+    <nav aria-label="Primary" className={`rail ${open ? "is-open" : ""}`} onMouseEnter={() => hover(true)} onMouseLeave={() => hover(false)} onFocus={() => hover(true)} onBlur={() => hover(false)}>
+      {groups.map((group) => (
+        <div key={group} className={`rail-group ${group === "System" ? "mt-auto" : ""}`}>
+          <div className="rail-label">{group}</div>
+          {NAV.filter((n) => n.group === group).map(({ to, label, hint, icon: Icon }) => {
+            const active = to === "/" ? path === "/" || path.startsWith("/sessions") : path.startsWith(to);
+            const b = badge(to);
+            return (
+              <Link key={to} to={to} aria-label={label} aria-current={active ? "page" : undefined} className={`rail-item ${active ? "is-active" : ""}`} onClick={() => setOpen(false)}>
+                <span className="rail-icon">
+                  <Icon size={18} strokeWidth={1.75} />
+                  {b && <span className={`rail-dot is-${b.tone}`} />}
+                </span>
+                <span className="rail-text">
+                  <span className="rail-name">{label}</span>
+                  <span className="rail-hint">{hint}</span>
+                </span>
+                {b && <span className={`rail-count is-${b.tone}`}>{b.n}</span>}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
