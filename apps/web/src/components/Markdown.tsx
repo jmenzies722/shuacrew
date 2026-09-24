@@ -8,7 +8,25 @@ import type { Token } from "../lib/highlight";
  * agent output can't smuggle markup into the page.
  */
 export function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
-  return <div className="prose-agent">{blocks(text, streaming)}</div>;
+  return <div className="prose-agent">{blocks(streaming ? closeOpen(text) : text, streaming)}</div>;
+}
+
+/**
+ * Mid-stream, `**bold` or `` `code `` is still being written: close it for display so the page
+ * shows the styling it's becoming, instead of flashing raw symbols. Code fences are left alone
+ * (an open fence already renders as a code block that's being written).
+ */
+export function closeOpen(text: string): string {
+  const fences = text.split(/^\s*```/m);
+  if (fences.length % 2 === 0) return text; // inside an open fence
+  const tail = fences[fences.length - 1]!;
+  const line = tail.slice(tail.lastIndexOf("\n") + 1);
+  let close = "";
+  if ((line.match(/`/g) ?? []).length % 2 === 1) close += "`";
+  const outside = close ? line.slice(0, line.lastIndexOf("`")) : line;
+  if ((outside.match(/\*\*/g) ?? []).length % 2 === 1) close = "**" + close;
+  // A lone trailing "*" or "_" is a marker that hasn't found its word yet: hide it.
+  return (close ? text + close.split("").reverse().join("").replace(/\*\*$/, "**") : text).replace(/(^|\s)[*_]{1,2}$/, "$1");
 }
 
 function blocks(text: string, streaming?: boolean): ReactNode[] {

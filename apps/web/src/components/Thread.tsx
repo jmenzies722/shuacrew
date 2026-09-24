@@ -70,9 +70,35 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
   const last = items[items.length - 1];
   const growth = last?.kind === "prose" ? last.text.length : last?.kind === "tool" ? (last.output?.length ?? 0) : 0;
 
+  // Stay pinned to the bottom as content grows — every frame of a smooth reveal, not per chunk —
+  // unless you've scrolled up to read.
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = parent.current;
+    const inner = list.current;
+    if (!el || !inner) return;
+    let frame = 0;
+    const follow = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (stick.current) el.scrollTop = el.scrollHeight;
+      });
+    };
+    const observer = new ResizeObserver(follow);
+    observer.observe(inner);
+    for (const child of inner.children) observer.observe(child);
+    const mutations = new MutationObserver(() => {
+      for (const child of inner.children) observer.observe(child);
+      follow();
+    });
+    mutations.observe(inner, { childList: true });
+    follow();
+    return () => (observer.disconnect(), mutations.disconnect(), cancelAnimationFrame(frame));
+  }, []);
   useEffect(() => {
     if (stick.current && blocks.length) virtualizer.scrollToIndex(blocks.length - 1, { align: "end" });
-  }, [blocks.length, growth, virtualizer]);
+  }, [blocks.length, virtualizer]);
+  void growth;
 
   const waiting = working && (!last || last.kind === "ask");
   // The last reply's own options, as pills — only once the turn has finished.
@@ -97,7 +123,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
       }}
     >
       {items.length === 0 && empty}
-      <div className="relative mx-auto w-full max-w-[820px]" style={{ height: virtualizer.getTotalSize() + 16 }}>
+      <div ref={list} className="relative mx-auto w-full max-w-[820px]" style={{ height: virtualizer.getTotalSize() + 16 }}>
         {virtualizer.getVirtualItems().map((row) => {
           const block = blocks[row.index]!;
           return (
@@ -262,6 +288,27 @@ function Find({ blocks, scroller, onJump }: { blocks: Block[]; scroller: React.R
 
 // ── what the agent says ─────────────────────────────────────────────────────────────────────
 
+/** What a row shows, as a string: equal signatures mean nothing visible changed. */
+function signature(item: Item): string {
+  switch (item.kind) {
+    case "prose":
+    case "thought":
+      return `${item.kind}${item.seq}:${item.text.length}:${item.streaming}`;
+    case "tool":
+      return `t${item.seq}:${item.ok}:${item.output?.length ?? -1}:${item.durationMs ?? -1}`;
+    case "approval":
+      return `a${item.seq}:${item.decided ? `${item.decided.allow}` : "open"}`;
+    case "subagent":
+      return `s${item.seq}:${item.done}:${item.ok}`;
+    case "files":
+      return `f${item.seq}:${item.paths.length}`;
+    case "finished":
+      return `d${item.seq}:${item.lessons.length}`;
+    default:
+      return `${item.kind}${item.seq}`;
+  }
+}
+
 export const Row = memo(function Row({ item }: { item: Item }) {
   switch (item.kind) {
     case "ask":
@@ -275,12 +322,7 @@ export const Row = memo(function Row({ item }: { item: Item }) {
         </div>
       );
     case "prose":
-      return (
-        <div className={`agent-prose py-1 ${item.streaming ? "is-streaming" : ""}`}>
-          <Markdown text={item.text} streaming={item.streaming} />
-          {item.streaming && <span className="stream-caret" aria-hidden />}
-        </div>
-      );
+      return <Prose text={item.text} streaming={item.streaming} />;
     case "approval":
       return <ApprovalCard item={item} />;
     case "note":
@@ -290,7 +332,7 @@ export const Row = memo(function Row({ item }: { item: Item }) {
     default:
       return <StepRow step={item as Step} />;
   }
-});
+}, (a, b) => signature(a.item) === signature(b.item));
 
 /** What you asked — copy it, or edit it and send it again. */
 function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
@@ -366,6 +408,73 @@ const lessonTexts = () =>
     .catch((): Record<string, string> => ((lessonCache = null), {})));
 
 /** The end of a turn: who answered, how long it took, what it cost, what it was taught — and what next. */
+/**
+ * Text arrives in bursts — a network batch, several words per model chunk. Shown as it arrives it
+ * lurches; here it flows: revealed every frame at a pace that rises with the backlog, so it's never
+ * more than a fraction of a second behind, and never dumps a paragraph at once.
+ */
+function useSmoothText(target: string, active: boolean): string {
+  // Finished text shows at once; text still being written starts from nothing and flows in.
+  const shown = useRef(active ? 0 : target.length);
+  const carry = useRef(0); // fractional characters owed between frames
+  const arrivals = useRef<Array<{ t: number; n: number }>>([]);
+  const [, paint] = useState(0);
+  const reduce = useMemo(() => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
+  if (shown.current > target.length) shown.current = target.length; // text replaced, not grown
+
+  // How fast text is arriving (chars/ms over the last ~1.5s): the pace to reveal at, so each chunk
+  // is spread across the gap before the next instead of landing all at once.
+  const now = typeof performance !== "undefined" ? performance.now() : 0;
+  const log = arrivals.current;
+  if (!log.length || log[log.length - 1]!.n !== target.length) log.push({ t: now, n: target.length });
+  while (log.length > 2 && now - log[0]!.t > 1500) log.shift();
+
+  useEffect(() => {
+    if (reduce) {
+      shown.current = target.length;
+      paint((n) => n + 1);
+      return;
+    }
+    let frame = 0;
+    let last = performance.now();
+    const tick = (t: number) => {
+      const backlog = target.length - shown.current;
+      if (backlog <= 0) return;
+      const dt = Math.min(50, t - last);
+      last = t;
+      const span = log.length > 1 ? log[log.length - 1]!.t - log[0]!.t : 0;
+      const incoming = span > 0 ? (log[log.length - 1]!.n - log[0]!.n) / span : 0.06;
+      // Stream at the incoming pace, speeding up only when behind by more than ~350ms of text;
+      // once the reply is complete, finish the last of it briskly.
+      const speed = active ? Math.max(incoming, backlog / 350, 0.03) : Math.max(backlog / 90, 0.25);
+      carry.current += speed * dt;
+      const step = Math.floor(carry.current);
+      if (step > 0) {
+        carry.current -= step;
+        shown.current = Math.min(target.length, shown.current + step);
+        paint((n) => n + 1);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [target, active, reduce]);
+  let end = shown.current;
+  if (end < target.length && /[\uD800-\uDBFF]/.test(target[end - 1] ?? "")) end -= 1; // never split a character pair
+  return target.slice(0, end);
+}
+
+const Prose = memo(function Prose({ text, streaming }: { text: string; streaming: boolean }) {
+  const shown = useSmoothText(text, streaming);
+  const flowing = streaming || shown.length < text.length;
+  return (
+    <div className={`agent-prose py-1 ${flowing ? "is-streaming" : ""}`}>
+      <Markdown text={shown} streaming={flowing} />
+      {flowing && <span className="stream-caret" aria-hidden />}
+    </div>
+  );
+});
+
 function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
   const { run, working } = useContext(ThreadContext);
   const navigate = useNavigate();
@@ -450,7 +559,9 @@ const isShell = (tool: string) => /^(bash|shell|commandexecution|exec)/i.test(to
 const isEdit = (tool: string) => /^(edit|multiedit|write|create|filechange|apply_patch|str_replace)/i.test(tool);
 
 /** One block of work: a live progress line while it runs, a one-line summary once it's done. */
-function WorkGroup({ steps, live }: { steps: Step[]; live: boolean }) {
+const WorkGroup = memo(WorkGroupView, (a, b) => a.live === b.live && a.steps.length === b.steps.length && a.steps.every((s, i) => signature(s) === signature(b.steps[i]!)));
+
+function WorkGroupView({ steps, live }: { steps: Step[]; live: boolean }) {
   const [open, setOpen] = useState<boolean | null>(null);
   const expanded = open ?? live;
   const tools = steps.filter((s): s is Extract<Step, { kind: "tool" }> => s.kind === "tool");

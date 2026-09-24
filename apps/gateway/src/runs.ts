@@ -241,7 +241,7 @@ export class Supervisor {
       if (buffered) this.rec("agent.delta", { turn, text: buffered }, { run: runId });
       buffered = "";
     };
-    const flusher = setInterval(flush, 50); // coalesce token deltas: one fact per 50ms, not per token
+    const flusher = setInterval(flush, 25); // coalesce token deltas: one fact per 25ms, not per token (the page smooths the rest)
     try {
       for await (const event of runtime.start(run, {
         signal: controller.signal,

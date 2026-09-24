@@ -50,3 +50,15 @@ describe("attachments in messages", () => {
     expect(splitAttachments("Attached files: are great")).toEqual({ body: "Attached files: are great", files: [] });
   });
 });
+
+import { closeOpen } from "../components/Markdown";
+describe("half-written markdown while streaming", () => {
+  it("closes what's still open so styling shows instead of symbols", () => {
+    expect(closeOpen("This is **very imp")).toBe("This is **very imp**");
+    expect(closeOpen("Run `pnpm te")).toBe("Run `pnpm te`");
+    expect(closeOpen("**Note: use `pn")).toBe("**Note: use `pn`**");
+    expect(closeOpen("Done. **All** good")).toBe("Done. **All** good");
+    expect(closeOpen("A marker *")).toBe("A marker ");
+    expect(closeOpen("```ts\nconst a = `x")).toBe("```ts\nconst a = `x"); // inside a fence: leave it
+  });
+});
