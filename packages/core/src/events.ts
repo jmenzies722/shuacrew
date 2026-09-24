@@ -142,6 +142,7 @@ export const bodies = {
     name: z.string(),
     role: z.string(),
     persona: z.string(),
+    delegatable: z.boolean().optional(),
     runtime: z.string().optional(),
     model: z.string().optional(),
     color: z.string().default("#ffb020"),

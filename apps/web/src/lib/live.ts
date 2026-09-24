@@ -10,7 +10,7 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import { apply, emptyState, type CrewState } from "@shuacrew/core/projections";
 import { create } from "zustand";
 import { api } from "./api";
-import { applyAppearance, loadAppearance, resolvePalette, saveAppearance, type Appearance } from "./appearance";
+import { applyAppearance, loadAppearance, normalizeAppearance, resolvePalette, saveAppearance, type Appearance } from "./appearance";
 
 const SCOPE_KEY = "shuacrew.scope";
 
@@ -33,6 +33,7 @@ interface Live {
   activity: AnyEvent[];
   theme: Theme;
   appearance: Appearance;
+  preferenceSaved: boolean;
   setAppearance(change: Partial<Appearance>): void;
   launchOpen: boolean;
   launchDraft: string;
@@ -65,6 +66,7 @@ export const useLive = create<Live>((set, get) => ({
   activity: [],
   theme: themeOf(loadAppearance()),
   appearance: loadAppearance(),
+  preferenceSaved: true,
   launchOpen: false,
   launchDraft: "",
   paletteOpen: false,
@@ -84,12 +86,12 @@ export const useLive = create<Live>((set, get) => ({
     get().setAppearance({ palette: theme === "system" ? "system" : theme === "dark" ? current.dark : current.light });
   },
   setAppearance(change) {
-    const next = { ...get().appearance, ...change };
+    const next = normalizeAppearance({ ...get().appearance, ...change });
     // Picking a palette also makes it the one "follow system" uses for its mode.
     if (change.palette && change.palette !== "system") next[resolvePalette(next).mode] = change.palette;
-    saveAppearance(next);
+    const preferenceSaved = saveAppearance(next);
     applyAppearance(next, true);
-    set({ appearance: next, theme: themeOf(next) });
+    set({ appearance: next, theme: themeOf(next), preferenceSaved });
   },
   openLaunch(draft = "") {
     set({ launchOpen: true, launchDraft: draft, paletteOpen: false });

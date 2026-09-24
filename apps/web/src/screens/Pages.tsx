@@ -95,13 +95,17 @@ interface RuntimeRow {
   limitedUntil: number | null;
 }
 
-export function Settings() {
+export function RuntimeSettings() {
   const [runtimes, setRuntimes] = useState<RuntimeRow[]>([]);
   const [testing, setTesting] = useState(false);
+  const [error, setError] = useState("");
   const test = async () => {
     setTesting(true);
+    setError("");
     try {
       setRuntimes(await api<RuntimeRow[]>("/api/runtimes?fresh=1"));
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setTesting(false);
     }
@@ -110,10 +114,6 @@ export function Settings() {
     void test();
   }, []);
   return (
-    <Page title="Settings" subtitle="Runtimes, appearance and data. Nothing leaves this machine unless you turn it on.">
-      <Appearance />
-      <AlwaysOn />
-      <BackupsPanel />
       <Panel className="p-5">
         <div className="mb-3 flex items-center">
           <Eyebrow>Runtimes</Eyebrow>
@@ -121,10 +121,12 @@ export function Settings() {
             {testing ? "Testing…" : "Test connections"}
           </Button>
         </div>
+        {error && <p role="alert" className="text-bad">{error}</p>}
+        {!testing && !error && !runtimes.length && <p>No runtimes available.</p>}
         <div className="divide-y divide-line">
           {runtimes.map((r) => (
             <div key={r.id} className="flex items-center gap-3 py-2.5 text-[13px]">
-              <StatusGlyph tone={!r.status.installed ? "bad" : r.limitedUntil ? "live" : r.status.signedIn === false ? "bad" : "ok"} />
+              <StatusGlyph tone={!r.status.installed ? "bad" : r.limitedUntil ? "live" : r.status.signedIn === false ? "bad" : r.status.signedIn === null ? "wait" : "ok"} />
               <span className="w-40 font-medium">{r.label}</span>
               <span className="mono w-28 text-[12px] text-fg-2">{r.authMode}</span>
               <span className="min-w-0 flex-1 truncate text-[12px] text-fg-2">
@@ -136,17 +138,16 @@ export function Settings() {
           ))}
         </div>
       </Panel>
-    </Page>
   );
 }
 
 /** Encrypted nightly backups: when the last one ran, where they are, and how to restore. */
-function BackupsPanel() {
+export function BackupsPanel() {
   const [info, setInfo] = useState<{ destination: string; last: { file: string; bytes: number; at: number; error?: string } | null; files: Array<{ file: string; bytes: number; at: number }> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showRestore, setShowRestore] = useState(false);
-  const load = () => void api<typeof info>("/api/backups").then(setInfo).catch(() => undefined);
+  const load = () => void api<typeof info>("/api/backups").then(setInfo).catch((e: Error) => setError(e.message));
   useEffect(load, []);
   const now = async () => {
     setBusy(true);
@@ -160,7 +161,7 @@ function BackupsPanel() {
       setBusy(false);
     }
   };
-  if (!info) return null;
+  if (!info) return <Panel className="p-5"><p role="status">{error || "Loading backups…"}</p></Panel>;
   const last = info.last;
   const mb = (n: number) => `${(n / 1024 / 1024).toFixed(n > 10 * 1024 * 1024 ? 0 : 1)} MB`;
   const ago = (at: number) => {
@@ -202,7 +203,7 @@ security find-generic-password -s ShuaCrew-backup -w \\
 }
 
 /** Whether the gateway runs as the login service — so work continues with the window closed. */
-function AlwaysOn() {
+export function AlwaysOn() {
   const [health, setHealth] = useState<{ service?: boolean; pid?: number; uptimeS?: number } | null>(null);
   useEffect(() => {
     const load = () => void api<{ service?: boolean; pid?: number; uptimeS?: number }>("/api/health").then(setHealth).catch(() => setHealth(null));
@@ -236,7 +237,7 @@ function AlwaysOn() {
 }
 
 /** Pick a look: each card is a small, true-to-palette picture of the app. */
-function Appearance() {
+export function Appearance() {
   const appearance = useLive((s) => s.appearance);
   const set = useLive((s) => s.setAppearance);
   const active = resolvePalette(appearance);

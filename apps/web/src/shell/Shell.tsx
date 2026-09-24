@@ -2,7 +2,7 @@ import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
-import { motion } from "motion/react";
+import { MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Milestones, useSpotlight } from "../lib/motion";
 import { repoName } from "../lib/crew";
@@ -38,12 +38,14 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 }
 
 export function Shell() {
+  const motionPreference = useLive((s) => s.appearance.motion);
   useGlobalKeys();
   useSpotlight();
   // One section, one entrance: switching sessions inside the chat doesn't re-animate the page.
   const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
-    <div className="grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>
+    <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
+    <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>
       <TopBar />
       <IconRail />
       <main className="min-h-0 min-w-0 overflow-hidden" id="main">
@@ -57,6 +59,7 @@ export function Shell() {
       <ApprovalToasts />
       <KeymapOverlay />
     </div>
+    </MotionConfig>
   );
 }
 
@@ -191,6 +194,7 @@ function RepoChip() {
  * page — every icon explains itself, and the page never reflows.
  */
 function IconRail() {
+  const labeled = useLive((s) => s.appearance.navigation === "labels");
   const path = useRouterState({ select: (s) => s.location.pathname });
   const awaiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
@@ -203,7 +207,7 @@ function IconRail() {
   const groups = ["Work", "Plan", "Brain", "System"] as const;
   const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
   return (
-    <nav aria-label="Primary" className={`rail ${open ? "is-open" : ""}`} onMouseEnter={() => hover(true)} onMouseLeave={() => hover(false)} onFocus={() => hover(true)} onBlur={() => hover(false)}>
+    <nav aria-label="Primary" className={`rail ${open || labeled ? "is-open" : ""} ${labeled ? "is-pinned" : ""}`} onMouseEnter={() => hover(true)} onMouseLeave={() => hover(false)} onFocus={() => hover(true)} onBlur={() => hover(false)}>
       {groups.map((group) => (
         <div key={group} className={`rail-group ${group === "System" ? "mt-auto" : ""}`}>
           <div className="rail-label">{group}</div>

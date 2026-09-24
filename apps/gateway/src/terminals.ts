@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { IPty } from "node-pty";
+import { BlockTracker, type Block } from "./shell-integration.js";
 
 interface Socket {
   send(data: string): void;
@@ -25,13 +26,18 @@ export interface TerminalInfo {
   run?: string;
   createdAt: number;
   exited?: number;
+  /** Where the shell is now, and what's on its branch (from shell integration). */
+  where?: { cwd: string; branch?: string };
 }
 
 const SCROLLBACK = 512 * 1024; // what a reattaching page gets replayed
 
 export class Terminals {
-  private open = new Map<string, TerminalInfo & { pty: IPty; buffer: string; clients: Set<Socket> }>();
+  private open = new Map<string, TerminalInfo & { pty: IPty; buffer: string; clients: Set<Socket>; tracker: BlockTracker }>();
   private spawn?: typeof import("node-pty").spawn;
+
+  /** `zdotdir`: ShuaCrew's zsh integration folder (see shell-integration.ts), when available. */
+  constructor(private zdotdir?: string) {}
 
   /** node-pty's prebuilt helper loses its execute bit through pnpm; put it back once. */
   private load() {
@@ -50,10 +56,21 @@ export class Terminals {
     const shell = process.env.SHELL && existsSync(process.env.SHELL) ? process.env.SHELL : "/bin/zsh";
     const env = { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "ShuaCrew", SHUACREW_TERMINAL: "1" } as Record<string, string>;
     delete env.SHUACREW_TOKEN;
+    if (this.zdotdir && path.basename(shell) === "zsh") {
+      // Blocks, badges and history: zsh loads your files through ShuaCrew's hooks (never edits them).
+      env.SHUACREW_USER_ZDOTDIR = process.env.ZDOTDIR || os.homedir();
+      env.ZDOTDIR = this.zdotdir;
+    }
     const pty = this.load()(shell, ["-l"], { name: "xterm-256color", cols: options.cols ?? 100, rows: options.rows ?? 28, cwd, env });
     const id = `t_${randomUUID().slice(0, 8)}`;
-    const entry = { id, title: path.basename(cwd) || "~", cwd, run: options.run, createdAt: Date.now(), pty, buffer: "", clients: new Set<Socket>() };
+    const clients = new Set<Socket>();
+    const tracker = new BlockTracker(cwd, (block, where) => {
+      const message = JSON.stringify({ type: "block", block, where });
+      for (const client of clients) client.send(message);
+    });
+    const entry = { id, title: path.basename(cwd) || "~", cwd, run: options.run, createdAt: Date.now(), pty, buffer: "", clients, tracker };
     pty.onData((data) => {
+      tracker.feed(data);
       entry.buffer = (entry.buffer + data).slice(-SCROLLBACK);
       for (const client of entry.clients) client.send(JSON.stringify({ type: "data", data }));
     });
@@ -79,7 +96,7 @@ export class Terminals {
       return;
     }
     entry.clients.add(socket);
-    socket.send(JSON.stringify({ type: "ready", ...this.info(entry), replay: entry.buffer }));
+    socket.send(JSON.stringify({ type: "ready", ...this.info(entry), replay: entry.buffer, blocks: entry.tracker.list() }));
     socket.on("message", (raw) => {
       let message: { type?: string; data?: string; cols?: number; rows?: number };
       try {
@@ -96,6 +113,17 @@ export class Terminals {
     socket.on("close", () => entry.clients.delete(socket));
   }
 
+  /** A command's full output (for "explain" / "fix"), from shell integration. */
+  output(id: string, block: number): { block: Block; output: string } | undefined {
+    const entry = this.open.get(id);
+    const b = entry?.tracker.blocks.find((x) => x.id === block);
+    return b ? { block: entry!.tracker.summary(b), output: entry!.tracker.output(b.id) ?? "" } : undefined;
+  }
+
+  blocks(id: string): Block[] {
+    return this.open.get(id)?.tracker.list() ?? [];
+  }
+
   close(id: string): boolean {
     const entry = this.open.get(id);
     if (!entry) return false;
@@ -110,6 +138,7 @@ export class Terminals {
   }
 
   private info(t: TerminalInfo): TerminalInfo {
-    return { id: t.id, title: t.title, cwd: t.cwd, run: t.run, createdAt: t.createdAt, exited: t.exited };
+    const where = (t as { tracker?: BlockTracker }).tracker?.where();
+    return { id: t.id, title: t.title, cwd: t.cwd, run: t.run, createdAt: t.createdAt, exited: t.exited, where };
   }
 }

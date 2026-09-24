@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useLive } from "./live";
 
-export const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const reduced = () => typeof document !== "undefined" && document.documentElement.dataset.motion === "reduced";
 
 /** The ShuaCrew mark, alive: the three agents drift around their orbit and the core breathes. */
 export function LogoMark({ size = 56, spin = true }: { size?: number; spin?: boolean }) {
@@ -50,6 +50,7 @@ export function LogoMark({ size = 56, spin = true }: { size?: number; spin?: boo
 
 /** A number that counts to its new value instead of jumping. */
 export function CountUp({ value, format = (n) => String(Math.round(n)), duration = 800 }: { value: number; format?: (n: number) => string; duration?: number }) {
+  const preference = useLive((s) => s.appearance.motion);
   const [shown, setShown] = useState(value);
   const from = useRef(value);
   const first = useRef(true);
@@ -73,17 +74,19 @@ export function CountUp({ value, format = (n) => String(Math.round(n)), duration
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [value]);
+  }, [value, preference]);
   return <>{format(shown)}</>;
 }
 
 /** Cards light up under the cursor: a soft spotlight that follows it (see `.spot` in styles). */
 const SPOT = ".vn-card,.pb-card,.member-card,.art-card,.tl-card,.lib-row,.pb-row,.hero-idea,.vn-panel,.pb-phase-card,.brief,.getting-started,.vn-site,.lib-hit,.theme-card,.crew-cta-role";
 export function useSpotlight() {
+  const preference = useLive((s) => s.appearance.motion);
   useEffect(() => {
     if (reduced()) return;
     let last: HTMLElement | null = null;
     const move = (e: PointerEvent) => {
+      if (reduced()) { last?.classList.remove("is-lit"); return; }
       const el = (e.target as HTMLElement | null)?.closest?.(SPOT) as HTMLElement | null;
       if (last && last !== el) last.classList.remove("is-lit");
       last = el;
@@ -96,8 +99,8 @@ export function useSpotlight() {
     const leave = () => last?.classList.remove("is-lit");
     window.addEventListener("pointermove", move, { passive: true });
     document.addEventListener("pointerleave", leave);
-    return () => (window.removeEventListener("pointermove", move), document.removeEventListener("pointerleave", leave));
-  }, []);
+    return () => { last?.classList.remove("is-lit"); window.removeEventListener("pointermove", move); document.removeEventListener("pointerleave", leave); };
+  }, [preference]);
 }
 
 interface Milestone {

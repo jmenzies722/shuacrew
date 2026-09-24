@@ -28,6 +28,7 @@ import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
 import type { Plays } from "./plays.js";
 import { Briefing } from "./briefing.js";
+import { suggest } from "./terminal-ai.js";
 import type { Backups } from "./backup.js";
 import { Sites, type Runner } from "./sites.js";
 import type { Skills } from "./skills.js";
@@ -172,6 +173,18 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   if (options.terminals) {
     const terminals = options.terminals;
     app.get<{ Querystring: { run?: string } }>("/api/terminals", async (request) => terminals.list(request.query.run));
+    // Plain English -> one command (Claude Haiku via your CLI; it can't run anything itself).
+    app.post<{ Body: { prompt?: string; cwd?: string; branch?: string; last?: { command: string; exit?: number } } }>("/api/terminals/suggest", async (request, reply) => {
+      try {
+        return { command: await suggest({ prompt: request.body?.prompt ?? "", cwd: request.body?.cwd, branch: request.body?.branch, last: request.body?.last }) };
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    app.get<{ Params: { id: string; block: string } }>("/api/terminals/:id/blocks/:block", async (request, reply) => {
+      const found = terminals.output(request.params.id, Number(request.params.block));
+      return found ?? reply.code(404).send({ error: "no such command" });
+    });
     // A session's terminal opens where that session works: its worktree, else its repo.
     app.post<{ Body: { run?: string; cwd?: string; cols?: number; rows?: number } }>("/api/terminals", async (request) => {
       const run = request.body?.run ? state.runs[request.body.run] : undefined;
@@ -435,6 +448,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
           name: b.name ?? "",
           role: b.role ?? "",
           persona: b.persona ?? "",
+          delegatable: b.delegatable ?? crew.get(b.id ?? "")?.delegatable ?? false,
           runtime: b.runtime || undefined,
           model: b.model || undefined,
           color: b.color ?? "#ffb020",

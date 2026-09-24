@@ -18,6 +18,7 @@ import { Mcp } from "./mcp.js";
 import { Library } from "./library.js";
 import { Plays } from "./plays.js";
 import { Skills } from "./skills.js";
+import { zshIntegration } from "./shell-integration.js";
 import { Backups } from "./backup.js";
 import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
@@ -106,7 +107,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     if (runtime === "mock") return mcp.forClaude();
     return { ...mcp.forClaude(), [TOOL_SERVER]: { type: "http" as const, url: self, headers: { Authorization: auth } } };
   };
-  const terminals = new Terminals();
+  const terminals = new Terminals(zshIntegration(home));
   const supervisor = new Supervisor(store, runtimes, {
     workspace,
     failover: true,

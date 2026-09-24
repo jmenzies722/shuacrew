@@ -70,6 +70,8 @@ export interface CrewMember {
   name: string;
   role: string;
   persona: string;
+  /** Make this member available as a native Claude subagent. Opt-in. */
+  delegatable?: boolean;
   runtime?: string;
   model?: string;
   color: string;

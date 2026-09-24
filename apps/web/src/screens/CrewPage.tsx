@@ -236,6 +236,7 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
     runtime: member.runtime ?? "claude",
     model: member.model ?? "",
     persona: member.persona ?? "",
+    delegatable: member.delegatable ?? false,
     triggers: (member.triggers ?? []).join(", "),
   });
   const [error, setError] = useState("");
@@ -299,6 +300,10 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
           <span>Hand it work about… (comma-separated phrases)</span>
           <input value={draft.triggers} onChange={set("triggers")} placeholder="growth, retention, funnel, cohorts" />
         </label>
+        {draft.runtime === "claude" && <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-[12px]">
+          <input type="checkbox" className="mt-1 accent-[var(--amber)]" checked={draft.delegatable} onChange={(e) => setDraft((d) => ({ ...d, delegatable: e.target.checked }))} />
+          <span><strong className="block font-medium">Available for delegation</strong><span className="mt-1 block text-fg-3">Claude sessions can call this member as a specialist using its persona and model. It shares the parent’s tools and approvals; its private thread and lessons stay separate. Applies next turn.</span></span>
+        </label>}
         <div className="mt-3 flex gap-2">
           {COLORS.map((c) => (
             <button key={c} onClick={() => setDraft((d) => ({ ...d, color: c }))} className={`h-6 w-6 rounded-full ${draft.color === c ? "ring-2 ring-offset-2 ring-offset-[var(--panel)]" : ""}`} style={{ background: c, ["--tw-ring-color" as string]: c }} aria-label={`Colour ${c}`} />

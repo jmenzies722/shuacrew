@@ -40,23 +40,39 @@ export interface Appearance {
   dark: PaletteId;
   light: PaletteId;
   accent: AccentId;
+  density: "comfortable" | "compact";
+  reading: "small" | "default" | "large";
+  motion: "system" | "reduced" | "full";
+  navigation: "icons" | "labels";
+  startPage: "/" | "/floor" | "/activity" | "/ventures" | "/board";
 }
 
 const KEY = "shuacrew.appearance";
-export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "frost", light: "daylight", accent: "amber" };
+export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "frost", light: "daylight", accent: "amber", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/" };
+
+export function normalizeAppearance(value: unknown): Appearance {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const choices: Record<keyof Appearance, readonly string[]> = {
+    palette: ["system", ...PALETTES.map((p) => p.id)],
+    dark: PALETTES.filter((p) => p.mode === "dark").map((p) => p.id),
+    light: PALETTES.filter((p) => p.mode === "light").map((p) => p.id),
+    accent: ACCENTS.map((a) => a.id), density: ["comfortable", "compact"],
+    reading: ["small", "default", "large"], motion: ["system", "reduced", "full"],
+    navigation: ["icons", "labels"], startPage: ["/", "/floor", "/activity", "/ventures", "/board"],
+  };
+  return Object.fromEntries(Object.entries(choices).map(([key, allowed]) => [key,
+    typeof raw[key] === "string" && allowed.includes(raw[key]) ? raw[key] : DEFAULT_APPEARANCE[key as keyof Appearance],
+  ])) as unknown as Appearance;
+}
 
 export function loadAppearance(): Appearance {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Appearance> | null;
     // The old setting was just "dark" / "light" / "system".
     const legacy = localStorage.getItem("shuacrew.theme");
-    const base = { ...DEFAULT_APPEARANCE, ...(saved ?? {}) };
+    const base = normalizeAppearance(saved);
     if (!saved && legacy === "dark") base.palette = "night";
     if (!saved && legacy === "light") base.palette = "daylight";
-    // Frost Black became the dark default; if you never picked a dark palette, you get it once.
-    if (saved && !localStorage.getItem("shuacrew.frost") && base.dark === "night" && base.palette === "system") base.dark = "frost";
-    if (saved && base.palette === "night" && !localStorage.getItem("shuacrew.frost")) base.palette = "frost";
-    localStorage.setItem("shuacrew.frost", "1");
     return base;
   } catch {
     return DEFAULT_APPEARANCE;
@@ -65,9 +81,10 @@ export function loadAppearance(): Appearance {
 
 export function saveAppearance(a: Appearance) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(a));
+    localStorage.setItem(KEY, JSON.stringify({ ...a, version: 1 }));
+    return true;
   } catch {
-    /* private window: lasts for this page */
+    return false;
   }
 }
 
@@ -79,6 +96,7 @@ export function resolvePalette(a: Appearance): Palette {
 }
 
 let unfollow: (() => void) | null = null;
+let unwatchMotion: (() => void) | null = null;
 
 export function applyAppearance(a: Appearance, animate = false) {
   const root = document.documentElement;
@@ -90,6 +108,15 @@ export function applyAppearance(a: Appearance, animate = false) {
   root.setAttribute("data-theme", palette.mode);
   root.setAttribute("data-palette", palette.id);
   root.setAttribute("data-accent", a.accent);
+  root.setAttribute("data-density", a.density);
+  root.setAttribute("data-navigation", a.navigation);
+  root.style.setProperty("--reading-size", a.reading === "small" ? "13px" : a.reading === "large" ? "16px" : "14px");
+  const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const updateMotion = () => root.setAttribute("data-motion", a.motion === "reduced" || (a.motion === "system" && motionMedia.matches) ? "reduced" : "full");
+  unwatchMotion?.();
+  updateMotion();
+  motionMedia.addEventListener("change", updateMotion);
+  unwatchMotion = () => motionMedia.removeEventListener("change", updateMotion);
   // The Mac app's own chrome (title bar, sidebar material) follows the palette, not just macOS.
   (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew?.postMessage({ type: "appearance", mode: palette.mode, palette: palette.id });
   unfollow?.();

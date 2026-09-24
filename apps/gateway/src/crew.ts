@@ -5,6 +5,7 @@
  */
 import { apply, emptyState, type AnyEvent, type CrewMember, type CrewState } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
+import type { RunSpec } from "@shuacrew/runtimes";
 
 export type MemberInput = Omit<CrewMember, "thread" | "sessions">;
 
@@ -125,6 +126,21 @@ export class Crew {
     const m = this.get(id);
     if (!m) return undefined;
     return `You are ${m.name}, the crew's ${m.role}. ${m.persona}`;
+  }
+
+  /** Native Claude specialists share the parent's session tools and approval policy.
+   * They are not gateway child runs or the member's private standing thread.
+   */
+  agentsFor(runtime: string, exclude?: string): RunSpec["agents"] {
+    if (runtime !== "claude") return undefined;
+    const members = this.list().filter((m) => m.delegatable === true && m.runtime === "claude" && m.id !== exclude);
+    if (!members.length) return undefined;
+    return Object.fromEntries(members.map((m) => [`crew-${m.id}`, {
+      description: `${m.name} — ${m.role}.${m.triggers.length ? ` Delegate work about: ${m.triggers.join(", ")}.` : ""}`,
+      prompt: `${this.persona(m.id)}\n\nComplete the delegated task and report the result, checks performed, and any remaining blockers. You work inside the parent session; your private standing thread is separate.`,
+      model: m.model || undefined,
+      disallowedTools: ["Agent", "Task"],
+    }]));
   }
 
   /**

@@ -1,6 +1,7 @@
 import "@fontsource-variable/geist";
 import "@fontsource-variable/jetbrains-mono";
 import "./styles.css";
+import "./workspace.css";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -9,6 +10,11 @@ import { folderPicked } from "./lib/native";
 import { router } from "./routes";
 
 applyTheme(useLive.getState().theme);
+// Resolve the preferred landing page once. Explicit links keep their destination.
+if (location.pathname === "/" && !location.search && !location.hash) {
+  const start = useLive.getState().appearance.startPage;
+  if (start !== "/") window.history.replaceState(window.history.state, "", start);
+}
 
 // The Mac app drives the page from its menus (⌘N, ⌘K, ⌘1…) through this bridge.
 declare global {

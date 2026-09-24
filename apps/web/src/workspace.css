@@ -1,0 +1,22 @@
+/* Shared preferences preserve each screen's existing behavior. */
+:root { --preference-pad:20px; }
+[data-density="compact"] { --preference-pad:13px; }
+[data-navigation="labels"] .workspace-frame { grid-template-columns:220px minmax(0,1fr); }
+.rail.is-pinned { width:220px; }
+[data-density="compact"] .rail-item { height:34px; }
+[data-density="compact"] .rail-icon { height:32px; }
+[data-density="compact"] :is(.member-card,.pb-card,.vn-card) { padding:14px; }
+[data-density="compact"] .settings-group { margin-bottom:18px; }
+[data-density="compact"] .settings-sidebar nav button { padding-block:9px; }
+[data-motion="reduced"] *,[data-motion="reduced"] *::before,[data-motion="reduced"] *::after {
+  animation-duration:0.01ms !important;
+  animation-iteration-count:1 !important;
+  transition-duration:0.01ms !important;
+  scroll-behavior:auto !important;
+}
+[data-motion="reduced"] :is(.spot::before,.milestone-burst) { display:none; }
+@media(max-width:850px) {
+  [data-navigation="labels"] .workspace-frame { grid-template-columns:56px minmax(0,1fr); }
+  .rail.is-pinned:not(:hover):not(:focus-within) { width:56px; }
+  .rail.is-pinned:not(:hover):not(:focus-within) :is(.rail-text,.rail-count,.rail-label) { opacity:0; pointer-events:none; }
+}

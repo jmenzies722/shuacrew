@@ -19,7 +19,7 @@ export interface RunSpec {
   /** Lessons and context for a conversation that is starting. */
   system?: string;
   /** Subagents the runtime may delegate to. */
-  agents?: Record<string, { description: string; prompt: string; model?: string }>;
+  agents?: Record<string, { description: string; prompt: string; model?: string; disallowedTools?: string[] }>;
   /** MCP servers installed in ShuaCrew. Bearer headers stay in the gateway. Codex/Claude use a map; ACP uses a list. */
   mcpServers?: Record<string, unknown> | unknown[];
   /** Claude Code plugins to load (ShuaCrew's skills live in one). Other runtimes ignore this. */

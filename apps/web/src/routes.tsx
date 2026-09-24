@@ -15,7 +15,7 @@ const Review = lazyRouteComponent(() => import("./screens/Review"), "Review");
 const RunDetail = lazyRouteComponent(() => import("./screens/RunDetail"), "RunDetail");
 const Integrations = lazyRouteComponent(() => import("./screens/Pages"), "Integrations");
 const Policy = lazyRouteComponent(() => import("./screens/Pages"), "Policy");
-const Settings = lazyRouteComponent(() => import("./screens/Pages"), "Settings");
+const Settings = lazyRouteComponent(() => import("./screens/Settings"), "Settings");
 const Specs = lazyRouteComponent(() => import("./screens/Pages"), "Specs");
 const PlayPage = lazyRouteComponent(() => import("./screens/Playbooks"), "PlayPage");
 const Playbooks = lazyRouteComponent(() => import("./screens/Playbooks"), "Playbooks");

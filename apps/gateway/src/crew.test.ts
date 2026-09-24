@@ -22,7 +22,7 @@ async function until(check: () => boolean, ms = 10000) {
   }
 }
 
-async function world() {
+async function world(runtimeId = "mock") {
   process.env.SHUACREW_HOME = mkdtempSync(path.join(os.tmpdir(), "shua-home-"));
   const store = new EventStore(":memory:");
   const seen: RunSpec[] = [];
@@ -30,7 +30,8 @@ async function world() {
   const spy: Runtime = Object.assign(Object.create(mock), { start: (run: RunSpec, ctx: Parameters<Runtime["start"]>[1]) => (seen.push(run), mock.start(run, ctx)) });
   const memory = new Memory(store);
   const crew = new Crew(store);
-  const supervisor = new Supervisor(store, new Map([["mock", spy]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [], memory, crew });
+  const supervisor = new Supervisor(store, new Map([[runtimeId, spy]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [], memory, crew });
+  spy.id = runtimeId;
   const { app } = await createServer({ store, supervisor, runtimes: new Map([["mock", spy]]), crew, memory });
   cleanups.push(async () => (await app.close(), crew.stop(), memory.stop(), supervisor.shutdown(), store.close()));
   return { store, crew, memory, supervisor, app, seen };
@@ -40,6 +41,36 @@ const post = (app: Awaited<ReturnType<typeof world>>["app"], url: string, body: 
   app.inject({ method: "POST", url, headers: { "x-shuacrew": "1", "content-type": "application/json" }, payload: JSON.stringify(body) });
 
 describe("the crew", () => {
+  it("offers only opted-in Claude specialists and excludes the caller", async () => {
+    const { crew, store, app } = await world();
+    crew.starter();
+    expect(crew.agentsFor("claude")).toBeUndefined();
+    const designer = crew.get("designer")!;
+    const response = await post(app, "/api/crew", { ...designer, delegatable: true });
+    expect(response.statusCode).toBe(200);
+    expect(fold(store.read(0)).members.designer?.delegatable).toBe(true);
+    expect(crew.agentsFor("claude")?.["crew-designer"]).toMatchObject({ model: designer.model, disallowedTools: ["Agent", "Task"] });
+    expect(crew.agentsFor("claude")?.["crew-designer"]?.prompt).toContain(designer.persona);
+    expect(crew.agentsFor("claude", "designer")).toBeUndefined();
+    expect(crew.agentsFor("codex")).toBeUndefined();
+    crew.set({ ...designer, delegatable: true, runtime: "codex" });
+    expect(crew.agentsFor("claude")).toBeUndefined();
+  });
+
+  it("passes enabled crew definitions to the runtime and updates them on the next run", async () => {
+    const { crew, supervisor, store, seen } = await world("claude");
+    crew.starter();
+    const designer = crew.get("designer")!;
+    crew.set({ ...designer, delegatable: true });
+    const first = supervisor.launch({ ask: "Summarize the design", runtime: "claude" });
+    await until(() => ["done", "reviewing"].includes(status(store, first)));
+    expect(seen.find((r) => r.id === first)?.agents?.["crew-designer"]?.description).toContain("Dani");
+    crew.set({ ...designer, delegatable: false });
+    const second = supervisor.launch({ ask: "Summarize the next design", runtime: "claude" });
+    await until(() => ["done", "reviewing"].includes(status(store, second)));
+    expect(seen.find((r) => r.id === second)?.agents).toBeUndefined();
+  });
+
   it("adds the starter team once, and routes work to the member it's for", async () => {
     const { crew } = await world();
     expect(crew.starter().map((m) => m.role)).toEqual(["Researcher", "Engineer", "Designer", "Marketer", "Operator"]);
