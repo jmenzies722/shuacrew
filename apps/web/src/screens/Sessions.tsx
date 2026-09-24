@@ -16,10 +16,11 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  SquareTerminal,
   Telescope,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation } from "../lib/conversation";
@@ -32,6 +33,53 @@ interface RuntimeInfo {
   authMode: string;
   models: Array<{ id: string; label: string; tier: string }>;
   limitedUntil: number | null;
+}
+
+const TerminalDrawer = lazy(() => import("../components/TerminalDrawer"));
+
+/** The terminal drawer under a conversation: ⌃` or the header button; height is remembered. */
+function useTerminal() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "`") {
+        e.preventDefault();
+        setOpen((v) => !v);
+      }
+    };
+    const onToggle = () => setOpen((v) => !v);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("shuacrew:terminal", onToggle);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("shuacrew:terminal", onToggle);
+    };
+  }, []);
+  return [open, setOpen] as const;
+}
+
+function Drawer({ run, onClose }: { run?: string; onClose: () => void }) {
+  const [height, setHeight] = useState(() => Number(localStorage.getItem("shuacrew.termHeight")) || 300);
+  const drag = (e: React.PointerEvent) => {
+    const start = e.clientY;
+    const from = height;
+    const move = (m: PointerEvent) => setHeight(Math.max(140, Math.min(window.innerHeight * 0.75, from + start - m.clientY)));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setHeight((h) => (localStorage.setItem("shuacrew.termHeight", String(Math.round(h))), h));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return (
+    <div className="relative shrink-0 border-t border-line" style={{ height }}>
+      <div onPointerDown={drag} className="absolute -top-1 left-0 right-0 z-10 h-2 cursor-row-resize" aria-hidden />
+      <Suspense fallback={<div className="grid h-full place-items-center bg-[#0a0c0f] text-[12px] text-[#7b8494]">Starting terminal…</div>}>
+        <TerminalDrawer scope={{ run }} onClose={onClose} />
+      </Suspense>
+    </div>
+  );
 }
 
 const FRIENDLY: Record<string, string> = { claude: "Claude Code", codex: "Codex", mock: "Demo (no usage)" };
@@ -183,6 +231,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
     void loadRun(id);
   }, [id, loadRun]);
   const items = useMemo(() => conversation(events ?? []), [events]);
+  const [terminal, setTerminal] = useTerminal();
   if (!run) return <section className="flex items-center justify-center rounded-[14px] border border-line bg-panel text-fg-3">Loading…</section>;
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
 
@@ -201,6 +250,9 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
               <CircleStop size={15} />
             </IconButton>
           )}
+          <IconButton title="Terminal (⌃`)" onClick={() => setTerminal((v) => !v)} active={terminal}>
+            <SquareTerminal size={15} />
+          </IconButton>
           <IconButton title={changes ? "Hide changes" : "Show changes"} onClick={onToggleChanges} active={changes}>
             <FileDiff size={15} />
           </IconButton>
@@ -209,6 +261,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       </header>
       <Thread items={items} working={working} />
       <Composer run={run} />
+      {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
   );
 }
@@ -272,6 +325,7 @@ function IconButton({ title, onClick, active, children }: { title: string; onCli
 }
 
 function NewSession() {
+  const [terminal, setTerminal] = useTerminal();
   const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
   const ideas = [
     { icon: CheckCircle2, text: "Review my uncommitted changes across ~/Developer and tell me what's risky" },
@@ -298,6 +352,7 @@ function NewSession() {
         </div>
       </div>
       <Composer seed={seed} />
+      {terminal && <Drawer onClose={() => setTerminal(false)} />}
     </section>
   );
 }
@@ -341,6 +396,16 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
       field.current?.focus();
     }
   }, [seed?.n]);
+  // "Send to chat" from the terminal drops the selection into the message.
+  useEffect(() => {
+    const insert = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      setText((t) => (t ? `${t.trimEnd()}\n\n${text}` : text));
+      field.current?.focus();
+    };
+    window.addEventListener("shuacrew:insert", insert);
+    return () => window.removeEventListener("shuacrew:insert", insert);
+  }, []);
   // ⌘N and "New Run…" land here.
   useEffect(() => {
     const focus = () => field.current?.focus();

@@ -16,6 +16,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
+import type { Terminals } from "./terminals.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import type { EventStore } from "./store.js";
@@ -31,6 +32,7 @@ export interface ServerOptions {
   version?: string;
   autonomy?: { scheduler: Scheduler; webhooks: Webhooks; heartbeats: Heartbeats; tasks: TaskRunner };
   memory?: Memory;
+  terminals?: Terminals;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -65,6 +67,16 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     if (options.token && !authorised(request, options.token)) {
       return reply.code(401).send({ error: "token required" });
     }
+    // Without a token the gateway trusts where it's reached from, so only its own names may reach
+    // it: a site that points its domain at 127.0.0.1 (DNS rebinding) is turned away here.
+    if (!options.token && !loopbackHost(request.headers.host)) {
+      return reply.code(421).send({ error: "unknown host" });
+    }
+    // Any web page may open a WebSocket to 127.0.0.1; only the gateway's own pages get one.
+    if (request.headers.upgrade?.toLowerCase() === "websocket") {
+      const origin = request.headers.origin;
+      if (origin && new URL(origin).host !== request.headers.host) return reply.code(403).send({ error: "cross-origin socket" });
+    }
     // Webhooks come from other systems and are authenticated by their HMAC signature instead.
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/")) {
       const origin = request.headers.origin;
@@ -85,6 +97,21 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
+
+  if (options.terminals) {
+    const terminals = options.terminals;
+    app.get<{ Querystring: { run?: string } }>("/api/terminals", async (request) => terminals.list(request.query.run));
+    // A session's terminal opens where that session works: its worktree, else its repo.
+    app.post<{ Body: { run?: string; cwd?: string; cols?: number; rows?: number } }>("/api/terminals", async (request) => {
+      const run = request.body?.run ? state.runs[request.body.run] : undefined;
+      const cwd = request.body?.cwd ?? run?.worktree?.path ?? run?.repo;
+      return terminals.create({ cwd, run: run?.id, cols: request.body?.cols, rows: request.body?.rows });
+    });
+    app.delete<{ Params: { id: string } }>("/api/terminals/:id", async (request, reply) =>
+      terminals.close(request.params.id) ? { ok: true } : reply.code(404).send({ error: "no such terminal" }),
+    );
+    app.get<{ Params: { id: string } }>("/ws/terminal/:id", { websocket: true }, (socket, request) => terminals.attach(request.params.id, socket));
+  }
 
   // Which web build is on disk now. Open pages compare it and reload themselves when it changes,
   // so an update never needs a manual refresh. Read per request: a rebuild needs no restart.
@@ -402,6 +429,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   }
 
   return { app, hub, merges, state: () => state };
+}
+
+function loopbackHost(host: string | undefined): boolean {
+  if (!host) return true; // HTTP/1.0 and tests send none; nothing to rebind
+  const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
+  return name === "127.0.0.1" || name === "localhost" || name === "[::1]";
 }
 
 function authorised(request: FastifyRequest, token: string): boolean {

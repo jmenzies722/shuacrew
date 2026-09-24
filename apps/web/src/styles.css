@@ -61,28 +61,125 @@ body {
 }
 
 /* Rendered agent prose. */
-.prose-agent p { margin: 0 0 0.6em; line-height: 1.6; }
-.prose-agent p:last-child { margin-bottom: 0; }
+/* ── Agent prose: a readable document, not a log ─────────────────────────────────────── */
+.prose-agent { font-size: 14px; line-height: 1.68; color: var(--text); }
+.prose-agent > * + * { margin-top: 0.7em; }
+.prose-agent p { margin: 0; }
+.prose-agent h3, .prose-agent h4, .prose-agent h5 { margin: 1.15em 0 0.35em; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.prose-agent h3 { font-size: 16px; }
+.prose-agent h4 { font-size: 14.5px; }
+.prose-agent h5 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); }
+.prose-agent > :first-child { margin-top: 0; }
+.prose-agent strong { font-weight: 600; color: var(--text); }
+.prose-agent em { color: var(--text); }
+.prose-agent del { color: var(--text-3); }
+.prose-agent a { color: var(--amber); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--amber) 40%, transparent); text-underline-offset: 2px; }
+.prose-agent a:hover { text-decoration-color: var(--amber); }
 .prose-agent code {
   font-family: var(--font-mono);
-  font-size: 0.88em;
-  background: var(--sunken);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 0.05em 0.35em;
+  font-size: 0.86em;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 0.08em 0.38em;
 }
-.prose-agent pre {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  background: var(--sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-m);
-  padding: 10px 12px;
-  overflow-x: auto;
+.prose-agent ul, .prose-agent ol { margin: 0.4em 0 0; padding-left: 1.35em; }
+.prose-agent ul { list-style: none; padding-left: 1.1em; }
+.prose-agent ul > li { position: relative; }
+.prose-agent ul > li::before { content: ""; position: absolute; left: -0.95em; top: 0.72em; width: 5px; height: 5px; border-radius: 999px; background: var(--text-3); }
+.prose-agent ol > li::marker { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.prose-agent li { margin: 0.25em 0; padding-left: 0.1em; }
+.prose-agent li.task::before { display: none; }
+.prose-agent .task-box { display: inline-block; width: 13px; height: 13px; margin: 0 0.5em -2px -1.1em; border-radius: 4px; border: 1.5px solid var(--line-strong); }
+.prose-agent .task-box.done { background: var(--ok); border-color: var(--ok); box-shadow: inset 0 0 0 2px var(--panel); }
+.prose-agent blockquote { margin: 0.8em 0 0; padding: 0.5em 0.9em; border-left: 3px solid var(--amber); background: var(--amber-soft); border-radius: 0 8px 8px 0; color: var(--text); }
+.prose-agent hr { border: 0; height: 1px; background: var(--line-strong); margin: 1.2em 0; }
+.prose-agent .table-wrap { overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 10px; }
+.prose-agent table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.prose-agent th { text-align: left; font-weight: 600; background: var(--raised); color: var(--text-2); font-size: 12px; }
+.prose-agent th, .prose-agent td { padding: 7px 12px; border-bottom: 1px solid var(--line); }
+.prose-agent tr:last-child td { border-bottom: 0; }
+
+/* Streaming: the newest words land with a soft caret. */
+.stream-caret { display: inline-block; width: 7px; height: 15px; margin-left: 2px; translate: 0 2px; border-radius: 2px; background: var(--amber); animation: caret 1s steps(2) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+
+/* ── Code and terminals: dark in both themes, like a real terminal ───────────────────────── */
+:root {
+  --term-bg: #0a0c0f;
+  --term-head: #11141a;
+  --term-line: rgba(255, 255, 255, 0.07);
+  --term-fg: #d5dae1;
+  --term-dim: #7b8494;
 }
-.prose-agent strong { color: var(--text); font-weight: 600; }
-.prose-agent ul { margin: 0.2em 0 0.6em 1.1em; padding: 0; }
-.prose-agent li { margin: 0.15em 0; }
+.code-block { overflow: hidden; border-radius: 12px; border: 1px solid var(--term-line); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 10px 30px rgba(0,0,0,.18); }
+.code-head { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 11.5px; color: var(--term-dim); background: var(--term-head); border-bottom: 1px solid var(--term-line); }
+.code-block pre { margin: 0; padding: 12px 0; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; background: transparent; border: 0; }
+.code-block pre.clipped { mask-image: linear-gradient(to bottom, #000 80%, transparent); }
+.code-line { padding: 0 14px; white-space: pre; min-height: 1.6em; }
+.code-more { display: block; width: 100%; padding: 6px; font-size: 11.5px; color: var(--term-dim); border-top: 1px solid var(--term-line); }
+.code-more:hover { color: var(--term-fg); }
+.tok-keyword, .tok-operatorKeyword, .tok-modifier { color: #ff9f6b; }
+.tok-string, .tok-string2, .tok-special { color: #9ee493; }
+.tok-number, .tok-bool, .tok-atom, .tok-null { color: #ffc857; }
+.tok-comment { color: #6b7482; font-style: italic; }
+.tok-typeName, .tok-className, .tok-namespace { color: #7cc7ff; }
+.tok-definition, .tok-function { color: #ffd98a; }
+.tok-propertyName, .tok-attributeName { color: #8ae6ec; }
+.tok-variableName { color: var(--term-fg); }
+.tok-operator, .tok-punctuation { color: #9ba3ae; }
+.tok-meta, .tok-heading { color: #ff9bd2; }
+.tok-inserted { color: #7ee8a4; }
+.tok-deleted { color: #ff8f8f; }
+
+.shell-card { overflow: hidden; border-radius: 12px; border: 1px solid var(--term-line); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+.shell-card.is-failed { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.shell-head { display: flex; align-items: center; gap: 9px; padding: 8px 12px; font-size: 12.5px; background: var(--term-head); }
+.shell-card .shell-body { border-top: 1px solid var(--term-line); }
+.shell-prompt { color: var(--amber); font-family: var(--font-mono); font-weight: 700; }
+.shell-icon { color: var(--term-dim); opacity: 0; transition: opacity .12s; }
+.shell-card:hover .shell-icon { opacity: 1; }
+.shell-icon:hover { color: var(--term-fg); }
+.shell-body pre { margin: 0; padding: 10px 14px 12px; max-height: 340px; overflow: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: var(--term-fg); }
+.shell-more { display: block; width: 100%; padding: 5px 14px 0; text-align: left; font-size: 11px; color: var(--term-dim); }
+.shell-more:hover { color: var(--amber); }
+
+.file-card { overflow: hidden; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--panel); }
+.file-card.is-failed { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.file-card > button:hover { background: var(--raised); }
+.diff-body { margin: 0; max-height: 360px; overflow: auto; padding: 6px 0; border-top: 1px solid var(--term-line); background: var(--term-bg); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
+.diff-body > div { padding: 0 14px 0 8px; white-space: pre; }
+.diff-sign { display: inline-block; width: 18px; opacity: .7; user-select: none; }
+.diff-del { background: rgba(255, 92, 92, .10); color: #ffb3b3; }
+.diff-add { background: rgba(61, 220, 151, .10); color: #b4f2d2; }
+
+/* ── Work groups: what the agent did, folded to one line once it's done ─────────────────── */
+.work-group { border-radius: 14px; border: 1px solid var(--line-strong); background: color-mix(in srgb, var(--raised) 55%, transparent); transition: border-color .2s; }
+.work-group.is-live { border-color: color-mix(in srgb, var(--amber) 38%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 7%, transparent); }
+.work-group > button:hover { background: color-mix(in srgb, var(--raised) 70%, transparent); border-radius: 14px; }
+.work-steps { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 2px 14px 14px 36px; }
+.work-steps::before { content: ""; position: absolute; left: 21px; top: 0; bottom: 18px; width: 1px; background: linear-gradient(var(--line-strong), transparent); }
+.work-step { position: relative; }
+.work-step::before { content: ""; position: absolute; left: -19px; top: 13px; width: 7px; height: 7px; border-radius: 999px; background: var(--panel); border: 1.5px solid var(--line-strong); }
+.tool-line > button:hover span { color: var(--text); }
+
+.approval-card { border-radius: 14px; border: 1px solid color-mix(in srgb, var(--wait) 45%, transparent); background: color-mix(in srgb, var(--wait) 6%, var(--panel)); padding: 14px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--wait) 6%, transparent); }
+.approval-card.is-decided { border-color: var(--line-strong); background: var(--panel); box-shadow: none; }
+
+/* Words that shimmer while something is in progress. */
+.shimmer-text {
+  background: linear-gradient(90deg, var(--text-2) 0%, var(--text) 40%, var(--amber) 50%, var(--text) 60%, var(--text-2) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text { animation: none; color: var(--text); background: none; }
+  .stream-caret { animation: none; }
+}
 
 /* Inside the Mac app the window's own material shows through the top bar and icon rail (the
    panels stay solid), and the top bar sits in the title-bar row beside the traffic lights. */
@@ -123,3 +220,18 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .thinking-dots span { animation: none; opacity: 0.8; }
 }
+.prose-agent .code-block code { background: none; border: 0; padding: 0; font-size: inherit; border-radius: 0; }
+
+/* ── The terminal drawer ─────────────────────────────────────────────────────────────── */
+.terminal-drawer { display: flex; height: 100%; flex-direction: column; background: var(--term-bg); border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; overflow: hidden; }
+.terminal-bar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; background: var(--term-head); border-bottom: 1px solid var(--term-line); color: var(--term-dim); }
+.terminal-tab { display: flex; max-width: 200px; cursor: pointer; align-items: center; gap: 7px; height: 26px; padding: 0 6px 0 10px; border-radius: 7px; font-size: 12px; color: var(--term-dim); }
+.terminal-tab:hover { background: rgba(255,255,255,.04); color: var(--term-fg); }
+.terminal-tab.is-active { background: rgba(255,255,255,.07); color: var(--term-fg); box-shadow: inset 0 -2px 0 var(--amber); }
+.terminal-tab-x { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; opacity: 0; }
+.terminal-tab:hover .terminal-tab-x, .terminal-tab.is-active .terminal-tab-x { opacity: .7; }
+.terminal-tab-x:hover { opacity: 1 !important; background: rgba(255,255,255,.1); }
+.terminal-action { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--term-dim); flex-shrink: 0; }
+.terminal-action:hover { background: rgba(255,255,255,.06); color: var(--term-fg); }
+.terminal-host { position: absolute; inset: 0; padding: 10px 6px 6px 14px; }
+.terminal-host .xterm-viewport { background: transparent !important; }

@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
 import { Memory } from "./memory.js";
+import { Terminals } from "./terminals.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
@@ -60,6 +61,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const store = new EventStore(path.join(home, "shuacrew.db"));
   const runtimes = await registry();
   const memory = new Memory(store);
+  const terminals = new Terminals();
   const supervisor = new Supervisor(store, runtimes, { workspace, failover: true, memory });
   const autonomy = {
     scheduler: new Scheduler(store, supervisor, workspace),
@@ -79,6 +81,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     version: VERSION,
     autonomy,
     memory,
+    terminals,
   });
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
@@ -89,7 +92,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -100,6 +103,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.autonomy.scheduler.stop();
     gateway.autonomy.heartbeats.stop();
     gateway.memory.stop();
+    gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();
     gateway.store.close();

@@ -17,6 +17,7 @@ export type Item =
   | { kind: "denied"; seq: number; tool: string; rule: string; reason: string }
   | { kind: "checkpoint"; seq: number; turn: number; commit?: string; note: string }
   | { kind: "note"; seq: number; text: string; tone: "live" | "bad" | "idle" | "wait" }
+  | { kind: "thought"; seq: number; turn: number; text: string; streaming: boolean }
   | { kind: "finished"; seq: number; durationMs?: number; route: string };
 
 export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINITY): Item[] {
@@ -38,6 +39,13 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         endProse();
         items.push({ kind: "ask", seq: e.seq, turn: e.body.turn, text: e.body.text, by: e.body.by, at: e.at });
         break;
+      case "agent.thinking": {
+        endProse();
+        const last = items[items.length - 1];
+        if (last?.kind === "thought" && last.turn === e.body.turn) last.text += e.body.text;
+        else items.push({ kind: "thought", seq: e.seq, turn: e.body.turn, text: e.body.text, streaming: true });
+        break;
+      }
       case "agent.delta":
         if (!prose || prose.turn !== e.body.turn) {
           prose = { kind: "prose", seq: e.seq, turn: e.body.turn, text: "", streaming: true };

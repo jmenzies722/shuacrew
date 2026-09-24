@@ -81,6 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]
         for (title, key, path) in screens { view.addItem(item(title, key, #selector(go(_:)), path)) }
         view.addItem(.separator())
+        let terminal = item("Terminal", "`", #selector(toggleTerminal))
+        terminal.keyEquivalentModifierMask = [.control]
+        view.addItem(terminal)
         view.addItem(item("Reload", "r", #selector(reload)))
         view.addItem(item("Actual Size", "0", #selector(zoomReset)))
         view.addItem(item("Zoom In", "+", #selector(zoomIn)))
@@ -120,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func newRun() { window.page("launch()") }
     @objc private func palette() { window.page("palette()") }
     @objc private func go(_ sender: NSMenuItem) { if let path = sender.representedObject as? String { window.navigate(path) } }
+    @objc private func toggleTerminal() { window.page("terminal()") }
     @objc private func reload() { window.web.reload() }
     @objc private func zoomReset() { window.web.pageZoom = 1 }
     @objc private func zoomIn() { window.web.pageZoom = min(window.web.pageZoom + 0.1, 2) }
