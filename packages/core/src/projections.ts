@@ -39,6 +39,7 @@ export interface RunView {
   subagents: Array<{ id: string; name: string; task: string; done: boolean; ok?: boolean }>;
   checkpoints: Array<{ seq: number; turn: number; commit?: string }>;
   worktree?: { path: string; branch: string; base: string };
+  review?: { comments: number; decided?: boolean; approved?: boolean; queued?: number; landed?: string; failed?: string };
   usage: { inputTokens: number; outputTokens: number; costUsd: number; contextUsed?: number; contextLimit?: number };
   lastSeq: number;
 }
@@ -226,6 +227,21 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       state.today.costUsd += b.costUsd ?? 0;
       break;
     }
+    case "review.comment":
+      if (run) run.review = { ...(run.review ?? { comments: 0 }), comments: (run.review?.comments ?? 0) + 1 };
+      break;
+    case "review.decided":
+      if (run) run.review = { ...(run.review ?? { comments: 0 }), decided: true, approved: event.body.approve };
+      break;
+    case "merge.queued":
+      if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: event.body.position, failed: undefined };
+      break;
+    case "merge.landed":
+      if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, landed: event.body.commit };
+      break;
+    case "merge.failed":
+      if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, failed: event.body.reason };
+      break;
     case "runtime.limited":
       state.limited[event.body.runtime] = { until: event.body.until, message: event.body.message };
       break;

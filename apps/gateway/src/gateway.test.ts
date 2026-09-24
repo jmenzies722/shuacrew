@@ -167,6 +167,77 @@ describe("worktrees", () => {
   });
 });
 
+describe("review and the merge queue", () => {
+  function repoWithCheck(check?: string) {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "shua-merge-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "pipe" }).toString().trim();
+    git("init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README.md"), "hello\n");
+    if (check) {
+      execFileSync("mkdir", ["-p", path.join(repo, ".shuacrew")]);
+      writeFileSync(path.join(repo, ".shuacrew", "merge-check"), check);
+    }
+    git("add", ".");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init");
+    return { repo, git };
+  }
+
+  it("lands two parallel runs on one repo, one at a time, both cleanly", async () => {
+    process.env.SHUACREW_HOME = mkdtempSync(path.join(os.tmpdir(), "shua-home-"));
+    const { repo, git } = repoWithCheck("test -f README.md");
+    const { store, supervisor } = setup();
+    const { app, merges } = await createServer({ store, supervisor, runtimes: new Map([["mock", new MockRuntime({ pace: 0 })]]) });
+    cleanups.push(() => app.close());
+    const a = supervisor.launch({ ask: "add the retry clock", runtime: "mock", repo });
+    const b = supervisor.launch({ ask: "add the sync clock", runtime: "mock", repo });
+    await until(() => [a, b].every((id) => state(store).runs[id]?.status === "reviewing"), 15000);
+
+    const diff = (await app.inject({ method: "GET", url: `/api/runs/${a}/diff` })).json();
+    expect(diff.files.map((f: { path: string }) => f.path)).toEqual(["src/add-the-retry-clock.ts"]);
+    expect(diff.files[0].before).toBe("");
+    expect(diff.files[0].after).toContain("export function retry");
+
+    for (const id of [a, b]) {
+      const reviewed = await app.inject({ method: "POST", url: `/api/runs/${id}/review`, headers: { "x-shuacrew": "1" }, payload: { approve: true } });
+      expect(reviewed.statusCode).toBe(200);
+    }
+    await merges.idle();
+    expect([a, b].map((id) => state(store).runs[id]!.status)).toEqual(["merged", "merged"]);
+    expect(git("ls-files", "src")).toBe("src/add-the-retry-clock.ts\nsrc/add-the-sync-clock.ts");
+    expect(git("branch", "--list", "shua/*")).toBe(""); // worktrees and branches cleaned up
+  });
+
+  it("sends a run back to review when the merge check fails after the rebase", async () => {
+    process.env.SHUACREW_HOME = mkdtempSync(path.join(os.tmpdir(), "shua-home-"));
+    const { repo } = repoWithCheck("exit 3");
+    const { store, supervisor } = setup();
+    const { app, merges } = await createServer({ store, supervisor, runtimes: new Map([["mock", new MockRuntime({ pace: 0 })]]) });
+    cleanups.push(() => app.close());
+    const id = supervisor.launch({ ask: "add a clock", runtime: "mock", repo });
+    await until(() => state(store).runs[id]?.status === "reviewing", 10000);
+    await app.inject({ method: "POST", url: `/api/runs/${id}/review`, headers: { "x-shuacrew": "1" }, payload: { approve: true } });
+    await merges.idle();
+    const run = state(store).runs[id]!;
+    expect(run.status).toBe("reviewing");
+    expect(run.review?.failed).toMatch(/checks failed/);
+  });
+
+  it("turns review comments into one follow-up turn, and a rejection into a lesson", async () => {
+    const { store, supervisor } = setup();
+    const { app } = await createServer({ store, supervisor, runtimes: new Map([["mock", new MockRuntime({ pace: 0 })]]) });
+    cleanups.push(() => app.close());
+    const id = supervisor.launch({ ask: "fix it", runtime: "mock" });
+    await until(() => state(store).runs[id]?.status === "done");
+    await app.inject({ method: "POST", url: `/api/runs/${id}/comments`, headers: { "x-shuacrew": "1" }, payload: { comments: [{ file: "src/a.ts", line: 4, text: "use the injected clock here too" }] } });
+    await until(() => state(store).runs[id]!.turns === 2 && state(store).runs[id]!.status === "done");
+    const second = store.forRun(id).filter((e) => e.kind === "turn.started")[1];
+    expect(second?.kind === "turn.started" && second.body.text).toContain("src/a.ts:4 — use the injected clock");
+    await app.inject({ method: "POST", url: `/api/runs/${id}/review`, headers: { "x-shuacrew": "1" }, payload: { approve: false, lesson: "Always run the frontend checks before calling it done" } });
+    const lesson = store.ofKinds("lesson.learned").at(-1);
+    expect(lesson?.kind === "lesson.learned" && lesson.body).toMatchObject({ origin: "review", text: "Always run the frontend checks before calling it done" });
+  });
+});
+
 describe("the hub", () => {
   let seq = 0;
   const ev = (kind: string, body: object, run = "r1"): AnyEvent =>

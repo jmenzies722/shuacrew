@@ -7,6 +7,8 @@
  * "push"/"ship" asks for approval, "parallel"/"subagents" delegates, "fail" ends in failure,
  * "limit" hits a usage window.
  */
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { Runtime, RunContext, RunSpec, RuntimeEvent, RuntimeStatus } from "./runtime.js";
 
 export interface MockOptions {
@@ -91,11 +93,22 @@ export class MockRuntime implements Runtime {
     }
 
     yield* say("Switching both call sites to the injected clock.\n");
-    yield { type: "tool-call", id: "t4", tool: "Edit", input: { file_path: `${run.cwd}/src/upload.ts` } };
-    const edit = await ctx.approve("Edit", { file_path: `${run.cwd}/src/upload.ts` });
+    // In a repo run the mock really writes, so diffs, review and the merge queue have real work.
+    // Each run edits its own file (named from the ask), so parallel runs don't collide.
+    const inRepo = existsSync(path.join(run.cwd, ".git"));
+    const own = inRepo ? `src/${slug(run.ask)}.ts` : "src/upload.ts";
+    yield { type: "tool-call", id: "t4", tool: "Edit", input: { file_path: `${run.cwd}/${own}` } };
+    const edit = await ctx.approve("Edit", { file_path: `${run.cwd}/${own}` });
     await wait();
-    yield { type: "tool-result", id: "t4", ok: edit.allow, output: edit.allow ? "Edited src/upload.ts" : edit.reason };
-    if (edit.allow) yield { type: "file", path: "src/upload.ts" };
+    if (edit.allow && inRepo) {
+      mkdirSync(path.join(run.cwd, "src"), { recursive: true });
+      writeFileSync(
+        path.join(run.cwd, own),
+        `// ${run.ask.split("\n")[0]}\nexport function retry(clock: { now(): number }, attempts = 2): number {\n  const started = clock.now();\n  for (let i = 0; i < attempts; i++) {\n    if (clock.now() - started > 5000) return i;\n  }\n  return attempts;\n}\n`,
+      );
+    }
+    yield { type: "tool-result", id: "t4", ok: edit.allow, output: edit.allow ? `Edited ${own}` : edit.reason };
+    if (edit.allow) yield { type: "file", path: own };
     if (/parallel|subagent/.test(ask)) yield { type: "file", path: "src/sync.ts" };
     yield { type: "checkpoint", note: "clock injected" };
 
@@ -124,6 +137,10 @@ export class MockRuntime implements Runtime {
     }
     yield { type: "done", text: "Fixed: the retry now takes its clock from the uploader, so tests and CI agree on time. 42/42 passing.", durationMs: 9000 };
   }
+}
+
+function slug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "change";
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

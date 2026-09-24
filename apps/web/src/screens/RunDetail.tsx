@@ -4,14 +4,16 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRight, GitBranch, Undo2 } from "lucide-react";
 import { motion } from "motion/react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "../components/Markdown";
 import { cancelRun, decideApproval, followUp, launchRun } from "../lib/api";
 import { conversation, type Item } from "../lib/conversation";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
 
-const TABS = ["Timeline", "Files", "Graph", "Cost"] as const;
+const TerminalReplay = lazy(() => import("../components/Terminal"));
+
+const TABS = ["Timeline", "Diff", "Terminal", "Graph", "Cost"] as const;
 type Tab = (typeof TABS)[number];
 
 export function RunDetail() {
@@ -68,7 +70,16 @@ export function RunDetail() {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {tab === "Timeline" && <Timeline run={run} events={events?.length ?? 0} scrub={scrub} onScrub={setScrub} seqs={(events ?? []).map((e) => e.seq)} />}
-          {tab === "Files" && <Files run={run} />}
+          {tab === "Diff" && <Files run={run} />}
+          {tab === "Terminal" && (
+            <Suspense fallback={<div className="text-fg-3">Loading terminal…</div>}>
+              <TerminalReplay
+                steps={items
+                  .filter((i): i is Extract<Item, { kind: "tool" }> => i.kind === "tool" && ["Bash", "shell", "commandExecution"].includes(i.tool))
+                  .map((i) => ({ command: describe(i.input), output: i.output, ok: i.ok }))}
+              />
+            </Suspense>
+          )}
           {tab === "Graph" && <Graph run={run} items={items} />}
           {tab === "Cost" && <Cost run={run} />}
         </div>
@@ -102,6 +113,13 @@ function RunHeader({ run }: { run: RunView }) {
       <div className="flex items-center gap-4">
         <Gauge used={run.usage.contextUsed} limit={run.usage.contextLimit} />
         <span className="mono text-[12px] tabular-nums text-fg-2">{formatTokens(run.usage.inputTokens + run.usage.outputTokens)} tok</span>
+        {run.worktree && run.files.length > 0 && (
+          <Link to="/review/$id" params={{ id: run.id }}>
+            <Button variant={run.status === "reviewing" ? "primary" : "quiet"} size="s">
+              Review {run.files.length} file{run.files.length === 1 ? "" : "s"}
+            </Button>
+          </Link>
+        )}
         {live && (
           <Button variant="danger" size="s" onClick={() => void cancelRun(run.id)}>
             Stop
@@ -381,7 +399,16 @@ function Timeline({ run, seqs, scrub, onScrub }: { run: RunView; events: number;
 function Files({ run }: { run: RunView }) {
   return (
     <div>
-      <Eyebrow className="mb-3">{run.files.length} files changed</Eyebrow>
+      <div className="mb-3 flex items-center">
+        <Eyebrow>{run.files.length} files changed</Eyebrow>
+        {run.worktree && run.files.length > 0 && (
+          <Link to="/review/$id" params={{ id: run.id }} className="ml-auto text-[12px] text-amber hover:underline">
+            Open review →
+          </Link>
+        )}
+      </div>
+      {run.review?.landed && <div className="mb-3 text-[12px] text-ok">Merged · {run.review.landed.slice(0, 8)}</div>}
+      {run.review?.failed && <div className="mb-3 text-[12px] text-bad">{run.review.failed}</div>}
       {run.files.length === 0 && <div className="text-[12px] text-fg-3">Nothing changed yet.</div>}
       {run.files.map((f) => (
         <div key={f} className="mono mb-1 truncate rounded-[var(--radius-s)] px-2 py-1 text-[12px] text-fg-2 hover:bg-raised" title={f}>

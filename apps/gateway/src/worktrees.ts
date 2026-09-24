@@ -53,12 +53,13 @@ export class Worktrees {
 
   async diff(worktree: string, base: string): Promise<string> {
     await git(worktree, "add", "-A");
-    return git(worktree, "diff", "--cached", `${base}...`, "--stat", "--patch");
+    return git(worktree, "diff", "--cached", "--merge-base", base, "--stat", "--patch");
   }
 
   async files(worktree: string, base: string): Promise<Array<{ path: string; change: string }>> {
     await git(worktree, "add", "-A");
-    const out = await git(worktree, "diff", "--cached", "--name-status", `${base}...`);
+    // Everything the run changed since its branch left the base, committed or not.
+    const out = await git(worktree, "diff", "--cached", "--merge-base", base, "--name-status");
     return out
       .split("\n")
       .filter(Boolean)

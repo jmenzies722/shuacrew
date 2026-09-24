@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import { Board } from "./screens/Board";
 import { MissionControl } from "./screens/MissionControl";
 import { Integrations, Memory, Policy, Schedules, Settings, Specs } from "./screens/Pages";
+import { Review } from "./screens/Review";
 import { RunDetail } from "./screens/RunDetail";
 import { Shell } from "./shell/Shell";
 
@@ -11,6 +12,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: MissionControl }),
   createRoute({ getParentRoute: () => root, path: "/board", component: Board }),
   createRoute({ getParentRoute: () => root, path: "/runs/$id", component: RunDetail }),
+  createRoute({ getParentRoute: () => root, path: "/review/$id", component: Review }),
   createRoute({ getParentRoute: () => root, path: "/specs", component: Specs }),
   createRoute({ getParentRoute: () => root, path: "/schedules", component: Schedules }),
   createRoute({ getParentRoute: () => root, path: "/memory", component: Memory }),

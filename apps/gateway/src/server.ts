@@ -14,6 +14,7 @@ import { apply, decide, defaultContext, defaultRules, emptyState, normalise, typ
 import type { Runtime } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { Hub } from "./hub.js";
+import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import type { EventStore } from "./store.js";
 
@@ -30,7 +31,7 @@ export interface ServerOptions {
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
-export async function createServer(options: ServerOptions): Promise<{ app: FastifyInstance; hub: Hub; state: () => CrewState }> {
+export async function createServer(options: ServerOptions): Promise<{ app: FastifyInstance; hub: Hub; merges: MergeQueue; state: () => CrewState }> {
   const { store, supervisor } = options;
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK.has(host) && !options.token) {
@@ -43,6 +44,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   store.subscribe((event) => apply(state, event));
 
   const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024 });
+  const merges = new MergeQueue(store, supervisor.worktrees);
   const hub = new Hub(store);
   await app.register(fastifyWebsocket);
 
@@ -127,6 +129,54 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     },
   );
 
+  // Review: inline comments go back to the agent as one follow-up turn.
+  app.post<{ Params: { id: string }; Body: { comments?: Array<{ file: string; line: number; text: string }> } }>(
+    "/api/runs/:id/comments",
+    async (request, reply) => {
+      const comments = (request.body?.comments ?? []).filter((c) => c.text?.trim());
+      if (!comments.length) return reply.code(400).send({ error: "no comments" });
+      for (const c of comments) store.append("review.comment", { file: c.file, line: c.line, text: c.text }, { run: request.params.id });
+      const text = [
+        "Review comments on your changes — address each one, then re-run the checks:",
+        ...comments.map((c) => `- ${c.file}:${c.line} — ${c.text}`),
+      ].join("\n");
+      try {
+        supervisor.followUp(request.params.id, text, "you (review)");
+      } catch (error) {
+        return reply.code(409).send({ error: (error as Error).message });
+      }
+      return { ok: true, sent: comments.length };
+    },
+  );
+
+  // Approve → the merge queue. Reject → what should it learn?
+  app.post<{ Params: { id: string }; Body: { approve?: boolean; lesson?: string } }>("/api/runs/:id/review", async (request, reply) => {
+    const run = request.params.id;
+    const approve = Boolean(request.body?.approve);
+    const status = supervisor.status(run);
+    if (approve && status && ["queued", "planning", "running", "awaiting_approval"].includes(status)) {
+      return reply.code(409).send({ error: "the agent is still working on this run — review it when the turn finishes" });
+    }
+    const lesson = request.body?.lesson?.trim() || undefined;
+    store.append("review.decided", { approve, lesson }, { run });
+    if (!approve) {
+      store.append("run.status", { status: "failed", reason: lesson ? `rejected: ${lesson}` : "rejected in review" }, { run });
+      if (lesson) {
+        const created = store.forRun(run).find((e) => e.kind === "run.created");
+        const project = created?.kind === "run.created" ? (created.body.project ?? created.body.repo) : undefined;
+        store.append(
+          "lesson.learned",
+          { id: `l_${run}`, text: lesson, scope: project ? "project" : "global", project, origin: "review", confidence: 0.7, evidence: [store.head] },
+          { run },
+        );
+      }
+      return { ok: true };
+    }
+    return { ok: true, position: merges.enqueue(run) };
+  });
+
+  app.get("/api/merge-queue", async () => ({ pending: merges.pending }));
+
   app.post<{ Body: { tool?: string; input?: unknown; workspace?: string } }>("/api/policy/explain", async (request) => {
     const b = request.body ?? {};
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
@@ -175,7 +225,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     });
   }
 
-  return { app, hub, state: () => state };
+  return { app, hub, merges, state: () => state };
 }
 
 function authorised(request: FastifyRequest, token: string): boolean {
