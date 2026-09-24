@@ -1,5 +1,5 @@
 import type { RunView } from "@shuacrew/core/projections";
-import { Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
+import { Button, Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -268,6 +268,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
         </div>
       </header>
       <Thread items={items} working={working} run={run} />
+      <ReviewBar run={run} />
       <Queue run={run} events={events ?? []} />
       <Composer run={run} />
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
@@ -321,6 +322,101 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
           {error && <div className="px-3 pb-1.5 text-[11.5px] text-bad">{error}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The end of the loop, in the conversation: when a session has changes ready, merge them, open a
+ * PR, ask for changes, or reject — and teach it why. Shows what happened after, too.
+ */
+function ReviewBar({ run }: { run: RunView }) {
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+  const [lesson, setLesson] = useState("");
+  const review = run.review;
+  if (!run.worktree) return null;
+  const landed = review?.landed;
+  const ready = run.status === "reviewing" && !review?.decided;
+  if (!ready && !landed && !review?.pr && review?.queued === undefined && !review?.failed) return null;
+  const passed = run.checks.length ? run.checks[run.checks.length - 1]!.passed : undefined;
+  const act = async (name: string, fn: () => Promise<unknown>) => {
+    setBusy(name);
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <div className="mx-auto w-full max-w-[820px] px-4">
+      <div className={`review-bar ${landed ? "is-landed" : review?.failed ? "is-failed" : ""}`}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="review-dot" />
+          <span className="text-[13px] font-semibold text-fg">
+            {landed ? `Merged into ${run.worktree.base}` : review?.queued !== undefined ? "Merging…" : review?.failed ? "Merge didn't land" : "Ready for review"}
+          </span>
+          <span className="text-[12px] text-fg-3">
+            {run.files.length} file{run.files.length === 1 ? "" : "s"}
+            {passed !== undefined && <span className={passed ? "text-ok" : "text-bad"}> · checks {passed ? "passed" : "failed"}</span>}
+            {landed && <span className="mono"> · {landed.slice(0, 7)}</span>}
+          </span>
+          {review?.pr && (
+            <a href={review.pr} target="_blank" rel="noreferrer" className="issue-chip">
+              PR #{review.pr.split("/").pop()}
+            </a>
+          )}
+        </div>
+        {review?.failed && <div className="mt-1.5 text-[12px] text-bad">{review.failed}</div>}
+        {error && <div className="mt-1.5 text-[12px] text-bad">{error}</div>}
+        {rejecting ? (
+          <div className="mt-2.5 flex gap-2">
+            <input
+              value={lesson}
+              onChange={(e) => setLesson(e.target.value)}
+              autoFocus
+              placeholder="What should it learn? (optional) — e.g. never change public APIs without asking"
+              className="h-8 min-w-0 flex-1 rounded-[8px] border border-line-strong bg-ink px-2.5 text-[12.5px] outline-none focus:border-amber"
+            />
+            <Button size="s" variant="danger" onClick={() => void act("reject", () => api(`/api/runs/${run.id}/review`, { body: { approve: false, lesson } }).then(() => setRejecting(false)))}>
+              Reject
+            </Button>
+            <Button size="s" variant="ghost" onClick={() => setRejecting(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          (ready || review?.failed) && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <Button size="s" variant="primary" disabled={busy !== ""} onClick={() => void act("merge", () => api(`/api/runs/${run.id}/review`, { body: { approve: true } }))}>
+                {busy === "merge" ? "Merging…" : `Merge into ${run.worktree.base}`}
+              </Button>
+              {!review?.pr && (
+                <Button size="s" disabled={busy !== ""} onClick={() => void act("pr", () => api(`/api/runs/${run.id}/pr`, { body: {} }))} title="Push this branch and open a GitHub pull request (never force-pushes)">
+                  {busy === "pr" ? "Opening PR…" : "Push & open PR"}
+                </Button>
+              )}
+              <Link to="/review/$id" params={{ id: run.id }} className="inline-flex h-7 items-center rounded-[7px] px-2.5 text-[12px] text-fg-2 hover:bg-raised hover:text-fg">
+                Review diff
+              </Link>
+              <Button
+                size="s"
+                variant="ghost"
+                onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:insert", { detail: "Before I merge, please change: " }))}
+              >
+                Request changes
+              </Button>
+              <Button size="s" variant="ghost" onClick={() => setRejecting(true)}>
+                Reject…
+              </Button>
+            </div>
+          )
+        )}
+      </div>
     </div>
   );
 }

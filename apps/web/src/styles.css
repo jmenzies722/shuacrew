@@ -339,3 +339,18 @@ body {
   --text-2: #a9b1bd;
   --text-3: var(--term-dim);
 }
+
+/* ── Review bar ───────────────────────────────────────────────────────────────────────── */
+.review-bar { margin-bottom: 8px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--wait) 45%, var(--line-strong)); background: color-mix(in srgb, var(--wait) 6%, var(--panel)); padding: 12px 14px; }
+.review-bar.is-landed { border-color: color-mix(in srgb, var(--ok) 45%, var(--line-strong)); background: color-mix(in srgb, var(--ok) 6%, var(--panel)); }
+.review-bar.is-failed { border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); background: color-mix(in srgb, var(--bad) 5%, var(--panel)); }
+.review-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--wait); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wait) 18%, transparent); }
+.is-landed .review-dot { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
+.is-failed .review-dot { background: var(--bad); box-shadow: 0 0 0 4px color-mix(in srgb, var(--bad) 18%, transparent); }
+
+.terminal-ask { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px 0 14px; border-top: 1px solid var(--term-line); background: var(--term-head); }
+.terminal-ask input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 12.5px; color: var(--term-fg); }
+.terminal-ask input::placeholder { color: var(--term-dim); }
+.terminal-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--term-line); font-size: 11.5px; color: var(--term-dim); flex-shrink: 0; }
+.terminal-chip:hover { border-color: var(--amber); color: var(--term-fg); }
+.terminal-drawer .terminal-host { bottom: 0; }

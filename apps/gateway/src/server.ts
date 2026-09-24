@@ -297,6 +297,36 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   app.get("/api/merge-queue", async () => ({ pending: merges.pending }));
 
+  // Ship it: push the session's branch and open a GitHub PR that explains itself.
+  app.post<{ Params: { id: string } }>("/api/runs/:id/pr", async (request, reply) => {
+    const run = state.runs[request.params.id];
+    if (!run) return reply.code(404).send({ error: "no such session" });
+    if (!run.worktree) return reply.code(409).send({ error: "this session didn't work in a repo branch" });
+    if (["queued", "planning", "running", "awaiting_approval"].includes(run.status)) return reply.code(409).send({ error: "wait for the agent to finish this turn" });
+    const events = store.forRun(run.id);
+    const answer = [...events].reverse().find((e) => e.kind === "agent.message" && e.body.final);
+    const asks = events.flatMap((e) => (e.kind === "turn.started" ? [e.body.text.split("\n")[0]!] : []));
+    const body = [
+      `## What was asked`,
+      ...asks.map((a) => `- ${a}`),
+      ``,
+      `## What changed`,
+      answer?.kind === "agent.message" ? answer.body.text.slice(0, 3000) : "_See the diff._",
+      ``,
+      `**Files:** ${run.files.map((f) => `\`${f}\``).join(", ") || "none"}`,
+      run.checks.length ? `**Checks:** ${run.checks.map((c) => `${c.passed ? "✅" : "❌"} \`${c.command}\``).join(" · ")}` : "",
+      ``,
+      `<sub>Made with ShuaCrew · ${run.runtime}${run.model ? ` (${run.model})` : ""} · session ${run.id}</sub>`,
+    ].join("\n");
+    try {
+      const url = await supervisor.worktrees.openPullRequest(run.worktree.path, run.worktree.branch, run.worktree.base, run.title, body);
+      store.append("pr.opened", { url, branch: run.worktree.branch, base: run.worktree.base }, { run: run.id });
+      return { url };
+    } catch (error) {
+      return reply.code(502).send({ error: (error as Error).message });
+    }
+  });
+
   const auto = options.autonomy;
   if (auto) {
     const fail = (reply: { code(n: number): { send(b: unknown): unknown } }, error: unknown) =>
@@ -420,6 +450,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         .sort((a, b) => a.seq - b.seq)
         .map((a) => ({ id: a.id, run: a.run, runTitle: (a.run && state.runs[a.run]?.title) || "", tool: a.tool, summary: summary(a.input), risk: a.risk, reason: a.reason })),
       limited: Object.keys(state.limited),
+      // What just finished, for "ready for review" / "failed" notifications.
+      recent: runs
+        .filter((r) => !r.parent && ["reviewing", "done", "failed", "merged"].includes(r.status) && Date.now() - r.updatedAt < 30 * 60_000)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 20)
+        .map((r) => ({ id: r.id, title: r.title, status: r.status, reason: r.statusReason ?? "", files: r.files.length, at: r.updatedAt })),
     };
   });
 

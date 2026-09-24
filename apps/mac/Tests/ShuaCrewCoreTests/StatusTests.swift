@@ -21,3 +21,14 @@ import Testing
     let status = CrewStatus(running: 0, awaiting: 2, reviewing: 0, approvals: [a, b], limited: [])
     #expect(status.newApprovals(since: ["a"]).map(\.id) == ["b"])
 }
+
+@Test func notifiesEachOutcomeOnceAndReadsOlderGateways() throws {
+    let json = #"{"running":0,"awaiting":0,"reviewing":1,"approvals":[],"limited":[],"recent":[{"id":"r1","title":"Fix the retry","status":"reviewing","reason":"","files":2}]}"#
+    let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+    #expect(status.recent.first?.headline == "Ready for review")
+    #expect(status.recent.first?.detail == "Fix the retry — 2 files changed")
+    #expect(status.newlyFinished(since: ["r1:reviewing"]).isEmpty)
+    #expect(status.newlyFinished(since: ["r1:running"]).count == 1)
+    let old = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[]}"#
+    #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(old.utf8)).recent.isEmpty)
+}

@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "Quit ShuaCrew", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let file = submenu(main, "File")
-        file.addItem(item("New Run…", "n", #selector(newRun)))
+        file.addItem(item("New Session…", "n", #selector(newRun)))
         file.addItem(item("Command Palette…", "k", #selector(palette)))
         file.addItem(.separator())
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

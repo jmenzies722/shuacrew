@@ -39,7 +39,7 @@ export interface RunView {
   subagents: Array<{ id: string; name: string; task: string; done: boolean; ok?: boolean }>;
   checkpoints: Array<{ seq: number; turn: number; commit?: string }>;
   worktree?: { path: string; branch: string; base: string };
-  review?: { comments: number; decided?: boolean; approved?: boolean; queued?: number; landed?: string; failed?: string };
+  review?: { comments: number; decided?: boolean; approved?: boolean; queued?: number; landed?: string; failed?: string; pr?: string };
   usage: { inputTokens: number; outputTokens: number; costUsd: number; contextUsed?: number; contextLimit?: number };
   lastSeq: number;
 }
@@ -241,6 +241,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       break;
     case "merge.landed":
       if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, landed: event.body.commit };
+      break;
+    case "pr.opened":
+      if (run) run.review = { ...(run.review ?? { comments: 0 }), pr: event.body.url };
       break;
     case "merge.failed":
       if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, failed: event.body.reason };

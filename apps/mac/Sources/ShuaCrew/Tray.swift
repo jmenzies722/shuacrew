@@ -11,6 +11,7 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var status = CrewStatus.empty
     private var notified: Set<String> = []
+    private var finished: Set<String> = []
     private var primed = false
     private var timer: Timer?
     private let notifications: Bool
@@ -39,7 +40,11 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         guard let next = try? await gateway.status() else { return }
         let fresh = next.newApprovals(since: notified)
         // Approvals already waiting when the app opens are on the badge; only new ones interrupt.
-        if primed { for approval in fresh { notify(approval) } }
+        if primed {
+            for approval in fresh { notify(approval) }
+            for outcome in next.newlyFinished(since: finished) { notify(outcome) }
+        }
+        finished.formUnion(next.recent.map(\.key))
         primed = true
         let gone = notified.subtracting(next.approvals.map(\.id))
         if !gone.isEmpty { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: Array(gone)) }
@@ -90,14 +95,14 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
                 sub.addItem(.separator())
                 sub.addItem(action("Allow", #selector(allow(_:)), approval.id))
                 sub.addItem(action("Deny", #selector(deny(_:)), approval.id))
-                if let run = approval.run { sub.addItem(action("Open Run", #selector(openRun(_:)), run)) }
+                if let run = approval.run { sub.addItem(action("Open Session", #selector(openRun(_:)), run)) }
                 entry.submenu = sub
                 menu.addItem(entry)
             }
         }
         menu.addItem(.separator())
         menu.addItem(action("Open ShuaCrew", #selector(open), nil))
-        menu.addItem(action("New Run…", #selector(newRun), nil))
+        menu.addItem(action("New Session…", #selector(newRun), nil))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit ShuaCrew", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
@@ -115,7 +120,7 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
     @objc private func openRun(_ sender: NSMenuItem) {
         guard let run = sender.representedObject as? String else { return }
         NSApp.activate()
-        window.navigate("/runs/\(run)")
+        window.navigate("/sessions/\(run)")
     }
     @objc private func open() {
         NSApp.activate()
@@ -158,6 +163,16 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: approval.id, content: content, trigger: nil))
     }
 
+    private func notify(_ outcome: CrewStatus.Finished) {
+        guard notifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = outcome.headline
+        content.body = outcome.detail
+        content.sound = outcome.status == "failed" ? .defaultCritical : .default
+        content.userInfo = ["run": outcome.id]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: outcome.key, content: content, trigger: nil))
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
         let approval = info["approval"] as? String
@@ -168,7 +183,7 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         default:
             await MainActor.run {
                 NSApp.activate()
-                if !run.isEmpty { window.navigate("/runs/\(run)") } else { window.showWindow(nil) }
+                if !run.isEmpty { window.navigate("/sessions/\(run)") } else { window.showWindow(nil) }
             }
         }
     }

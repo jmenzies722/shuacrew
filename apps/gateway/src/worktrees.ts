@@ -39,6 +39,23 @@ export class Worktrees {
     return { path: where, branch, base };
   }
 
+  /**
+   * Push the run's branch and open a pull request on GitHub. Never force-pushes; needs an `origin`
+   * remote and the GitHub CLI signed in. Returns the PR's URL (an existing one if already open).
+   */
+  async openPullRequest(worktree: string, branch: string, base: string, title: string, body: string): Promise<string> {
+    const origin = await git(worktree, "remote", "get-url", "origin").catch(() => "");
+    if (!origin) throw new Error("this repo has no `origin` remote to push to");
+    await git(worktree, "push", "-u", "origin", `${branch}:${branch}`);
+    const gh = (...args: string[]) =>
+      new Promise<string>((resolve, reject) =>
+        execFile("gh", args, { cwd: worktree, timeout: 60_000 }, (error, stdout, stderr) => (error ? reject(new Error((stderr || error.message).trim())) : resolve(stdout.trim()))),
+      );
+    const existing = await gh("pr", "view", branch, "--json", "url", "-q", ".url").catch(() => "");
+    if (existing) return existing;
+    return gh("pr", "create", "--head", branch, "--base", base, "--title", title, "--body", body);
+  }
+
   /** Commit everything the agent changed as one checkpoint. Empty checkpoints still mark the turn. */
   async checkpoint(worktree: string, message: string): Promise<string> {
     await git(worktree, "add", "-A");

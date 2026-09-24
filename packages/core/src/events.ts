@@ -119,6 +119,7 @@ export const bodies = {
   "merge.queued": z.object({ position: z.number().int() }),
   "merge.landed": z.object({ commit: z.string(), branch: z.string() }),
   "merge.failed": z.object({ reason: z.string() }),
+  "pr.opened": z.object({ url: z.string(), branch: z.string(), base: z.string() }),
 
   // memory
   "lesson.learned": z.object({

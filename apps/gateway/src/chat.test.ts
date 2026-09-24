@@ -133,3 +133,31 @@ describe("stopping a session", () => {
     expect(status(store, run)).toBe("cancelled");
   });
 });
+
+describe("push & open a PR", () => {
+  it("pushes the session branch (no force) and records the PR the GitHub CLI opened", async () => {
+    const { store, supervisor, app } = await world();
+    const { dir, git } = repo();
+    const bare = mkdtempSync(path.join(os.tmpdir(), "shua-origin-"));
+    execFileSync("git", ["init", "-q", "--bare", bare]);
+    git("remote", "add", "origin", bare);
+    // A stand-in `gh`: says no PR exists yet, then "creates" one and prints its URL with the args it got.
+    const bin = mkdtempSync(path.join(os.tmpdir(), "shua-bin-"));
+    writeFileSync(path.join(bin, "gh"), '#!/bin/sh\nif [ "$2" = "view" ]; then exit 1; fi\necho "https://github.com/me/app/pull/7"\necho "$@" > "$(dirname "$0")/args"\n', { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = `${bin}:${PATH}`;
+    cleanups.push(() => (process.env.PATH = PATH));
+
+    const run = supervisor.launch({ ask: "Add a clock module", runtime: "mock", repo: dir });
+    await until(() => ["reviewing", "done"].includes(status(store, run)));
+    const res = await app.inject({ method: "POST", url: `/api/runs/${run}/pr`, headers: { "x-shuacrew": "1", "content-type": "application/json" }, payload: "{}" });
+    expect(res.json()).toEqual({ url: "https://github.com/me/app/pull/7" });
+    const branch = `shua/${run}`;
+    expect(execFileSync("git", ["--git-dir", bare, "branch", "--list", branch]).toString()).toContain(branch); // pushed
+    const { readFileSync } = await import("node:fs");
+    const args = readFileSync(path.join(bin, "args"), "utf8");
+    expect(args).toContain(`--head ${branch} --base main`);
+    expect(args).toContain("What was asked");
+    expect(fold(store.read(0)).runs[run]?.review?.pr).toBe("https://github.com/me/app/pull/7");
+  });
+});
