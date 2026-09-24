@@ -22,6 +22,25 @@ export const RunStatus = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
+export const PhaseDef = z.object({
+  id: z.string(),
+  name: z.string(),
+  member: z.string().optional(), // a crew member id; its persona, model and lessons come along
+  prompt: z.string(), // {{input}} placeholders are filled from the play's inputs
+  gate: z.enum(["auto", "approve"]).default("approve"),
+  deliverable: z.string().optional(), // the artifact title this phase should save
+});
+export type PhaseDef = z.infer<typeof PhaseDef>;
+export const PlaybookDef = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().default(""),
+  emoji: z.string().default(""),
+  inputs: z.array(z.object({ key: z.string(), label: z.string(), placeholder: z.string().optional(), long: z.boolean().optional(), optional: z.boolean().optional() })).default([]),
+  phases: z.array(PhaseDef).min(1),
+});
+export type PlaybookDef = z.infer<typeof PlaybookDef>;
+
 export const RuntimeId = z.string().min(1); // "claude" | "codex" | "acp:<name>" | "mock" | …
 export const Risk = z.enum(["low", "medium", "high", "critical"]);
 
@@ -192,6 +211,30 @@ export const bodies = {
     size: z.number().int(),
   }),
   "knowledge.removed": z.object({ id: z.string() }),
+
+  // playbooks: reusable multi-phase work, each phase done by a crew member, with gates you approve.
+  "playbook.set": PlaybookDef,
+  "playbook.removed": z.object({ id: z.string() }),
+  "play.started": z.object({
+    id: z.string(),
+    playbook: z.string(),
+    name: z.string(),
+    emoji: z.string().default(""),
+    title: z.string(),
+    inputs: z.record(z.string(), z.string()).default({}),
+    repo: z.string().optional(),
+    phases: z.array(PhaseDef),
+  }),
+  "play.phase": z.object({
+    play: z.string(),
+    index: z.number().int().min(0),
+    status: z.enum(["pending", "running", "review", "done", "failed", "skipped"]),
+    run: z.string().optional(),
+    output: z.string().optional(),
+    artifacts: z.array(z.string()).optional(),
+    note: z.string().optional(),
+  }),
+  "play.status": z.object({ play: z.string(), status: z.enum(["running", "waiting", "done", "failed", "cancelled"]), reason: z.string().optional() }),
 
   // unattended
   "schedule.set": z.object({

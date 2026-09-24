@@ -169,6 +169,8 @@ function flush(): void {
       members: { ...crew.members },
       artifacts: { ...crew.artifacts },
       knowledge: { ...crew.knowledge },
+      playbooks: { ...crew.playbooks },
+      plays: Object.fromEntries(Object.entries(crew.plays).map(([k, v]) => [k, { ...v }])),
       today: { ...crew.today },
     },
     ...(loadedChanged ? { runEvents: loadedChanged } : {}),

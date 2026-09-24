@@ -1,6 +1,6 @@
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LibraryBig, SquareTerminal, Waypoints, Users } from "lucide-react";
+import { ListChecks, LibraryBig, SquareTerminal, Waypoints, Users } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { repoName } from "../lib/crew";
@@ -17,6 +17,7 @@ export const NAV = [
   { to: "/crew", label: "Crew", hint: "Your standing team", icon: Users, key: "r", group: "Work" },
   { to: "/floor", label: "Crew floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
   { to: "/terminal", label: "Terminal", hint: "Your shells + ask the crew", icon: SquareTerminal, key: "t", group: "Work" },
+  { to: "/playbooks", label: "Playbooks", hint: "Idea → shipped, in phases", icon: ListChecks, key: "w", group: "Plan" },
   { to: "/specs", label: "Specs", hint: "Requirements → tasks", icon: FileText, key: "p", group: "Plan" },
   { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
   { to: "/activity", label: "Activity", hint: "Today at a glance", icon: Radar, key: "m", group: "Plan" },

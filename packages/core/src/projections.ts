@@ -5,7 +5,7 @@
  * the dashboard applies each streamed event to its local state, and time travel is folding the
  * events up to a chosen sequence number. Nothing here stores anything of its own.
  */
-import type { AnyEvent, RunStatus } from "./events.js";
+import type { PhaseDef, PlaybookDef, AnyEvent, RunStatus } from "./events.js";
 
 export interface RunView {
   id: string;
@@ -105,11 +105,37 @@ export interface KnowledgeView {
   addedAt: number;
 }
 
+export interface PhaseView extends PhaseDef {
+  status: "pending" | "running" | "review" | "done" | "failed" | "skipped";
+  run?: string;
+  runs: string[]; // every run this phase has had (redos keep their history)
+  output?: string;
+  artifacts: string[];
+  note?: string;
+}
+
+export interface PlayView {
+  id: string;
+  playbook: string;
+  name: string;
+  emoji: string;
+  title: string;
+  inputs: Record<string, string>;
+  repo?: string;
+  status: "running" | "waiting" | "done" | "failed" | "cancelled";
+  reason?: string;
+  phases: PhaseView[];
+  startedAt: number;
+  updatedAt: number;
+}
+
 export interface CrewState {
   head: number;
   members: Record<string, CrewMember>;
   artifacts: Record<string, ArtifactView>;
   knowledge: Record<string, KnowledgeView>;
+  playbooks: Record<string, PlaybookDef>; // yours; the built-in library is added by the gateway
+  plays: Record<string, PlayView>;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -117,7 +143,7 @@ export interface CrewState {
 }
 
 export function emptyState(): CrewState {
-  return { head: 0, members: {}, artifacts: {}, knowledge: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
+  return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
 }
 
 function dayOf(ms: number): string {
@@ -229,6 +255,50 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "knowledge.removed":
       delete state.knowledge[event.body.id];
       break;
+    case "playbook.set":
+      state.playbooks[event.body.id] = event.body;
+      break;
+    case "playbook.removed":
+      delete state.playbooks[event.body.id];
+      break;
+    case "play.started": {
+      const b = event.body;
+      state.plays[b.id] = {
+        id: b.id, playbook: b.playbook, name: b.name, emoji: b.emoji, title: b.title, inputs: b.inputs, repo: b.repo,
+        status: "running", phases: b.phases.map((p) => ({ ...p, status: "pending", runs: [], artifacts: [] })), startedAt: event.at, updatedAt: event.at,
+      };
+      break;
+    }
+    case "play.phase": {
+      const play = state.plays[event.body.play];
+      const phase = play?.phases[event.body.index];
+      if (!play || !phase) break;
+      const b = event.body;
+      phase.status = b.status;
+      if (b.run && b.run !== phase.run) {
+        phase.run = b.run;
+        phase.runs = [...phase.runs, b.run];
+      }
+      if (b.status === "pending") {
+        phase.output = undefined;
+        phase.artifacts = [];
+        phase.note = undefined;
+      }
+      if (b.output !== undefined) phase.output = b.output;
+      if (b.artifacts) phase.artifacts = b.artifacts;
+      if (b.note !== undefined) phase.note = b.note;
+      play.phases = [...play.phases];
+      play.updatedAt = event.at;
+      break;
+    }
+    case "play.status": {
+      const play = state.plays[event.body.play];
+      if (!play) break;
+      play.status = event.body.status;
+      play.reason = event.body.reason;
+      play.updatedAt = event.at;
+      break;
+    }
     case "run.archived":
       if (event.run) delete state.runs[event.run];
       break;

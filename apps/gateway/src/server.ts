@@ -13,7 +13,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
 import type { Runtime } from "@shuacrew/runtimes";
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
@@ -25,6 +25,7 @@ import { Specs } from "./specs.js";
 import type { Mcp } from "./mcp.js";
 import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
+import type { Plays } from "./plays.js";
 import type { ToolServer } from "./toolserver.js";
 import { fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
@@ -43,6 +44,7 @@ export interface ServerOptions {
   mcp?: Mcp;
   crew?: Crew;
   library?: Library;
+  plays?: Plays;
   tools?: ToolServer;
   terminals?: Terminals;
   uploads?: Uploads;
@@ -465,6 +467,30 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         return reply.code(404).send({ error: (error as Error).message });
       }
     });
+  }
+
+  if (options.plays) {
+    const plays = options.plays;
+    const attempt = async <T>(reply: FastifyReply, work: () => T) => {
+      try {
+        return (await work()) ?? { ok: true };
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    };
+    app.get("/api/playbooks", async () => plays.playbooks());
+    app.post("/api/playbooks", async (request, reply) => attempt(reply, () => plays.save(request.body)));
+    app.delete<{ Params: { id: string } }>("/api/playbooks/:id", async (request, reply) => attempt(reply, () => plays.remove(request.params.id)));
+    app.post<{ Body: { playbook?: string; inputs?: Record<string, string>; title?: string; repo?: string } }>("/api/plays", async (request, reply) =>
+      attempt(reply, () => plays.start({ playbook: request.body?.playbook ?? "", inputs: request.body?.inputs, title: request.body?.title, repo: request.body?.repo })),
+    );
+    app.post<{ Params: { id: string }; Body: { index?: number } }>("/api/plays/:id/approve", async (request, reply) => attempt(reply, () => plays.approve(request.params.id, Number(request.body?.index))));
+    app.post<{ Params: { id: string }; Body: { index?: number; feedback?: string } }>("/api/plays/:id/revise", async (request, reply) =>
+      attempt(reply, () => plays.revise(request.params.id, Number(request.body?.index), request.body?.feedback ?? "")),
+    );
+    app.post<{ Params: { id: string }; Body: { from?: number } }>("/api/plays/:id/restart", async (request, reply) => attempt(reply, () => plays.restart(request.params.id, Number(request.body?.from ?? 0))));
+    app.post<{ Params: { id: string }; Body: { index?: number } }>("/api/plays/:id/skip", async (request, reply) => attempt(reply, () => plays.skip(request.params.id, Number(request.body?.index))));
+    app.post<{ Params: { id: string } }>("/api/plays/:id/cancel", async (request, reply) => attempt(reply, () => plays.cancel(request.params.id)));
   }
 
   // "Try now": lift a usage limit you believe has cleared. If it hasn't, the next call says so.

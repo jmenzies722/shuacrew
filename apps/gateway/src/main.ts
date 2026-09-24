@@ -16,6 +16,7 @@ import { Uploads } from "./uploads.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
 import { Mcp } from "./mcp.js";
 import { Library } from "./library.js";
+import { Plays } from "./plays.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
@@ -92,6 +93,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     toolHint: LIBRARY_HINT,
     mcpList: () => mcp.list(),
   });
+  const plays = new Plays(store, supervisor);
   const autonomy = {
     scheduler: new Scheduler(store, supervisor, workspace),
     webhooks: new Webhooks(store, supervisor, secretsPath(home)),
@@ -114,6 +116,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     crew,
     library,
     tools,
+    plays,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
   });
@@ -121,11 +124,12 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
   autonomy.tasks.recover();
+  plays.recover();
   autonomy.scheduler.sync();
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, terminals, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -138,6 +142,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.memory.stop();
     gateway.crew?.stop();
     gateway.library.stop();
+    gateway.plays.stop();
     gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();
