@@ -199,8 +199,28 @@ export class ClaudeRuntime implements Runtime {
     const subagents = new Map<string, string>();
     const pending: RuntimeEvent[] = []; // events raised by hooks, yielded with the next message
 
+    // Streaming input, not a plain string: with a string the SDK closes its control channel the
+    // moment the main agent answers, and a background subagent still working (and asking
+    // permission) is cut off mid-task. The input stays open until every subagent has settled.
+    let closeInput!: () => void;
+    const inputClosed = new Promise<void>((resolve) => (closeInput = resolve));
+    abort.signal.addEventListener("abort", () => closeInput(), { once: true });
+    async function* input() {
+      yield { type: "user" as const, message: { role: "user" as const, content: run.ask }, parent_tool_use_id: null, session_id: "" };
+      await inputClosed;
+    }
+    const running = new Set<string>(); // subagents that started and haven't stopped
+    let held: RuntimeEvent | undefined; // the turn's "done", held while subagents still work
+    let grace: NodeJS.Timeout | undefined;
+    // After the last subagent stops, the main agent usually answers again with its result; if it
+    // doesn't within a short grace, the turn is over.
+    const settle = () => {
+      clearTimeout(grace);
+      if (held && running.size === 0) grace = setTimeout(() => closeInput(), 15_000);
+    };
+
     const conversation = query({
-      prompt: run.ask,
+      prompt: input() as never,
       options: {
         cwd: run.cwd,
         model: run.model,
@@ -229,6 +249,8 @@ export class ClaudeRuntime implements Runtime {
               hooks: [
                 async (input: Json) => {
                   subagents.set(input.agent_id, input.agent_type);
+                  running.add(input.agent_id);
+                  clearTimeout(grace);
                   pending.push({ type: "subagent-start", id: input.agent_id, name: input.agent_type ?? "subagent", task: input.agent_type ?? "" });
                   return {};
                 },
@@ -240,6 +262,8 @@ export class ClaudeRuntime implements Runtime {
               hooks: [
                 async (input: Json) => {
                   pending.push({ type: "subagent-end", id: input.agent_id, ok: true, summary: String(input.last_assistant_message ?? "").slice(0, 400) });
+                  running.delete(input.agent_id);
+                  settle();
                   return {};
                 },
               ],
@@ -252,10 +276,23 @@ export class ClaudeRuntime implements Runtime {
     try {
       for await (const message of conversation as AsyncIterable<Json>) {
         while (pending.length) yield pending.shift()!;
-        for (const event of translator.translate(message)) yield event;
+        for (const event of translator.translate(message)) {
+          if (event.type === "done") {
+            // The latest answer wins; it's the turn's end only once no subagent is still working.
+            held = event;
+            if (running.size === 0) closeInput();
+            else settle();
+            continue;
+          }
+          if (event.type === "error" || event.type === "limited") closeInput();
+          yield event;
+        }
       }
       while (pending.length) yield pending.shift()!;
+      if (held) yield held;
     } finally {
+      clearTimeout(grace);
+      closeInput();
       abort.abort();
     }
   }
