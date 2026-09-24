@@ -5,7 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRight, GitBranch, Undo2 } from "lucide-react";
 import { motion } from "motion/react";
 import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Markdown } from "../components/Markdown";
+import { Thread, fmtMs } from "../components/Thread";
 import { cancelRun, decideApproval, followUp, launchRun } from "../lib/api";
 import { conversation, type Item } from "../lib/conversation";
 import { useLive } from "../lib/live";
@@ -37,7 +37,7 @@ export function RunDetail() {
   if (!run) {
     return (
       <div className="flex h-full items-center justify-center text-fg-3">
-        No run {id}. <Link to="/" className="ml-2 text-amber">Back to Mission Control</Link>
+        No run {id}. <Link to="/" className="ml-2 text-amber">Back to sessions</Link>
       </div>
     );
   }
@@ -54,7 +54,7 @@ export function RunDetail() {
             </button>
           </div>
         )}
-        <Conversation items={items} live={run.status === "running" && scrub === null} />
+        <Thread items={items} working={run.status === "running" && scrub === null} />
         {scrub === null && <Composer run={run} />}
       </section>
       <aside className="flex min-h-0 flex-col border-l border-line bg-panel max-[1100px]:hidden" aria-label="Run details">
@@ -99,7 +99,7 @@ function RunHeader({ run }: { run: RunView }) {
     <motion.header layoutId={`run-${run.id}`} className="flex items-start gap-3 border-b border-line bg-panel px-6 py-4" transition={{ type: "spring", stiffness: 500, damping: 40 }}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[11.5px] text-fg-3">
-          <Link to="/" className="hover:text-fg-2">Mission Control</Link>
+          <Link to="/sessions/$id" params={{ id: run.id }} className="hover:text-fg-2">Session</Link>
           <ChevronRight size={12} />
           <span className="mono">{run.id}</span>
         </div>
@@ -136,179 +136,6 @@ function RunHeader({ run }: { run: RunView }) {
 }
 
 /** The conversation, virtualised: a run with thousands of steps scrolls like a short one. */
-function Conversation({ items, live }: { items: Item[]; live: boolean }) {
-  const parent = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => parent.current,
-    estimateSize: (i) => (items[i]?.kind === "prose" ? 90 : items[i]?.kind === "ask" ? 70 : 36),
-    overscan: 12,
-    getItemKey: (i) => items[i]?.seq ?? i,
-  });
-
-  useEffect(() => {
-    if (stick.current && items.length) virtualizer.scrollToIndex(items.length - 1, { align: "end" });
-  }, [items.length, items[items.length - 1]?.kind === "prose" ? (items[items.length - 1] as { text: string }).text.length : 0, virtualizer]);
-
-  return (
-    <div
-      ref={parent}
-      className="min-h-0 flex-1 overflow-y-auto"
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      }}
-    >
-      <div className="relative mx-auto w-full max-w-[860px]" style={{ height: virtualizer.getTotalSize() + 24 }}>
-        {virtualizer.getVirtualItems().map((row) => (
-          <div key={row.key} data-index={row.index} ref={virtualizer.measureElement} className="absolute left-0 right-0 px-6 py-1.5" style={{ transform: `translateY(${row.start + 12}px)` }}>
-            <Row item={items[row.index]!} />
-          </div>
-        ))}
-      </div>
-      {live && (
-        <div className="mx-auto flex max-w-[860px] items-center gap-2 px-6 pb-6 text-[12px] text-amber">
-          <StatusGlyph tone="live" size={7} /> working…
-        </div>
-      )}
-    </div>
-  );
-}
-
-const Row = memo(function Row({ item }: { item: Item }) {
-  const [open, setOpen] = useState(false);
-  switch (item.kind) {
-    case "ask":
-      return (
-        <div className="mt-4 flex justify-end">
-          <div className="max-w-[80%] rounded-[var(--radius-l)] border border-line bg-raised px-4 py-2.5 text-[13.5px] leading-relaxed">
-            {item.text}
-            <div className="mt-1 text-right text-[10.5px] text-fg-3">
-              {item.by} · turn {item.turn}
-            </div>
-          </div>
-        </div>
-      );
-    case "prose":
-      return (
-        <div className="py-1 text-[13.5px] text-fg">
-          <Markdown text={item.text} />
-          {item.streaming && <span className="ml-0.5 inline-block h-3.5 w-[7px] translate-y-0.5 bg-amber align-baseline" style={{ animation: "pulse-dot 1s steps(2) infinite" }} />}
-        </div>
-      );
-    case "tool":
-      return (
-        <div className="rounded-[var(--radius-m)] border border-line bg-panel">
-          <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px]" aria-expanded={open}>
-            <StatusGlyph tone={item.ok === undefined ? "live" : item.ok ? "ok" : "bad"} size={7} />
-            <span className="mono font-medium text-fg">{item.tool}</span>
-            <span className="mono min-w-0 flex-1 truncate text-fg-2">{describe(item.input) || JSON.stringify(item.input)}</span>
-            {item.subagent && <Chip mono>{item.subagent}</Chip>}
-            {item.durationMs !== undefined && <span className="mono text-[11px] tabular-nums text-fg-3">{fmtMs(item.durationMs)}</span>}
-            <ChevronRight size={13} className={`text-fg-3 transition-transform ${open ? "rotate-90" : ""}`} />
-          </button>
-          {open && (
-            <pre className="mono max-h-72 overflow-auto border-t border-line px-3 py-2 text-[11.5px] leading-relaxed text-fg-2">
-              {JSON.stringify(item.input, null, 2)}
-              {item.output !== undefined && `\n\n→ ${item.output}`}
-            </pre>
-          )}
-        </div>
-      );
-    case "files":
-      return (
-        <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-fg-2">
-          <span className="text-fg-3">edited</span>
-          {item.paths.map((p) => (
-            <Chip key={p} mono title={p}>
-              {p.split("/").pop()}
-            </Chip>
-          ))}
-        </div>
-      );
-    case "check":
-      return (
-        <div className="flex items-center gap-2 text-[12px]">
-          <StatusGlyph tone={item.passed ? "ok" : "bad"} />
-          <span className={item.passed ? "text-ok" : "text-bad"}>{item.passed ? "Checks passed" : "Checks failed"}</span>
-          <span className="mono truncate text-fg-3">{item.command}</span>
-          <span className="mono ml-auto truncate text-[11px] text-fg-3">{item.output.split("\n")[0]}</span>
-        </div>
-      );
-    case "subagent":
-      return (
-        <div className="flex items-center gap-2 rounded-[var(--radius-m)] border border-dashed border-line-strong px-3 py-1.5 text-[12px]">
-          <StatusGlyph tone={!item.done ? "live" : item.ok ? "ok" : "bad"} size={7} />
-          <span className="mono text-fg">{item.name}</span>
-          <span className="truncate text-fg-2">{item.done ? item.summary || item.task : item.task}</span>
-        </div>
-      );
-    case "approval":
-      return <ApprovalInline item={item} />;
-    case "denied":
-      return (
-        <div className="flex items-center gap-2 rounded-[var(--radius-m)] bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] px-3 py-1.5 text-[12px] text-bad">
-          <StatusGlyph tone="bad" /> Blocked {item.tool} — {item.reason} <span className="mono ml-auto text-[11px]">{item.rule}</span>
-        </div>
-      );
-    case "checkpoint":
-      return (
-        <div className="flex items-center gap-2 text-[11px] text-fg-3">
-          <span className="h-px flex-1 bg-line" />
-          checkpoint · turn {item.turn}
-          {item.commit && <span className="mono">{item.commit.slice(0, 8)}</span>}
-          <span className="h-px flex-1 bg-line" />
-        </div>
-      );
-    case "note":
-      return (
-        <div className={`text-[12px] ${item.tone === "bad" ? "text-bad" : item.tone === "live" ? "text-amber" : "text-fg-3"}`}>
-          {item.text}
-        </div>
-      );
-    case "finished":
-      return (
-        <div className="pb-2 text-[11px] text-fg-3">
-          — {item.route}
-          {item.durationMs !== undefined && ` · ${fmtMs(item.durationMs)}`}
-        </div>
-      );
-  }
-});
-
-function ApprovalInline({ item }: { item: Extract<Item, { kind: "approval" }> }) {
-  return (
-    <div className="rounded-[var(--radius-m)] border border-[color-mix(in_srgb,var(--wait)_40%,transparent)] bg-[color-mix(in_srgb,var(--wait)_6%,transparent)] p-3">
-      <div className="flex items-center gap-2 text-[12.5px]">
-        <StatusGlyph tone="wait" />
-        <span className="font-medium">{item.decided ? (item.decided.allow ? "Allowed" : "Denied") : "Needs your approval"}</span>
-        {item.decided && <span className="text-fg-3">by {item.decided.by}</span>}
-        <span className="ml-auto text-[11px] uppercase text-fg-3">{item.risk} risk</span>
-      </div>
-      <pre className="mono mt-2 whitespace-pre-wrap break-all text-[12px] text-fg">
-        {item.tool}: {describe(item.input) || JSON.stringify(item.input)}
-      </pre>
-      <div className="mt-1 text-[11.5px] text-fg-3">
-        {item.reason} · <span className="mono">{item.rule}</span>
-      </div>
-      {!item.decided && (
-        <div className="mt-2.5 flex gap-1.5">
-          <Button variant="primary" size="s" onClick={() => void decideApproval(item.id, true)}>
-            Allow
-          </Button>
-          <Button size="s" onClick={() => void decideApproval(item.id, true, { always: true })}>
-            Always
-          </Button>
-          <Button variant="danger" size="s" onClick={() => void decideApproval(item.id, false)}>
-            Deny
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Composer({ run }: { run: RunView }) {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -548,8 +375,4 @@ function Line({ label, value }: { label: string; value: string }) {
       <span className="mono tabular-nums text-fg">{value}</span>
     </div>
   );
-}
-
-function fmtMs(ms: number): string {
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }

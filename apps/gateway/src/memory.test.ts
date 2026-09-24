@@ -78,3 +78,19 @@ describe("memory in the loop", () => {
     expect(store.ofKinds("lesson.applied")).toHaveLength(0);
   });
 });
+
+describe("follow-ups mid-turn", () => {
+  it("queues messages sent while the agent works and answers them together next", async () => {
+    process.env.SHUACREW_HOME = mkdtempSync(path.join(os.tmpdir(), "shua-home-"));
+    const store = new EventStore(":memory:");
+    const supervisor = new Supervisor(store, new Map([["mock", new MockRuntime({ pace: 60 })]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    cleanups.push(() => (supervisor.shutdown(), store.close()));
+    const run = supervisor.launch({ ask: "Audit the sync path", runtime: "mock" });
+    await until(() => store.forRun(run).some((e) => e.kind === "turn.started"));
+    supervisor.followUp(run, "Also check the retry path");
+    supervisor.followUp(run, "And keep it under 50 lines");
+    const turns = () => store.forRun(run).flatMap((e) => (e.kind === "turn.started" ? [e.body.text] : []));
+    await until(() => turns().length === 2 && ["done", "reviewing"].includes(String((status(store, run) as { body: { status: string } } | undefined)?.body.status)));
+    expect(turns()[1]).toBe("Also check the retry path\n\nAnd keep it under 50 lines");
+  });
+});

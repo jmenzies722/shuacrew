@@ -147,7 +147,7 @@ export function Memory() {
                       <Chip mono>{l.scope === "project" ? l.project?.split("/").pop() : "all projects"}</Chip>
                       <span>from {ORIGIN[l.origin]}</span>
                       {l.from && (
-                        <Link to="/runs/$id" params={{ id: l.from }} className="text-amber hover:underline">
+                        <Link to="/sessions/$id" params={{ id: l.from }} className="text-amber hover:underline">
                           see run
                         </Link>
                       )}

@@ -4,6 +4,7 @@ import { MissionControl } from "./screens/MissionControl";
 import { Integrations, Policy, Settings, Specs } from "./screens/Pages";
 import { Memory } from "./screens/Memory";
 import { Schedules } from "./screens/Schedules";
+import { Sessions } from "./screens/Sessions";
 import { Review } from "./screens/Review";
 import { RunDetail } from "./screens/RunDetail";
 import { Shell } from "./shell/Shell";
@@ -11,7 +12,9 @@ import { Shell } from "./shell/Shell";
 const root = createRootRoute({ component: Shell });
 
 const routes = [
-  createRoute({ getParentRoute: () => root, path: "/", component: MissionControl }),
+  createRoute({ getParentRoute: () => root, path: "/", component: Sessions }),
+  createRoute({ getParentRoute: () => root, path: "/sessions/$id", component: Sessions }),
+  createRoute({ getParentRoute: () => root, path: "/activity", component: MissionControl }),
   createRoute({ getParentRoute: () => root, path: "/board", component: Board }),
   createRoute({ getParentRoute: () => root, path: "/runs/$id", component: RunDetail }),
   createRoute({ getParentRoute: () => root, path: "/review/$id", component: Review }),

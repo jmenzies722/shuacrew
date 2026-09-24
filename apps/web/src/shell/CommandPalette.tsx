@@ -94,7 +94,7 @@ export function CommandPalette() {
                 {recent.length > 0 && (
                   <Group heading="Runs">
                     {recent.map((r) => (
-                      <Item key={r.id} value={`run ${r.title} ${r.ask} ${r.id}`} onSelect={() => go(`/runs/${r.id}`)}>
+                      <Item key={r.id} value={`run ${r.title} ${r.ask} ${r.id}`} onSelect={() => go(`/sessions/${r.id}`)}>
                         <span className="truncate">{r.title}</span>
                         <span className="ml-auto flex items-center gap-2">
                           <span className="mono text-[11px] text-fg-3">{r.runtime}</span>

@@ -16,7 +16,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
   return (
     <motion.div layout layoutId={`run-${run.id}`} transition={{ type: "spring", stiffness: 500, damping: 40 }}>
       <Link
-        to="/runs/$id"
+        to="/sessions/$id"
         params={{ id: run.id }}
         className={`group block rounded-[var(--radius-l)] border bg-panel p-3.5 transition-colors hover:border-line-strong ${live ? "breathing border-transparent" : waiting ? "border-[color-mix(in_srgb,var(--wait)_45%,transparent)]" : "border-line"}`}
         style={{ boxShadow: live ? undefined : "var(--shadow)" }}

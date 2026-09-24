@@ -1,5 +1,5 @@
 import { Kbd, StatusGlyph } from "@shuacrew/ui";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
@@ -18,7 +18,11 @@ export function ApprovalToasts() {
   const list = useMemo(() => Object.values(approvals).sort((a, b) => a.seq - b.seq), [approvals]);
   const [explained, setExplained] = useState<string | null>(null);
   const [confirmCritical, setConfirmCritical] = useState<string | null>(null);
-  const top = list[list.length - 1];
+  // On the sessions screens approvals live in the thread, the Needs-you group and the bell;
+  // a floating toast there would only cover the composer.
+  const path = useRouterState({ select: (r) => r.location.pathname });
+  const onSessions = path === "/" || path.startsWith("/sessions");
+  const top = onSessions ? undefined : list[list.length - 1];
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -45,8 +49,9 @@ export function ApprovalToasts() {
     void decideApproval(id, true);
   };
 
+  if (onSessions) return null;
   return (
-    <div className="pointer-events-none fixed bottom-10 right-4 z-40 flex w-[380px] max-w-[92vw] flex-col gap-2" aria-live="polite" aria-label="Approvals">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[380px] max-w-[92vw] flex-col gap-2" aria-live="polite" aria-label="Approvals">
       <AnimatePresence initial={false}>
         {list.slice(-4).map((a) => {
           const run = a.run ? runs[a.run] : undefined;
@@ -72,7 +77,7 @@ export function ApprovalToasts() {
                 </span>
               </div>
               {run && (
-                <Link to="/runs/$id" params={{ id: run.id }} className="mt-1 block truncate text-[11.5px] text-fg-3 hover:text-fg-2">
+                <Link to="/sessions/$id" params={{ id: run.id }} className="mt-1 block truncate text-[11.5px] text-fg-3 hover:text-fg-2">
                   {run.title}
                 </Link>
               )}

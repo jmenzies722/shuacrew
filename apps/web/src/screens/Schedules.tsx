@@ -82,7 +82,7 @@ export function Schedules() {
                   {s.lastRun && (
                     <>
                       {" · "}
-                      <Link to="/runs/$id" params={{ id: s.lastRun }} className="text-amber hover:underline">
+                      <Link to="/sessions/$id" params={{ id: s.lastRun }} className="text-amber hover:underline">
                         last run
                       </Link>
                     </>

@@ -298,6 +298,25 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     return { base: tree.body.base, branch: tree.body.branch, files: detailed };
   });
 
+  // What a menu-bar icon or a notification needs, and nothing more: cheap to poll.
+  app.get("/api/status", async () => {
+    const runs = Object.values(state.runs);
+    const summary = (input: unknown) => {
+      const i = (input ?? {}) as Record<string, unknown>;
+      const text = typeof i.command === "string" ? i.command : typeof i.file_path === "string" ? i.file_path : typeof i.path === "string" ? i.path : JSON.stringify(input ?? "");
+      return text.length > 160 ? `${text.slice(0, 157)}…` : text;
+    };
+    return {
+      running: runs.filter((r) => r.status === "running" || r.status === "planning").length,
+      awaiting: Object.keys(state.approvals).length,
+      reviewing: runs.filter((r) => r.status === "reviewing").length,
+      approvals: Object.values(state.approvals)
+        .sort((a, b) => a.seq - b.seq)
+        .map((a) => ({ id: a.id, run: a.run, runTitle: (a.run && state.runs[a.run]?.title) || "", tool: a.tool, summary: summary(a.input), risk: a.risk, reason: a.reason })),
+      limited: Object.keys(state.limited),
+    };
+  });
+
   if (options.memory) {
     const memory = options.memory;
     app.get("/api/memory", async () => ({

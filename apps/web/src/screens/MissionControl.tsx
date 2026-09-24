@@ -75,7 +75,7 @@ export function MissionControl() {
             <Panel className="divide-y divide-line">
               {finished.length === 0 && <div className="px-4 py-6 text-center text-[12.5px] text-fg-3">Finished work settles here.</div>}
               {finished.map((run) => (
-                <Link key={run.id} to="/runs/$id" params={{ id: run.id }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-raised">
+                <Link key={run.id} to="/sessions/$id" params={{ id: run.id }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-raised">
                   <StatusPill status={run.status} />
                   <span className="min-w-0 flex-1 truncate text-[13px]">{run.title}</span>
                   <span className="mono text-[11px] text-fg-3">{run.runtime}</span>
@@ -96,7 +96,7 @@ export function MissionControl() {
                   </div>
                 )}
                 {approvals.map((a) => (
-                  <Link key={a.id} to="/runs/$id" params={{ id: a.run ?? "" }} className="block px-4 py-3 hover:bg-raised">
+                  <Link key={a.id} to="/sessions/$id" params={{ id: a.run ?? "" }} className="block px-4 py-3 hover:bg-raised">
                     <div className="flex items-center gap-2 text-[12px]">
                       <StatusGlyph tone="wait" />
                       <span className="text-fg">{a.tool}</span>

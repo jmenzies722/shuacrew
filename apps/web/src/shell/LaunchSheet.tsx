@@ -71,7 +71,7 @@ export function LaunchSheet() {
       if (repo) localStorage.setItem(RECENT_REPOS, JSON.stringify([repo, ...recentRepos.filter((r) => r !== repo)].slice(0, 8)));
       close();
       setAsk("");
-      navigate({ to: "/runs/$id", params: { id } });
+      navigate({ to: "/sessions/$id", params: { id } });
     } catch (e) {
       setError((e as Error).message);
     } finally {

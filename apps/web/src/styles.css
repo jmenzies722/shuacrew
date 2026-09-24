@@ -83,3 +83,36 @@ body {
 .prose-agent strong { color: var(--text); font-weight: 600; }
 .prose-agent ul { margin: 0.2em 0 0.6em 1.1em; padding: 0; }
 .prose-agent li { margin: 0.15em 0; }
+
+/* Inside the Mac app the window's own material shows through the top bar and icon rail (the
+   panels stay solid), and the top bar sits in the title-bar row beside the traffic lights. */
+[data-shell="mac"] body,
+[data-shell="mac"] [data-frame] {
+  background: transparent;
+}
+
+/* Three dots that breathe while an agent thinks. */
+.thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.thinking-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--amber);
+  animation: thinking 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes thinking {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots span { animation: none; opacity: 0.8; }
+}

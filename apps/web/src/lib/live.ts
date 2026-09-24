@@ -97,15 +97,21 @@ function merge(a: AnyEvent[], b: AnyEvent[]): AnyEvent[] {
 
 let pending: AnyEvent[] = [];
 let frame = 0;
+let fallback: ReturnType<typeof setTimeout> | undefined;
 let socket: WebSocket | null = null;
 let retry = 0;
 
 function schedule(): void {
   if (frame) return;
   frame = requestAnimationFrame(flush);
+  // WebKit pauses animation frames in a hidden or covered window. Keep folding events anyway, so
+  // state is current the moment you look and the queue can't grow while you're away.
+  fallback = setTimeout(flush, 250);
 }
 
 function flush(): void {
+  if (frame) cancelAnimationFrame(frame);
+  clearTimeout(fallback);
   frame = 0;
   if (!pending.length) return;
   const batch = pending;

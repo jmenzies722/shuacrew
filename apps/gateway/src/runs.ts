@@ -305,6 +305,9 @@ export class Supervisor {
       this.active.delete(runId);
       if (!this.halted) {
         flush();
+        // Messages sent while it worked are next — unless you stopped it.
+        const now = this.status(runId);
+        if (now !== "cancelled" && now !== "paused" && this.unanswered(runId).length) this.setStatus(runId, "queued", "follow-up");
         this.pump();
       }
     }
@@ -492,24 +495,32 @@ export class Supervisor {
   /** Send another message to a run: a new turn in the same runtime conversation. */
   followUp(run: string, text: string, by = "you"): void {
     if (!this.status(run)) throw new Error(`no run ${run}`);
-    if (this.active.has(run)) throw new Error("the run is still working — wait for this turn to finish");
     this.rec("run.followup", { text, by }, { run });
+    // Mid-turn, a message waits its turn: the one after this answers everything queued.
+    if (this.active.has(run)) return;
     this.setStatus(run, "queued", "follow-up");
     this.pump();
   }
 
-  /** What this turn is asked: the newest follow-up not yet answered, else the original ask. */
-  private currentAsk(run: string, original: string): string {
-    let ask = original;
-    let answered = true;
+  /** Follow-ups no turn has started on yet, oldest first. */
+  private unanswered(run: string): string[] {
+    let pending: string[] = [];
     for (const e of this.store.forRun(run)) {
-      if (e.kind === "run.followup") {
-        ask = e.body.text;
-        answered = false;
-      }
-      if (e.kind === "turn.started" && !answered && e.body.text === ask) answered = true;
+      if (e.kind === "run.followup") pending.push(e.body.text);
+      if (e.kind === "turn.started") pending = [];
     }
-    return ask;
+    return pending;
+  }
+
+  /**
+   * What this turn is asked: every follow-up queued since the last turn, together; else the last
+   * turn's ask again (a turn cut off by a restart is redone); else the original ask.
+   */
+  private currentAsk(run: string, original: string): string {
+    const pending = this.unanswered(run);
+    if (pending.length) return pending.join("\n\n");
+    const last = [...this.store.forRun(run)].reverse().find((e) => e.kind === "turn.started");
+    return last?.kind === "turn.started" ? last.body.text : original;
   }
 
   // ── reading the log ─────────────────────────────────────────────────────────────────

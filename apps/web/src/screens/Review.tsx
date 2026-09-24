@@ -64,7 +64,7 @@ export function Review() {
     setBusy(true);
     try {
       await api(`/api/runs/${id}/review`, { body: { approve, lesson: approve ? undefined : lesson } });
-      navigate({ to: "/runs/$id", params: { id } });
+      navigate({ to: "/sessions/$id", params: { id } });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -88,7 +88,7 @@ export function Review() {
       <header className="col-span-3 flex items-center gap-3 border-b border-line bg-panel px-5 py-3.5 max-[1100px]:col-span-2">
         <div className="min-w-0">
           <div className="text-[11.5px] text-fg-3">
-            <Link to="/runs/$id" params={{ id }} className="hover:text-fg-2">
+            <Link to="/sessions/$id" params={{ id }} className="hover:text-fg-2">
               {run?.title ?? id}
             </Link>{" "}
             · review
