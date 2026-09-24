@@ -110,8 +110,9 @@ export const bodies = {
     contextUsed: z.number().optional(),
     contextLimit: z.number().optional(),
   }),
-  "runtime.limited": z.object({ runtime: RuntimeId, until: z.number(), message: z.string() }),
-  "runtime.restored": z.object({ runtime: RuntimeId }),
+  // With a model, the limit is that model's own (e.g. a weekly cap on one model); without, the whole agent's.
+  "runtime.limited": z.object({ runtime: RuntimeId, model: z.string().optional(), until: z.number(), message: z.string() }),
+  "runtime.restored": z.object({ runtime: RuntimeId, model: z.string().optional() }),
 
   // review
   "review.comment": z.object({ file: z.string(), line: z.number().int(), text: z.string() }),

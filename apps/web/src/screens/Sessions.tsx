@@ -210,6 +210,8 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
           <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : run.ticker || "Thinking…"}</span>
         ) : run.status === "failed" ? (
           <span className="text-bad">{run.statusReason ?? "Failed"}</span>
+        ) : run.status === "paused" ? (
+          <span className="text-amber">Paused — {run.statusReason ?? "usage window"}</span>
         ) : (
           <span className="text-fg-3">{run.ticker || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
         )}
@@ -248,6 +250,11 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
         <h1 className="min-w-0 truncate text-[14px] font-semibold">{run.title}</h1>
         <StatusPill status={run.status} />
+        {(run.status === "paused" || (run.status === "queued" && run.statusReason?.startsWith("moved"))) && (
+          <span className="truncate text-[11.5px] text-amber" title={run.statusReason}>
+            {run.statusReason}
+          </span>
+        )}
         <span className="mono truncate text-[11.5px] text-fg-3">
           {run.runtime}
           {run.model ? ` · ${run.model}` : ""}

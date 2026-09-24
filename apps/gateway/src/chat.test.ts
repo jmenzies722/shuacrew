@@ -161,3 +161,24 @@ describe("push & open a PR", () => {
     expect(fold(store.read(0)).runs[run]?.review?.pr).toBe("https://github.com/me/app/pull/7");
   });
 });
+
+describe("usage limits are per model", () => {
+  it("a capped model moves the run to a sibling model on the same agent, and never blocks the agent", async () => {
+    const { store, supervisor, seen } = await world();
+    const run = supervisor.launch({ ask: "Hit the limit on the big model", runtime: "mock", model: "mock-frontier" });
+    await until(() => ["reviewing", "done"].includes(status(store, run)));
+    const routed = store.forRun(run).find((e) => e.kind === "run.routed");
+    expect(routed?.kind === "run.routed" && routed.body).toMatchObject({ runtime: "mock", model: "mock-fast" });
+    expect(supervisor.limitedUntil("mock")).toBe(0); // the agent itself is fine
+    expect(supervisor.limitedUntil("mock", "mock-frontier")).toBeGreaterThan(Date.now());
+
+    // "Auto" now steers around the capped model instead of queueing behind it.
+    const auto = supervisor.launch({ ask: "Just say hi", runtime: "mock" });
+    await until(() => ["reviewing", "done"].includes(status(store, auto)));
+    expect(seen.find((s) => s.id === auto)?.model).toBe("mock-fast");
+
+    // "Try now" lifts it.
+    supervisor.restore("mock", "mock-frontier");
+    expect(supervisor.limitedUntil("mock", "mock-frontier")).toBe(0);
+  });
+});

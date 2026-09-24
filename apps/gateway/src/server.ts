@@ -306,6 +306,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   app.get("/api/merge-queue", async () => ({ pending: merges.pending }));
 
+  // "Try now": lift a usage limit you believe has cleared. If it hasn't, the next call says so.
+  app.post<{ Params: { runtime: string }; Body: { model?: string } }>("/api/runtimes/:runtime/restore", async (request) => {
+    supervisor.restore(request.params.runtime, request.body?.model || undefined);
+    return { ok: true };
+  });
+
   // Ship it: push the session's branch and open a GitHub PR that explains itself.
   app.post<{ Params: { id: string } }>("/api/runs/:id/pr", async (request, reply) => {
     const run = state.runs[request.params.id];

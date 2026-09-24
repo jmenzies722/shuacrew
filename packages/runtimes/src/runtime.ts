@@ -50,7 +50,7 @@ export type RuntimeEvent =
   | { type: "usage"; inputTokens: number; outputTokens: number; cacheTokens?: number; costUsd?: number; contextUsed?: number; contextLimit?: number }
   | { type: "checkpoint"; note?: string }
   /** The subscription's usage window is exhausted; `until` is when it lifts (ms since epoch). */
-  | { type: "limited"; until: number; message: string }
+  | { type: "limited"; until: number; message: string; model?: string }
   | { type: "done"; text: string; durationMs?: number }
   | { type: "error"; message: string };
 

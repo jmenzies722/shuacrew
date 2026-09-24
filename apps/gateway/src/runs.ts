@@ -163,7 +163,8 @@ export class Supervisor {
     const runs = this.projectRuns();
     const queued = runs.filter((r) => r.status === "queued").sort((a, b) => b.priority - a.priority || a.seq - b.seq);
     for (const run of queued) {
-      if (this.limitedUntil(run.runtime) > Date.now()) continue;
+      const agent = this.currentRuntime(run.id, run.runtime);
+      if (this.limitedUntil(agent) > Date.now() || this.allModelsLimited(agent)) continue;
       const cap = this.options.concurrency?.[run.runtime] ?? (run.runtime === "mock" ? 8 : 2);
       const busy = runs.filter((r) => r.runtime === run.runtime && this.active.has(r.id)).length;
       if (busy >= cap) continue;
@@ -221,7 +222,7 @@ export class Supervisor {
     // another agent starts a fresh conversation there, with a recap of the work so far.
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
-    const model = this.modelFor(runId, runtime.id, spec.model);
+    const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
     const run: RunSpec = {
       id: runId,
       // A fork's first turn carries the conversation it branched from; a moved run gets a recap.
@@ -298,7 +299,7 @@ export class Supervisor {
             break;
           }
           case "limited":
-            this.limited(runId, runtime.id, event.until, event.message);
+            this.limited(runId, runtime.id, event.until, event.message, event.model ?? model);
             ended = true;
             return;
           case "done":
@@ -384,58 +385,92 @@ export class Supervisor {
 
   // ── the usage window ────────────────────────────────────────────────────────────────
 
-  private limited(run: string, runtime: string, until: number, message: string): void {
-    this.rec("runtime.limited", { runtime, until, message });
-    // A run moves at most twice: past that it waits for a window instead of bouncing between agents.
+  private limited(run: string, runtime: string, until: number, message: string, model?: string): void {
+    this.rec("runtime.limited", { runtime, model, until, message });
+    // Moves are capped, so a run never bounces between limits forever; past that it waits.
     const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && e.body.reason.includes(" is out until ")).length;
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    const launched = created?.kind === "run.created" ? created.body.model : undefined;
+    const what = model ?? runtime;
+    // First choice: another model on the same agent (a weekly cap on one model isn't the account's).
+    const sibling = this.options.failover !== false && moves < 3 && model ? this.pickModel(runtime, model, [model]) : undefined;
+    if (sibling) {
+      this.rec("run.routed", { runtime, model: sibling, reason: `${what} is out until ${when(until)}` }, { run });
+      this.setStatus(run, "queued", `moved to ${sibling}`);
+      this.pump();
+      return;
+    }
     const other =
-      this.options.failover && moves < 2
-        ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now())
+      this.options.failover && moves < 3
+        ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
     if (other) {
-      const created = this.store.forRun(run).find((e) => e.kind === "run.created");
-      const launched = created?.kind === "run.created" ? created.body.model : undefined;
-      this.rec(
-        "run.routed",
-        { runtime: other, model: this.modelFor(run, other, launched), reason: `${runtime} is out until ${new Date(until).toLocaleTimeString()}` },
-        { run },
-      );
+      this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${what} is out until ${when(until)}` }, { run });
       this.setStatus(run, "queued", `moved to ${other}`);
       this.pump();
       return;
     }
-    this.setStatus(run, "paused", `${runtime} usage window — resumes ${new Date(until).toLocaleTimeString()}`);
-    this.scheduleResume(runtime, until);
+    this.setStatus(run, "paused", `${what} usage window — resumes ${when(until)}`);
+    this.scheduleResume(runtime, until, model);
   }
 
-  private scheduleResume(runtime: string, until: number): void {
-    clearTimeout(this.resumeTimers.get(runtime));
-    const timer = setTimeout(() => this.restore(runtime), Math.max(0, until - Date.now()));
+  private scheduleResume(runtime: string, until: number, model?: string): void {
+    const key = model ? `${runtime}:${model}` : runtime;
+    clearTimeout(this.resumeTimers.get(key));
+    // setTimeout can't wait longer than ~24.8 days; re-check daily for longer windows.
+    const timer = setTimeout(() => (until - Date.now() > 1000 ? this.scheduleResume(runtime, until, model) : this.restore(runtime, model)), Math.min(Math.max(0, until - Date.now()), 86_400_000));
     timer.unref?.();
-    this.resumeTimers.set(runtime, timer);
+    this.resumeTimers.set(key, timer);
   }
 
-  /** The window reset: paused runs go back in the queue. */
-  restore(runtime: string): void {
-    this.rec("runtime.restored", { runtime });
+  /** A window reset (or you said "try now"): paused runs go back in the queue. */
+  restore(runtime: string, model?: string): void {
+    this.rec("runtime.restored", { runtime, model });
     for (const run of this.projectRuns()) {
-      if (run.status === "paused" && run.runtime === runtime) this.setStatus(run.id, "queued", "usage window reset");
+      if (run.status === "paused" && this.currentRuntime(run.id, run.runtime) === runtime) this.setStatus(run.id, "queued", "usage window reset");
     }
     this.pump();
   }
 
-  /** When a runtime's usage window lifts; 0 when it is available. The latest limit stands
-   * unless a restore came after it. */
-  limitedUntil(runtime: string): number {
-    let limit: { seq: number; until: number } | undefined;
+  /** The limits in force on an agent, each for a model or (no model) the whole agent. */
+  private activeLimits(runtime: string): Array<{ model?: string; until: number }> {
+    const limits = new Map<string, { seq: number; model?: string; until: number }>();
     for (const e of this.store.ofKinds("runtime.limited")) {
-      if (e.kind === "runtime.limited" && e.body.runtime === runtime) limit = { seq: e.seq, until: e.body.until };
+      if (e.kind === "runtime.limited" && e.body.runtime === runtime) limits.set(e.body.model ?? "*", { seq: e.seq, model: e.body.model, until: e.body.until });
     }
-    if (!limit) return 0;
-    const restored = this.store
-      .ofKinds("runtime.restored", limit.seq)
-      .some((e) => e.kind === "runtime.restored" && e.body.runtime === runtime);
-    return restored ? 0 : limit.until;
+    const now = Date.now();
+    return [...limits.values()].filter((l) => {
+      if (l.until <= now) return false;
+      return !this.store
+        .ofKinds("runtime.restored", l.seq)
+        .some((e) => e.kind === "runtime.restored" && e.body.runtime === runtime && (!e.body.model || e.body.model === l.model));
+    });
+  }
+
+  /** When the agent (or one of its models) is available again; 0 when it is available now. */
+  limitedUntil(runtime: string, model?: string): number {
+    const hit = this.activeLimits(runtime).filter((l) => !l.model || l.model === model);
+    return hit.length ? Math.max(...hit.map((l) => l.until)) : 0;
+  }
+
+  private allModelsLimited(runtime: string): boolean {
+    const models = this.runtimes.get(runtime)?.models ?? [];
+    return models.length > 0 && models.every((m) => this.limitedUntil(runtime, m.id) > Date.now());
+  }
+
+  /**
+   * The model to use on an agent: the one wanted if it's free; for "auto", the agent's default
+   * unless a model limit is in force, then the best free model; never one that's capped.
+   */
+  private pickModel(runtime: string, wanted?: string, avoid: string[] = []): string | undefined {
+    const models = this.runtimes.get(runtime)?.models ?? [];
+    const free = (id: string) => !avoid.includes(id) && this.limitedUntil(runtime, id) <= Date.now();
+    if (wanted && free(wanted)) return wanted;
+    if (!wanted && !this.activeLimits(runtime).some((l) => l.model)) return undefined;
+    const order = ["frontier", "balanced", "fast"];
+    const tier = models.find((m) => m.id === wanted)?.tier;
+    const ranked = [...models].sort((a, b) => Math.abs(order.indexOf(a.tier) - order.indexOf(tier ?? "frontier")) - Math.abs(order.indexOf(b.tier) - order.indexOf(tier ?? "frontier")) || order.indexOf(a.tier) - order.indexOf(b.tier));
+    return ranked.find((m) => free(m.id))?.id;
   }
 
   // ── approvals ───────────────────────────────────────────────────────────────────────
@@ -619,8 +654,9 @@ export class Supervisor {
         resumed.push(run.id);
       }
       if (run.status === "paused") {
-        const until = this.limitedUntil(run.runtime);
-        if (until > Date.now()) this.scheduleResume(run.runtime, until);
+        const agent = this.currentRuntime(run.id, run.runtime);
+        const limits = this.activeLimits(agent);
+        if (limits.length) for (const l of limits) this.scheduleResume(agent, l.until, l.model);
         else this.setStatus(run.id, "queued", "usage window reset while the gateway was down");
       }
     }
@@ -640,4 +676,13 @@ function isFinished(status: RunStatus): boolean {
 function titleFrom(ask: string): string {
   const line = ask.trim().split("\n")[0] ?? "";
   return line.length <= 70 ? line : `${line.slice(0, 67).trimEnd()}…`;
+}
+
+/** "3:50 PM" today, "Wed 8:00 PM" within a week, "Sep 30, 8:00 PM" beyond. */
+function when(ms: number): string {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  if (ms - Date.now() < 6 * 86_400_000) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }

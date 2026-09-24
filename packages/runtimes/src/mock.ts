@@ -57,8 +57,9 @@ export class MockRuntime implements Runtime {
       return;
     }
     // A usage window only interrupts fresh work: a run resumed after the window reset carries on.
-    if (ask.includes("limit") && !run.resume) {
-      yield { type: "limited", until: Date.now() + 60 * 60_000, message: "Mock usage limit reached — try again in an hour" };
+    if (ask.includes("limit") && !run.resume && run.model !== "mock-fast") {
+      // Named a model: that model's own cap (like a weekly cap on one model). No model: the agent's.
+      yield { type: "limited", until: Date.now() + 60 * 60_000, message: "Mock usage limit reached — try again in an hour", model: run.model };
       return;
     }
     yield* say("I'll look at how this is set up first, then reproduce the problem before changing anything.\n");

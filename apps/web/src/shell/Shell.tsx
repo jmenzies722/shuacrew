@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 import { SquareTerminal, Waypoints } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
 import { selectLiveRuns, useLive } from "../lib/live";
 import { ApprovalToasts } from "./ApprovalToasts";
@@ -74,11 +75,22 @@ function TopBar() {
           <Kbd>⌘K</Kbd>
         </button>
       </div>
-      {limited.map(([runtime, info]) => (
-        <span key={runtime} className="hidden items-center gap-1.5 text-[12px] text-amber min-[1000px]:flex" title={info.message} data-no-drag>
-          <StatusGlyph tone="live" size={7} /> {runtime} limited until {new Date(info.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-        </span>
-      ))}
+      {limited.map(([key, info]) => {
+        const [runtime, model] = key.split(" · ");
+        const soon = info.until - Date.now() < 86_400_000;
+        const until = new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
+        return (
+          <button
+            key={key}
+            className="limit-chip hidden min-[1000px]:flex"
+            title={`${info.message}\nClick to try again now — if it's still limited, the next message will say so.`}
+            onClick={() => void api(`/api/runtimes/${runtime}/restore`, { body: { model } })}
+          >
+            <StatusGlyph tone="live" size={7} /> {model ?? runtime} out until {until}
+            <span className="limit-try">Try now</span>
+          </button>
+        );
+      })}
       <span className="hidden items-center gap-3 text-[12px] text-fg-3 min-[900px]:flex" data-no-drag>
         <span className="flex items-center gap-1.5" title="Agents working now">
           <StatusGlyph tone={running ? "live" : "idle"} size={7} />

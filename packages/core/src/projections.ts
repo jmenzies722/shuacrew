@@ -249,10 +249,13 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       if (run) run.review = { ...(run.review ?? { comments: 0 }), queued: undefined, failed: event.body.reason };
       break;
     case "runtime.limited":
-      state.limited[event.body.runtime] = { until: event.body.until, message: event.body.message };
+      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message };
       break;
     case "runtime.restored":
-      delete state.limited[event.body.runtime];
+      // A restore without a model lifts everything on that agent; with one, just that model.
+      for (const key of Object.keys(state.limited)) {
+        if (event.body.model ? key === `${event.body.runtime} · ${event.body.model}` : key === event.body.runtime || key.startsWith(`${event.body.runtime} · `)) delete state.limited[key];
+      }
       break;
     default:
       break;
