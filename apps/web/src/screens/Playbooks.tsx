@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "../components/Markdown";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
-import { KIND } from "./Library";
+import { KIND } from "../lib/kinds";
 
 interface Phase {
   id: string;

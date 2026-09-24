@@ -553,6 +553,7 @@ function NewSession() {
     <section className="sheet flex min-h-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center px-6 pb-[12vh] pt-10">
+          <NeedsYou />
           <div className="hero-mark">
             <img src="/icon.svg" alt="" />
           </div>
@@ -567,6 +568,7 @@ function NewSession() {
               </button>
             ))}
           </div>
+          <GettingStarted />
         </div>
       </div>
       {terminal && <Drawer onClose={() => setTerminal(false)} />}
@@ -1136,6 +1138,96 @@ function Line({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-3 px-1.5 py-0.5 text-[12px]">
       <span className="text-fg-3">{label}</span>
       <span className="mono truncate text-fg-2">{value}</span>
+    </div>
+  );
+}
+
+// ── home: what needs you, and getting started ───────────────────────────────────────────────
+
+/** Gates and approvals waiting on you, one tap away — the first thing you see when you open the app. */
+function NeedsYou() {
+  const plays = useLive((s) => s.crew.plays);
+  const approvals = useLive((s) => s.crew.approvals);
+  const runs = useLive((s) => s.crew.runs);
+  const navigate = useNavigate();
+  const gates = Object.values(plays).filter((p) => p.status === "waiting");
+  const asks = Object.values(approvals);
+  if (!gates.length && !asks.length) return null;
+  return (
+    <div className="needs-you">
+      <span className="needs-dot" />
+      <span className="text-[12px] font-semibold text-fg">Needs you</span>
+      <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+        {gates.slice(0, 3).map((p) => (
+          <button key={p.id} className="needs-chip" onClick={() => navigate({ to: "/plays/$id", params: { id: p.id } })}>
+            {p.emoji} {p.phases.find((x) => x.status === "review")?.name ?? "Review"} <span className="text-fg-3">· {p.title.split(" — ")[1] ?? p.name}</span>
+          </button>
+        ))}
+        {asks.slice(0, 3).map((a) => (
+          <button key={a.id} className="needs-chip" onClick={() => a.run && navigate({ to: "/sessions/$id", params: { id: a.run } })}>
+            <ShieldCheck size={11} className="text-wait" /> Allow {a.tool}? <span className="text-fg-3">· {(a.run && runs[a.run]?.title) || "session"}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const STARTED = "shuacrew.gettingStarted";
+
+/** Five steps from a fresh install to a crew that can run your startup. Gone once done or dismissed. */
+function GettingStarted() {
+  const members = useLive((s) => Object.keys(s.crew.members).length);
+  const ventures = useLive((s) => Object.keys(s.crew.ventures).length);
+  const navigate = useNavigate();
+  const [extra, setExtra] = useState<{ tools: number; skills: number; service: boolean } | null>(null);
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(STARTED) === "dismissed";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    if (hidden) return;
+    void Promise.all([api<unknown[]>("/api/mcp").catch(() => []), api<unknown[]>("/api/skills").catch(() => []), api<{ service?: boolean }>("/api/health").catch(() => ({}) as { service?: boolean })]).then(([t, k, h]) =>
+      setExtra({ tools: t.length, skills: k.length, service: Boolean(h.service) }),
+    );
+  }, [hidden]);
+  if (hidden || !extra) return null;
+  const steps = [
+    { done: members > 0, label: "Add your crew", hint: "Researcher, Engineer, Designer, Marketer, Operator", to: "/crew" },
+    { done: ventures > 0, label: "Start a venture", hint: "Your idea, from validation to revenue", to: "/ventures" },
+    { done: extra.tools > 0, label: "Connect a tool", hint: "Playwright, Stripe, Linear, Supabase…", to: "/integrations" },
+    { done: extra.skills > 0, label: "Install a skill", hint: "docx, pdf, frontend-design…", to: "/integrations", hash: "skills" },
+    { done: extra.service, label: "Keep it always on", hint: "pnpm service install", to: "/settings" },
+  ];
+  const left = steps.filter((s) => !s.done).length;
+  if (!left) return null;
+  return (
+    <div className="getting-started">
+      <div className="flex items-center gap-2">
+        <span className="text-[12.5px] font-semibold text-fg">Getting started</span>
+        <span className="text-[11.5px] text-fg-3">
+          {steps.length - left} of {steps.length}
+        </span>
+        <div className="gs-bar">
+          <span style={{ width: `${((steps.length - left) / steps.length) * 100}%` }} />
+        </div>
+        <button className="text-[11.5px] text-fg-3 hover:text-fg" onClick={() => (setHidden(true), localStorage.setItem(STARTED, "dismissed"))}>
+          Hide
+        </button>
+      </div>
+      <div className="mt-2.5 grid gap-1">
+        {steps.map((s) => (
+          <button key={s.label} className={`gs-step ${s.done ? "is-done" : ""}`} onClick={() => navigate({ to: s.to, ...(s.hash ? { hash: s.hash } : {}) })} disabled={s.done}>
+            <span className="gs-check">{s.done ? <CheckCircle2 size={15} /> : <span />}</span>
+            <span className="text-[12.5px] font-medium">{s.label}</span>
+            <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg-3">{s.hint}</span>
+            {!s.done && <span className="text-[11.5px] text-fg-3">→</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "../components/Markdown";
 import { api } from "../lib/api";
 import { upload } from "../lib/attachments";
+import { KIND } from "../lib/kinds";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 
@@ -19,14 +20,6 @@ interface Hit {
   snippet: string;
 }
 
-export const KIND: Record<Kind, { label: string; icon: typeof FileText; tone: string }> = {
-  doc: { label: "Document", icon: FileText, tone: "#6cb6ff" },
-  page: { label: "Page", icon: Globe, tone: "#f778ba" },
-  code: { label: "Code", icon: Code2, tone: "#4ade80" },
-  data: { label: "Data", icon: Database, tone: "#56d4dd" },
-  image: { label: "Image", icon: Image, tone: "#ffb020" },
-  file: { label: "File", icon: Package, tone: "#a9b1bd" },
-};
 
 const ago = (at: number) => {
   const s = (Date.now() - at) / 1000;

@@ -32,7 +32,7 @@ import { splitAttachments } from "../lib/attachments";
 import { DiffView, diffStat } from "./DiffView";
 import { describe } from "../shell/CommandPalette";
 import { CodeBlock, Markdown } from "./Markdown";
-import { KIND } from "../screens/Library";
+import { KIND } from "../lib/kinds";
 import { useLive } from "../lib/live";
 
 /** What every card in a thread may need: the session it belongs to, and whether it's working. */
@@ -649,6 +649,9 @@ function StepRow({ step }: { step: Step }) {
     case "tool":
       if (isShell(step.tool)) return <ShellCard step={step} />;
       if (isEdit(step.tool)) return <FileCard step={step} />;
+      if (step.tool === "ToolSearch") return null; // loading deferred tools: plumbing, not work
+      if (step.tool === "Skill") return <SkillLine step={step} />;
+      if (step.tool.startsWith("mcp__")) return <McpLine step={step} />;
       return <ToolLine step={step} />;
     case "thought":
       return <Thought step={step} />;
@@ -974,5 +977,64 @@ function ArtifactSaved({ step }: { step: Extract<Item, { kind: "tool" }> }) {
         </span>
       )}
     </button>
+  );
+}
+
+// ── skills and MCP tools ────────────────────────────────────────────────────────────────────
+
+/** The agent reached for an installed skill. */
+function SkillLine({ step }: { step: Extract<Step, { kind: "tool" }> }) {
+  const navigate = useNavigate();
+  const name = String((step.input as { skill?: string } | undefined)?.skill ?? "skill").replace(/^shuacrew:/, "");
+  return (
+    <button className="skill-line" onClick={() => navigate({ to: "/integrations", hash: "skills" })} title="Open Tools & Skills">
+      <Sparkles size={13} className="text-amber" />
+      <span className={step.ok === undefined ? "shimmer-text" : "text-fg-2"}>{step.ok === undefined ? "Loading skill" : step.ok ? "Used skill" : "Couldn't load skill"}</span>
+      <span className="skill-chip mono">{name}</span>
+    </button>
+  );
+}
+
+const SERVER_NAMES: Record<string, string> = { shuacrew: "Library" };
+
+/** A call to a connected service: who, what, the arguments that matter, and a readable result. */
+function McpLine({ step }: { step: Extract<Step, { kind: "tool" }> }) {
+  const [open, setOpen] = useState(false);
+  const [, server = "", ...rest] = step.tool.split("__");
+  const tool = rest.join("__");
+  const label = SERVER_NAMES[server] ?? server.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const verb = tool.replace(/[-_]/g, " ");
+  const input = (step.input ?? {}) as Record<string, unknown>;
+  const args = Object.entries(input)
+    .filter(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${String(v).replace(/\s+/g, " ").slice(0, 60)}`)
+    .join("  ·  ");
+  const pretty = (() => {
+    if (!step.output) return "";
+    try {
+      return JSON.stringify(JSON.parse(step.output), null, 2);
+    } catch {
+      return step.output;
+    }
+  })();
+  return (
+    <div className="mcp-line">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full min-w-0 items-center gap-2.5 py-1 text-left text-[12.5px]" aria-expanded={open}>
+        <span className="mcp-mono">{label.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase()}</span>
+        <span className="shrink-0 font-medium text-fg">{label}</span>
+        <span className={`shrink-0 ${step.ok === undefined ? "shimmer-text" : step.ok ? "text-fg-2" : "text-bad"}`}>{verb}</span>
+        <span className="mono min-w-0 flex-1 truncate text-[11.5px] text-fg-3">{args}</span>
+        {step.ok === false && <span className="text-[11px] text-bad">failed</span>}
+        {step.durationMs !== undefined && <span className="mono text-[11px] tabular-nums text-fg-3">{fmtMs(step.durationMs)}</span>}
+        <ChevronRight size={12} className={`shrink-0 text-fg-3 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <div className="ml-8 mt-1 grid gap-1.5">
+          {Object.keys(input).length > 0 && <pre className="mcp-pre">{JSON.stringify(input, null, 2)}</pre>}
+          {pretty && <pre className="mcp-pre is-out">{pretty.slice(0, 12_000)}</pre>}
+        </div>
+      )}
+    </div>
   );
 }

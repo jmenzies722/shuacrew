@@ -1,19 +1,26 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
-import { Board } from "./screens/Board";
-import { MissionControl } from "./screens/MissionControl";
-import { Integrations, Policy, Settings, Specs } from "./screens/Pages";
-import { Memory } from "./screens/Memory";
-import { Schedules } from "./screens/Schedules";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { Sessions } from "./screens/Sessions";
-import { TerminalPage } from "./screens/TerminalPage";
-import { CrewFloor } from "./screens/CrewFloor";
-import { CrewPage } from "./screens/CrewPage";
-import { Library } from "./screens/Library";
-import { PlayPage, Playbooks } from "./screens/Playbooks";
-import { VenturePage, Ventures } from "./screens/Ventures";
-import { Review } from "./screens/Review";
-import { RunDetail } from "./screens/RunDetail";
 import { Shell } from "./shell/Shell";
+
+// Everything but the chat loads the first time you open it, so the app starts fast.
+const Board = lazyRouteComponent(() => import("./screens/Board"), "Board");
+const MissionControl = lazyRouteComponent(() => import("./screens/MissionControl"), "MissionControl");
+const Memory = lazyRouteComponent(() => import("./screens/Memory"), "Memory");
+const Schedules = lazyRouteComponent(() => import("./screens/Schedules"), "Schedules");
+const TerminalPage = lazyRouteComponent(() => import("./screens/TerminalPage"), "TerminalPage");
+const CrewFloor = lazyRouteComponent(() => import("./screens/CrewFloor"), "CrewFloor");
+const CrewPage = lazyRouteComponent(() => import("./screens/CrewPage"), "CrewPage");
+const Library = lazyRouteComponent(() => import("./screens/Library"), "Library");
+const Review = lazyRouteComponent(() => import("./screens/Review"), "Review");
+const RunDetail = lazyRouteComponent(() => import("./screens/RunDetail"), "RunDetail");
+const Integrations = lazyRouteComponent(() => import("./screens/Pages"), "Integrations");
+const Policy = lazyRouteComponent(() => import("./screens/Pages"), "Policy");
+const Settings = lazyRouteComponent(() => import("./screens/Pages"), "Settings");
+const Specs = lazyRouteComponent(() => import("./screens/Pages"), "Specs");
+const PlayPage = lazyRouteComponent(() => import("./screens/Playbooks"), "PlayPage");
+const Playbooks = lazyRouteComponent(() => import("./screens/Playbooks"), "Playbooks");
+const VenturePage = lazyRouteComponent(() => import("./screens/Ventures"), "VenturePage");
+const Ventures = lazyRouteComponent(() => import("./screens/Ventures"), "Ventures");
 
 const root = createRootRoute({ component: Shell });
 
