@@ -165,6 +165,18 @@ export interface PlayView {
   updatedAt: number;
 }
 
+export interface SiteView {
+  id: string;
+  artifact: string;
+  venture?: string;
+  url: string;
+  project: string;
+  version: number; // the artifact version that's live
+  publishedAt: number;
+  signups?: { count: number; at: number; weekAgo?: number };
+  signupsError?: string;
+}
+
 export interface BriefingView {
   id: string;
   day: string;
@@ -183,6 +195,7 @@ export interface CrewState {
   plays: Record<string, PlayView>;
   ventures: Record<string, VentureView>;
   briefing?: BriefingView;
+  sites: Record<string, SiteView>;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -190,7 +203,7 @@ export interface CrewState {
 }
 
 export function emptyState(): CrewState {
-  return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
+  return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, sites: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
 }
 
 function dayOf(ms: number): string {
@@ -352,6 +365,29 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       v.updatedAt = event.at;
       break;
     }
+    case "site.published": {
+      const b = event.body;
+      const was = state.sites[b.id];
+      state.sites[b.id] = { ...was, id: b.id, artifact: b.artifact, venture: b.venture, url: b.url, project: b.project, version: b.version, publishedAt: event.at };
+      break;
+    }
+    case "site.signups": {
+      const site = state.sites[event.body.id];
+      if (!site) break;
+      if (event.body.error) site.signupsError = event.body.error;
+      else {
+        // Keep the reading from about a week ago, for "+12 this week".
+        const prev = site.signups;
+        const weekAgo = prev && event.at - prev.at > 6.5 * 86_400_000 ? prev.count : prev?.weekAgo;
+        site.signups = { count: event.body.count, at: event.at, weekAgo: weekAgo ?? prev?.count ?? event.body.count };
+        site.signupsError = undefined;
+      }
+      state.sites = { ...state.sites, [site.id]: { ...site } };
+      break;
+    }
+    case "site.removed":
+      delete state.sites[event.body.id];
+      break;
     case "briefing.created":
       state.briefing = { ...event.body, at: event.at };
       break;

@@ -240,6 +240,10 @@ export const bodies = {
     subscriptions: z.number().int().optional(),
     error: z.string().optional(),
   }),
+  // Sites: an artifact published to the web (Vercel), with a waitlist. Only the count is logged.
+  "site.published": z.object({ id: z.string(), artifact: z.string(), venture: z.string().optional(), url: z.string(), project: z.string(), version: z.number().int() }),
+  "site.signups": z.object({ id: z.string(), count: z.number().int(), error: z.string().optional() }),
+  "site.removed": z.object({ id: z.string() }),
   // The morning briefing: a digest built from the log (no model), one per day.
   "briefing.created": z.object({
     id: z.string(),

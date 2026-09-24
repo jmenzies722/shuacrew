@@ -8,6 +8,7 @@ import { Markdown } from "../components/Markdown";
 import { api } from "../lib/api";
 import { upload } from "../lib/attachments";
 import { KIND } from "../lib/kinds";
+import { PublishButton } from "../components/Publish";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 
@@ -306,9 +307,10 @@ function Viewer({ target, onClose }: { target: { type: "artifact" | "knowledge";
             </a>
             {artifact.kind === "page" && (
               <a className="lib-link" href={raw} target="_blank" rel="noreferrer">
-                <Globe size={13} /> Open
+                <Globe size={13} /> Preview
               </a>
             )}
+            {artifact.kind === "page" && <PublishButton artifact={artifact.id} version={artifact.version} />}
             {confirm ? (
               <Button size="s" variant="danger" onClick={() => void api(`/api/library/artifacts/${artifact.id}`, { method: "DELETE" }).then(onClose)}>
                 Delete all versions?

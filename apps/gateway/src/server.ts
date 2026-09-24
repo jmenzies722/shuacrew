@@ -28,6 +28,7 @@ import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
 import type { Plays } from "./plays.js";
 import { Briefing } from "./briefing.js";
+import { Sites, type Runner } from "./sites.js";
 import type { Skills } from "./skills.js";
 import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
@@ -51,6 +52,9 @@ export interface ServerOptions {
   plays?: Plays;
   /** When the morning briefing runs (cron, local time); false for none. */
   briefingAt?: string | false;
+  /** Where published sites live; with a library, enables publishing. */
+  sitesRoot?: string;
+  vercel?: Runner;
   skills?: Skills;
   ventures?: Ventures;
   tools?: ToolServer;
@@ -210,6 +214,37 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   if (briefing) {
     app.get("/api/briefing", async () => state.briefing ?? null);
     app.post("/api/briefing", async () => briefing.create());
+  }
+
+  // Publishing: an HTML artifact goes live on Vercel with a waitlist; signups come back.
+  const sites = options.library && options.sitesRoot ? new Sites(store, options.sitesRoot, options.library, () => state, options.vercel) : undefined;
+  if (sites) {
+    const fail = (reply: FastifyReply, error: unknown, code = 400) => reply.code(code).send({ error: (error as Error).message });
+    app.get("/api/sites/status", async () => sites.status());
+    app.get("/api/sites", async () => sites.list());
+    app.post<{ Body: { artifact?: string; venture?: string } }>("/api/sites", async (request, reply) => {
+      try {
+        return await sites.publish({ artifact: request.body?.artifact ?? "", venture: request.body?.venture || undefined });
+      } catch (error) {
+        return fail(reply, error);
+      }
+    });
+    app.get<{ Params: { id: string } }>("/api/sites/:id/signups", async (request, reply) => {
+      try {
+        return await sites.signups(request.params.id);
+      } catch (error) {
+        return fail(reply, error, 502);
+      }
+    });
+    app.delete<{ Params: { id: string } }>("/api/sites/:id", async (request, reply) => {
+      try {
+        sites.forget(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return fail(reply, error, 404);
+      }
+    });
+    if (options.sitesRoot && !process.env.VITEST) setInterval(() => void sites.syncAll(), 30 * 60_000).unref();
   }
 
   // The crew's recent activity — what agents did, not every streamed token — for the live floor.

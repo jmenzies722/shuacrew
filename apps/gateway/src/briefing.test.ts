@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { emptyState } from "@shuacrew/core";
 import { MockRuntime } from "@shuacrew/runtimes";
 import { afterEach, describe, expect, it } from "vitest";
 import { compose, localDay } from "./briefing.js";
@@ -65,7 +66,7 @@ describe("the morning briefing", () => {
   });
 
   it("is honest when nothing happened", () => {
-    const empty = compose({ head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, runs: {}, approvals: {}, limited: {}, today: { day: "", tokens: 0, costUsd: 0, runs: 0 } }, Date.now(), 0);
+    const empty = compose(emptyState(), Date.now(), 0);
     expect(empty).toMatchObject({ headline: "All quiet — nothing waiting on you", sections: [] });
   });
 });

@@ -749,3 +749,18 @@ body {
 .dictate-btn { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 999px; color: var(--text-2); transition: background .15s, color .15s; }
 .dictate-btn:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
 .dictate-btn.is-stop { color: #fff; background: var(--bad); }
+
+/* Publishing */
+.pub-orb { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: var(--text); background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.18), transparent 70%), color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pub-url { display: flex; align-items: center; gap: 6px; margin-top: 18px; border-radius: 12px; padding: 8px 8px 8px 12px; background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line); }
+.pub-count { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 92px; border-radius: 14px; padding: 12px; background: color-mix(in srgb, var(--ok) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 25%, transparent); }
+.pub-count span { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+.pub-count em { margin-top: 4px; font-style: normal; font-size: 11px; color: var(--ok); }
+.pub-points { margin-top: 16px; display: grid; gap: 8px; padding-left: 18px; list-style: disc; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.pub-hint { display: flex; align-items: center; gap: 10px; margin-top: 16px; border-radius: 12px; padding: 10px 12px; font-size: 12.5px; color: var(--text-2); background: var(--amber-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent); }
+.pub-hint code { border-radius: 7px; padding: 2px 8px; font-size: 12px; color: var(--text); background: rgba(0,0,0,.25); }
+.pub-live { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 30%, transparent); }
+.pub-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.vn-site { display: flex; align-items: center; gap: 12px; width: 100%; border-radius: 14px; padding: 12px 14px; background: var(--panel); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 22%, var(--line)); transition: box-shadow .15s, transform .15s; }
+button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.vn-site.is-draft { box-shadow: inset 0 0 0 1px var(--line); border: 1px dashed var(--line-strong); }

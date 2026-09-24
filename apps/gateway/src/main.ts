@@ -137,6 +137,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     mcp,
     crew,
     library,
+    sitesRoot: path.join(home, "sites"),
     tools,
     plays,
     ventures,

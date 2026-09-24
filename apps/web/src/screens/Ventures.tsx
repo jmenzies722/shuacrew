@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { KIND } from "../lib/kinds";
+import { PublishButton, PublishSheet } from "../components/Publish";
 
 const STAGES: Array<{ id: VentureStage; label: string; hint: string }> = [
   { id: "idea", label: "Idea", hint: "Worth testing?" },
@@ -262,6 +263,8 @@ export function VenturePage() {
             <AskCrew venture={v} />
           </section>
         </div>
+
+        <LiveSites venture={v} pages={made.filter((a) => a.kind === "page")} />
 
         {mine.length > 0 && (
           <section className="mt-6">
@@ -669,5 +672,47 @@ function Dialog({ children, onClose, label }: { children: React.ReactNode; onClo
         {children}
       </motion.div>
     </div>
+  );
+}
+
+/** Where the venture is live, and how many have joined — or the page that's ready to go live. */
+function LiveSites({ venture: v, pages }: { venture: VentureView; pages: Array<{ id: string; title: string; version: number }> }) {
+  const sites = useLive((s) => Object.values(s.crew.sites).filter((x) => x.venture === v.id || pages.some((p) => p.id === x.artifact)));
+  const [open, setOpen] = useState<{ artifact: string; version: number } | null>(null);
+  const unpublished = pages.filter((p) => !sites.some((s) => s.artifact === p.id));
+  if (!sites.length && !unpublished.length) return null;
+  return (
+    <section className="mt-6">
+      <h2 className="pb-eyebrow">On the web</h2>
+      <div className="grid gap-2.5 md:grid-cols-2">
+        {sites.map((site) => {
+          const page = pages.find((p) => p.id === site.artifact);
+          const gained = site.signups ? site.signups.count - (site.signups.weekAgo ?? site.signups.count) : 0;
+          return (
+            <button key={site.id} className="vn-site" onClick={() => setOpen({ artifact: site.artifact, version: page?.version ?? site.version })}>
+              <span className="pub-dot" />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="mono block truncate text-[13px] text-fg">{site.url.replace(/^https:\/\//, "")}</span>
+                <span className="block truncate text-[11.5px] text-fg-3">{page?.title ?? "Landing page"}{page && page.version > site.version ? " · a newer version is ready to publish" : ""}</span>
+              </span>
+              <span className="text-right">
+                <span className="block text-[20px] font-bold leading-none tracking-[-0.02em] text-fg">{site.signups?.count ?? 0}</span>
+                <span className="block text-[10.5px] text-fg-3">{gained > 0 ? `+${gained} this week` : "joined"}</span>
+              </span>
+            </button>
+          );
+        })}
+        {unpublished.map((p) => (
+          <div key={p.id} className="vn-site is-draft">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-fg">{p.title}</span>
+              <span className="block text-[11.5px] text-fg-3">Ready — put it in front of real people</span>
+            </span>
+            <PublishButton artifact={p.id} version={p.version} />
+          </div>
+        ))}
+      </div>
+      {open && <PublishSheet artifact={open.artifact} version={open.version} onClose={() => setOpen(null)} />}
+    </section>
   );
 }

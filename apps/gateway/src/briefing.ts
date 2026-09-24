@@ -86,6 +86,10 @@ export function compose(state: CrewState, now: number, since: number): Omit<Brie
     }
     if (v.goalMrr && m?.mrr !== undefined) line += ` · ${Math.round((m.mrr / v.goalMrr) * 100)}% of goal`;
     ventures.push({ text: line, href: `/ventures/${v.id}`, tone: "live" });
+    for (const site of Object.values(state.sites).filter((s) => s.venture === v.id && s.signups)) {
+      const gained = site.signups!.count - (site.signups!.weekAgo ?? site.signups!.count);
+      ventures.push({ text: `${v.name} waitlist: ${site.signups!.count} signup${site.signups!.count === 1 ? "" : "s"}${gained > 0 ? ` (+${gained} this week)` : ""} — ${site.url.replace(/^https:\/\//, "")}`, href: `/ventures/${v.id}`, tone: "ok" });
+    }
     const next = NEXT[v.stage];
     const running = Object.values(state.plays).some((p) => p.venture === v.id && p.playbook === next?.playbook && (p.status === "running" || p.status === "waiting"));
     if (next && !running) ventures.push({ text: `Next for ${v.name}: ${NEXT_LABEL[next.playbook] ?? next.playbook}`, href: `/ventures/${v.id}`, tone: "idle" });
