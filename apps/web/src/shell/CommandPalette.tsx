@@ -7,6 +7,7 @@ import { api, decideApproval } from "../lib/api";
 import { ACCENTS, PALETTES } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
+import { Glyph } from "../lib/glyphs";
 
 /**
  * ⌘K does everything: launch, jump anywhere, answer approvals, switch theme. Fuzzy, instant,
@@ -123,7 +124,7 @@ export function CommandPalette() {
                         const phase = p.phases.find((x) => x.status === "review");
                         return (
                           <Item key={p.id} value={`review ${p.title} ${phase?.name ?? ""}`} onSelect={() => go(`/plays/${p.id}`)}>
-                            <span className="shrink-0">{p.emoji}</span>
+                            <Glyph name={p.emoji} fallback={p.playbook} label={p.name} size={14} className="shrink-0 text-fg-3" />
                             <span className="truncate">{phase?.name ?? "Review"} · {p.title}</span>
                             <span className="ml-auto text-[11px] text-amber">review</span>
                           </Item>
@@ -135,7 +136,7 @@ export function CommandPalette() {
                   <Group heading="Ventures">
                     {Object.values(ventures).map((v) => (
                       <Item key={v.id} value={`venture ${v.name} ${v.pitch}`} onSelect={() => go(`/ventures/${v.id}`)}>
-                        <span className="shrink-0">{v.emoji}</span> {v.name}
+                        <Glyph name={v.emoji} fallback="sprout" label={v.name} size={14} className="shrink-0 text-fg-3" /> {v.name}
                         <span className="ml-auto text-[11px] text-fg-3">{v.stage}</span>
                       </Item>
                     ))}

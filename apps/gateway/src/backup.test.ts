@@ -12,7 +12,7 @@ describe("backups", () => {
     const home = mkdtempSync(path.join(os.tmpdir(), "shua-home-"));
     const dest = mkdtempSync(path.join(os.tmpdir(), "shua-backups-"));
     const store = new EventStore(path.join(home, "shuacrew.db"));
-    store.append("crew.member.set", { id: "rhea", name: "Rhea", role: "Researcher", persona: "p", color: "#fff", emoji: "🔎", triggers: [] });
+    store.append("crew.member.set", { id: "rhea", name: "Rhea", role: "Researcher", persona: "p", color: "#fff", emoji: "telescope", triggers: [] });
     mkdirSync(path.join(home, "library", "artifacts"), { recursive: true });
     writeFileSync(path.join(home, "library", "artifacts", "note.md"), "# kept");
     writeFileSync(path.join(home, "venture-keys.json"), '{"fern":"rk_test_x"}');

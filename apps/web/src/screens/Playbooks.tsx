@@ -8,6 +8,7 @@ import { Markdown } from "../components/Markdown";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { KIND } from "../lib/kinds";
+import { Glyph, IconPicker } from "../lib/glyphs";
 
 interface Phase {
   id: string;
@@ -56,7 +57,7 @@ export function Playbooks() {
               Repeatable work in phases. Each phase goes to the right crew member, builds on the last, saves its output to the Library, and waits for you where it matters.
             </p>
           </div>
-          <Button onClick={() => setEditing({ emoji: "✨", inputs: [{ key: "goal", label: "Goal", long: true }], phases: [{ id: "phase-1", name: "", prompt: "", gate: "approve" }] })}>
+          <Button onClick={() => setEditing({ emoji: "workflow", inputs: [{ key: "goal", label: "Goal", long: true }], phases: [{ id: "phase-1", name: "", prompt: "", gate: "approve" }] })}>
             <Plus size={14} /> New playbook
           </Button>
         </header>
@@ -74,7 +75,7 @@ export function Playbooks() {
 
         <section>
           <h2 className="pb-eyebrow">Library</h2>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
+          <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
             {books.map((b) => (
               <BookCard key={b.id} book={b} onRun={() => setStarting(b)} onEdit={() => setEditing(b.builtin ? { ...b, id: `${b.id}-mine`, name: `${b.name} (mine)`, builtin: false } : b)} />
             ))}
@@ -102,7 +103,7 @@ function MemberFace({ id, size = 22 }: { id?: string; size?: number }) {
   const member = useLive((s) => (id ? s.crew.members[id] : undefined));
   return (
     <span className="pb-face" style={{ "--member": member?.color ?? "var(--text-3)", width: size, height: size, fontSize: size * 0.52 } as React.CSSProperties} title={member ? `${member.name}, ${member.role}` : "Any agent"}>
-      {member?.emoji || member?.name.slice(0, 1) || "·"}
+      <Glyph name={member?.emoji} fallback={id} label={member?.name ?? "·"} size={size * 0.55} />
     </span>
   );
 }
@@ -111,7 +112,9 @@ function BookCard({ book, onRun, onEdit }: { book: Playbook; onRun: () => void; 
   return (
     <article className="pb-card">
       <div className="flex items-start gap-3">
-        <span className="pb-emoji">{book.emoji || "✨"}</span>
+        <span className="pb-emoji">
+          <Glyph name={book.emoji} fallback={book.id} label={book.name} size={20} />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-[15.5px] font-semibold text-fg">{book.name}</span>
@@ -152,7 +155,9 @@ function PlayRow({ play }: { play: PlayView }) {
   const done = play.phases.filter((p) => p.status === "done" || p.status === "skipped").length;
   return (
     <Link to="/plays/$id" params={{ id: play.id }} className={`pb-row ${play.status === "waiting" ? "is-waiting" : ""}`}>
-      <span className="pb-emoji is-small">{play.emoji || "✨"}</span>
+      <span className="pb-emoji is-small">
+        <Glyph name={play.emoji} fallback={play.playbook} label={play.name} size={16} />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-semibold text-fg">{play.title}</span>
         <span className="block truncate text-[12px] text-fg-3">
@@ -197,7 +202,9 @@ function StartDialog({ book, onClose }: { book: Playbook; onClose: () => void })
   return (
     <Modal onClose={onClose} label={`Run ${book.name}`}>
       <div className="flex items-center gap-3">
-        <span className="pb-emoji">{book.emoji || "✨"}</span>
+        <span className="pb-emoji">
+          <Glyph name={book.emoji} fallback={book.id} label={book.name} size={20} />
+        </span>
         <div>
           <div className="text-[16px] font-semibold">{book.name}</div>
           <div className="text-[12px] text-fg-3">{book.phases.map((p) => p.name).join(" → ")}</div>
@@ -243,7 +250,7 @@ function Editor({ book, onClose }: { book: Partial<Playbook>; onClose: () => voi
   const [draft, setDraft] = useState({
     id: book.id ?? "",
     name: book.name ?? "",
-    emoji: book.emoji ?? "✨",
+    emoji: book.emoji ?? "workflow",
     description: book.description ?? "",
     inputs: (book.inputs ?? []).map((i) => `${i.key}: ${i.label}${i.optional ? " (optional)" : ""}`).join("\n"),
     phases: (book.phases ?? []).map((p) => ({ ...p })),
@@ -277,15 +284,13 @@ function Editor({ book, onClose }: { book: Partial<Playbook>; onClose: () => voi
   return (
     <Modal onClose={onClose} label="Playbook" wide>
       <div className="mb-4 text-[16px] font-semibold">{book.name && !book.id?.endsWith("-mine") ? `Edit ${book.name}` : "New playbook"}</div>
-      <div className="grid grid-cols-[72px_1fr] gap-3">
-        <label className="field">
-          <span>Emoji</span>
-          <input value={draft.emoji} onChange={(e) => setDraft((d) => ({ ...d, emoji: e.target.value }))} maxLength={4} />
-        </label>
-        <label className="field">
-          <span>Name</span>
-          <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Weekly content" autoFocus />
-        </label>
+      <label className="field">
+        <span>Name</span>
+        <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Weekly content" autoFocus />
+      </label>
+      <div className="field mt-3">
+        <span>Icon</span>
+        <IconPicker value={draft.emoji} onChange={(emoji) => setDraft((d) => ({ ...d, emoji }))} choices={["workflow", "lightbulb", "layout-template", "hammer", "rocket", "scan-search", "trending-up", "megaphone", "telescope", "target", "zap", "layers", "pen-tool", "code", "chart-line", "sparkles"]} />
       </div>
       <label className="field mt-3">
         <span>What it's for</span>
@@ -305,7 +310,7 @@ function Editor({ book, onClose }: { book: Partial<Playbook>; onClose: () => voi
                 <option value="">Any agent</option>
                 {Object.values(members).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.emoji} {m.name} · {m.role}
+                    {m.name} · {m.role}
                   </option>
                 ))}
               </select>
@@ -380,7 +385,9 @@ export function PlayPage() {
           ← Playbooks
         </Link>
         <header className="mt-3 flex items-start gap-4">
-          <span className="pb-emoji">{play.emoji || "✨"}</span>
+          <span className="pb-emoji">
+            <Glyph name={play.emoji} fallback={play.playbook} label={play.name} size={20} />
+          </span>
           <div className="min-w-0 flex-1">
             <div className="text-[12px] text-fg-3">{play.name}</div>
             <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.02em]">{play.title}</h1>

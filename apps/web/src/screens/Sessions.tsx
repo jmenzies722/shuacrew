@@ -37,6 +37,8 @@ import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
+import { Glyph } from "../lib/glyphs";
+import { LogoMark } from "../lib/motion";
 
 interface RuntimeInfo {
   id: string;
@@ -215,7 +217,7 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
         <span className="truncate">{folderOf(run)}</span>
         {member && (
           <span className="member-chip shrink-0" style={{ "--member": member.color } as React.CSSProperties} title={`${member.name}, ${member.role}`}>
-            <span>{member.emoji}</span>
+            <Glyph name={member.emoji} fallback={member.id} label={member.name} size={11} />
             {member.name}
           </span>
         )}
@@ -558,12 +560,12 @@ function NewSession() {
         <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center px-6 pb-[12vh] pt-10">
           <NeedsYou />
           <div className="hero-mark">
-            <img src="/icon.svg" alt="" />
+            <LogoMark size={60} />
           </div>
           <h1 className="hero-title">What should the crew work on?</h1>
           <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
           <Composer seed={seed} hero />
-          <div className="hero-ideas">
+          <div className="hero-ideas stagger">
             {ideas.map(({ icon: Icon, text }) => (
               <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea">
                 <Icon size={14} className="shrink-0 text-amber" />
@@ -874,7 +876,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               <div className="mb-2 flex items-center gap-2 text-[12px] text-fg-3">
                 {member ? (
                   <span className="member-chip" style={{ "--member": m.color } as React.CSSProperties}>
-                    <span>{m.emoji}</span>
+                    <Glyph name={m.emoji} fallback={m.id} label={m.name} size={11} />
                     {m.name} · {m.role}
                     <button onClick={() => setMember("")} className="ml-0.5 text-fg-3 hover:text-fg" aria-label="Don't hand to a crew member">
                       <X size={11} />
@@ -882,7 +884,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   </span>
                 ) : (
                   <button onClick={() => (setMember(m.id), setSuggested(""))} className="member-chip opacity-80 hover:opacity-100" style={{ "--member": m.color } as React.CSSProperties} title="Their persona, model and lessons come with them">
-                    <span>{m.emoji}</span>
+                    <Glyph name={m.emoji} fallback={m.id} label={m.name} size={11} />
                     Hand to {m.name}?
                   </button>
                 )}
@@ -1183,7 +1185,7 @@ function NeedsYou() {
       <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
         {gates.slice(0, 3).map((p) => (
           <button key={p.id} className="needs-chip" onClick={() => navigate({ to: "/plays/$id", params: { id: p.id } })}>
-            {p.emoji} {p.phases.find((x) => x.status === "review")?.name ?? "Review"} <span className="text-fg-3">· {p.title.split(" — ")[1] ?? p.name}</span>
+            <Glyph name={p.emoji} fallback={p.playbook} label={p.name} size={11} /> {p.phases.find((x) => x.status === "review")?.name ?? "Review"} <span className="text-fg-3">· {p.title.split(" — ")[1] ?? p.name}</span>
           </button>
         ))}
         {asks.slice(0, 3).map((a) => (

@@ -650,7 +650,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       answer?.kind === "agent.message" ? answer.body.text.slice(0, 3000) : "_See the diff._",
       ``,
       `**Files:** ${run.files.map((f) => `\`${f}\``).join(", ") || "none"}`,
-      run.checks.length ? `**Checks:** ${run.checks.map((c) => `${c.passed ? "✅" : "❌"} \`${c.command}\``).join(" · ")}` : "",
+      run.checks.length ? `**Checks:** ${run.checks.map((c) => `${c.passed ? "passed" : "failed"}: \`${c.command}\``).join(" · ")}` : "",
       ``,
       `<sub>Made with ShuaCrew · ${run.runtime}${run.model ? ` (${run.model})` : ""} · session ${run.id}</sub>`,
     ].join("\n");
@@ -855,7 +855,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         play.phases.flatMap((phase, index) => {
           if (phase.status !== "review" && !(phase.status === "failed" && play.status === "failed")) return [];
           const member = phase.member ? state.members[phase.member] : undefined;
-          return [{ play: play.id, index, key: `${play.id}:${index}:${phase.runs.length}:${phase.status}`, title: play.title, phase: phase.name, status: phase.status, who: member ? `${member.emoji} ${member.name}`.trim() : "", note: phase.note ?? "", last: index === play.phases.length - 1 }];
+          return [{ play: play.id, index, key: `${play.id}:${index}:${phase.runs.length}:${phase.status}`, title: play.title, phase: phase.name, status: phase.status, who: member ? member.name : "", note: phase.note ?? "", last: index === play.phases.length - 1 }];
         }),
       ),
     };

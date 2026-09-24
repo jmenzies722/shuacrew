@@ -9,6 +9,7 @@ import { decideApproval } from "../lib/api";
 import { inScope, runRepo } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
+import { Glyph } from "../lib/glyphs";
 
 /**
  * The crew floor: every agent at work, live. Pods show what each is doing this second, the last
@@ -200,7 +201,7 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
       <div className="pod-top">
         <span className="pod-avatar" aria-hidden>
           <span className="pod-ring" />
-          <span className="pod-face">{member ? member.emoji || member.name.slice(0, 1) : run.runtime === "claude" ? "C" : run.runtime === "codex" ? "X" : run.runtime.slice(0, 1).toUpperCase()}</span>
+          <span className="pod-face">{member ? <Glyph name={member.emoji} fallback={member.id} label={member.name} size={15} /> : run.runtime === "claude" ? "C" : run.runtime === "codex" ? "X" : run.runtime.slice(0, 1).toUpperCase()}</span>
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-semibold text-fg">{run.title}</div>

@@ -2,7 +2,9 @@ import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Milestones, useSpotlight } from "../lib/motion";
 import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
@@ -37,13 +39,19 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 
 export function Shell() {
   useGlobalKeys();
+  useSpotlight();
+  // One section, one entrance: switching sessions inside the chat doesn't re-animate the page.
+  const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
     <div className="grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>
       <TopBar />
       <IconRail />
       <main className="min-h-0 min-w-0 overflow-hidden" id="main">
-        <Outlet />
+        <motion.div key={section} className="h-full" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}>
+          <Outlet />
+        </motion.div>
       </main>
+      <Milestones />
       <CommandPalette />
       <LaunchSheet />
       <ApprovalToasts />
@@ -204,6 +212,7 @@ function IconRail() {
             const b = badge(to);
             return (
               <Link key={to} to={to} aria-label={label} aria-current={active ? "page" : undefined} className={`rail-item ${active ? "is-active" : ""}`} onClick={() => setOpen(false)}>
+                {active && <motion.span layoutId="rail-active" className="rail-active" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
                 <span className="rail-icon">
                   <Icon size={18} strokeWidth={1.75} />
                   {b && <span className={`rail-dot is-${b.tone}`} />}

@@ -451,7 +451,7 @@ body {
 .rail-item { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 1px; border-radius: 10px; color: var(--text-3); white-space: nowrap; transition: background .15s, color .15s; }
 .rail-item:hover { background: var(--panel); color: var(--text); }
 .rail.is-open .rail-item:hover { background: var(--raised); }
-.rail-item.is-active { background: var(--panel); color: var(--amber); box-shadow: inset 0 0 0 1px var(--line); }
+.rail-item.is-active { color: var(--text); } /* the sliding .rail-active pill draws the highlight */
 .rail-icon { position: relative; display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; }
 .rail-dot { position: absolute; right: 7px; top: 7px; width: 8px; height: 8px; border-radius: 999px; box-shadow: 0 0 0 2px var(--ink); }
 .rail-dot.is-wait { background: var(--wait); }
@@ -778,3 +778,73 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 .send-hint { padding: 6px 9px 4px; font-size: 10.5px; line-height: 1.4; color: var(--text-3); }
 .effort-bar { flex: 1; height: 6px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--text) 7%, transparent); }
 .effort-bar span { display: block; height: 100%; border-radius: inherit; opacity: .85; }
+
+/* ══ Icons ═══════════════════════════════════════════════════════════ */
+.glyph-mono { display: inline-grid; place-items: center; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.member-face, .pod-face, .pb-face { color: var(--member, var(--agent, var(--text))); }
+.member-face svg, .pod-face svg, .pb-face svg { filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 35%, transparent)); }
+.vn-emoji { color: var(--venture, var(--text)); }
+.pb-emoji { color: var(--text); }
+.member-chip svg { color: var(--member); }
+.crew-cta-icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.icon-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-picker button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--text-2); background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line); transition: color .15s, box-shadow .15s, transform .15s, background .15s; }
+.icon-picker button:hover { color: var(--text); transform: translateY(-1px); }
+.icon-picker button.is-on { color: var(--pick, var(--text)); background: color-mix(in srgb, var(--pick, var(--text)) 12%, var(--sunken)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pick, var(--text)) 60%, transparent); }
+
+/* ══ Motion ══════════════════════════════════════════════════════════ */
+/* The live logo: agents orbit, the core breathes. */
+.logo-mark .logo-orbit { transform-origin: 32px 32px; }
+.logo-mark.is-live .logo-orbit { animation: logo-orbit 36s linear infinite; }
+.logo-mark.is-live .logo-core { transform-origin: 32px 32px; animation: logo-breathe 4.8s ease-in-out infinite; }
+@keyframes logo-orbit { to { transform: rotate(360deg); } }
+@keyframes logo-breathe { 50% { transform: scale(1.07); opacity: .88; } }
+.hero-mark { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+.hero-mark:hover { transform: translateY(-2px) scale(1.04); }
+.hero-mark:hover .logo-orbit { animation-duration: 6s; }
+
+/* The active screen's pill slides between icons. */
+.rail-item { position: relative; }
+.rail-active { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.rail-item > :not(.rail-active) { position: relative; z-index: 1; }
+
+/* Cards rise into place, one after another. */
+.stagger > * { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+.stagger > *:nth-child(2) { animation-delay: .04s; } .stagger > *:nth-child(3) { animation-delay: .08s; }
+.stagger > *:nth-child(4) { animation-delay: .12s; } .stagger > *:nth-child(5) { animation-delay: .16s; }
+.stagger > *:nth-child(6) { animation-delay: .2s; } .stagger > *:nth-child(7) { animation-delay: .24s; }
+.stagger > *:nth-child(8) { animation-delay: .28s; } .stagger > *:nth-child(n + 9) { animation-delay: .32s; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.985); } }
+
+/* A soft light follows the cursor across cards. */
+.spot { position: relative; isolation: isolate; }
+.spot::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--text) 7%, transparent), transparent 55%); }
+.spot.is-lit::after { opacity: 1; }
+.spot::before { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s; padding: 1px; background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--text) 30%, transparent), transparent 60%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.spot.is-lit::before { opacity: 1; }
+
+/* Frost Black: a slow aurora drifts in the black, for the glass to catch. */
+[data-palette="frost"] #main { position: relative; }
+[data-palette="frost"] #main::before { content: ""; position: absolute; inset: -20%; z-index: 0; pointer-events: none; background: radial-gradient(40% 35% at 70% 20%, rgba(130, 145, 255, .09), transparent 70%), radial-gradient(35% 30% at 25% 80%, rgba(80, 220, 200, .05), transparent 70%), radial-gradient(30% 28% at 85% 85%, rgba(255, 255, 255, .04), transparent 70%); animation: aurora 42s ease-in-out infinite alternate; will-change: transform; }
+[data-palette="frost"] #main > * { position: relative; z-index: 1; }
+@keyframes aurora { 0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); } 50% { transform: translate3d(-4%, 3%, 0) rotate(6deg) scale(1.08); } 100% { transform: translate3d(3%, -2%, 0) rotate(-4deg) scale(1.02); } }
+
+/* Milestones: a card that rises with a burst of light. */
+.milestones { position: fixed; top: calc(52px + env(safe-area-inset-top, 0px)); left: 50%; z-index: 80; display: grid; gap: 8px; width: min(440px, calc(100vw - 32px)); transform: translateX(-50%); pointer-events: none; }
+.milestone { position: relative; display: flex; align-items: center; gap: 12px; overflow: visible; border-radius: 16px; padding: 12px 12px 12px 14px; pointer-events: auto; background: color-mix(in srgb, var(--panel) 92%, transparent); box-shadow: 0 0 0 1px var(--line-strong), 0 24px 60px -24px rgba(0,0,0,.8); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%); }
+.milestone::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.12) 50%, transparent 70%); background-size: 250% 100%; animation: sheen 1.6s ease-out 1 both; }
+@keyframes sheen { from { background-position: 150% 0; } to { background-position: -60% 0; } }
+.milestone-icon { position: relative; display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 11px; color: #0b0b0c; background: linear-gradient(160deg, #fff, #b9bbc4); box-shadow: 0 0 24px rgba(255,255,255,.25); }
+.milestone-burst { position: absolute; left: 31px; top: 50%; width: 0; height: 0; pointer-events: none; }
+.milestone-burst i { position: absolute; width: 3px; height: 3px; border-radius: 999px; background: #fff; box-shadow: 0 0 6px #fff; animation: burst .9s cubic-bezier(.2,.8,.2,1) both; transform: rotate(var(--a)) translateX(0); opacity: 0; }
+@keyframes burst { 10% { opacity: 1; } to { transform: rotate(var(--a)) translateX(34px); opacity: 0; } }
+
+/* Small life everywhere: buttons lift, dialogs settle, live dots breathe. */
+button, a { -webkit-tap-highlight-color: transparent; }
+.art-card, .pb-card, .vn-card, .member-card, .tl-card { will-change: transform; }
+.pub-dot, .needs-dot { animation: pb-pulse 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-mark .logo-orbit, .logo-mark .logo-core, .stagger > *, [data-palette="frost"] #main::before, .milestone::after, .milestone-burst i, .pub-dot, .needs-dot { animation: none !important; }
+  .spot::after, .spot::before { display: none; }
+}

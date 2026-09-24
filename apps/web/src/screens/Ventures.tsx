@@ -8,6 +8,8 @@ import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { KIND } from "../lib/kinds";
 import { PublishButton, PublishSheet } from "../components/Publish";
+import { Glyph, IconPicker } from "../lib/glyphs";
+import { CountUp } from "../lib/motion";
 
 const STAGES: Array<{ id: VentureStage; label: string; hint: string }> = [
   { id: "idea", label: "Idea", hint: "Worth testing?" },
@@ -51,7 +53,7 @@ export function Ventures() {
           {list.length > 1 && mrr > 0 && (
             <div className="vn-total">
               <span>Total MRR</span>
-              <strong>{money(mrr, list.find((v) => v.metrics)?.metrics?.currency)}</strong>
+              <strong><CountUp value={mrr} format={(n) => money(n, list.find((v) => v.metrics)?.metrics?.currency)} /></strong>
             </div>
           )}
           <Button variant={list.length ? "quiet" : "primary"} onClick={() => setEditing({})}>
@@ -80,7 +82,7 @@ export function Ventures() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
+          <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
             {list.map((v) => (
               <VentureCard key={v.id} venture={v} />
             ))}
@@ -102,7 +104,9 @@ function VentureCard({ venture: v }: { venture: VentureView }) {
   return (
     <Link to="/ventures/$id" params={{ id: v.id }} className="vn-card" style={{ "--venture": v.color } as React.CSSProperties}>
       <div className="flex items-start gap-3">
-        <span className="vn-emoji">{v.emoji}</span>
+        <span className="vn-emoji">
+          <Glyph name={v.emoji} fallback="sprout" label={v.name} size={21} />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="text-[16px] font-semibold text-fg">{v.name}</div>
           <div className="line-clamp-2 text-[12.5px] leading-snug text-fg-3">{v.pitch || "No pitch yet"}</div>
@@ -118,8 +122,8 @@ function VentureCard({ venture: v }: { venture: VentureView }) {
         {v.goal && <span className="truncate text-fg-3">Goal: {v.goal}</span>}
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2">
-        <Metric label="MRR" value={money(v.metrics?.mrr, v.metrics?.currency)} />
-        <Metric label="30 days" value={money(v.metrics?.revenue30d, v.metrics?.currency)} />
+        <Metric label="MRR" value={money(v.metrics?.mrr, v.metrics?.currency)} num={v.metrics?.mrr} fmt={(n) => money(n, v.metrics?.currency)} />
+        <Metric label="30 days" value={money(v.metrics?.revenue30d, v.metrics?.currency)} num={v.metrics?.revenue30d} fmt={(n) => money(n, v.metrics?.currency)} />
         <Metric label="Customers" value={v.metrics?.customers !== undefined ? String(v.metrics.customers) : "—"} />
       </div>
       <div className="mt-3 flex items-center gap-2 text-[11.5px] text-fg-3">
@@ -130,11 +134,11 @@ function VentureCard({ venture: v }: { venture: VentureView }) {
   );
 }
 
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Metric({ label, value, sub, num, fmt }: { label: string; value: string; sub?: string; num?: number; fmt?: (n: number) => string }) {
   return (
     <div className="vn-metric">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>{num !== undefined && fmt ? <CountUp value={num} format={fmt} /> : value}</strong>
       {sub && <em>{sub}</em>}
     </div>
   );
@@ -167,7 +171,9 @@ export function VenturePage() {
           ← Ventures
         </Link>
         <header className="mt-3 flex flex-wrap items-start gap-4">
-          <span className="vn-emoji is-large">{v.emoji}</span>
+          <span className="vn-emoji is-large">
+            <Glyph name={v.emoji} fallback="sprout" label={v.name} size={28} />
+          </span>
           <div className="min-w-0 flex-1">
             <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">{v.name}</h1>
             {v.pitch && <p className="mt-1 max-w-[700px] text-[14px] leading-relaxed text-fg-2">{v.pitch}</p>}
@@ -220,8 +226,8 @@ export function VenturePage() {
             </div>
             {v.syncError && <div className="mt-2 rounded-[8px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12px] text-bad">Last sync failed: {v.syncError}</div>}
             <div className="mt-4 grid grid-cols-3 gap-2.5">
-              <Metric label="MRR" value={money(v.metrics?.mrr, v.metrics?.currency)} sub={delta(v, "mrr")} />
-              <Metric label="Revenue, 30 days" value={money(v.metrics?.revenue30d, v.metrics?.currency)} />
+              <Metric label="MRR" value={money(v.metrics?.mrr, v.metrics?.currency)} sub={delta(v, "mrr")} num={v.metrics?.mrr} fmt={(n) => money(n, v.metrics?.currency)} />
+              <Metric label="Revenue, 30 days" value={money(v.metrics?.revenue30d, v.metrics?.currency)} num={v.metrics?.revenue30d} fmt={(n) => money(n, v.metrics?.currency)} />
               <Metric label="Paying customers" value={v.metrics?.customers !== undefined ? String(v.metrics.customers) : "—"} sub={delta(v, "customers")} />
             </div>
             <Sparkline venture={v} />
@@ -446,7 +452,9 @@ function PlayLine({ play }: { play: PlayView }) {
   const review = play.phases.find((p) => p.status === "review");
   return (
     <Link to="/plays/$id" params={{ id: play.id }} className={`pb-row ${play.status === "waiting" ? "is-waiting" : ""}`}>
-      <span className="pb-emoji is-small">{play.emoji || "✨"}</span>
+      <span className="pb-emoji is-small">
+        <Glyph name={play.emoji} fallback={play.playbook} label={play.name} size={16} />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-semibold text-fg">{play.name}</span>
         <span className="block truncate text-[12px] text-fg-3">{review ? <span className="text-amber">{review.name} is ready for your review</span> : play.status === "running" ? <span className="shimmer-text">{play.phases.find((p) => p.status === "running")?.name ?? "Working"}</span> : play.status}</span>
@@ -468,7 +476,7 @@ function SessionLine({ run }: { run: RunView }) {
       <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{run.title}</span>
       {member && (
         <span className="member-chip shrink-0" style={{ "--member": member.color } as React.CSSProperties}>
-          <span>{member.emoji}</span>
+          <Glyph name={member.emoji} fallback={member.id} label={member.name} size={11} />
           {member.name}
         </span>
       )}
@@ -481,7 +489,7 @@ function VentureEditor({ venture, onClose }: { venture: Partial<VentureView>; on
   const navigate = useNavigate();
   const [draft, setDraft] = useState({
     name: venture.name ?? "",
-    emoji: venture.emoji ?? "🌱",
+    emoji: venture.emoji ?? "sprout",
     color: venture.color ?? "#7bd88f",
     pitch: venture.pitch ?? "",
     customer: venture.customer ?? "",
@@ -504,15 +512,13 @@ function VentureEditor({ venture, onClose }: { venture: Partial<VentureView>; on
   return (
     <Dialog onClose={onClose} label="Venture">
       <div className="mb-4 text-[16px] font-semibold">{venture.id ? `Edit ${venture.name}` : "New venture"}</div>
-      <div className="grid grid-cols-[72px_1fr] gap-3">
-        <label className="field">
-          <span>Emoji</span>
-          <input value={draft.emoji} onChange={set("emoji")} maxLength={4} />
-        </label>
-        <label className="field">
-          <span>Name</span>
-          <input value={draft.name} onChange={set("name")} placeholder="Fern" autoFocus />
-        </label>
+      <label className="field">
+        <span>Name</span>
+        <input value={draft.name} onChange={set("name")} placeholder="Fern" autoFocus />
+      </label>
+      <div className="field mt-3">
+        <span>Icon</span>
+        <IconPicker value={draft.emoji} color={draft.color} onChange={(emoji) => setDraft((d) => ({ ...d, emoji }))} choices={["sprout", "rocket", "leaf", "zap", "flame", "gem", "globe", "layers", "box", "blocks", "hexagon", "target", "compass", "mountain", "waves", "moon", "sun", "coffee", "wallet", "heart", "music", "camera", "shopping-bag", "anchor", "orbit", "sparkles"]} />
       </div>
       <label className="field mt-3">
         <span>What it is, in a sentence</span>
@@ -757,7 +763,7 @@ function CrewEffort({ runs }: { runs: RunView[] }) {
       <h2 className="pb-eyebrow">Crew effort this week</h2>
       <div className="vn-panel">
         <div className="flex items-baseline gap-3">
-          <span className="text-[22px] font-bold tracking-[-0.02em] text-fg">{fmt(total)}</span>
+          <span className="text-[22px] font-bold tracking-[-0.02em] text-fg"><CountUp value={total} format={fmt} /></span>
           <span className="text-[12px] text-fg-3">
             tokens across {week.length} session{week.length === 1 ? "" : "s"} · on your subscriptions
           </span>
@@ -767,7 +773,7 @@ function CrewEffort({ runs }: { runs: RunView[] }) {
             const m = members[member];
             return (
               <div key={member || "any"} className="flex items-center gap-2.5 text-[12px]">
-                <span className="w-28 shrink-0 truncate text-fg-2">{m ? `${m.emoji} ${m.name}` : "Any agent"}</span>
+                <span className="w-28 shrink-0 truncate text-fg-2">{m ? m.name : "Any agent"}</span>
                 <span className="effort-bar">
                   <span style={{ width: `${total ? Math.max(2, (n / total) * 100) : 0}%`, background: m?.color ?? "var(--text-3)" }} />
                 </span>

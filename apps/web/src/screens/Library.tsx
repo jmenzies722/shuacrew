@@ -12,6 +12,7 @@ import { PublishButton } from "../components/Publish";
 import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
+import { Glyph } from "../lib/glyphs";
 
 type Kind = ArtifactView["kind"];
 interface Hit {
@@ -157,7 +158,7 @@ function ArtifactCard({ artifact: a, onOpen }: { artifact: ArtifactView; onOpen:
         <div className="mt-2.5 flex items-center gap-2 text-[11.5px] text-fg-3">
           {member ? (
             <span className="member-chip" style={{ "--member": member.color } as React.CSSProperties}>
-              <span>{member.emoji}</span>
+              <Glyph name={member.emoji} fallback={member.id} label={member.name} size={11} />
               {member.name}
             </span>
           ) : (
@@ -266,7 +267,7 @@ function Viewer({ target, onClose }: { target: { type: "artifact" | "knowledge";
               {artifact ? <span className="lib-badge is-made">{KIND[artifact.kind].label}</span> : <span className="lib-badge">Knowledge</span>}
               {member && (
                 <span className="member-chip" style={{ "--member": member.color } as React.CSSProperties}>
-                  <span>{member.emoji}</span>
+                  <Glyph name={member.emoji} fallback={member.id} label={member.name} size={11} />
                   {member.name}
                 </span>
               )}

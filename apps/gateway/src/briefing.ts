@@ -75,7 +75,7 @@ export function compose(state: CrewState, now: number, since: number): Omit<Brie
     if (v.stage === "stopped") continue;
     const m = v.metrics;
     const weekAgo = [...v.history].reverse().find((h) => h.at <= now - 6.5 * 86_400_000 && h.mrr !== undefined);
-    let line = `${v.emoji} ${v.name} · ${v.stage}`;
+    let line = `${v.name} · ${v.stage}`;
     if (m?.mrr !== undefined) {
       currency = m.currency;
       totalMrr += m.mrr;

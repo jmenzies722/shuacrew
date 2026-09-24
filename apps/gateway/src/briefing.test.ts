@@ -45,7 +45,7 @@ describe("the morning briefing", () => {
     library.save({ title: "Fern — pricing", content: "# Pricing", run, member: "researcher" });
     const play = plays.start({ playbook: "validate-idea", inputs: { idea: "Fern" } });
     await until(() => state().plays[play.id]?.status === "waiting");
-    ventures.set({ name: "Fern", emoji: "🌿", goal: "$1k MRR" });
+    ventures.set({ name: "Fern", emoji: "sprout", goal: "$1k MRR" });
     ventures.stage("fern", "launching");
     ventures.record("fern", { mrr: 132, customers: 11 });
 
@@ -55,7 +55,7 @@ describe("the morning briefing", () => {
     expect(section("Needs you")).toEqual(["Review “Customer pains” — Validate an idea — Fern"]);
     expect(section("Finished")).toContain("Fix the retry");
     expect(section("Saved to the Library")).toEqual(["Fern — pricing — Rhea"]);
-    expect(section("Ventures")).toEqual(["🌿 Fern · launching · MRR $132 · 11 customers · 13% of goal", "Next for Fern: Plan the launch"]);
+    expect(section("Ventures")).toEqual(["Fern · launching · MRR $132 · 11 customers · 13% of goal", "Next for Fern: Plan the launch"]);
     expect(b.headline).toMatch(/^1 thing needs you · \d+ sessions? finished · 1 saved to the Library · MRR \$132$/);
 
     // Made through the API, it lands in the state everyone sees (and the menu bar's status).

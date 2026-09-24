@@ -208,6 +208,11 @@ export function emptyState(): CrewState {
   return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, sites: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
 }
 
+/** Titles read as text: pictographic emoji (from older data) are dropped, symbols like ✓ kept. */
+export function plainTitle(text: string): string {
+  return text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s{2,}/g, " ").trim();
+}
+
 function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -229,7 +234,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       const b = event.body;
       state.runs[event.run ?? ""] = {
         id: event.run ?? "",
-        title: b.title,
+        title: plainTitle(b.title),
         ask: b.ask,
         project: b.project,
         repo: b.repo,
@@ -405,7 +410,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "play.started": {
       const b = event.body;
       state.plays[b.id] = {
-        id: b.id, playbook: b.playbook, name: b.name, emoji: b.emoji, title: b.title, inputs: b.inputs, repo: b.repo, venture: b.venture,
+        id: b.id, playbook: b.playbook, name: b.name, emoji: b.emoji, title: plainTitle(b.title), inputs: b.inputs, repo: b.repo, venture: b.venture,
         status: "running", phases: b.phases.map((p) => ({ ...p, status: "pending", runs: [], artifacts: [] })), startedAt: event.at, updatedAt: event.at,
       };
       break;

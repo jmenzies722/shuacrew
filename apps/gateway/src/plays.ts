@@ -20,7 +20,7 @@ export const LIBRARY: PlaybookDef[] = [
   {
     id: "validate-idea",
     name: "Validate an idea",
-    emoji: "💡",
+    emoji: "lightbulb",
     description: "Find out if people want it and will pay — before you build. Market research, customer pains in their own words, and a go / no-go with the cheapest test to run this week.",
     inputs: [
       { key: "idea", label: "The idea", placeholder: "A budgeting app that turns freelancers' lumpy income into a steady weekly paycheck", long: true },
@@ -59,7 +59,7 @@ export const LIBRARY: PlaybookDef[] = [
   {
     id: "landing-page",
     name: "Landing page that converts",
-    emoji: "🎨",
+    emoji: "layout-template",
     description: "Positioning, then a real, responsive landing page as HTML, then a conversion review. Ends with a page you can put a waitlist or checkout on.",
     inputs: [
       { key: "product", label: "Product", placeholder: "Fern — a steady weekly paycheck for freelancers", long: true },
@@ -99,7 +99,7 @@ export const LIBRARY: PlaybookDef[] = [
   {
     id: "mvp",
     name: "Spec and build an MVP",
-    emoji: "🛠️",
+    emoji: "hammer",
     description: "From idea to working software: a tight spec, key screens, then the build in small tested steps, and a ship checklist. Pick a repo to build in.",
     inputs: [
       { key: "idea", label: "What to build", placeholder: "The smallest version of Fern: connect income, see your weekly paycheck", long: true },
@@ -144,7 +144,7 @@ export const LIBRARY: PlaybookDef[] = [
   {
     id: "launch",
     name: "Launch plan",
-    emoji: "🚀",
+    emoji: "rocket",
     description: "Channels, launch posts and emails, pricing and payments, and a launch-day run sheet — all drafted, nothing posted without you.",
     inputs: [
       { key: "product", label: "Product", placeholder: "Fern — steady paychecks for freelancers", long: true },
@@ -188,7 +188,7 @@ export const LIBRARY: PlaybookDef[] = [
   {
     id: "competitor-teardown",
     name: "Competitor teardown",
-    emoji: "🔎",
+    emoji: "scan-search",
     description: "Take one competitor apart — product, pricing, positioning, reviews — and find the opening they leave.",
     inputs: [
       { key: "competitor", label: "Competitor", placeholder: "YNAB" },
@@ -216,7 +216,7 @@ export const LIBRARY: PlaybookDef[] = [
   {
     id: "growth-review",
     name: "Weekly growth review",
-    emoji: "📈",
+    emoji: "trending-up",
     description: "Paste this week's numbers; get what they mean and the three experiments worth running next.",
     inputs: [
       { key: "metrics", label: "This week's numbers", placeholder: "Visits 1,240 (+18%), sign-ups 61, paid 7, MRR $84, churned 1…", long: true },
@@ -403,7 +403,7 @@ export class Plays {
     }
     const run = this.supervisor.launch({
       ask: this.brief(play, index),
-      title: `${play.emoji ? `${play.emoji} ` : ""}${phase.name} · ${shorten(play.title, 60)}`,
+      title: `${phase.name} · ${shorten(play.title, 60)}`,
       member: phase.member && this.state.members[phase.member] ? phase.member : undefined,
       repo: play.repo,
       venture: play.venture,

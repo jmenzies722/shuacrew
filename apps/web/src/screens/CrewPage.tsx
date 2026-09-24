@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
+import { Glyph, IconPicker } from "../lib/glyphs";
 
 interface Runtime {
   id: string;
@@ -72,11 +73,11 @@ export function CrewPage() {
 function StarterCta() {
   const [busy, setBusy] = useState(false);
   const roles = [
-    ["🔎", "Rhea", "Researcher", "Markets, competitors, who pays — with sources"],
-    ["🛠️", "Eli", "Engineer", "Builds and tests, in small verified steps"],
-    ["🎨", "Dani", "Designer", "Brand, UI and landing pages, as real code"],
-    ["📣", "Maya", "Marketer", "Positioning, copy, launch, content"],
-    ["📈", "Otto", "Operator", "Pricing, payments, hosting, analytics"],
+    ["researcher", "Rhea", "Researcher", "Markets, competitors, who pays — with sources"],
+    ["engineer", "Eli", "Engineer", "Builds and tests, in small verified steps"],
+    ["designer", "Dani", "Designer", "Brand, UI and landing pages, as real code"],
+    ["marketer", "Maya", "Marketer", "Positioning, copy, launch, content"],
+    ["operator", "Otto", "Operator", "Pricing, payments, hosting, analytics"],
   ];
   return (
     <div className="crew-cta">
@@ -90,9 +91,11 @@ function StarterCta() {
         </div>
       </div>
       <div className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2.5">
-        {roles.map(([emoji, name, role, what]) => (
+        {roles.map(([icon, name, role, what]) => (
           <div key={role} className="crew-cta-role">
-            <span className="text-[20px]">{emoji}</span>
+            <span className="crew-cta-icon">
+              <Glyph fallback={icon} size={17} />
+            </span>
             <div className="min-w-0">
               <div className="text-[13px] font-semibold text-fg">
                 {name} <span className="font-normal text-fg-3">· {role}</span>
@@ -135,7 +138,9 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
       <div className="flex items-start gap-3">
         <span className="member-avatar" aria-hidden>
           <span className="member-ring" />
-          <span className="member-face">{member.emoji || member.name.slice(0, 1)}</span>
+          <span className="member-face">
+            <Glyph name={member.emoji} fallback={member.id} label={member.name} size={19} />
+          </span>
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
@@ -248,11 +253,7 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-label="Crew member">
       <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-[560px] max-w-full rounded-[16px] border border-line-strong bg-panel p-5 shadow-[0_30px_90px_rgba(0,0,0,.45)]">
         <div className="mb-4 text-[16px] font-semibold">{member.id ? `Edit ${member.name}` : "New crew member"}</div>
-        <div className="grid grid-cols-[72px_1fr_1fr] gap-3">
-          <label className="field">
-            <span>Emoji</span>
-            <input value={draft.emoji} onChange={set("emoji")} maxLength={4} placeholder="🧭" />
-          </label>
+        <div className="grid grid-cols-2 gap-3">
           <label className="field">
             <span>Name</span>
             <input value={draft.name} onChange={set("name")} placeholder="Nova" autoFocus />
@@ -261,6 +262,10 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
             <span>Role</span>
             <input value={draft.role} onChange={set("role")} placeholder="Growth analyst" />
           </label>
+        </div>
+        <div className="field mt-3">
+          <span>Icon</span>
+          <IconPicker value={draft.emoji} color={draft.color} onChange={(emoji) => setDraft((d) => ({ ...d, emoji }))} choices={["telescope", "code", "pen-tool", "megaphone", "chart-line", "brain", "flask", "shield", "briefcase", "palette", "cpu", "feather", "compass", "target", "zap", "layers"]} />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="field">

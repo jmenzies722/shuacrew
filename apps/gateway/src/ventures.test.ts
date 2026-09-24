@@ -70,7 +70,7 @@ describe("ventures", () => {
   it("tracks a startup's stage and briefs every session working on it", async () => {
     const { ventures, app, state, seen } = await world();
     const v = ventures.set({ name: "Fern", pitch: "A steady weekly paycheck for freelancers", goal: "$1k MRR by March", customer: "US freelancers" });
-    expect(v).toMatchObject({ id: "fern", stage: "idea", goalMrr: 1000, emoji: "🌱" });
+    expect(v).toMatchObject({ id: "fern", stage: "idea", goalMrr: 1000, emoji: "sprout" });
     expect(ventures.set({ name: "Other", goal: "50 customers" }).goalMrr).toBeUndefined();
     ventures.stage("fern", "validating", "landing page is up");
     expect(ventures.get("fern")!.stages.map((s) => s.stage)).toEqual(["idea", "validating"]);

@@ -158,7 +158,7 @@ function Tools() {
         return (
           <section key={cat} className="mt-7">
             <h2 className="pb-eyebrow">{cat}</h2>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
+            <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
               {items.map((f) => (
                 <FeaturedCard key={f.id} item={f} onAdd={() => add(f)} />
               ))}
@@ -497,7 +497,7 @@ function SkillsTab() {
             <Loader2 size={13} className="inline animate-spin" /> Loading the skills catalog…
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-2.5">
+          <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-2.5">
             {catalog.map((c) => (
               <div key={c.name} className={`tl-card ${installedNames.has(c.name) ? "is-added" : ""}`}>
                 <div className="mono text-[13px] font-semibold text-fg">{c.name}</div>

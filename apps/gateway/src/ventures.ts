@@ -161,7 +161,7 @@ export class Ventures {
     this.store.append("venture.set", {
       id,
       name,
-      emoji: input.emoji?.trim() || "🌱",
+      emoji: input.emoji?.trim() || "sprout",
       color: input.color || "#7bd88f",
       pitch: input.pitch?.trim() ?? "",
       customer: clean(input.customer),

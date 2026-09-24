@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
+import { CountUp } from "../lib/motion";
 
 /** The site a page is live at, if it's been published. */
 export function useSiteFor(artifact?: string): SiteView | undefined {
@@ -90,7 +91,7 @@ export function PublishSheet({ artifact, version, onClose }: { artifact: string;
         {site && (
           <div className="mt-4 grid grid-cols-[auto_1fr] items-start gap-4">
             <div className="pub-count">
-              <span>{site.signups?.count ?? 0}</span>
+              <span><CountUp value={site.signups?.count ?? 0} /></span>
               <em>joined</em>
             </div>
             <div className="min-w-0">

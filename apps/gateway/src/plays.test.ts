@@ -64,7 +64,7 @@ describe("playbooks", () => {
 
     // The menu bar sees the gate (once per round), and no "finished" noise for phase sessions.
     const status = (await app.inject({ method: "GET", url: "/api/status" })).json();
-    expect(status.reviews).toEqual([expect.objectContaining({ play: play.id, index: 1, phase: "Customer pains", status: "review", who: "🔎 Rhea", last: false })]);
+    expect(status.reviews).toEqual([expect.objectContaining({ play: play.id, index: 1, phase: "Customer pains", status: "review", who: "Rhea", last: false })]);
     expect(status.recent.filter((r: { id: string }) => plays.get(play.id)!.phases.some((p) => p.run === r.id))).toEqual([]);
 
     plays.approve(play.id, 1);
