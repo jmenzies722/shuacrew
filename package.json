@@ -13,7 +13,8 @@
     "e2e": "playwright test",
     "typecheck": "pnpm -r --parallel exec tsc --noEmit -p .",
     "lint": "eslint .",
-    "demo": "pnpm --filter @shuacrew/gateway demo"
+    "demo": "pnpm --filter @shuacrew/gateway demo",
+    "eval": "tsx scripts/eval.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

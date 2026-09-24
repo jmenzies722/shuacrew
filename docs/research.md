@@ -33,3 +33,13 @@ ACP and package facts, checked against npm tarballs and the installed CLIs on 20
 Lock-in to kiro-cli and Kiro credits (every cron/heartbeat model call billed); poor cost visibility
 (issues #10102, #6338, #8531, #11031); no default egress control or audit UI; app permissions mostly
 advisory; heavy resource use. See the parity file §3.
+
+## M5 — memory recall: keyword IDF instead of sqlite-vec (deviation)
+
+The prompt suggests sqlite-vec with a keyword fallback. Lessons are one or two sentences and number in
+the tens to low hundreds, so ShuaCrew ships the keyword path only: stemmed terms, IDF weighting, a
+one-weak-word gate, and a relative cutoff at 60% of the best match. No embedding model, no network, no
+native extension, deterministic. Measured on the recall eval (`pnpm eval`, 10 hand-labelled cases):
+precision 89%, recall 89%. Two known misses — both need meaning, not words ("flaky test" ↔ "injected
+Clock"; a `users.` column name ↔ "user-visible"). If lessons grow past a few hundred, or those misses
+matter in practice, add embeddings behind the same `recall()` signature; the eval is the gate.

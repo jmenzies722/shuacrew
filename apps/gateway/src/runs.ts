@@ -57,6 +57,8 @@ export interface SupervisorOptions {
   concurrency?: Record<string, number>;
   failover?: boolean;
   approvalTimeoutMs?: number;
+  /** Lessons and skills for a conversation that is starting. */
+  memory?: { systemFor(run: string, ask: string): string | undefined };
 }
 
 export class Supervisor {
@@ -199,6 +201,8 @@ export class Supervisor {
       model,
       effort: spec.effort,
       resume,
+      // A resumed conversation already has its lessons; only a fresh one is told.
+      system: resume ? undefined : this.options.memory?.systemFor(runId, ask),
     };
 
     let ended = false;

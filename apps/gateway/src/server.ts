@@ -15,6 +15,7 @@ import type { Runtime } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
+import type { Memory } from "./memory.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import type { EventStore } from "./store.js";
@@ -29,6 +30,7 @@ export interface ServerOptions {
   webRoot?: string;
   version?: string;
   autonomy?: { scheduler: Scheduler; webhooks: Webhooks; heartbeats: Heartbeats; tasks: TaskRunner };
+  memory?: Memory;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -295,6 +297,41 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     );
     return { base: tree.body.base, branch: tree.body.branch, files: detailed };
   });
+
+  if (options.memory) {
+    const memory = options.memory;
+    app.get("/api/memory", async () => ({
+      lessons: Object.values(memory.view.lessons).sort((a, b) => b.learnedAt - a.learnedAt),
+      skills: Object.values(memory.view.skills).sort((a, b) => b.at - a.at),
+      lastEvolve: memory.lastEvolve ?? null,
+    }));
+    app.post<{ Body: { text?: string; project?: string } }>("/api/memory/lessons", async (request, reply) => {
+      const text = request.body?.text?.trim();
+      if (!text) return reply.code(400).send({ error: "say what it should learn" });
+      return { id: memory.teach(text, request.body.project?.trim() || undefined) };
+    });
+    app.delete<{ Params: { id: string } }>("/api/memory/lessons/:id", async (request, reply) => {
+      try {
+        memory.retire(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.post<{ Params: { id: string }; Body: { accept?: boolean } }>("/api/memory/skills/:id", async (request, reply) => {
+      try {
+        memory.decideSkill(request.params.id, request.body?.accept === true);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.post("/api/memory/evolve", async () => memory.evolve());
+    app.get<{ Querystring: { ask?: string; project?: string } }>("/api/memory/recall", async (request) => {
+      const { recall } = await import("@shuacrew/memory");
+      return recall(memory.view, request.query.ask ?? "", request.query.project || undefined).map((r) => ({ id: r.lesson.id, text: r.lesson.text, score: r.score, shared: r.shared }));
+    });
+  }
 
   if (options.webRoot && existsSync(options.webRoot)) {
     await app.register(fastifyStatic, { root: options.webRoot, prefix: "/", wildcard: false, maxAge: "1h", immutable: false });

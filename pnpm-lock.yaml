@@ -44,6 +44,9 @@ importers:
       '@shuacrew/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@shuacrew/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@shuacrew/runtimes':
         specifier: workspace:*
         version: link:../../packages/runtimes
@@ -159,6 +162,16 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+
+  packages/memory:
+    dependencies:
+      '@shuacrew/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^26.6.2

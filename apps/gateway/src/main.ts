@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
+import { Memory } from "./memory.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
@@ -55,7 +56,8 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   mkdirSync(workspace, { recursive: true });
   const store = new EventStore(path.join(home, "shuacrew.db"));
   const runtimes = await registry();
-  const supervisor = new Supervisor(store, runtimes, { workspace, failover: true });
+  const memory = new Memory(store);
+  const supervisor = new Supervisor(store, runtimes, { workspace, failover: true, memory });
   const autonomy = {
     scheduler: new Scheduler(store, supervisor, workspace),
     webhooks: new Webhooks(store, supervisor, secretsPath(home)),
@@ -73,16 +75,18 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     webRoot: process.env.SHUACREW_WEB ?? path.resolve(here, "../../web/dist"),
     version: VERSION,
     autonomy,
+    memory,
   });
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
   autonomy.tasks.recover();
   autonomy.scheduler.sync();
   autonomy.heartbeats.sync();
+  memory.schedule();
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -92,6 +96,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.supervisor.shutdown(); // runs stay "running" in the log; the next boot resumes them
     gateway.autonomy.scheduler.stop();
     gateway.autonomy.heartbeats.stop();
+    gateway.memory.stop();
     gateway.hub.close();
     await gateway.app.close();
     gateway.store.close();

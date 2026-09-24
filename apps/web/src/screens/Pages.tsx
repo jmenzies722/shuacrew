@@ -45,20 +45,6 @@ export function Specs() {
   );
 }
 
-export function Memory() {
-  return (
-    <Page title="Memory" subtitle="Lessons with provenance and confidence, skills you approve, preferences — all inspectable, all deletable.">
-      <Starter
-        items={[
-          { title: "Lessons come from you", detail: "Correct a run or reject a review and ShuaCrew asks what it should learn." },
-          { title: "Skills are proposed, never assumed", detail: "Repeated patterns become skill drafts that wait for your approval." },
-          { title: "Proven, not hoped", detail: "An eval suite shows whether a lesson actually changed the next run." },
-        ]}
-      />
-    </Page>
-  );
-}
-
 export function Integrations() {
   return (
     <Page title="Integrations & Apps" subtitle="MCP servers, Slack and Telegram, and installable Apps — each behind its own policy.">
