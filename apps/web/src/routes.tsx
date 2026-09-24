@@ -8,6 +8,7 @@ import { Sessions } from "./screens/Sessions";
 import { TerminalPage } from "./screens/TerminalPage";
 import { CrewFloor } from "./screens/CrewFloor";
 import { CrewPage } from "./screens/CrewPage";
+import { Library } from "./screens/Library";
 import { Review } from "./screens/Review";
 import { RunDetail } from "./screens/RunDetail";
 import { Shell } from "./shell/Shell";
@@ -21,6 +22,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),
   createRoute({ getParentRoute: () => root, path: "/floor", component: CrewFloor }),
   createRoute({ getParentRoute: () => root, path: "/crew", component: CrewPage }),
+  createRoute({ getParentRoute: () => root, path: "/library", component: Library }),
   createRoute({ getParentRoute: () => root, path: "/board", component: Board }),
   createRoute({ getParentRoute: () => root, path: "/runs/$id", component: RunDetail }),
   createRoute({ getParentRoute: () => root, path: "/review/$id", component: Review }),

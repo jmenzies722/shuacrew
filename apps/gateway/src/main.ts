@@ -15,6 +15,8 @@ import { Terminals } from "./terminals.js";
 import { Uploads } from "./uploads.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
 import { Mcp } from "./mcp.js";
+import { Library } from "./library.js";
+import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -66,13 +68,28 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const memory = new Memory(store);
   const crew = new Crew(store);
   const mcp = new Mcp(store, path.join(home, "mcp-auth.json"));
+  const library = new Library(store, path.join(home, "library"));
+  const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
+  const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
+  // The library's tool server lives on this gateway; each run reaches it with its own token.
+  let live: (() => import("@shuacrew/core").CrewState) | undefined;
+  const tools = new ToolServer(library, () => live!());
+  const self = `http://${host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host.includes(":") ? `[${host}]` : host}:${port}/mcp`;
+  const withLibrary = (runtime: string, run: string) => {
+    const auth = `Bearer ${tools.tokenFor(run)}`;
+    if (runtime === "codex") return { ...mcp.forCodex(), [TOOL_SERVER]: { url: self, http_headers: { Authorization: auth } } };
+    if (runtime.startsWith("acp:")) return [...mcp.forAcp(), { name: TOOL_SERVER, type: "http" as const, url: self, headers: [{ name: "Authorization", value: auth }] }];
+    if (runtime === "mock") return mcp.forClaude();
+    return { ...mcp.forClaude(), [TOOL_SERVER]: { type: "http" as const, url: self, headers: { Authorization: auth } } };
+  };
   const terminals = new Terminals();
   const supervisor = new Supervisor(store, runtimes, {
     workspace,
     failover: true,
     memory,
     crew,
-    mcpServers: (id) => (id === "codex" ? mcp.forCodex() : id.startsWith("acp:") ? mcp.forAcp() : mcp.forClaude()),
+    mcpServers: withLibrary,
+    toolHint: LIBRARY_HINT,
     mcpList: () => mcp.list(),
   });
   const autonomy = {
@@ -82,7 +99,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     tasks: new TaskRunner(store, supervisor),
   };
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const { app, hub } = await createServer({
+  const { app, hub, state } = await createServer({
     store,
     supervisor,
     runtimes,
@@ -95,19 +112,20 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     memory,
     mcp,
     crew,
+    library,
+    tools,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
   });
+  live = state;
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
   autonomy.tasks.recover();
   autonomy.scheduler.sync();
   autonomy.heartbeats.sync();
   memory.schedule();
-  const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
-  const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, crew, terminals, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -119,6 +137,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.autonomy.heartbeats.stop();
     gateway.memory.stop();
     gateway.crew?.stop();
+    gateway.library.stop();
     gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();

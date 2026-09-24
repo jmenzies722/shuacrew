@@ -20,7 +20,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { RunView } from "@shuacrew/core/projections";
-import { Columns2, GitFork, Pencil, RotateCcw, Rows2, Sparkles, X } from "lucide-react";
+import { BookmarkPlus, Columns2, GitFork, Pencil, RotateCcw, Rows2, Sparkles, X } from "lucide-react";
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { parseAnsi } from "../lib/ansi";
@@ -32,6 +32,8 @@ import { splitAttachments } from "../lib/attachments";
 import { DiffView, diffStat } from "./DiffView";
 import { describe } from "../shell/CommandPalette";
 import { CodeBlock, Markdown } from "./Markdown";
+import { KIND } from "../screens/Library";
+import { useLive } from "../lib/live";
 
 /** What every card in a thread may need: the session it belongs to, and whether it's working. */
 const ThreadContext = createContext<{ run?: RunView; working: boolean }>({ working: false });
@@ -45,7 +47,7 @@ function toBlocks(items: Item[], working: boolean): Block[] {
   const out: Block[] = [];
   for (const item of items) {
     const last = out[out.length - 1];
-    if (STEP.has(item.kind)) {
+    if (STEP.has(item.kind) && !isArtifactSave(item)) {
       if (last?.kind === "work") last.steps.push(item as Step);
       else out.push({ kind: "work", key: `w${item.seq}`, steps: [item as Step], live: false });
     } else out.push({ kind: "item", key: `i${item.seq}`, item });
@@ -311,6 +313,7 @@ function signature(item: Item): string {
 }
 
 export const Row = memo(function Row({ item }: { item: Item }) {
+  if (isArtifactSave(item)) return <ArtifactSaved step={item} />;
   switch (item.kind) {
     case "ask":
       return <UserMessage item={item} />;
@@ -469,12 +472,43 @@ const Prose = memo(function Prose({ text, streaming }: { text: string; streaming
   const shown = useSmoothText(text, streaming);
   const flowing = streaming || shown.length < text.length;
   return (
-    <div className={`agent-prose py-1 ${flowing ? "is-streaming" : ""}`}>
+    <div className={`group agent-prose py-1 ${flowing ? "is-streaming" : ""}`}>
       <Markdown text={shown} streaming={flowing} />
       {flowing && <span className="stream-caret" aria-hidden />}
+      {!flowing && text.length > 280 && <ProseActions text={text} />}
     </div>
   );
 });
+
+/** Keep a good answer: copy it, or file it in the Library as a document. */
+function ProseActions({ text }: { text: string }) {
+  const { run } = useContext(ThreadContext);
+  const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState<string>();
+  const save = async () => {
+    const heading = /^#{1,3}\s+(.+)$/m.exec(text)?.[1];
+    const title = (heading ?? text.replace(/[#*_`>\n]+/g, " ").trim().split(/(?<=[.!?])\s/)[0] ?? "Note").slice(0, 90);
+    const a = await api<{ id: string }>("/api/library/artifacts", { body: { title, content: text, run: run?.id } });
+    setSaved(a.id);
+  };
+  return (
+    <div className="msg-actions justify-start">
+      <button onClick={() => void navigator.clipboard?.writeText(text).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1200)))} title="Copy">
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+      </button>
+      {saved ? (
+        <button onClick={() => navigate({ to: "/library", hash: saved })} title="Open in Library" className="!w-auto px-1.5 text-[11.5px] text-amber">
+          Saved · open
+        </button>
+      ) : (
+        <button onClick={() => void save()} title="Save to Library">
+          <BookmarkPlus size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
 
 function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
   const { run, working } = useContext(ThreadContext);
@@ -906,4 +940,39 @@ export function fmtMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
+// ── artifacts ───────────────────────────────────────────────────────────────────────────────
+
+/** A deliverable the agent saved to the library stands on its own in the conversation. */
+function isArtifactSave(item: Item): item is Extract<Item, { kind: "tool" }> {
+  return item.kind === "tool" && /(^|__)save_artifact$/.test(item.tool) && item.tool.includes("shuacrew");
+}
+
+function ArtifactSaved({ step }: { step: Extract<Item, { kind: "tool" }> }) {
+  const navigate = useNavigate();
+  const input = (step.input ?? {}) as { title?: string; filename?: string; summary?: string };
+  const id = /\bas (a_[\w-]+)/.exec(step.output ?? "")?.[1];
+  const artifact = useLive((s) => (id ? s.crew.artifacts[id] : undefined));
+  const K = KIND[artifact?.kind ?? "doc"];
+  const saving = step.ok === undefined;
+  if (step.ok === false) return <ToolLine step={step} />;
+  return (
+    <button className="art-inline" style={{ "--kind": K.tone } as React.CSSProperties} disabled={!id} onClick={() => id && navigate({ to: "/library", hash: id })}>
+      <span className="art-inline-icon">
+        <K.icon size={17} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13.5px] font-semibold text-fg">{artifact?.title ?? input.title ?? "Artifact"}</span>
+        <span className="block truncate text-[12px] text-fg-3">
+          {saving ? <span className="shimmer-text">Saving to the Library…</span> : artifact?.summary ?? input.summary ?? `${K.label} · ${artifact?.file ?? input.filename ?? ""}`}
+        </span>
+      </span>
+      {!saving && (
+        <span className="shrink-0 text-[11.5px] text-fg-3">
+          {artifact && artifact.version > 1 ? `v${artifact.version} · ` : ""}Open in Library →
+        </span>
+      )}
+    </button>
+  );
 }

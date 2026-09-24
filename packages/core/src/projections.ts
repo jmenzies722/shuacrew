@@ -78,9 +78,38 @@ export interface CrewMember {
   sessions: number;
 }
 
+export interface ArtifactView {
+  id: string;
+  title: string;
+  kind: "doc" | "page" | "code" | "data" | "image" | "file";
+  file: string;
+  mime: string;
+  size: number;
+  summary?: string;
+  member?: string;
+  run?: string;
+  by: "agent" | "you";
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KnowledgeView {
+  id: string;
+  title: string;
+  source: "file" | "folder" | "note";
+  origin?: string;
+  files: number;
+  chunks: number;
+  size: number;
+  addedAt: number;
+}
+
 export interface CrewState {
   head: number;
   members: Record<string, CrewMember>;
+  artifacts: Record<string, ArtifactView>;
+  knowledge: Record<string, KnowledgeView>;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -88,7 +117,7 @@ export interface CrewState {
 }
 
 export function emptyState(): CrewState {
-  return { head: 0, members: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
+  return { head: 0, members: {}, artifacts: {}, knowledge: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
 }
 
 function dayOf(ms: number): string {
@@ -178,6 +207,27 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     }
     case "crew.member.removed":
       delete state.members[event.body.id];
+      break;
+    case "artifact.saved": {
+      const b = event.body;
+      const was = state.artifacts[b.id];
+      state.artifacts[b.id] = {
+        id: b.id, title: b.title, kind: b.kind, file: b.file, mime: b.mime, size: b.size, summary: b.summary,
+        member: b.member ?? was?.member, run: event.run ?? was?.run, by: b.by, version: b.version,
+        createdAt: was?.createdAt ?? event.at, updatedAt: event.at,
+      };
+      break;
+    }
+    case "artifact.removed":
+      delete state.artifacts[event.body.id];
+      break;
+    case "knowledge.added": {
+      const b = event.body;
+      state.knowledge[b.id] = { id: b.id, title: b.title, source: b.source, origin: b.origin, files: b.files, chunks: b.chunks, size: b.size, addedAt: event.at };
+      break;
+    }
+    case "knowledge.removed":
+      delete state.knowledge[event.body.id];
       break;
     case "run.archived":
       if (event.run) delete state.runs[event.run];

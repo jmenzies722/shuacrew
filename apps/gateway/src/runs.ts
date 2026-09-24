@@ -68,7 +68,9 @@ export interface SupervisorOptions {
   /** Lessons and skills for a conversation that is starting. */
   memory?: { systemFor(run: string, ask: string): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
   /** Installed MCP servers, already shaped for that runtime. */
-  mcpServers?: (runtime: string) => Record<string, unknown> | unknown[];
+  mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
+  /** Told to every fresh conversation (what ShuaCrew's own tools are for). */
+  toolHint?: string;
   mcpList?: () => Array<{ name: string }>;
 }
 
@@ -259,8 +261,8 @@ export class Supervisor {
       effort: spec.effort,
       resume,
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, this.options.memory?.systemFor(runId, ask)].filter(Boolean).join("\n\n") || undefined,
-      mcpServers: this.options.mcpServers?.(runtime.id),
+      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, this.options.memory?.systemFor(runId, ask), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
+      mcpServers: this.options.mcpServers?.(runtime.id, runId),
     };
 
     let ended = false;

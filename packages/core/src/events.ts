@@ -167,6 +167,32 @@ export const bodies = {
   }),
   "mcp.removed": z.object({ id: z.string() }),
 
+  // library: what the crew made (artifacts, versioned) and what you gave it to know (knowledge).
+  // Only metadata is logged; the bytes live under the data home and the text in the search index.
+  "artifact.saved": z.object({
+    id: z.string(),
+    version: z.number().int().min(1),
+    title: z.string(),
+    kind: z.enum(["doc", "page", "code", "data", "image", "file"]),
+    file: z.string(),
+    mime: z.string(),
+    size: z.number().int(),
+    summary: z.string().optional(),
+    member: z.string().optional(),
+    by: z.enum(["agent", "you"]).default("agent"),
+  }),
+  "artifact.removed": z.object({ id: z.string() }),
+  "knowledge.added": z.object({
+    id: z.string(),
+    title: z.string(),
+    source: z.enum(["file", "folder", "note"]),
+    origin: z.string().optional(),
+    files: z.number().int(),
+    chunks: z.number().int(),
+    size: z.number().int(),
+  }),
+  "knowledge.removed": z.object({ id: z.string() }),
+
   // unattended
   "schedule.set": z.object({
     id: z.string(),

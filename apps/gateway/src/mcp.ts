@@ -93,6 +93,7 @@ export class Mcp {
     const command = input.command?.trim();
     const url = input.url?.trim();
     if (!name) throw new Error("a server needs a name");
+    if (name.toLowerCase() === "shuacrew") throw new Error("\"shuacrew\" is ShuaCrew's own tool server — pick another name");
     if (!command && !url) throw new Error("give a command or a url");
     if (command && url) throw new Error("a server is a command or a url, not both");
     const id = `m_${randomUUID().slice(0, 8)}`;

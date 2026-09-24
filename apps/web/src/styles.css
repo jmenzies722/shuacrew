@@ -489,3 +489,38 @@ body {
 .field { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--text-3); }
 .field input, .field select, .field textarea { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; color: var(--text); background: var(--sunken); outline: none; resize: vertical; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+
+/* ── Library ──────────────────────────────────────────────────────── */
+.lib-search { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); transition: border-color .15s, box-shadow .15s; }
+.lib-search:focus-within { border-color: color-mix(in srgb, var(--amber) 55%, var(--line-strong)); box-shadow: 0 0 0 3px var(--amber-soft); }
+.lib-search input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 14px; color: var(--text); }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--sunken); }
+.seg button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 8px; font-size: 12.5px; color: var(--text-3); transition: background .15s, color .15s; }
+.seg button:hover { color: var(--text); }
+.seg button.is-on { background: var(--raised); color: var(--text); box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent), 0 1px 6px rgba(0,0,0,.18); }
+.seg-count { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lib-filter { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; color: var(--text-3); transition: all .15s; }
+.lib-filter:hover { color: var(--text); }
+.lib-filter.is-on { border-color: color-mix(in srgb, var(--amber) 50%, var(--line-strong)); color: var(--text); background: var(--amber-soft); }
+.art-card { display: flex; flex-direction: column; width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); transition: border-color .2s, transform .2s, box-shadow .2s; }
+.art-card:hover { border-color: color-mix(in srgb, var(--kind) 45%, var(--line-strong)); transform: translateY(-2px); box-shadow: 0 14px 34px -20px color-mix(in srgb, var(--kind) 70%, transparent); }
+.art-thumb { position: relative; display: grid; place-items: center; height: 108px; color: var(--kind); background: radial-gradient(120% 120% at 20% 0%, color-mix(in srgb, var(--kind) 20%, transparent), transparent 60%), repeating-linear-gradient(135deg, color-mix(in srgb, var(--text) 3%, transparent) 0 1px, transparent 1px 9px), var(--sunken); border-bottom: 1px solid var(--line); }
+.art-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.art-kind { position: absolute; left: 10px; top: 10px; border-radius: 999px; padding: 1px 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; color: var(--kind); background: color-mix(in srgb, var(--kind) 14%, var(--panel)); }
+.art-version { position: absolute; right: 10px; top: 10px; border-radius: 6px; padding: 0 6px; font-size: 10.5px; font-family: var(--font-mono); color: var(--text-2); background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); }
+.lib-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 10px 12px; background: var(--panel); transition: border-color .15s; }
+.lib-row:hover { border-color: var(--line-strong); }
+.lib-hit { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--panel); transition: border-color .15s, background .15s; }
+.lib-hit:hover { border-color: color-mix(in srgb, var(--amber) 40%, var(--line-strong)); }
+.lib-hit mark { background: var(--amber-soft); color: var(--text); border-radius: 3px; padding: 0 2px; }
+.lib-badge { flex-shrink: 0; border-radius: 999px; padding: 0 7px; font-size: 10.5px; font-weight: 600; line-height: 18px; color: var(--text-2); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.lib-badge.is-made { color: var(--amber); background: var(--amber-soft); }
+.lib-viewer { display: flex; flex-direction: column; width: min(860px, 94vw); height: 100%; border-left: 1px solid var(--line-strong); background: var(--panel); box-shadow: -30px 0 80px rgba(0,0,0,.35); }
+.lib-select { height: 28px; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; font-size: 12px; color: var(--text); background: var(--sunken); }
+.lib-link { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--radius-m); font-size: 12px; font-weight: 500; color: var(--text-2); transition: background .15s, color .15s; }
+.lib-link:hover { background: var(--raised); color: var(--text); }
+.lib-drop { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 6px; border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 26px 16px; color: var(--amber); transition: border-color .15s, background .15s; }
+.lib-drop:hover { border-color: var(--amber); background: var(--amber-soft); }
+.art-inline { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 1px solid color-mix(in srgb, var(--kind) 35%, var(--line)); border-radius: 12px; padding: 10px 12px; background: linear-gradient(90deg, color-mix(in srgb, var(--kind) 9%, var(--panel)), var(--panel) 70%); transition: border-color .15s, transform .15s; }
+.art-inline:hover { border-color: color-mix(in srgb, var(--kind) 60%, var(--line-strong)); transform: translateY(-1px); }
+.art-inline-icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 9px; color: var(--kind); background: color-mix(in srgb, var(--kind) 16%, transparent); }

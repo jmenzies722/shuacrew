@@ -24,6 +24,8 @@ import type { Supervisor } from "./runs.js";
 import { Specs } from "./specs.js";
 import type { Mcp } from "./mcp.js";
 import type { Crew, MemberInput } from "./crew.js";
+import type { Library } from "./library.js";
+import type { ToolServer } from "./toolserver.js";
 import { fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
 
@@ -40,6 +42,8 @@ export interface ServerOptions {
   memory?: Memory;
   mcp?: Mcp;
   crew?: Crew;
+  library?: Library;
+  tools?: ToolServer;
   terminals?: Terminals;
   uploads?: Uploads;
 }
@@ -73,7 +77,9 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   await app.register(fastifyWebsocket);
 
   app.addHook("onRequest", async (request, reply) => {
-    if (options.token && !authorised(request, options.token)) {
+    // /mcp is the agents' door to the library: it checks its own per-run bearer instead.
+    const toolCall = request.url === "/mcp" || request.url.startsWith("/mcp?");
+    if (options.token && !toolCall && !authorised(request, options.token)) {
       return reply.code(401).send({ error: "token required" });
     }
     // Without a token the gateway trusts where it's reached from, so only its own names may reach
@@ -87,7 +93,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       if (origin && new URL(origin).host !== request.headers.host) return reply.code(403).send({ error: "cross-origin socket" });
     }
     // Webhooks come from other systems and are authenticated by their HMAC signature instead.
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/")) {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/") && !toolCall) {
       const origin = request.headers.origin;
       const sameOrigin = !origin || new URL(origin).host === request.headers.host;
       if (request.headers["x-shuacrew"] !== "1" || !sameOrigin) {
@@ -96,7 +102,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     }
   });
   app.addHook("onSend", async (_request, reply, payload) => {
-    reply.header(
+    // A route that set its own (stricter or sandboxed) policy keeps it.
+    if (!reply.hasHeader("Content-Security-Policy")) reply.header(
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
     );
@@ -366,6 +373,97 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         return { run: thread };
       }
       return { run: supervisor.launch({ ask: text, title: `${member.name} · ${member.role}`, member: member.id, repo: request.body?.repo || undefined, labels: ["standing"] }) };
+    });
+  }
+
+  if (options.library) {
+    const library = options.library;
+    const tools = options.tools;
+    // Agents' MCP endpoint (streamable HTTP, stateless). Each run has its own bearer.
+    if (tools) {
+      app.post("/mcp", async (request, reply) => {
+        const run = tools.runFor(request.headers.authorization);
+        if (!run) return reply.code(401).send({ error: "unknown run token" });
+        const body = request.body as Parameters<ToolServer["handle"]>[0] | undefined;
+        if (!body || typeof body !== "object") return reply.code(400).send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
+        const result = await tools.handle(body, run);
+        if (result === undefined) return reply.code(202).send();
+        return reply.header("Content-Type", "application/json").send(result);
+      });
+      app.get("/mcp", async (_request, reply) => reply.code(405).header("Allow", "POST").send({ error: "POST JSON-RPC here" }));
+      app.delete("/mcp", async (_request, reply) => reply.code(405).header("Allow", "POST").send({ error: "stateless: nothing to end" }));
+    }
+    app.get<{ Querystring: { q?: string; type?: string; limit?: string } }>("/api/library/search", async (request) =>
+      library.search(request.query.q ?? "", { limit: Number(request.query.limit) || 20, type: request.query.type === "artifact" || request.query.type === "knowledge" ? request.query.type : undefined }),
+    );
+    // The artifact itself. HTML is served sandboxed: scripts may run, but in an opaque origin that
+    // can't reach the gateway or the network.
+    app.get<{ Params: { id: string }; Querystring: { v?: string; download?: string } }>("/api/library/artifacts/:id/raw", async (request, reply) => {
+      const a = library.artifact(request.params.id);
+      const file = library.fileOf(request.params.id, Number(request.query.v) || undefined);
+      if (!a || !file) return reply.code(404).send({ error: "no such artifact" });
+      reply.header("Content-Type", `${a.mime}${a.mime.startsWith("text/") ? "; charset=utf-8" : ""}`).header("Cache-Control", "no-cache");
+      reply.header("Content-Disposition", `${request.query.download ? "attachment" : "inline"}; filename="${a.file}"`);
+      reply.header(
+        "Content-Security-Policy",
+        "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https:; img-src data: https:; font-src data: https:; connect-src 'none'; frame-ancestors 'self'",
+      );
+      return reply.send(readFileSync(file));
+    });
+    app.get<{ Params: { id: string }; Querystring: { v?: string } }>("/api/library/artifacts/:id/text", async (request, reply) => {
+      const a = library.artifact(request.params.id);
+      const file = library.fileOf(request.params.id, Number(request.query.v) || undefined);
+      if (!a || !file) return reply.code(404).send({ error: "no such artifact" });
+      if (a.kind === "image" || a.kind === "file") return reply.code(415).send({ error: "not text" });
+      const text = readFileSync(file, "utf8");
+      return { text: text.slice(0, 400_000), truncated: text.length > 400_000 };
+    });
+    app.post<{ Body: { title?: string; content?: string; filename?: string; run?: string; id?: string; summary?: string } }>("/api/library/artifacts", async (request, reply) => {
+      const b = request.body ?? {};
+      try {
+        const run = b.run && state.runs[b.run] ? b.run : undefined;
+        return library.save({ title: b.title ?? "", content: b.content ?? "", filename: b.filename, summary: b.summary, id: b.id, run, member: run ? state.runs[run]?.member : undefined, by: "you" });
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    app.delete<{ Params: { id: string } }>("/api/library/artifacts/:id", async (request, reply) => {
+      try {
+        library.removeArtifact(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.post<{ Body: { path?: string; title?: string; note?: string; upload?: string } }>("/api/library/knowledge", async (request, reply) => {
+      const b = request.body ?? {};
+      try {
+        if (b.note !== undefined) return library.note(b.title ?? "", b.note);
+        if (b.upload) {
+          const upload = options.uploads?.get(b.upload);
+          if (!upload) return reply.code(404).send({ error: "no such upload" });
+          return library.add(upload.path, b.title || upload.name);
+        }
+        if (b.path) return library.add(b.path, b.title);
+        return reply.code(400).send({ error: "give a path, an upload or a note" });
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    app.get<{ Params: { id: string }; Querystring: { file?: string } }>("/api/library/knowledge/:id", async (request, reply) => {
+      try {
+        return library.read(request.params.id, request.query.file, 200_000);
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.delete<{ Params: { id: string } }>("/api/library/knowledge/:id", async (request, reply) => {
+      try {
+        library.removeSource(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
     });
   }
 
