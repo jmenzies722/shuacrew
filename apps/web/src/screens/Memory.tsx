@@ -190,18 +190,26 @@ export function Memory() {
             </Panel>
 
             <div>
-              <Eyebrow className="mb-2.5">Skills</Eyebrow>
-              <InstallSkill onInstalled={() => void refresh()} />
+              <div className="mb-2.5 flex items-center">
+                <Eyebrow>Skills</Eyebrow>
+                <Link to="/integrations" hash="skills" className="ml-auto text-[11.5px] text-fg-3 hover:text-fg">
+                  Install & write skills →
+                </Link>
+              </div>
               <Panel className="divide-y divide-line">
                 {skills.length === 0 && <div className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-3">When the same kind of ask comes back three times, Evolve drafts a skill here for you to approve. Nothing is used until you do.</div>}
-                {[...proposed, ...accepted].map((s) => (
+                {[...proposed, ...accepted].map((s) => {
+                  const fm = /^---[\s\S]*?description:\s*"?([^\n"]+)"?[\s\S]*?---/.exec(s.body)?.[1];
+                  const body = s.body.replace(/^---[\s\S]*?---\s*/, "");
+                  return (
                   <div key={s.id} className="px-4 py-3">
                     <div className="flex items-center gap-2 text-[13px] font-medium">
                       <StatusGlyph tone={s.status === "accepted" ? "ok" : "wait"} size={7} />
                       <span className="mono">{s.name}</span>
                       <span className="ml-auto text-[11px] font-normal text-fg-3">from {s.from.length} runs</span>
                     </div>
-                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-s)] bg-raised p-2 text-[11.5px] text-fg-2">{s.body}</pre>
+                    {fm && <p className="mt-1.5 text-[12px] leading-snug text-fg-2">{fm}</p>}
+                    {s.status === "proposed" && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-s)] bg-raised p-2 text-[11.5px] text-fg-2">{body}</pre>}
                     {s.status === "proposed" && (
                       <div className="mt-2 flex gap-1.5">
                         <Button size="s" variant="primary" onClick={async () => (await api(`/api/memory/skills/${s.id}`, { body: { accept: true } }), refresh())}>
@@ -213,46 +221,13 @@ export function Memory() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </Panel>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function InstallSkill({ onInstalled }: { onInstalled: () => void }) {
-  const [file, setFile] = useState("");
-  const [error, setError] = useState("");
-  return (
-    <div className="mb-2.5">
-      <div className="flex gap-2">
-        <input
-          value={file}
-          onChange={(e) => setFile(e.target.value)}
-          placeholder="Path to a SKILL.md"
-          className="mono h-8 min-w-0 flex-1 rounded-[var(--radius-m)] border border-line-strong bg-raised px-2.5 text-[12px] outline-none focus:border-amber"
-          aria-label="Skill file"
-        />
-        <Button
-          size="s"
-          disabled={!file.trim()}
-          onClick={() =>
-            void api("/api/memory/skills/install", { body: { path: file.trim() } })
-              .then(() => {
-                setFile("");
-                setError("");
-                onInstalled();
-              })
-              .catch((e: Error) => setError(e.message))
-          }
-        >
-          Install
-        </Button>
-      </div>
-      {error && <p className="mt-1 text-[12px] text-bad">{error}</p>}
     </div>
   );
 }

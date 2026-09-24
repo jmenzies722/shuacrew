@@ -39,7 +39,7 @@ export function MissionControl() {
         <header className="mb-5 flex items-end gap-4">
           <div>
             <Eyebrow>{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</Eyebrow>
-            <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">Mission Control</h1>
+            <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">Today</h1>
           </div>
           <div className="ml-auto flex items-center gap-6 pb-1 text-[12px] text-fg-2">
             <Stat label="running" value={running} tone={running ? "live" : "idle"} />

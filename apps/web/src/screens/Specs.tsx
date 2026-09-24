@@ -78,7 +78,25 @@ export function Specs() {
         ) : (
           !starting && (
             <div className="mt-6 flex flex-col gap-2">
-              {specs.length === 0 && <p className="text-[13px] text-fg-3">No specs yet. Start one and a session drafts requirements under .shuacrew/specs/.</p>}
+              {specs.length === 0 && !starting && (
+                <div className="crew-cta flex flex-col items-center py-12 text-center">
+                  <div className="flex items-center gap-2 text-[12px] font-medium text-fg-2">
+                    {["Requirements", "Design", "Tasks", "Board"].map((step, i) => (
+                      <span key={step} className="flex items-center gap-2">
+                        {i > 0 && <span className="text-fg-3">→</span>}
+                        <span className="vn-stage-chip">{step}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-5 text-[17px] font-semibold">Plan a feature before anyone writes code</div>
+                  <p className="mt-2 max-w-[520px] text-[13px] leading-relaxed text-fg-3">
+                    Describe what you want in a repo. A session drafts the requirements, you approve them, then the design, then the tasks — which land on the Board as sessions. Everything is saved in the repo under <span className="mono">.shuacrew/specs/</span>.
+                  </p>
+                  <Button variant="primary" className="mt-5" onClick={() => (setStarting(true), setOpen(null))}>
+                    Start a spec
+                  </Button>
+                </div>
+              )}
               {specs.map((spec) => (
                 <button key={spec.id} onClick={() => void select(spec.id)} className="rounded-[var(--radius-l)] border border-line bg-panel px-4 py-3 text-left hover:border-line-strong">
                   <div className="flex items-center gap-3">
