@@ -5,6 +5,23 @@
  */
 
 /* ── Dark palettes ─────────────────────────────────────────────────────────────────────── */
+/* Frost Black: true black, surfaces are frosted glass (translucent + blurred), hairline edges. */
+:root[data-theme][data-palette="frost"] {
+  --ink: #050506;
+  --panel: rgba(255, 255, 255, 0.045);
+  --raised: rgba(255, 255, 255, 0.075);
+  --sunken: rgba(0, 0, 0, 0.38);
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.13);
+  --highlight: rgba(255, 255, 255, 0.05);
+  --text: #f2f2f4;
+  --text-2: #a8a8b0;
+  --text-3: #6f6f78;
+  --idle: #6f6f78;
+  --glass: rgba(12, 12, 14, 0.62);
+  --term-bg: rgba(0, 0, 0, 0.55);
+  --term-head: rgba(255, 255, 255, 0.04);
+}
 :root[data-theme][data-palette="cursor"] {
   --ink: #0a0a0a;
   --panel: #111111;

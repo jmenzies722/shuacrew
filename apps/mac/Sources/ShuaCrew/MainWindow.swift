@@ -6,6 +6,7 @@ import WebKit
 final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let web: WKWebView
     private let strip = DragStrip()
+    private weak var material: NSVisualEffectView?
     /// The page's top bar is this tall; the traffic lights are centred in it.
     static let titleBarHeight: CGFloat = 38
     private let gateway: Gateway
@@ -43,6 +44,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         material.blendingMode = .behindWindow
         material.state = .followsWindowActiveState
         window.contentView = material
+        self.material = material
 
         for view in [web, overlay, strip] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -120,6 +122,9 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
 
     func windowDidResize(_ notification: Notification) { placeTrafficLights() }
     func windowDidExitFullScreen(_ notification: Notification) { placeTrafficLights() }
+    // Full screen has no desktop behind it: the page paints its chrome solid, in the app's colour.
+    func windowWillEnterFullScreen(_ notification: Notification) { page("document.documentElement.dataset.fullscreen = '1'") }
+    func windowWillExitFullScreen(_ notification: Notification) { page("delete document.documentElement.dataset.fullscreen") }
 
     // MARK: messages from the page
 
@@ -133,6 +138,8 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         case "appearance":
             // The chosen palette, not just macOS, decides the window's own chrome.
             window?.appearance = NSAppearance(named: (body["mode"] as? String) == "light" ? .aqua : .darkAqua)
+            // Frost Black is glass on purpose: a darker, heavier frost; every other palette paints over it.
+            material?.material = (body["palette"] as? String) == "frost" ? .hudWindow : .sidebar
         case "pickFolder":
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true

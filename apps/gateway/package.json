@@ -11,6 +11,7 @@
   "dependencies": {
     "@fastify/static": "^10.1.4",
     "@fastify/websocket": "^11.3.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@shuacrew/core": "workspace:*",
     "@shuacrew/memory": "workspace:*",
     "@shuacrew/runtimes": "workspace:*",

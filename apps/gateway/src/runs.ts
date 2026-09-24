@@ -68,11 +68,13 @@ export interface SupervisorOptions {
   /** The crew: members' defaults and personas. */
   crew?: { get(id: string): { runtime?: string; model?: string } | undefined; persona(id: string): string | undefined };
   /** Lessons and skills for a conversation that is starting. */
-  memory?: { systemFor(run: string, ask: string): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
+  memory?: { systemFor(run: string, ask: string, options?: { skills?: boolean }): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
   /** Installed MCP servers, already shaped for that runtime. */
   mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
   /** Told to every fresh conversation (what ShuaCrew's own tools are for). */
   toolHint?: string;
+  /** Claude Code plugins for a runtime (ShuaCrew's installed skills). */
+  plugins?: (runtime: string) => RunSpec["plugins"];
   /** A venture's brief, for sessions working on it. */
   ventureBrief?: (venture: string) => string | undefined;
   mcpList?: () => Array<{ name: string }>;
@@ -266,8 +268,9 @@ export class Supervisor {
       effort: spec.effort,
       resume,
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
+      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
       mcpServers: this.options.mcpServers?.(runtime.id, runId),
+      plugins: this.options.plugins?.(runtime.id),
     };
 
     let ended = false;

@@ -2,7 +2,7 @@
  * How ShuaCrew looks: a palette (surfaces and text) and an accent. "Follow system" pairs a dark
  * palette with a light one. Applied as attributes on <html>; themes.css does the rest.
  */
-export type PaletteId = "night" | "cursor" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
+export type PaletteId = "frost" | "night" | "cursor" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
 export type AccentId = "amber" | "mono" | "blue" | "green" | "coral";
 
 export interface Palette {
@@ -15,6 +15,7 @@ export interface Palette {
 }
 
 export const PALETTES: Palette[] = [
+  { id: "frost", name: "Frost Black", mode: "dark", blurb: "Frosted glass on true black", swatch: ["#050506", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "#f2f2f4"] },
   { id: "night", name: "Night", mode: "dark", blurb: "Blue-black instrument panel", swatch: ["#0b0d10", "#12151a", "#181c22", "#e8eaed"] },
   { id: "cursor", name: "Cursor Black", mode: "dark", blurb: "True neutral black", swatch: ["#0a0a0a", "#111111", "#181818", "#ededed"] },
   { id: "graphite", name: "Graphite", mode: "dark", blurb: "Soft neutral grey", swatch: ["#161618", "#1c1c1f", "#242428", "#e8e8ea"] },
@@ -42,7 +43,7 @@ export interface Appearance {
 }
 
 const KEY = "shuacrew.appearance";
-export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "night", light: "daylight", accent: "amber" };
+export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "frost", light: "daylight", accent: "amber" };
 
 export function loadAppearance(): Appearance {
   try {
@@ -52,6 +53,10 @@ export function loadAppearance(): Appearance {
     const base = { ...DEFAULT_APPEARANCE, ...(saved ?? {}) };
     if (!saved && legacy === "dark") base.palette = "night";
     if (!saved && legacy === "light") base.palette = "daylight";
+    // Frost Black became the dark default; if you never picked a dark palette, you get it once.
+    if (saved && !localStorage.getItem("shuacrew.frost") && base.dark === "night" && base.palette === "system") base.dark = "frost";
+    if (saved && base.palette === "night" && !localStorage.getItem("shuacrew.frost")) base.palette = "frost";
+    localStorage.setItem("shuacrew.frost", "1");
     return base;
   } catch {
     return DEFAULT_APPEARANCE;
@@ -86,7 +91,7 @@ export function applyAppearance(a: Appearance, animate = false) {
   root.setAttribute("data-palette", palette.id);
   root.setAttribute("data-accent", a.accent);
   // The Mac app's own chrome (title bar, sidebar material) follows the palette, not just macOS.
-  (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew?.postMessage({ type: "appearance", mode: palette.mode });
+  (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew?.postMessage({ type: "appearance", mode: palette.mode, palette: palette.id });
   unfollow?.();
   unfollow = null;
   if (a.palette === "system" && media) {

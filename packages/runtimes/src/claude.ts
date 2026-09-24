@@ -216,6 +216,7 @@ export class ClaudeRuntime implements Runtime {
         systemPrompt: { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
         agents: run.agents,
         mcpServers: run.mcpServers,
+        ...(run.plugins?.length ? { plugins: run.plugins } : {}),
         canUseTool: async (tool: string, input: Record<string, unknown>, options: { agentID?: string }) => {
           const answer = await ctx.approve(tool, input, { subagent: options?.agentID });
           return answer.allow

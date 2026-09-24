@@ -126,5 +126,6 @@ describe("the agents' tool server", () => {
     expect(verdict("mcp__shuacrew__save_artifact")).toBe("allow");
     expect(verdict("mcp__shuacrew__search_library")).toBe("allow");
     expect(verdict("mcp__shuacrew__delete_everything")).not.toBe("allow");
+    expect(verdict("Skill")).toBe("allow"); // loading an installed skill is just reading its instructions
   });
 });

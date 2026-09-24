@@ -303,6 +303,13 @@ export function defaultRules(): Rule[] {
       matches: (call) => segments(shell(call)).some((s) => ASK_ALWAYS.test(bareCommand(s))),
     },
     {
+      id: "allow.skill",
+      description: "loading an installed skill's instructions",
+      verdict: "allow",
+      risk: "low",
+      matches: (call) => call.tool === "Skill",
+    },
+    {
       id: "allow.library",
       description: "ShuaCrew's own library tools (save and search artifacts and knowledge)",
       verdict: "allow",

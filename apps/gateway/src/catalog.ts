@@ -87,3 +87,44 @@ export async function fetchSkill(name: string, get: typeof fetch = fetch): Promi
   if (!response.ok) throw new Error("that skill isn't there");
   return response.text();
 }
+
+/**
+ * Featured servers: ones we checked work with ShuaCrew — remote ones sign in by OAuth with
+ * dynamic registration (no keys to paste), local ones run with npx. Grouped by what a solo
+ * founder uses them for.
+ */
+export interface Featured {
+  id: string;
+  name: string; // the server name agents see (mcp__<name>__tool)
+  title: string;
+  category: "Build" | "Ship" | "Business" | "Research" | "Work";
+  blurb: string;
+  url?: string;
+  command?: string;
+  args?: string[];
+  auth: "none" | "oauth";
+  /** A folder the server works in, asked for when you add it. */
+  asksForFolder?: boolean;
+}
+
+export const FEATURED: Featured[] = [
+  { id: "playwright", name: "playwright", title: "Playwright", category: "Build", blurb: "Drive a real browser: click, type, screenshot, test your app end to end.", command: "npx", args: ["-y", "@playwright/mcp@latest"], auth: "none" },
+  { id: "chrome-devtools", name: "chrome-devtools", title: "Chrome DevTools", category: "Build", blurb: "Inspect pages, network, console and performance in Chrome.", command: "npx", args: ["-y", "chrome-devtools-mcp@latest"], auth: "none" },
+  { id: "context7", name: "context7", title: "Context7", category: "Build", blurb: "Up-to-date docs and examples for any library, so code matches the current API.", url: "https://mcp.context7.com/mcp", auth: "none" },
+  { id: "filesystem", name: "files", title: "Filesystem", category: "Build", blurb: "Read and write files in one folder you choose.", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem"], auth: "none", asksForFolder: true },
+  { id: "supabase", name: "supabase", title: "Supabase", category: "Build", blurb: "Your Postgres database, auth and storage: tables, SQL, migrations, logs.", url: "https://mcp.supabase.com/mcp", auth: "oauth" },
+  { id: "neon", name: "neon", title: "Neon", category: "Build", blurb: "Serverless Postgres: projects, branches, SQL and migrations.", url: "https://mcp.neon.tech/mcp", auth: "oauth" },
+  { id: "vercel", name: "vercel", title: "Vercel", category: "Ship", blurb: "Projects, deployments and build logs.", url: "https://mcp.vercel.com", auth: "oauth" },
+  { id: "cloudflare", name: "cloudflare", title: "Cloudflare", category: "Ship", blurb: "Workers, DNS, and your Cloudflare account.", url: "https://mcp.cloudflare.com/mcp", auth: "oauth" },
+  { id: "sentry", name: "sentry", title: "Sentry", category: "Ship", blurb: "Errors and issues from production, with stack traces.", url: "https://mcp.sentry.dev/mcp", auth: "oauth" },
+  { id: "posthog", name: "posthog", title: "PostHog", category: "Ship", blurb: "Product analytics, funnels, feature flags and experiments.", url: "https://mcp.posthog.com/mcp", auth: "oauth" },
+  { id: "stripe", name: "stripe", title: "Stripe", category: "Business", blurb: "Customers, products, prices and payment links. Agents ask before anything that charges.", url: "https://mcp.stripe.com", auth: "oauth" },
+  { id: "paypal", name: "paypal", title: "PayPal", category: "Business", blurb: "Invoices, orders and transactions.", url: "https://mcp.paypal.com/mcp", auth: "oauth" },
+  { id: "canva", name: "canva", title: "Canva", category: "Business", blurb: "Create and edit designs: social posts, decks, brand assets.", url: "https://mcp.canva.com/mcp", auth: "oauth" },
+  { id: "figma", name: "figma", title: "Figma", category: "Build", blurb: "Read designs, components and variables to build UI that matches.", url: "https://mcp.figma.com/mcp", auth: "oauth" },
+  { id: "linear", name: "linear", title: "Linear", category: "Work", blurb: "Issues, projects and cycles.", url: "https://mcp.linear.app/mcp", auth: "oauth" },
+  { id: "notion", name: "notion", title: "Notion", category: "Work", blurb: "Search, read and write your Notion pages and databases.", url: "https://mcp.notion.com/mcp", auth: "oauth" },
+  { id: "atlassian", name: "atlassian", title: "Jira & Confluence", category: "Work", blurb: "Jira issues and Confluence pages.", url: "https://mcp.atlassian.com/v1/sse", auth: "oauth" },
+  { id: "memory", name: "memory", title: "Knowledge graph", category: "Research", blurb: "A persistent graph of people, companies and facts the agents build up.", command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"], auth: "none" },
+  { id: "sequential-thinking", name: "thinking", title: "Sequential thinking", category: "Research", blurb: "Step-by-step reasoning for hard, multi-part problems.", command: "npx", args: ["-y", "@modelcontextprotocol/server-sequential-thinking"], auth: "none" },
+];

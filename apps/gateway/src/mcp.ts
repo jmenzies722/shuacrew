@@ -9,6 +9,7 @@ import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { AnyEvent } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
+import { listTools, type Connection } from "./mcp-client.js";
 
 export interface McpServer {
   id: string;
@@ -25,6 +26,8 @@ interface Token {
   refresh?: string;
   clientId?: string;
   tokenEndpoint?: string;
+  expiresAt?: number;
+  resource?: string;
 }
 
 interface AuthMeta {
@@ -39,6 +42,57 @@ export class Mcp {
     private secretsFile: string,
     private openBrowser: (url: string) => void = openUrl,
   ) {}
+
+  private connections = new Map<string, Connection>();
+  private timer?: NodeJS.Timeout;
+
+  /** Keep sign-ins alive: refresh tokens a few minutes before they expire, so agents never hit a dead one. */
+  keepFresh() {
+    this.timer = setInterval(() => void this.refreshDue(), 4 * 60_000);
+    this.timer.unref();
+    void this.refreshDue();
+  }
+
+  stop() {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  private async refreshDue() {
+    for (const [id, token] of Object.entries(this.tokens())) {
+      if (token.refresh && token.expiresAt && token.expiresAt - Date.now() < 10 * 60_000) await this.refresh(id).catch(() => undefined);
+    }
+  }
+
+  private async refresh(id: string): Promise<boolean> {
+    const token = this.tokens()[id];
+    if (!token?.refresh || !token.tokenEndpoint || !token.clientId) return false;
+    const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: token.refresh, client_id: token.clientId, ...(token.resource ? { resource: token.resource } : {}) });
+    const response = await fetch(token.tokenEndpoint, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) return false;
+    const json = (await response.json()) as { access_token?: string; refresh_token?: string; expires_in?: number };
+    if (!json.access_token) return false;
+    this.writeTokens({ ...this.tokens(), [id]: { ...token, access: json.access_token, refresh: json.refresh_token ?? token.refresh, expiresAt: json.expires_in ? Date.now() + json.expires_in * 1000 : undefined } });
+    return true;
+  }
+
+  /** Connect to the server like an agent would and list its tools (cached until asked again). */
+  async tools(id: string, fresh = false): Promise<Connection> {
+    const server = fold(this.store.read(0)).get(id);
+    if (!server) throw new Error("no such server");
+    const cached = this.connections.get(id);
+    if (cached && !fresh) return cached;
+    let result = await listTools({ command: server.command, args: server.args, url: server.url, token: this.tokens()[id]?.access });
+    if (!result.ok && result.error === "needs sign-in" && (await this.refresh(id).catch(() => false))) {
+      result = await listTools({ url: server.url, token: this.tokens()[id]?.access });
+    }
+    this.connections.set(id, result);
+    return result;
+  }
+
+  /** What's already known about each server's tools, without connecting. */
+  known(): Record<string, Connection> {
+    return Object.fromEntries(this.connections);
+  }
 
   list(): McpServer[] {
     const tokens = this.tokens();
@@ -147,12 +201,16 @@ export class Mcp {
     auth.searchParams.set("resource", server.url);
     this.openBrowser(auth.toString());
     const code = await redirect.code(state);
-    const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirect.url, client_id: clientId, code_verifier: verifier });
+    const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirect.url, client_id: clientId, code_verifier: verifier, resource: server.url });
     const token = await fetch(meta.token_endpoint, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
     if (!token.ok) throw new Error(`sign-in failed (${token.status})`);
-    const json = (await token.json()) as { access_token?: string; refresh_token?: string };
+    const json = (await token.json()) as { access_token?: string; refresh_token?: string; expires_in?: number };
     if (!json.access_token) throw new Error("sign-in returned no token");
-    this.writeTokens({ ...this.tokens(), [id]: { access: json.access_token, refresh: json.refresh_token, clientId, tokenEndpoint: meta.token_endpoint } });
+    this.writeTokens({
+      ...this.tokens(),
+      [id]: { access: json.access_token, refresh: json.refresh_token, clientId, tokenEndpoint: meta.token_endpoint, resource: server.url, expiresAt: json.expires_in ? Date.now() + json.expires_in * 1000 : undefined },
+    });
+    this.connections.delete(id);
   }
 
   private tokens(): Record<string, Token> {
@@ -169,13 +227,38 @@ export class Mcp {
   }
 }
 
+/**
+ * Where to sign in. The MCP way first (RFC 9728): the server names its authorization server in
+ * protected-resource metadata; then that server's own metadata (RFC 8414, or OpenID). Older servers
+ * keep the metadata at their own origin.
+ */
 export async function discover(resource: string, get: typeof fetch = fetch): Promise<AuthMeta> {
-  const origin = new URL(resource).origin;
-  const response = await get(`${origin}/.well-known/oauth-authorization-server`);
-  if (!response.ok) throw new Error("this server has no sign-in");
-  const meta = (await response.json()) as Partial<AuthMeta>;
-  if (!meta.authorization_endpoint || !meta.token_endpoint) throw new Error("this server has no sign-in");
-  return meta as AuthMeta;
+  const url = new URL(resource);
+  const json = async (u: string) => {
+    try {
+      const r = await get(u, { signal: AbortSignal.timeout(8000) });
+      return r.ok ? ((await r.json()) as Record<string, unknown>) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const path = url.pathname.replace(/\/$/, "");
+  const prm = (await json(`${url.origin}/.well-known/oauth-protected-resource${path}`)) ?? (await json(`${url.origin}/.well-known/oauth-protected-resource`));
+  const issuers = [...((prm?.authorization_servers as string[] | undefined) ?? []), url.origin];
+  for (const issuer of issuers) {
+    const i = new URL(issuer);
+    const ipath = i.pathname.replace(/\/$/, "");
+    for (const candidate of [
+      `${i.origin}/.well-known/oauth-authorization-server${ipath}`,
+      `${issuer.replace(/\/$/, "")}/.well-known/oauth-authorization-server`,
+      `${i.origin}/.well-known/openid-configuration${ipath}`,
+      `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`,
+    ]) {
+      const meta = await json(candidate);
+      if (meta?.authorization_endpoint && meta.token_endpoint) return meta as unknown as AuthMeta;
+    }
+  }
+  throw new Error("this server has no sign-in");
 }
 
 async function register(meta: AuthMeta, redirect: string): Promise<string> {

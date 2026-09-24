@@ -17,6 +17,7 @@ import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./auto
 import { Mcp } from "./mcp.js";
 import { Library } from "./library.js";
 import { Plays } from "./plays.js";
+import { Skills } from "./skills.js";
 import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
@@ -85,8 +86,10 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const memory = new Memory(store);
   const crew = new Crew(store);
   const mcp = new Mcp(store, path.join(home, "mcp-auth.json"));
+  mcp.keepFresh();
   const library = new Library(store, path.join(home, "library"));
   const ventures = new Ventures(store, path.join(home, "venture-keys.json"));
+  const skills = new Skills(store, path.join(home, "plugin"));
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   // The library's tool server lives on this gateway; each run reaches it with its own token.
@@ -108,6 +111,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     crew,
     mcpServers: withLibrary,
     toolHint: LIBRARY_HINT,
+    plugins: (runtime) => (runtime === "claude" ? skills.plugins() : undefined),
     ventureBrief: (id) => ventures.brief(id),
     mcpList: () => mcp.list(),
   });
@@ -136,6 +140,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     tools,
     plays,
     ventures,
+    skills,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
   });
@@ -149,7 +154,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, terminals, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, skills, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -164,6 +169,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.library.stop();
     gateway.plays.stop();
     gateway.ventures.stop();
+    gateway.skills.stop();
     gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();

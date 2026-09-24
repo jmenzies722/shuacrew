@@ -22,6 +22,8 @@ export interface RunSpec {
   agents?: Record<string, { description: string; prompt: string; model?: string }>;
   /** MCP servers installed in ShuaCrew. Bearer headers stay in the gateway. Codex/Claude use a map; ACP uses a list. */
   mcpServers?: Record<string, unknown> | unknown[];
+  /** Claude Code plugins to load (ShuaCrew's skills live in one). Other runtimes ignore this. */
+  plugins?: Array<{ type: "local"; path: string; skipMcpDiscovery?: boolean }>;
 }
 
 export interface ApprovalAnswer {

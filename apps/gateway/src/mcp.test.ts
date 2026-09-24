@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -39,4 +39,35 @@ describe("mcp config", () => {
     const meta = await discover("https://example.com/mcp", async () => new Response(JSON.stringify({ authorization_endpoint: "https://example.com/auth", token_endpoint: "https://example.com/token" })));
     expect(meta.authorization_endpoint).toBe("https://example.com/auth");
   });
+
+  it("follows a server's protected-resource metadata to its authorization server", async () => {
+    const seen: string[] = [];
+    const meta = await discover("https://mcp.example.com/mcp", async (u) => {
+      seen.push(String(u));
+      if (String(u) === "https://mcp.example.com/.well-known/oauth-protected-resource/mcp") return new Response(JSON.stringify({ authorization_servers: ["https://auth.example.com"] }));
+      if (String(u) === "https://auth.example.com/.well-known/oauth-authorization-server") return new Response(JSON.stringify({ authorization_endpoint: "https://auth.example.com/authorize", token_endpoint: "https://auth.example.com/token", registration_endpoint: "https://auth.example.com/register" }));
+      return new Response("", { status: 404 });
+    });
+    expect(meta.registration_endpoint).toBe("https://auth.example.com/register");
+    expect(seen[0]).toBe("https://mcp.example.com/.well-known/oauth-protected-resource/mcp");
+  });
+
+  it("connects to a real server and lists its tools", async () => {
+    const store = new EventStore(":memory:");
+    const mcp = new Mcp(store, path.join(mkdtempSync(path.join(os.tmpdir(), "shua-mcp-")), "auth.json"));
+    cleanups.push(() => store.close());
+    // A tiny stdio MCP server, spoken to by the real SDK client.
+    const server = path.join(mkdtempSync(path.join(import.meta.dirname, "..", "node_modules", ".shua-mcp-srv-")), "server.mjs"); // where it can import the SDK
+    writeFileSync(server, `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+const s = new McpServer({ name: "tiny", version: "1.2.3" });
+s.registerTool("echo", { description: "Say it back", annotations: { readOnlyHint: true } }, async () => ({ content: [{ type: "text", text: "hi" }] }));
+await s.connect(new StdioServerTransport());`);
+    cleanups.push(() => rmSync(path.dirname(server), { recursive: true, force: true }));
+    const added = mcp.add({ name: "tiny", command: process.execPath, args: [server] });
+    const result = await mcp.tools(added.id);
+    expect(result).toMatchObject({ ok: true, server: { name: "tiny", version: "1.2.3" }, tools: [{ name: "echo", description: "Say it back", readOnly: true }] });
+    const broken = mcp.add({ name: "broken", command: "false" });
+    expect((await mcp.tools(broken.id)).ok).toBe(false);
+  }, 30_000);
 });

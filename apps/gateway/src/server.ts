@@ -26,9 +26,10 @@ import type { Mcp } from "./mcp.js";
 import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
 import type { Plays } from "./plays.js";
+import type { Skills } from "./skills.js";
 import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
-import { fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
+import { FEATURED, fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
 
 export interface ServerOptions {
@@ -46,6 +47,7 @@ export interface ServerOptions {
   crew?: Crew;
   library?: Library;
   plays?: Plays;
+  skills?: Skills;
   ventures?: Ventures;
   tools?: ToolServer;
   terminals?: Terminals;
@@ -796,26 +798,46 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         return reply.code(404).send({ error: (error as Error).message });
       }
     });
-    app.get("/api/skills/catalog", async (_request, reply) => {
-      try {
-        return await skillCatalog();
-      } catch (error) {
-        return reply.code(502).send({ error: (error as Error).message });
-      }
-    });
-    app.post<{ Body: { name?: string } }>("/api/skills/install", async (request, reply) => {
-      const name = request.body?.name?.trim();
-      if (!name) return reply.code(400).send({ error: "name a skill" });
-      try {
-        const { writeFileSync } = await import("node:fs");
-        const os = await import("node:os");
-        const file = path.join(os.tmpdir(), `shuacrew-skill-${name}.md`);
-        writeFileSync(file, await fetchSkill(name));
-        return { id: memory.installSkill(file) };
-      } catch (error) {
-        return reply.code(400).send({ error: (error as Error).message });
-      }
-    });
+    const skills = options.skills;
+    if (skills) {
+      // Real skills: whole folders in ShuaCrew's plugin, loaded natively by Claude sessions.
+      const attempt = async <T>(reply: FastifyReply, code: number, work: () => T | Promise<T>) => {
+        try {
+          return (await work()) ?? { ok: true };
+        } catch (error) {
+          return reply.code(code).send({ error: (error as Error).message });
+        }
+      };
+      app.get("/api/skills", async () => skills.list());
+      app.get("/api/skills/catalog", async (_request, reply) => attempt(reply, 502, () => skills.catalog()));
+      app.post<{ Body: { name?: string } }>("/api/skills/install", async (request, reply) => attempt(reply, 400, () => skills.install(request.body?.name?.trim() ?? "")));
+      app.post<{ Body: { name?: string; description?: string; instructions?: string } }>("/api/skills", async (request, reply) =>
+        attempt(reply, 400, () => skills.create({ name: request.body?.name ?? "", description: request.body?.description ?? "", instructions: request.body?.instructions ?? "" })),
+      );
+      app.get<{ Params: { name: string } }>("/api/skills/:name", async (request, reply) => attempt(reply, 404, () => skills.read(request.params.name)));
+      app.delete<{ Params: { name: string } }>("/api/skills/:name", async (request, reply) => attempt(reply, 404, () => skills.remove(request.params.name)));
+    } else {
+      app.get("/api/skills/catalog", async (_request, reply) => {
+        try {
+          return await skillCatalog();
+        } catch (error) {
+          return reply.code(502).send({ error: (error as Error).message });
+        }
+      });
+      app.post<{ Body: { name?: string } }>("/api/skills/install", async (request, reply) => {
+        const name = request.body?.name?.trim();
+        if (!name) return reply.code(400).send({ error: "name a skill" });
+        try {
+          const { writeFileSync } = await import("node:fs");
+          const os = await import("node:os");
+          const file = path.join(os.tmpdir(), `shuacrew-skill-${name}.md`);
+          writeFileSync(file, await fetchSkill(name));
+          return { id: memory.installSkill(file) };
+        } catch (error) {
+          return reply.code(400).send({ error: (error as Error).message });
+        }
+      });
+    }
     app.post<{ Body: { path?: string } }>("/api/memory/skills/install", async (request, reply) => {
       const file = request.body?.path?.trim();
       if (!file) return reply.code(400).send({ error: "give the path to a SKILL.md" });
@@ -850,6 +872,33 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       }
     });
     app.get("/api/mcp", async () => mcp.list());
+    // Servers we checked work: each says whether you've added it already.
+    app.get("/api/mcp/featured", async () => {
+      const mine = mcp.list();
+      return FEATURED.map((f) => ({ ...f, added: mine.find((s) => s.name === f.name)?.id ?? null }));
+    });
+    app.post<{ Params: { id: string }; Body: { folder?: string } }>("/api/mcp/featured/:id", async (request, reply) => {
+      const f = FEATURED.find((x) => x.id === request.params.id);
+      if (!f) return reply.code(404).send({ error: "no such server" });
+      const existing = mcp.list().find((s) => s.name === f.name);
+      if (existing) return existing;
+      const folder = request.body?.folder?.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+      if (f.asksForFolder && !folder) return reply.code(400).send({ error: "choose the folder it may use" });
+      try {
+        return mcp.add({ name: f.name, command: f.command, args: [...(f.args ?? []), ...(f.asksForFolder && folder ? [folder] : [])], url: f.url, auth: f.auth });
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    // Connect like an agent would and list the server's real tools.
+    app.get<{ Params: { id: string }; Querystring: { fresh?: string } }>("/api/mcp/:id/tools", async (request, reply) => {
+      try {
+        return await mcp.tools(request.params.id, request.query.fresh === "1");
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.get("/api/mcp/tools", async () => mcp.known());
     app.post<{ Body: { name?: string; command?: string; args?: string[]; url?: string; auth?: "none" | "oauth" } }>("/api/mcp", async (request, reply) => {
       try {
         return mcp.add({ ...request.body, name: request.body?.name ?? "" });

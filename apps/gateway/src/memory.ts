@@ -41,14 +41,15 @@ export class Memory {
   }
 
   /** The system addendum for a conversation that is starting, or undefined when memory has nothing to add. */
-  systemFor(run: string, ask: string): string | undefined {
+  /** `skills: false` when the runtime loads skills natively (Claude, via ShuaCrew's plugin). */
+  systemFor(run: string, ask: string, options: { skills?: boolean } = {}): string | undefined {
     const created = this.store.forRun(run).find((e) => e.kind === "run.created");
     if (created?.kind === "run.created" && created.body.incognito) return undefined; // incognito: nothing in, nothing out
     // The project's lessons, plus — for a crew member's work — the lessons taught to that member.
     const member = created?.kind === "run.created" ? created.body.member : undefined;
     const recalled = recall(this.view, ask, this.projects.get(run));
     if (member) for (const r of recall(this.view, ask, `crew:${member}`)) if (!recalled.some((x) => x.lesson.id === r.lesson.id)) recalled.push(r);
-    const skills = relevantSkills(this.view, ask);
+    const skills = options.skills === false ? [] : relevantSkills(this.view, ask);
     for (const r of recalled) this.store.append("lesson.applied", { id: r.lesson.id }, { run });
     const text = render(recalled, skills);
     return text || undefined;
