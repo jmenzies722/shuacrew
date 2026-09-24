@@ -131,7 +131,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "run.routed":
       if (run) {
         run.runtime = event.body.runtime;
-        run.model = event.body.model ?? run.model;
+        run.model = event.body.model; // a new runtime means that runtime's model, not the old one's
         run.effort = event.body.effort ?? run.effort;
       }
       break;

@@ -95,6 +95,23 @@ describe("runs", () => {
     expect(state(store).runs[id]!.turns).toBe(2); // the paused run picked up where it stopped
   });
 
+  it("fails over to another subscription once, with a recap, and never bounces back", async () => {
+    const asks: string[] = [];
+    const base = { authMode: "subscription" as const, capabilities: { subagents: false, checkpoints: false, cost: false, images: false, resume: true }, models: [], status: async () => ({ installed: true, signedIn: true, detail: "", overridingKeys: [] }) };
+    const limited: Runtime = { ...base, id: "codexish", label: "limited", async *start(run) { asks.push(`codexish:${run.ask}`); yield { type: "session", id: "c-1" }; yield { type: "limited", until: Date.now() + 3_600_000, message: "usage limit" }; } };
+    const other: Runtime = { ...base, id: "claudeish", label: "fine", async *start(run) { asks.push(`claudeish:${run.resume ?? "fresh"}:${run.ask}`); yield { type: "session", id: "k-1" }; yield { type: "done", text: "done it" }; } };
+    const store = new EventStore();
+    cleanups.push(() => store.close());
+    const supervisor = new Supervisor(store, new Map([["codexish", limited], ["claudeish", other]]), { workspace: os.tmpdir(), failover: true });
+    const id = supervisor.launch({ ask: "fix the build", runtime: "codexish" });
+    await until(() => state(store).runs[id]?.status === "done");
+    expect(asks).toHaveLength(2);
+    expect(asks[0]).toBe("codexish:fix the build");
+    expect(asks[1]).toMatch(/^claudeish:fresh:You are continuing a ShuaCrew run/); // no foreign resume id; a recap instead
+    expect(asks[1]).toContain("fix the build");
+    expect(state(store).runs[id]!.runtime).toBe("claudeish");
+  });
+
   it("answers a follow-up in the same run, resuming the runtime's conversation", async () => {
     const { store, supervisor } = setup();
     const id = supervisor.launch({ ask: "fix the test", runtime: "mock" });

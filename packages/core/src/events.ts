@@ -48,6 +48,7 @@ export const bodies = {
   "run.routed": route.extend({ reason: z.string() }),
   "run.priority": z.object({ priority: z.number() }),
   "run.followup": z.object({ text: z.string(), by: z.string().default("you") }), // another turn, same run
+  "run.session": z.object({ runtime: RuntimeId, id: z.string() }), // the runtime's own conversation, for resume
 
   // conversation
   "turn.started": z.object({ turn: z.number().int(), text: z.string(), by: z.string().default("you") }),

@@ -1,0 +1,7 @@
+{
+  "name": "@shuacrew/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "shua": "./bin/shua.mjs" },
+  "dependencies": { "@shuacrew/core": "workspace:*", "@shuacrew/runtimes": "workspace:*" }
+}

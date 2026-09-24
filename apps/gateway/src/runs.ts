@@ -145,11 +145,12 @@ export class Supervisor {
     const created = this.store.forRun(runId).find((e) => e.kind === "run.created");
     if (!created || created.kind !== "run.created") return;
     const spec = created.body;
-    const runtime = this.runtimes.get(spec.runtime);
+    const runtimeId = this.currentRuntime(runId, spec.runtime);
+    const runtime = this.runtimes.get(runtimeId);
     const controller = this.active.get(runId) ?? new AbortController();
     this.active.set(runId, controller);
     if (!runtime) {
-      this.setStatus(runId, "failed", `no runtime called ${spec.runtime}`);
+      this.setStatus(runId, "failed", `no runtime called ${runtimeId}`);
       this.active.delete(runId);
       return;
     }
@@ -178,7 +179,19 @@ export class Supervisor {
     this.rec("turn.started", { turn, text: ask, by: "you" }, { run: runId });
     const started = Date.now();
     const policy = this.policyFor(runId, cwd);
-    const run: RunSpec = { id: runId, ask, cwd, model: spec.model, effort: spec.effort, resume: this.backendSession(runId) };
+    // A conversation id only means something to the runtime that owns it. A run that moved to
+    // another agent starts a fresh conversation there, with a recap of the work so far.
+    const resume = this.backendSession(runId, runtime.id);
+    const moved = !resume && turn > 1;
+    const model = this.modelFor(runId, runtime.id, spec.model);
+    const run: RunSpec = {
+      id: runId,
+      ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : ask,
+      cwd,
+      model,
+      effort: spec.effort,
+      resume,
+    };
 
     let ended = false;
     let buffered = "";
@@ -196,8 +209,7 @@ export class Supervisor {
         if (event.type !== "text" || event.final) flush();
         switch (event.type) {
           case "session":
-            this.rec("run.routed", { runtime: runtime.id, model: spec.model, reason: `session ${event.id}` }, { run: runId });
-            this.sessions.set(runId, event.id);
+            this.rec("run.session", { runtime: runtime.id, id: event.id }, { run: runId });
             break;
           case "text":
             if (event.final) this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
@@ -252,7 +264,7 @@ export class Supervisor {
             this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
             this.rec(
               "turn.completed",
-              { turn, route: { runtime: runtime.id, model: spec.model, effort: spec.effort }, durationMs: Date.now() - started, backendSession: this.sessions.get(runId) },
+              { turn, route: { runtime: runtime.id, model, effort: spec.effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },
               { run: runId },
             );
             this.setStatus(runId, spec.repo && this.changedFiles(runId) ? "reviewing" : "done");
@@ -285,23 +297,63 @@ export class Supervisor {
     }
   }
 
-  private sessions = new Map<string, string>();
+  /** The runtime a run is on now: its latest routing, else the one it was launched on. */
+  private currentRuntime(run: string, launched: string): string {
+    let current = launched;
+    for (const e of this.store.forRun(run)) if (e.kind === "run.routed" && this.runtimes.has(e.body.runtime)) current = e.body.runtime;
+    return current;
+  }
 
-  private backendSession(run: string): string | undefined {
-    if (this.sessions.has(run)) return this.sessions.get(run);
+  /** The model to use on this runtime: the launch's choice if it belongs here; after a failover,
+   * this runtime's model of the same tier (a fast model moves to a fast model, not the priciest). */
+  private modelFor(run: string, runtime: string, launched?: string): string | undefined {
+    for (const e of this.store.forRun(run)) if (e.kind === "run.routed" && e.body.runtime === runtime && e.body.model) return e.body.model;
+    const models = this.runtimes.get(runtime)?.models ?? [];
+    if (!launched) return undefined;
+    if (models.length === 0 || models.some((m) => m.id === launched)) return launched;
+    const tier = [...this.runtimes.values()].flatMap((r) => r.models).find((m) => m.id === launched)?.tier;
+    return models.find((m) => m.tier === tier)?.id;
+  }
+
+  /** The runtime's own conversation for this run — only if that runtime owns it. */
+  private backendSession(run: string, runtime: string): string | undefined {
+    let found: string | undefined;
+    for (const e of this.store.forRun(run)) if (e.kind === "run.session" && e.body.runtime === runtime) found = e.body.id;
+    return found;
+  }
+
+  /** What another agent needs to carry on: what was asked, what was said, what changed. */
+  private recap(run: string): string {
+    const lines = ["You are continuing a ShuaCrew run that another agent started. Here is where it stands:"];
+    const files = new Set<string>();
     for (const e of this.store.forRun(run)) {
-      if (e.kind === "turn.completed" && e.body.backendSession) return e.body.backendSession;
+      if (e.kind === "turn.started") lines.push(`\n> ${e.body.text.split("\n")[0]}`);
+      if (e.kind === "agent.message" && e.body.final) lines.push(e.body.text.slice(0, 600));
+      if (e.kind === "file.changed") files.add(e.body.path);
+      if (e.kind === "check.ran") lines.push(`(check ${e.body.exitCode === 0 ? "passed" : "failed"}: ${e.body.command})`);
     }
-    return undefined;
+    if (files.size) lines.push(`\nFiles changed so far: ${[...files].slice(0, 20).join(", ")}`);
+    return lines.join("\n");
   }
 
   // ── the usage window ────────────────────────────────────────────────────────────────
 
   private limited(run: string, runtime: string, until: number, message: string): void {
     this.rec("runtime.limited", { runtime, until, message });
-    const other = this.options.failover ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now()) : undefined;
+    // A run moves at most twice: past that it waits for a window instead of bouncing between agents.
+    const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && e.body.reason.includes(" is out until ")).length;
+    const other =
+      this.options.failover && moves < 2
+        ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now())
+        : undefined;
     if (other) {
-      this.rec("run.routed", { runtime: other, reason: `${runtime} is out until ${new Date(until).toLocaleTimeString()}` }, { run });
+      const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+      const launched = created?.kind === "run.created" ? created.body.model : undefined;
+      this.rec(
+        "run.routed",
+        { runtime: other, model: this.modelFor(run, other, launched), reason: `${runtime} is out until ${new Date(until).toLocaleTimeString()}` },
+        { run },
+      );
       this.setStatus(run, "queued", `moved to ${other}`);
       this.pump();
       return;

@@ -124,7 +124,7 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         items.push({ kind: "note", seq: e.seq, text: `${e.body.runtime} hit its usage window — paused until ${new Date(e.body.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}; it resumes by itself`, tone: "live" });
         break;
       case "run.routed":
-        if (!e.body.reason.startsWith("session")) items.push({ kind: "note", seq: e.seq, text: `Moved to ${e.body.runtime}: ${e.body.reason}`, tone: "idle" });
+        items.push({ kind: "note", seq: e.seq, text: `Moved to ${e.body.runtime}: ${e.body.reason}`, tone: "idle" });
         break;
       case "error.raised":
         endProse();

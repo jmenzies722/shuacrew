@@ -7,7 +7,8 @@ import { mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MockRuntime, type Runtime } from "@shuacrew/runtimes";
+import { readFileSync } from "node:fs";
+import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -18,8 +19,31 @@ export function dataDir(): string {
   return process.env.SHUACREW_HOME ?? path.join(os.homedir(), ".shuacrew");
 }
 
+interface RuntimeConfig {
+  claude?: { authMode?: AuthMode; enabled?: boolean };
+  codex?: { authMode?: AuthMode; enabled?: boolean };
+  /** ACP agents are opt-in: nothing launches one unless it is listed here. */
+  acp?: Array<{ id: string; label: string; command: string; args?: string[]; authMode?: AuthMode }>;
+}
+
+function runtimeConfig(): RuntimeConfig {
+  try {
+    return JSON.parse(readFileSync(path.join(dataDir(), "runtimes.json"), "utf8")) as RuntimeConfig;
+  } catch {
+    return {};
+  }
+}
+
+/** Claude and Codex on the person's own subscriptions by default; the mock for demos and tests. */
 export async function registry(): Promise<Map<string, Runtime>> {
+  const config = runtimeConfig();
   const runtimes = new Map<string, Runtime>();
+  if (config.claude?.enabled !== false) runtimes.set("claude", new ClaudeRuntime({ authMode: config.claude?.authMode }));
+  if (config.codex?.enabled !== false) runtimes.set("codex", new CodexRuntime({ authMode: config.codex?.authMode }));
+  for (const agent of config.acp ?? []) {
+    const id = agent.id.startsWith("acp:") ? agent.id : `acp:${agent.id}`;
+    runtimes.set(id, new AcpRuntime({ id, label: agent.label, command: agent.command, args: agent.args ?? [], authMode: agent.authMode }));
+  }
   runtimes.set("mock", new MockRuntime());
   return runtimes;
 }
