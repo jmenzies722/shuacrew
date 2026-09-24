@@ -99,4 +99,34 @@ describe("playbooks", () => {
     await until(() => plays.get(started.json().id)!.status === "done");
     expect((await post(app, `/api/plays/${started.json().id}/approve`, { index: 0 })).json().error).toMatch(/isn't waiting/);
   });
+
+  it("retries a failed phase once, telling the agent what went wrong", async () => {
+    const store = new EventStore(":memory:");
+    const mock = new MockRuntime({ pace: 0 });
+    const briefs: string[] = [];
+    let calls = 0;
+    // Fails the first time, works after.
+    const flaky: Runtime = Object.assign(Object.create(mock), {
+      start: (run: RunSpec, ctx: Parameters<Runtime["start"]>[1]) => {
+        briefs.push(run.ask);
+        calls += 1;
+        return calls === 1
+          ? (async function* () {
+              yield { type: "error" as const, message: "npm install timed out" };
+            })()
+          : mock.start(run, ctx);
+      },
+    });
+    const crew = new Crew(store);
+    for (const m of crew.starter()) crew.set({ ...m, runtime: "mock", model: undefined });
+    const supervisor = new Supervisor(store, new Map([["mock", flaky]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [], crew });
+    const plays = new Plays(store, supervisor);
+    cleanups.push(() => (plays.stop(), crew.stop(), supervisor.shutdown(), store.close()));
+    const play = plays.start({ playbook: "competitor-teardown", inputs: { competitor: "YNAB" } });
+    await until(() => plays.get(play.id)!.phases[1]!.status === "review");
+    const first = plays.get(play.id)!.phases[0]!;
+    expect(first.status).toBe("done");
+    expect(first.runs).toHaveLength(2);
+    expect(briefs[1]).toContain("The previous attempt at this phase failed (npm install timed out). Take a different approach this time.");
+  });
 });

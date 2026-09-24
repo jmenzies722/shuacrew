@@ -178,15 +178,15 @@ export class Library {
    * the original moves), and the same policy that guards the agents guards this: no secrets, no
    * protected folders.
    */
-  add(target: string, title?: string): KnowledgeView {
+  add(target: string, title?: string, id = `k_${randomUUID().slice(0, 10)}`): KnowledgeView {
     const file = path.resolve(target.replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
     if (!existsSync(file)) throw new Error(`nothing at ${target}`);
     this.guard(file);
     const folder = statSync(file).isDirectory();
-    const id = `k_${randomUUID().slice(0, 10)}`;
     let files = 0;
     let chunks = 0;
     let size = 0;
+    this.unindex(id); // re-reading a source replaces what was indexed for it
     for (const f of folder ? walk(file) : [file]) {
       if (files >= MAX_FILES || size >= MAX_SOURCE) break;
       if (folder && !this.allowed(f)) continue;
@@ -198,8 +198,37 @@ export class Library {
     }
     if (!files) throw new Error(folder ? "found no readable text files in that folder" : readError(file));
     this.store.append("knowledge.added", { id, title: title?.trim() || path.basename(file), source: folder ? "folder" : "file", origin: file, files, chunks, size });
+    this.prints.set(id, fingerprint(file));
     return this.state.knowledge[id]!;
   }
+
+  private prints = new Map<string, string>();
+
+  /**
+   * Keep what you added current: a file or folder that changed since it was read is read again
+   * (same id, so search results and agents' references still work). Cheap when nothing changed.
+   */
+  resync(): string[] {
+    const changed: string[] = [];
+    for (const source of this.sources()) {
+      if (!source.origin || source.source === "note" || !existsSync(source.origin)) continue;
+      const now = fingerprint(source.origin);
+      const was = this.prints.get(source.id);
+      if (was === undefined) {
+        this.prints.set(source.id, now); // first look since start: remember, don't re-read
+        continue;
+      }
+      if (was === now) continue;
+      try {
+        this.add(source.origin, source.title, source.id);
+        changed.push(source.id);
+      } catch {
+        this.prints.set(source.id, now);
+      }
+    }
+    return changed;
+  }
+
 
   removeSource(id: string) {
     if (!this.state.knowledge[id]) throw new Error(`no source ${id}`);
@@ -278,6 +307,27 @@ export class Library {
     } catch {
       return false;
     }
+  }
+}
+
+/** How a file or folder looks right now: count, newest change, total size. */
+function fingerprint(target: string): string {
+  try {
+    const st = statSync(target);
+    if (!st.isDirectory()) return `1:${st.mtimeMs}:${st.size}`;
+    let n = 0;
+    let newest = 0;
+    let bytes = 0;
+    for (const f of walk(target)) {
+      const s = statSync(f);
+      n++;
+      newest = Math.max(newest, s.mtimeMs);
+      bytes += s.size;
+      if (n > MAX_FILES) break;
+    }
+    return `${n}:${newest}:${bytes}`;
+  } catch {
+    return "gone";
   }
 }
 

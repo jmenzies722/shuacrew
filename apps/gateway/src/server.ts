@@ -28,6 +28,7 @@ import type { Crew, MemberInput } from "./crew.js";
 import type { Library } from "./library.js";
 import type { Plays } from "./plays.js";
 import { Briefing } from "./briefing.js";
+import type { Backups } from "./backup.js";
 import { Sites, type Runner } from "./sites.js";
 import type { Skills } from "./skills.js";
 import { NEXT, STAGES, type Ventures } from "./ventures.js";
@@ -54,6 +55,7 @@ export interface ServerOptions {
   briefingAt?: string | false;
   /** Where published sites live; with a library, enables publishing. */
   sitesRoot?: string;
+  backups?: Backups;
   vercel?: Runner;
   skills?: Skills;
   ventures?: Ventures;
@@ -214,6 +216,19 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   if (briefing) {
     app.get("/api/briefing", async () => state.briefing ?? null);
     app.post("/api/briefing", async () => briefing.create());
+  }
+
+  // Backups: where they go, the latest, and "back up now".
+  if (options.backups) {
+    const backups = options.backups;
+    app.get("/api/backups", async () => ({ destination: backups.destination, last: state.backup ?? null, files: backups.list().slice(0, 14) }));
+    app.post("/api/backups", async (_request, reply) => {
+      try {
+        return await backups.run();
+      } catch (error) {
+        return reply.code(500).send({ error: (error as Error).message });
+      }
+    });
   }
 
   // Publishing: an HTML artifact goes live on Vercel with a waitlist; signups come back.

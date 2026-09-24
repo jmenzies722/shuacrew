@@ -64,6 +64,12 @@ describe("the library", () => {
     expect(library.search("sk_live")).toEqual([]);
     expect(library.read(source.id, "idea.md").text).toContain("budgeting");
 
+    // Change a file: the next resync reads it again, under the same id.
+    expect(library.resync()).toEqual([]);
+    writeFileSync(path.join(docs, "customers.txt"), "Interviewed 12 freelancers. Nine hate chasing late invoices; three pay for Bonsai.");
+    expect(library.resync()).toEqual([source.id]);
+    expect(library.search("bonsai")[0]).toMatchObject({ id: source.id, where: "customers.txt" });
+
     const note = library.note("Pricing thought", "Charge $12/month, annual at $99.");
     expect(library.search("annual")[0]).toMatchObject({ id: note.id, type: "knowledge" });
     library.removeSource(source.id);

@@ -776,3 +776,5 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 .send-menu button { display: flex; width: 100%; align-items: center; gap: 9px; border-radius: 8px; padding: 7px 9px; font-size: 12.5px; color: var(--text); text-align: left; }
 .send-menu button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
 .send-hint { padding: 6px 9px 4px; font-size: 10.5px; line-height: 1.4; color: var(--text-3); }
+.effort-bar { flex: 1; height: 6px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.effort-bar span { display: block; height: 100%; border-radius: inherit; opacity: .85; }

@@ -271,6 +271,7 @@ export function VenturePage() {
         </div>
 
         <LiveSites venture={v} pages={made.filter((a) => a.kind === "page")} />
+        <CrewEffort runs={Object.values(runs).filter((r) => r.venture === id)} />
 
         {mine.length > 0 && (
           <section className="mt-6">
@@ -737,5 +738,45 @@ function AutopilotSwitch({ venture: v }: { venture: VentureView }) {
       </span>
       Autopilot
     </button>
+  );
+}
+
+/** How much crew work this venture used this week — and who did it. */
+function CrewEffort({ runs }: { runs: RunView[] }) {
+  const members = useLive((s) => s.crew.members);
+  const week = runs.filter((r) => Date.now() - r.updatedAt < 7 * 86_400_000);
+  if (!week.length) return null;
+  const tokens = (r: RunView) => (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0);
+  const total = week.reduce((n, r) => n + tokens(r), 0);
+  const by = new Map<string, number>();
+  for (const r of week) by.set(r.member ?? "", (by.get(r.member ?? "") ?? 0) + tokens(r));
+  const rows = [...by.entries()].sort((a, b) => b[1] - a[1]);
+  const fmt = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+  return (
+    <section className="mt-6">
+      <h2 className="pb-eyebrow">Crew effort this week</h2>
+      <div className="vn-panel">
+        <div className="flex items-baseline gap-3">
+          <span className="text-[22px] font-bold tracking-[-0.02em] text-fg">{fmt(total)}</span>
+          <span className="text-[12px] text-fg-3">
+            tokens across {week.length} session{week.length === 1 ? "" : "s"} · on your subscriptions
+          </span>
+        </div>
+        <div className="mt-3 grid gap-1.5">
+          {rows.map(([member, n]) => {
+            const m = members[member];
+            return (
+              <div key={member || "any"} className="flex items-center gap-2.5 text-[12px]">
+                <span className="w-28 shrink-0 truncate text-fg-2">{m ? `${m.emoji} ${m.name}` : "Any agent"}</span>
+                <span className="effort-bar">
+                  <span style={{ width: `${total ? Math.max(2, (n / total) * 100) : 0}%`, background: m?.color ?? "var(--text-3)" }} />
+                </span>
+                <span className="mono w-14 shrink-0 text-right text-[11px] text-fg-3">{fmt(n)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }

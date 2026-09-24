@@ -245,6 +245,8 @@ export const bodies = {
   "site.published": z.object({ id: z.string(), artifact: z.string(), venture: z.string().optional(), url: z.string(), project: z.string(), version: z.number().int() }),
   "site.signups": z.object({ id: z.string(), count: z.number().int(), error: z.string().optional() }),
   "site.removed": z.object({ id: z.string() }),
+  // Encrypted backups of the data home. The passphrase lives in the Keychain, never here.
+  "backup.made": z.object({ file: z.string(), bytes: z.number().int(), error: z.string().optional() }),
   // The morning briefing: a digest built from the log (no model), one per day.
   "briefing.created": z.object({
     id: z.string(),

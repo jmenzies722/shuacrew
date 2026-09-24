@@ -142,6 +142,11 @@ export class EventStore {
   unsafeExec(sql: string): void {
     this.db.exec(sql);
   }
+
+  /** A consistent copy of the whole log, safe to take while it's being written (for backups). */
+  snapshot(file: string): void {
+    this.db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  }
 }
 
 function toEvent(row: Row): AnyEvent {

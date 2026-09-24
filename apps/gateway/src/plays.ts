@@ -83,7 +83,7 @@ export const LIBRARY: PlaybookDef[] = [
         gate: "approve",
         deliverable: "Landing page",
         prompt:
-          "Build the landing page for {{product}} from the approved copy, as ONE self-contained HTML file (inline CSS, no external JS; system fonts or one Google Font). Responsive, accessible contrast, fast, one accent colour, generous spacing, a clear hero with the CTA ({{cta}}) above the fold, and a simple email form (action left as \"#\" for now). Save it with save_artifact using filename landing.html.",
+          "Build the landing page for {{product}} from the approved copy, as ONE self-contained HTML file (inline CSS, no external JS; system fonts or one Google Font). Responsive, accessible contrast, fast, one accent colour, generous spacing, a clear hero with the CTA ({{cta}}) above the fold, and a simple email form (action left as \"#\" for now). Save it with save_artifact using filename landing.html. If a Playwright browser tool is available, open the page and check it at phone and desktop widths before you finish.",
       },
       {
         id: "review",
@@ -129,7 +129,7 @@ export const LIBRARY: PlaybookDef[] = [
         member: "engineer",
         gate: "approve",
         prompt:
-          "Build the MVP from the approved spec and screens, following the build plan step by step. After each step run the tests and the app; don't move on while anything is red. Commit as you go. Finish with how to run it, what works, and what's left.",
+          "Build the MVP from the approved spec and screens, following the build plan step by step. After each step run the tests and the app; don't move on while anything is red. If a Playwright browser tool is available, start the app and click through the core loop in a real browser, and say what you saw. Commit as you go. Finish with how to run it, what works, and what's left.",
       },
       {
         id: "ship",
@@ -432,6 +432,11 @@ export class Plays {
         this.store.append("play.phase", { play: play.id, index: where.index, status: "review", output, artifacts });
         this.store.append("play.status", { play: play.id, status: "waiting", reason: `${phase.name} is ready for your review` });
       }
+    } else if (status === "failed" && phase.status === "running" && phase.runs.length < 2) {
+      // One more try, told what went wrong — most failures are a wrong turn, not a dead end.
+      const reason = this.state.runs[run]?.statusReason ?? "it failed";
+      this.store.append("play.phase", { play: play.id, index: where.index, status: "pending", note: `retry: ${reason}` });
+      this.advance(play.id);
     } else if (STOPPED.has(status) && phase.status === "running") {
       const reason = this.state.runs[run]?.statusReason ?? status;
       this.store.append("play.phase", { play: play.id, index: where.index, status: "failed", note: reason });
@@ -460,8 +465,10 @@ export class Plays {
       const made = p.artifacts.map((id) => this.state.artifacts[id]).filter(Boolean).map((a) => `- ${a!.title} (library id ${a!.id})`);
       return [`### ${p.name}${who ? ` — by ${who.name}, ${who.role}` : ""}`, shorten(p.output ?? "", 3000) || "(no summary)", made.length ? `Saved:\n${made.join("\n")}` : ""].filter(Boolean).join("\n\n");
     });
+    const retry = phase.note?.startsWith("retry: ") ? phase.note.slice(7) : undefined;
     return [
       `You're on phase ${index + 1} of ${play.phases.length}, "${phase.name}", of the playbook "${play.name}": ${play.title}.`,
+      retry ? `The previous attempt at this phase failed (${retry.slice(0, 300)}). Take a different approach this time.` : "",
       fill(phase.prompt),
       context.length ? `## What the earlier phases produced\n\n${context.join("\n\n")}\n\nRead the full artifacts with read_library when you need more than this summary.` : "",
       phase.deliverable ? `When you're done, save your deliverable to the Library with save_artifact, titled "${phase.deliverable} — ${shorten(play.title, 60)}". Then reply with a short summary of what you found or made and any decision you need from me.` : "When you're done, reply with a short summary of what you did and any decision you need from me.",

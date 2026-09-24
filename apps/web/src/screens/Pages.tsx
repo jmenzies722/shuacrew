@@ -113,6 +113,7 @@ export function Settings() {
     <Page title="Settings" subtitle="Runtimes, appearance and data. Nothing leaves this machine unless you turn it on.">
       <Appearance />
       <AlwaysOn />
+      <BackupsPanel />
       <Panel className="p-5">
         <div className="mb-3 flex items-center">
           <Eyebrow>Runtimes</Eyebrow>
@@ -136,6 +137,67 @@ export function Settings() {
         </div>
       </Panel>
     </Page>
+  );
+}
+
+/** Encrypted nightly backups: when the last one ran, where they are, and how to restore. */
+function BackupsPanel() {
+  const [info, setInfo] = useState<{ destination: string; last: { file: string; bytes: number; at: number; error?: string } | null; files: Array<{ file: string; bytes: number; at: number }> } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [showRestore, setShowRestore] = useState(false);
+  const load = () => void api<typeof info>("/api/backups").then(setInfo).catch(() => undefined);
+  useEffect(load, []);
+  const now = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/backups", { body: {} });
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!info) return null;
+  const last = info.last;
+  const mb = (n: number) => `${(n / 1024 / 1024).toFixed(n > 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  const ago = (at: number) => {
+    const h = (Date.now() - at) / 3_600_000;
+    return h < 1 ? `${Math.max(1, Math.round(h * 60))} min ago` : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`;
+  };
+  const where = info.destination.replace(/^.*Mobile Documents\/com~apple~CloudDocs/, "iCloud Drive").replace(/^\/Users\/[^/]+/, "~");
+  return (
+    <Panel className="p-5">
+      <div className="mb-3 flex items-center gap-3">
+        <Eyebrow>Backups</Eyebrow>
+        {last && <StatusGlyph tone={last.error ? "bad" : Date.now() - last.at < 36 * 3_600_000 ? "ok" : "wait"} />}
+        <span className="text-[12.5px] text-fg-2">
+          {!last ? "No backup yet — the first runs tonight at 2:30." : last.error ? `The last backup failed: ${last.error}` : `Last backup ${ago(last.at)} · ${mb(last.bytes)}`}
+        </span>
+        <Button size="s" className="ml-auto" onClick={() => void now()} disabled={busy}>
+          {busy ? "Backing up…" : "Back up now"}
+        </Button>
+      </div>
+      <p className="max-w-[760px] text-[12.5px] leading-relaxed text-fg-3">
+        Every night at 2:30: your whole history, Library, skills, sites and keys — encrypted (AES-256) with a passphrase kept in your macOS Keychain, saved to <span className="text-fg-2">{where}</span>. The latest 14 are kept.
+      </p>
+      {error && <div className="mt-2 text-[12px] text-bad">{error}</div>}
+      <button className="mt-3 text-[12px] text-fg-3 hover:text-fg" onClick={() => setShowRestore((v) => !v)}>
+        {showRestore ? "Hide" : "How to restore"} ↓
+      </button>
+      {showRestore && (
+        <pre className="mono mt-2 overflow-x-auto whitespace-pre rounded-[10px] border border-line bg-sunken p-3 text-[11.5px] leading-relaxed text-fg-2">
+          {`mkdir -p ~/shuacrew-restore
+security find-generic-password -s ShuaCrew-backup -w \\
+  | openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass stdin \\
+      -in "${info.files[0]?.file ?? "<backup file>"}" \\
+  | tar xz -C ~/shuacrew-restore
+# then: pnpm service uninstall, move ~/shuacrew-restore/* into ~/.shuacrew, pnpm service install`}
+        </pre>
+      )}
+    </Panel>
   );
 }
 

@@ -197,6 +197,7 @@ export interface CrewState {
   ventures: Record<string, VentureView>;
   briefing?: BriefingView;
   sites: Record<string, SiteView>;
+  backup?: { file: string; bytes: number; at: number; error?: string };
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -389,6 +390,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "site.removed":
       delete state.sites[event.body.id];
       break;
+    case "backup.made":
+      state.backup = { ...event.body, at: event.at };
+      break;
     case "briefing.created":
       state.briefing = { ...event.body, at: event.at };
       break;
@@ -419,7 +423,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       if (b.status === "pending") {
         phase.output = undefined;
         phase.artifacts = [];
-        phase.note = undefined;
+        phase.note = b.note; // a retry says why (and a reset clears it)
       }
       if (b.output !== undefined) phase.output = b.output;
       if (b.artifacts) phase.artifacts = b.artifacts;
