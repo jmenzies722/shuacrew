@@ -34,6 +34,9 @@ interface RuntimeInfo {
   limitedUntil: number | null;
 }
 
+const FRIENDLY: Record<string, string> = { claude: "Claude Code", codex: "Codex", mock: "Demo (no usage)" };
+const friendly = (r: { id: string; label: string }) => FRIENDLY[r.id] ?? r.label;
+
 const WORKING = new Set(["running", "planning", "queued", "awaiting_approval"]);
 const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolean).pop()! : "workspace");
 
@@ -480,7 +483,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
                   setRuntime(v);
                   setModel("");
                 }}
-                options={[{ value: "", label: "Auto agent" }, ...runtimes.map((r) => ({ value: r.id, label: r.label + (r.limitedUntil ? " · limited" : "") }))]}
+                options={[{ value: "", label: "Auto agent" }, ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]}
               />
               <Select value={model} onChange={setModel} options={[{ value: "", label: "auto model" }, ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.label }))]} />
               <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} />

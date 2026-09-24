@@ -90,6 +90,13 @@ body {
 [data-shell="mac"] [data-frame] {
   background: transparent;
 }
+/* The work area is solid, inset like a sheet under the translucent chrome. */
+[data-shell="mac"] #main {
+  background: var(--ink);
+  border-top-left-radius: 12px;
+  box-shadow: inset 1px 1px 0 var(--line);
+  padding-top: 8px;
+}
 
 /* Three dots that breathe while an agent thinks. */
 .thinking-dots {

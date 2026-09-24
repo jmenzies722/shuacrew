@@ -153,6 +153,32 @@ export async function connect(): Promise<void> {
     useLive.setState({ connection: "offline" });
   }
   open();
+  void checkBuild();
+  setInterval(() => void checkBuild(), 30_000);
+}
+
+// ── staying current ────────────────────────────────────────────────────────────────────────
+
+let loadedBuild: string | null = null;
+
+/**
+ * When the gateway is serving a newer build than this page, reload into it — but never out from
+ * under a half-typed message: wait until the composer is empty.
+ */
+async function checkBuild(): Promise<void> {
+  let build: string;
+  try {
+    build = (await api<{ build: string }>("/api/health")).build;
+  } catch {
+    return;
+  }
+  if (loadedBuild === null) {
+    loadedBuild = build;
+    return;
+  }
+  if (build === loadedBuild || build === "none") return;
+  const typing = [...document.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>("textarea, input[type=text], input:not([type])")].some((el) => el.value.trim());
+  if (!typing) location.reload();
 }
 
 function open(): void {
@@ -175,6 +201,7 @@ function open(): void {
   };
   socket.onclose = () => {
     useLive.setState({ connection: "offline" });
+    setTimeout(() => void checkBuild(), 1500); // a gateway restart is the usual moment a new build lands
     const delay = Math.min(4000, 150 * 2 ** retry++);
     setTimeout(open, delay);
   };

@@ -6,7 +6,7 @@
  * another site can't set that header without a CORS preflight this server never approves, which is
  * the CSRF defence. The dashboard is served with a strict CSP (no inline script, no remote origins).
  */
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
@@ -86,8 +86,20 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
 
+  // Which web build is on disk now. Open pages compare it and reload themselves when it changes,
+  // so an update never needs a manual refresh. Read per request: a rebuild needs no restart.
+  const webBuild = () => {
+    if (!options.webRoot) return "none";
+    try {
+      return String(Math.round(statSync(path.join(options.webRoot, "index.html")).mtimeMs));
+    } catch {
+      return "none";
+    }
+  };
+
   app.get("/api/health", async () => ({
     ok: true,
+    build: webBuild(),
     head: store.head,
     clients: hub.size,
     version: options.version ?? "0.1.0",

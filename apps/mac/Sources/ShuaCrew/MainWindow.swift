@@ -81,7 +81,9 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         Task {
             do {
                 try await Launcher.ensureRunning(gateway)
-                let path = UserDefaults.standard.string(forKey: Self.lastPathKey) ?? "/"
+                // Always open on the chat; come back to the session you had open, if any.
+                let saved = UserDefaults.standard.string(forKey: Self.lastPathKey) ?? "/"
+                let path = saved.hasPrefix("/sessions/") ? saved : "/"
                 web.load(URLRequest(url: URL(string: path, relativeTo: gateway.base)!))
             } catch {
                 overlay.show(.failed(error.localizedDescription))
