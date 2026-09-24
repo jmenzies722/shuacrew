@@ -4,6 +4,28 @@ import { parseBody, type AnyEvent } from "./events.js";
 import { allowAll, decide, defaultContext, defaultRules, normalise, standingRule, type Layer } from "./policy.js";
 import { COLUMNS, apply, emptyState, fold } from "./projections.js";
 import { agentEnv, redact } from "./redact.js";
+import { parseCadence } from "./cadence.js";
+
+describe("cadences in plain words", () => {
+  it.each([
+    ["every 15m", "*/15 * * * *", undefined],
+    ["every 6h", "0 */6 * * *", undefined],
+    ["hourly", "0 * * * *", undefined],
+    ["daily 9am", "0 9 * * *", undefined],
+    ["weekdays 9am ET", "0 9 * * 1-5", "America/New_York"],
+    ["weekdays 5:30pm PT", "30 17 * * 1-5", "America/Los_Angeles"],
+    ["mon,thu 8am", "0 8 * * 1,4", undefined],
+    ["weekends 12am", "0 0 * * 0,6", undefined],
+    ["0 3 1 * *", "0 3 1 * *", undefined],
+    ["daily 07:00 Europe/London", "0 7 * * *", "Europe/London"],
+  ])("%s → %s", (words, cron, timezone) => {
+    expect(parseCadence(words)).toMatchObject({ cron, timezone });
+  });
+
+  it.each(["every 7m", "daily 25:00", "sometimes", "every 5h"])("refuses %s instead of guessing", (words) => {
+    expect(() => parseCadence(words)).toThrow();
+  });
+});
 
 function chain(bodies: string[]): Chainable[] {
   let prev = GENESIS;

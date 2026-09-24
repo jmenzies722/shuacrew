@@ -10,7 +10,7 @@
  * never merged away or dropped.
  */
 import type { AnyEvent } from "@shuacrew/core";
-import type { WebSocket } from "ws";
+import type { WebSocket } from "@fastify/websocket";
 import type { EventStore } from "./store.js";
 
 const FRAME_MS = 16;
@@ -38,7 +38,7 @@ export class Hub {
   attach(socket: WebSocket): void {
     const client: Client = { socket, queue: [], ready: false };
     this.clients.add(client);
-    socket.on("message", (raw) => {
+    socket.on("message", (raw: unknown) => {
       let message: { type?: string; after?: number };
       try {
         message = JSON.parse(String(raw));

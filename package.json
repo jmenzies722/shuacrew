@@ -11,7 +11,7 @@
     "build": "pnpm -r --filter ./packages/** --filter ./apps/** build",
     "test": "vitest run",
     "e2e": "playwright test",
-    "typecheck": "tsc -b",
+    "typecheck": "pnpm -r --parallel exec tsc --noEmit -p .",
     "lint": "eslint .",
     "demo": "pnpm --filter @shuacrew/gateway demo"
   },

@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
+import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -55,6 +56,12 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const store = new EventStore(path.join(home, "shuacrew.db"));
   const runtimes = await registry();
   const supervisor = new Supervisor(store, runtimes, { workspace, failover: true });
+  const autonomy = {
+    scheduler: new Scheduler(store, supervisor, workspace),
+    webhooks: new Webhooks(store, supervisor, secretsPath(home)),
+    heartbeats: new Heartbeats(store, supervisor, workspace),
+    tasks: new TaskRunner(store, supervisor),
+  };
   const here = path.dirname(fileURLToPath(import.meta.url));
   const { app, hub } = await createServer({
     store,
@@ -65,13 +72,17 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     token: process.env.SHUACREW_TOKEN,
     webRoot: process.env.SHUACREW_WEB ?? path.resolve(here, "../../web/dist"),
     version: VERSION,
+    autonomy,
   });
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
+  autonomy.tasks.recover();
+  autonomy.scheduler.sync();
+  autonomy.heartbeats.sync();
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -79,6 +90,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(`ShuaCrew gateway on http://${gateway.host}:${gateway.port} · log ${gateway.store.path}` + (gateway.resumed.length ? ` · resumed ${gateway.resumed.length} run(s)` : ""));
   const stop = async () => {
     gateway.supervisor.shutdown(); // runs stay "running" in the log; the next boot resumes them
+    gateway.autonomy.scheduler.stop();
+    gateway.autonomy.heartbeats.stop();
     gateway.hub.close();
     await gateway.app.close();
     gateway.store.close();

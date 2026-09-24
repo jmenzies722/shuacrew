@@ -13,6 +13,7 @@ import fastifyWebsocket from "@fastify/websocket";
 import { apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
 import type { Runtime } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
@@ -27,6 +28,7 @@ export interface ServerOptions {
   token?: string; // required when host is not loopback
   webRoot?: string;
   version?: string;
+  autonomy?: { scheduler: Scheduler; webhooks: Webhooks; heartbeats: Heartbeats; tasks: TaskRunner };
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -45,6 +47,15 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024 });
   const merges = new MergeQueue(store, supervisor.worktrees);
+  // Keep the raw body: webhook signatures are computed over the exact bytes that were sent.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
+    (request as FastifyRequest & { rawBody?: string }).rawBody = String(body);
+    try {
+      done(null, body ? JSON.parse(String(body)) : {});
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
   const hub = new Hub(store);
   await app.register(fastifyWebsocket);
 
@@ -52,7 +63,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     if (options.token && !authorised(request, options.token)) {
       return reply.code(401).send({ error: "token required" });
     }
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+    // Webhooks come from other systems and are authenticated by their HMAC signature instead.
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/")) {
       const origin = request.headers.origin;
       const sameOrigin = !origin || new URL(origin).host === request.headers.host;
       if (request.headers["x-shuacrew"] !== "1" || !sameOrigin) {
@@ -177,6 +189,74 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   app.get("/api/merge-queue", async () => ({ pending: merges.pending }));
 
+  const auto = options.autonomy;
+  if (auto) {
+    const fail = (reply: { code(n: number): { send(b: unknown): unknown } }, error: unknown) =>
+      reply.code((error as { status?: number }).status ?? 400).send({ error: (error as Error).message });
+
+    app.get("/api/schedules", async () => auto.scheduler.list());
+    app.get<{ Querystring: { when?: string } }>("/api/schedules/preview", async (request, reply) => {
+      try {
+        const { parseCadence } = await import("@shuacrew/core");
+        const cadence = parseCadence(request.query.when ?? "");
+        return { ...cadence, next: auto.scheduler.preview(cadence.cron, cadence.timezone, 5) };
+      } catch (error) {
+        return fail(reply, error);
+      }
+    });
+    app.post<{ Body: { id?: string; name?: string; when?: string; ask?: string; script?: string; project?: string; runtime?: string; paused?: boolean } }>(
+      "/api/schedules",
+      async (request, reply) => {
+        try {
+          return auto.scheduler.set({ ...request.body, when: request.body?.when ?? "" });
+        } catch (error) {
+          return fail(reply, error);
+        }
+      },
+    );
+    app.post<{ Params: { id: string } }>("/api/schedules/:id/run", async (request) => ({ run: await auto.scheduler.fire(request.params.id) }));
+    app.delete<{ Params: { id: string } }>("/api/schedules/:id", async (request) => (auto.scheduler.remove(request.params.id), { ok: true }));
+
+    app.get("/api/webhooks", async () => auto.webhooks.list());
+    app.post<{ Body: { name?: string; ask?: string; project?: string; runtime?: string } }>("/api/webhooks", async (request, reply) => {
+      if (!request.body?.name || !request.body.ask) return reply.code(400).send({ error: "a webhook needs a name and an ask" });
+      return auto.webhooks.create({ name: request.body.name, ask: request.body.ask, project: request.body.project, runtime: request.body.runtime });
+    });
+    app.delete<{ Params: { id: string } }>("/api/webhooks/:id", async (request) => (auto.webhooks.remove(request.params.id), { ok: true }));
+    app.post<{ Params: { id: string } }>("/hooks/:id", async (request, reply) => {
+      try {
+        const run = auto.webhooks.receive(
+          request.params.id,
+          { signature: request.headers["x-shuacrew-signature"] as string | undefined, timestamp: request.headers["x-shuacrew-timestamp"] as string | undefined },
+          (request as FastifyRequest & { rawBody?: string }).rawBody ?? "",
+        );
+        return reply.code(202).send({ run });
+      } catch (error) {
+        return fail(reply, error);
+      }
+    });
+
+    app.get("/api/heartbeats", async () => auto.heartbeats.list());
+    app.post<{ Body: { id?: string; name?: string; command?: string; everyMinutes?: number; threshold?: number; ask?: string } }>("/api/heartbeats", async (request, reply) => {
+      const b = request.body ?? {};
+      if (!b.name || !b.command || !b.everyMinutes) return reply.code(400).send({ error: "a heartbeat needs a name, a command and everyMinutes" });
+      return { id: auto.heartbeats.set({ ...b, name: b.name, command: b.command, everyMinutes: b.everyMinutes }) };
+    });
+    app.post<{ Params: { id: string } }>("/api/heartbeats/:id/check", async (request) => auto.heartbeats.check(request.params.id));
+    app.delete<{ Params: { id: string } }>("/api/heartbeats/:id", async (request) => (auto.heartbeats.remove(request.params.id), { ok: true }));
+
+    app.post<{ Body: { markdown?: string; path?: string; repo?: string; runtime?: string; model?: string } }>("/api/tasks", async (request, reply) => {
+      const b = request.body ?? {};
+      let markdown = b.markdown;
+      if (!markdown && b.path) {
+        const { readFile } = await import("node:fs/promises");
+        markdown = await readFile(b.path, "utf8").catch(() => undefined);
+      }
+      if (!markdown?.trim()) return reply.code(400).send({ error: "give a TASK.md (markdown or path)" });
+      return { id: auto.tasks.start({ markdown, repo: b.repo, runtime: b.runtime, model: b.model }) };
+    });
+  }
+
   app.post<{ Body: { tool?: string; input?: unknown; workspace?: string } }>("/api/policy/explain", async (request) => {
     const b = request.body ?? {};
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
@@ -218,9 +298,17 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   if (options.webRoot && existsSync(options.webRoot)) {
     await app.register(fastifyStatic, { root: options.webRoot, prefix: "/", wildcard: false, maxAge: "1h", immutable: false });
-    // Client-side routes all load the app shell.
+    // wildcard:false indexes files at startup, so assets from a rebuild made while running land here:
+    // serve them if they exist now. A missing asset is a 404, never the HTML shell.
+    const webRoot = options.webRoot;
     app.setNotFoundHandler((request, reply) => {
       if (request.url.startsWith("/api/") || request.url.startsWith("/ws")) return reply.code(404).send({ error: "not found" });
+      const pathname = decodeURIComponent(request.url.split("?")[0]!);
+      if (path.extname(pathname)) {
+        const file = path.resolve(webRoot, "." + pathname);
+        if (file.startsWith(webRoot + path.sep) && existsSync(file)) return reply.sendFile(path.relative(webRoot, file));
+        return reply.code(404).send({ error: "not found" });
+      }
       return reply.sendFile("index.html");
     });
   }

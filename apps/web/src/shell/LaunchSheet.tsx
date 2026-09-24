@@ -2,7 +2,7 @@ import { Kbd } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, launchRun } from "../lib/api";
+import { api, launchRun, launchTask } from "../lib/api";
 import { useLive } from "../lib/live";
 
 interface RuntimeInfo {
@@ -30,6 +30,7 @@ export function LaunchSheet() {
   const [runtime, setRuntime] = useState("");
   const [model, setModel] = useState("");
   const [approveAll, setApproveAll] = useState(false);
+  const [taskMode, setTaskMode] = useState(false);
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,7 +65,9 @@ export function LaunchSheet() {
     setBusy(true);
     setError("");
     try {
-      const { id } = await launchRun({ ask, repo: repo || undefined, runtime: runtime || undefined, model: model || undefined, approveAll });
+      const { id } = taskMode
+        ? await launchTask({ markdown: ask.startsWith("#") ? ask : `# ${ask.split("\n")[0]}\n${ask}`, repo: repo || undefined, runtime: runtime || undefined, model: model || undefined })
+        : await launchRun({ ask, repo: repo || undefined, runtime: runtime || undefined, model: model || undefined, approveAll });
       if (repo) localStorage.setItem(RECENT_REPOS, JSON.stringify([repo, ...recentRepos.filter((r) => r !== repo)].slice(0, 8)));
       close();
       setAsk("");
@@ -134,6 +137,14 @@ export function LaunchSheet() {
                 title="Approve everything the policy would ask about. Deny rules still apply."
               >
                 approve-all {approveAll ? "on" : "off"}
+              </button>
+              <button
+                onClick={() => setTaskMode((v) => !v)}
+                className={`h-7 rounded-[var(--radius-s)] border px-2 text-[12px] ${taskMode ? "border-amber text-amber" : "border-line-strong text-fg-2"}`}
+                aria-pressed={taskMode}
+                title="Plan → run each step → validate → retry → checkpoint. Paste a TASK.md (## Steps, ## Validate) or just describe the goal."
+              >
+                task mode {taskMode ? "on" : "off"}
               </button>
             </div>
             <div className="mt-4 flex items-center gap-3 border-t border-line pt-3 text-[12px] text-fg-3">

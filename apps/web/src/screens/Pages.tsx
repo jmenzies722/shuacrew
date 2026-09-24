@@ -45,20 +45,6 @@ export function Specs() {
   );
 }
 
-export function Schedules() {
-  return (
-    <Page title="Schedules & Triggers" subtitle="Cron jobs, webhooks and heartbeats — work that runs while you don't.">
-      <Starter
-        items={[
-          { title: "Weekdays 9am: triage issues", detail: "A schedule in plain words, with the next five runs previewed before you save." },
-          { title: "Nightly dependency check", detail: "A script-only job: no model call, no usage — it only wakes an agent if something changed." },
-          { title: "Webhook: CI failed", detail: "An authenticated endpoint that starts a run with the failure attached." },
-        ]}
-      />
-    </Page>
-  );
-}
-
 export function Memory() {
   return (
     <Page title="Memory" subtitle="Lessons with provenance and confidence, skills you approve, preferences — all inspectable, all deletable.">

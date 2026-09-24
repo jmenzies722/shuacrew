@@ -116,6 +116,15 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
           items.push({ kind: "denied", seq: e.seq, tool: e.body.tool, rule: e.body.rule, reason: e.body.reason });
         }
         break;
+      case "task.planned":
+        items.push({ kind: "note", seq: e.seq, text: `Planned ${e.body.steps.length} steps${e.body.validate ? ` · checked by ${e.body.validate}` : ""}`, tone: "idle" });
+        break;
+      case "task.step": {
+        const tone = e.body.status === "passed" ? "idle" : e.body.status === "failed" ? "bad" : e.body.status === "retrying" ? "wait" : "live";
+        const verb = ({ started: "Started", passed: "Passed", retrying: "Retrying", failed: "Stopped at", skipped: "Skipped" } as const)[e.body.status];
+        items.push({ kind: "note", seq: e.seq, text: `${verb} step ${e.body.index + 1}${e.body.status !== "passed" && e.body.detail ? ` — ${e.body.detail}` : ""}`, tone });
+        break;
+      }
       case "checkpoint.created":
         items.push({ kind: "checkpoint", seq: e.seq, turn: e.body.turn, commit: e.body.commit, note: e.body.note });
         break;

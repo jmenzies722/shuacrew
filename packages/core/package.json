@@ -8,9 +8,13 @@
     ".": "./src/index.ts",
     "./projections": "./src/projections.ts",
     "./events": "./src/events.ts",
-    "./policy-types": "./src/policy-types.ts"
+    "./policy-types": "./src/policy-types.ts",
+    "./cadence": "./src/cadence.ts"
   },
   "dependencies": {
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2"
   }
 }

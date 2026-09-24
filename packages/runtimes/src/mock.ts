@@ -4,7 +4,7 @@
  * It behaves like a real one — reads, runs a failing check, edits, re-runs, delegates to
  * subagents, asks before pushing, reports usage — so the whole product can be built, tested and
  * demoed without spending a subscription's usage window. Words in the ask steer the script:
- * "push"/"ship" asks for approval, "parallel"/"subagents" delegates, "fail" ends in failure,
+ * "push"/"ship" asks for approval, "parallel"/"subagents" delegates, "(fail)" ends in failure,
  * "limit" hits a usage window.
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -51,6 +51,11 @@ export class MockRuntime implements Runtime {
     };
 
     yield { type: "session", id: run.resume ?? `mock-${run.id}` };
+    if (ask.startsWith("break this task into")) {
+      yield* say("Here's the plan:\n");
+      yield { type: "done", text: "1. Reproduce the failure with a focused test\n2. Inject the clock into the retry helper\n3. Run the full suite and tidy up" };
+      return;
+    }
     // A usage window only interrupts fresh work: a run resumed after the window reset carries on.
     if (ask.includes("limit") && !run.resume) {
       yield { type: "limited", until: Date.now() + 60 * 60_000, message: "Mock usage limit reached — try again in an hour" };
@@ -114,7 +119,7 @@ export class MockRuntime implements Runtime {
 
     yield { type: "tool-call", id: "t5", tool: "Bash", input: { command: "pnpm test" } };
     await wait();
-    const fails = ask.includes("fail");
+    const fails = ask.includes("(fail)"); // an explicit marker: ordinary words like "failed" must not trigger it
     yield { type: "tool-result", id: "t5", ok: !fails, output: fails ? "2 failed" : "42 passed", durationMs: 1712 };
     yield { type: "check", command: "pnpm test", exitCode: fails ? 1 : 0, output: fails ? "2 failed" : "42 passed" };
     yield usage(2200);

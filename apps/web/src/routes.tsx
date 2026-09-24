@@ -1,7 +1,8 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { Board } from "./screens/Board";
 import { MissionControl } from "./screens/MissionControl";
-import { Integrations, Memory, Policy, Schedules, Settings, Specs } from "./screens/Pages";
+import { Integrations, Memory, Policy, Settings, Specs } from "./screens/Pages";
+import { Schedules } from "./screens/Schedules";
 import { Review } from "./screens/Review";
 import { RunDetail } from "./screens/RunDetail";
 import { Shell } from "./shell/Shell";

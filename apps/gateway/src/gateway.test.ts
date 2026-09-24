@@ -285,3 +285,27 @@ describe("the server", () => {
     expect(store.verify()).toMatchObject({ ok: false, brokenAt: 1 });
   });
 });
+
+describe("web shell", () => {
+  it("serves assets from a rebuild made while running, and never answers a missing asset with HTML", async () => {
+    const store = new EventStore(":memory:");
+    const supervisor = new Supervisor(store, new Map(), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    const web = mkdtempSync(path.join(os.tmpdir(), "shua-web-"));
+    writeFileSync(path.join(web, "index.html"), "<!doctype html>shell");
+    const { app } = await createServer({ store, supervisor, runtimes: new Map(), webRoot: web });
+    try {
+      execFileSync("mkdir", [path.join(web, "assets")]);
+      writeFileSync(path.join(web, "assets", "index-new.js"), "export {}");
+      const fresh = await app.inject({ url: "/assets/index-new.js" });
+      expect(fresh.statusCode).toBe(200);
+      expect(fresh.headers["content-type"]).toMatch(/javascript/);
+      expect((await app.inject({ url: "/assets/gone.css" })).statusCode).toBe(404);
+      expect((await app.inject({ url: "/assets/..%2F..%2Fetc%2Fpasswd.txt" })).statusCode).toBe(404);
+      expect((await app.inject({ url: "/runs/r_1" })).body).toContain("shell");
+    } finally {
+      await app.close();
+      supervisor.shutdown();
+      store.close();
+    }
+  });
+});

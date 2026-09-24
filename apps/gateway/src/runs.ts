@@ -39,6 +39,8 @@ export interface LaunchSpec {
   labels?: string[];
   approveAll?: boolean;
   incognito?: boolean;
+  /** Record the run but never execute it (a task's parent: its steps do the work). */
+  hold?: boolean;
 }
 
 interface Waiting {
@@ -102,13 +104,15 @@ export class Supervisor {
         model: spec.model,
         effort: spec.effort,
         parent: spec.parent,
-        labels: spec.labels ?? [],
+        // "held" is part of the fact, so a restart knows never to execute this run itself.
+        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : [])],
         incognito: spec.incognito ?? false,
       },
       { run: id },
     );
     if (spec.approveAll) this.approveAll.add(id);
-    queueMicrotask(() => this.pump());
+    if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
+    else queueMicrotask(() => this.pump());
     return id;
   }
 
@@ -157,7 +161,11 @@ export class Supervisor {
 
     let cwd = this.options.workspace;
     try {
-      if (spec.repo) {
+      // A task's steps share the task's worktree, so each step builds on the last.
+      const parentTree = spec.parent ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
+      if (parentTree?.kind === "run.worktree") {
+        cwd = parentTree.body.path;
+      } else if (spec.repo) {
         const existing = this.store.forRun(runId).find((e) => e.kind === "run.worktree");
         if (existing && existing.kind === "run.worktree") {
           cwd = existing.body.path;
@@ -252,7 +260,7 @@ export class Supervisor {
             );
             break;
           case "checkpoint": {
-            const commit = spec.repo ? await this.worktrees.checkpoint(cwd, `turn ${turn}: ${event.note ?? ""}`).catch(() => undefined) : undefined;
+            const commit = spec.repo || cwd !== this.options.workspace ? await this.worktrees.checkpoint(cwd, `turn ${turn}: ${event.note ?? ""}`).catch(() => undefined) : undefined;
             this.rec("checkpoint.created", { turn, commit, note: event.note ?? "" }, { run: runId });
             break;
           }
@@ -267,7 +275,8 @@ export class Supervisor {
               { turn, route: { runtime: runtime.id, model, effort: spec.effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },
               { run: runId },
             );
-            this.setStatus(runId, spec.repo && this.changedFiles(runId) ? "reviewing" : "done");
+            // A top-level run with changes goes to review; a task's step is just done (the task is reviewed).
+            this.setStatus(runId, spec.repo && !spec.parent && this.changedFiles(runId) ? "reviewing" : "done");
             ended = true;
             break;
           case "error":
@@ -524,10 +533,16 @@ export class Supervisor {
     return this.store.forRun(run).filter((e) => e.kind === "file.changed").length;
   }
 
+  /** Runs the supervisor may execute — never a held run (a task's parent; its steps do the work). */
   private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; priority: number; seq: number }> {
     const runs = new Map<string, { id: string; status: RunStatus; runtime: string; priority: number; seq: number }>();
+    const held = new Set<string>();
     const visit = (e: AnyEvent) => {
-      if (!e.run) return;
+      if (!e.run || held.has(e.run)) return;
+      if (e.kind === "run.created" && e.body.labels.includes("held")) {
+        held.add(e.run);
+        return;
+      }
       if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, priority: 0, seq: e.seq });
       const r = runs.get(e.run);
       if (!r) return;

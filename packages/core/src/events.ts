@@ -144,6 +144,26 @@ export const bodies = {
     paused: z.boolean().optional(),
   }),
   "schedule.removed": z.object({ id: z.string() }),
+  "webhook.set": z.object({ id: z.string(), name: z.string(), ask: z.string(), project: z.string().optional(), runtime: RuntimeId.optional(), paused: z.boolean().default(false) }),
+  "webhook.removed": z.object({ id: z.string() }),
+  "heartbeat.set": z.object({
+    id: z.string(),
+    name: z.string(),
+    command: z.string(), // exit 0 = healthy; anything else = unhealthy (no model call)
+    everyMinutes: z.number().int().min(1),
+    threshold: z.number().int().min(1).default(2), // consecutive failures before it acts
+    ask: z.string().optional(), // what an agent should do once it's unhealthy
+    paused: z.boolean().default(false),
+  }),
+  "heartbeat.removed": z.object({ id: z.string() }),
+  "heartbeat.checked": z.object({ id: z.string(), ok: z.boolean(), detail: z.string().default(""), streak: z.number().int() }),
+  "task.planned": z.object({ steps: z.array(z.string()), validate: z.string().optional(), maxRetries: z.number().int().default(2) }),
+  "task.step": z.object({
+    index: z.number().int(),
+    status: z.enum(["started", "passed", "failed", "retrying", "skipped"]),
+    run: z.string().optional(),
+    detail: z.string().default(""),
+  }),
   "schedule.fired": z.object({ id: z.string(), run: z.string().optional(), ok: z.boolean().optional() }),
   "trigger.received": z.object({ trigger: z.string(), source: z.string(), payload: z.unknown() }),
 

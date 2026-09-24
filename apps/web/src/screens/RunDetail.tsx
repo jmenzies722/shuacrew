@@ -13,7 +13,7 @@ import { describe } from "../shell/CommandPalette";
 
 const TerminalReplay = lazy(() => import("../components/Terminal"));
 
-const TABS = ["Timeline", "Diff", "Terminal", "Graph", "Cost"] as const;
+const TABS = ["Plan", "Timeline", "Diff", "Terminal", "Graph", "Cost"] as const;
 type Tab = (typeof TABS)[number];
 
 export function RunDetail() {
@@ -22,6 +22,10 @@ export function RunDetail() {
   const events = useLive((s) => s.runEvents[id]);
   const loadRun = useLive((s) => s.loadRun);
   const [tab, setTab] = useState<Tab>("Timeline");
+  const isTask = run?.labels.includes("task") ?? false;
+  useEffect(() => {
+    if (isTask) setTab("Plan");
+  }, [isTask]);
   const [scrub, setScrub] = useState<number | null>(null);
 
   useEffect(() => {
@@ -55,7 +59,7 @@ export function RunDetail() {
       </section>
       <aside className="flex min-h-0 flex-col border-l border-line bg-panel max-[1100px]:hidden" aria-label="Run details">
         <div role="tablist" className="flex gap-1 border-b border-line px-3 pt-3">
-          {TABS.map((t) => (
+          {TABS.filter((t) => t !== "Plan" || isTask).map((t) => (
             <button
               key={t}
               role="tab"
@@ -69,6 +73,7 @@ export function RunDetail() {
           ))}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {tab === "Plan" && <Plan events={events ?? []} />}
           {tab === "Timeline" && <Timeline run={run} events={events?.length ?? 0} scrub={scrub} onScrub={setScrub} seqs={(events ?? []).map((e) => e.seq)} />}
           {tab === "Diff" && <Files run={run} />}
           {tab === "Terminal" && (
@@ -392,6 +397,56 @@ function Timeline({ run, seqs, scrub, onScrub }: { run: RunView; events: number;
           <span className="mono ml-auto text-fg-3">{c.commit?.slice(0, 8) ?? `#${c.seq}`}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+/** A TASK.md run's steps, and where each one stands. */
+function Plan({ events }: { events: import("@shuacrew/core/events").AnyEvent[] }) {
+  const plan = events.find((e) => e.kind === "task.planned");
+  const steps = plan?.kind === "task.planned" ? plan.body : undefined;
+  const state = new Map<number, { status: string; run?: string; retries: number; detail: string }>();
+  for (const e of events) {
+    if (e.kind !== "task.step") continue;
+    const s = state.get(e.body.index) ?? { status: "", retries: 0, detail: "" };
+    s.status = e.body.status;
+    if (e.body.run) s.run = e.body.run;
+    if (e.body.status === "retrying") s.retries += 1;
+    s.detail = e.body.detail;
+    state.set(e.body.index, s);
+  }
+  if (!steps) return <div className="text-[12.5px] text-fg-3">Planning the steps…</div>;
+  return (
+    <div>
+      <Eyebrow className="mb-3">{steps.steps.length} steps</Eyebrow>
+      {steps.validate && (
+        <div className="mb-3 text-[12px] text-fg-3">
+          validated by <span className="mono text-fg-2">{steps.validate}</span> after each step
+        </div>
+      )}
+      <ol className="flex flex-col gap-2">
+        {steps.steps.map((text, i) => {
+          const s = state.get(i);
+          const tone = s?.status === "passed" ? "ok" : s?.status === "failed" ? "bad" : s?.status === "started" || s?.status === "retrying" ? "live" : "idle";
+          return (
+            <li key={i} className="rounded-[var(--radius-m)] border border-line bg-raised px-3 py-2 text-[12.5px]">
+              <div className="flex items-start gap-2">
+                <span className="mt-1">
+                  <StatusGlyph tone={tone} size={7} />
+                </span>
+                <span className="min-w-0 flex-1">{text}</span>
+                {s?.run && (
+                  <Link to="/runs/$id" params={{ id: s.run }} className="text-[11px] text-amber hover:underline">
+                    open
+                  </Link>
+                )}
+              </div>
+              {(s?.retries ?? 0) > 0 && <div className="mt-1 pl-4 text-[11px] text-amber">retried {s!.retries}×</div>}
+              {s?.status === "failed" && <div className="mt-1 pl-4 text-[11px] text-bad">{s.detail}</div>}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
