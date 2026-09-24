@@ -166,6 +166,7 @@ function flush(): void {
       runs,
       approvals: approvalsChanged ? { ...crew.approvals } : crew.approvals,
       limited: { ...crew.limited },
+      members: { ...crew.members },
       today: { ...crew.today },
     },
     ...(loadedChanged ? { runEvents: loadedChanged } : {}),

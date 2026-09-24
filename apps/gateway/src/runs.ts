@@ -45,6 +45,8 @@ export interface LaunchSpec {
   /** Work in the repo itself — spec drafts, not a branch. */
   inPlace?: boolean;
   forkOf?: { run: string; turn: number; commit?: string };
+  /** A crew member to do this: its persona, model and lessons come along. */
+  member?: string;
 }
 
 interface Waiting {
@@ -61,6 +63,8 @@ export interface SupervisorOptions {
   concurrency?: Record<string, number>;
   failover?: boolean;
   approvalTimeoutMs?: number;
+  /** The crew: members' defaults and personas. */
+  crew?: { get(id: string): { runtime?: string; model?: string } | undefined; persona(id: string): string | undefined };
   /** Lessons and skills for a conversation that is starting. */
   memory?: { systemFor(run: string, ask: string): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
   /** Installed MCP servers, already shaped for that runtime. */
@@ -109,6 +113,8 @@ export class Supervisor {
   launch(spec: LaunchSpec): string {
     this.expand(spec.ask);
     const id = `r_${randomUUID().slice(0, 8)}`;
+    const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
+    if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? member.model };
     const runtime = spec.runtime ?? this.defaultRuntime();
     this.rec(
       "run.created",
@@ -125,6 +131,7 @@ export class Supervisor {
         labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : []), ...(spec.inPlace ? ["in-place"] : [])],
         incognito: spec.incognito ?? false,
         forkOf: spec.forkOf,
+        member: member ? spec.member : undefined,
       },
       { run: id },
     );
@@ -252,7 +259,7 @@ export class Supervisor {
       effort: spec.effort,
       resume,
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : this.options.memory?.systemFor(runId, ask),
+      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, this.options.memory?.systemFor(runId, ask)].filter(Boolean).join("\n\n") || undefined,
       mcpServers: this.options.mcpServers?.(runtime.id),
     };
 

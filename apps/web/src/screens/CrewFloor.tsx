@@ -190,7 +190,8 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
   const started = events.find((e) => e.kind === "turn.started")?.at ?? run.createdAt;
   const kind: Kind = waiting ? "wait" : current ? kindOf(current.tool, current.input) : "other";
   const Icon = KIND_ICON[kind];
-  const color = runtimeColor(run.runtime);
+  const member = useLive((s) => (run.member ? s.crew.members[run.member] : undefined));
+  const color = member?.color ?? runtimeColor(run.runtime);
   const lastCheck = run.checks[run.checks.length - 1];
   const state = waiting ? "waiting" : active ? "active" : run.status === "failed" ? "failed" : "settled";
 
@@ -199,11 +200,12 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
       <div className="pod-top">
         <span className="pod-avatar" aria-hidden>
           <span className="pod-ring" />
-          <span className="pod-face">{run.runtime === "claude" ? "C" : run.runtime === "codex" ? "X" : run.runtime.slice(0, 1).toUpperCase()}</span>
+          <span className="pod-face">{member ? member.emoji || member.name.slice(0, 1) : run.runtime === "claude" ? "C" : run.runtime === "codex" ? "X" : run.runtime.slice(0, 1).toUpperCase()}</span>
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-semibold text-fg">{run.title}</div>
           <div className="mono truncate text-[11px] text-fg-3">
+            {member ? `${member.name} · ${member.role} · ` : ""}
             {run.runtime}
             {run.model ? ` · ${run.model}` : ""}
             {run.worktree ? ` · ${run.worktree.branch}` : ""}

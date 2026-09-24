@@ -22,6 +22,8 @@ import {
   Sparkles,
   SquareTerminal,
   Telescope,
+  Users,
+  X,
   Zap,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -196,6 +198,7 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
   const limited = useLive((s) => s.crew.limited);
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
   const pause = pauseClock(run, limited);
+  const member = useLive((s) => (run.member ? s.crew.members[run.member] : undefined));
   return (
     <Link
       to="/sessions/$id"
@@ -207,6 +210,12 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
       <div className="flex items-center gap-1.5 text-[11px] text-fg-3">
         <Folder size={11} />
         <span className="truncate">{folderOf(run)}</span>
+        {member && (
+          <span className="member-chip shrink-0" style={{ "--member": member.color } as React.CSSProperties} title={`${member.name}, ${member.role}`}>
+            <span>{member.emoji}</span>
+            {member.name}
+          </span>
+        )}
         <span className="ml-auto shrink-0 tabular-nums">{clock(run.updatedAt)}</span>
       </div>
       <div className="mt-0.5 truncate text-[13px] font-semibold text-fg">{run.title}</div>
@@ -597,6 +606,9 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
   const [servers, setServers] = useState<Array<{ name: string }>>([]);
   const [files, setFiles] = useState<Array<{ key: string; name: string; size: number; preview?: string; done?: Attachment; failed?: string }>>([]);
   const [dropping, setDropping] = useState(false);
+  const [member, setMember] = useState("");
+  const [suggested, setSuggested] = useState("");
+  const members = useLive((s) => s.crew.members);
   const picker = useRef<HTMLInputElement>(null);
   const uploading = files.some((f) => !f.done && !f.failed);
 
@@ -679,9 +691,25 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [text]);
 
+  // A new session: suggest the crew member whose triggers match what you're asking.
+  useEffect(() => {
+    if (run || member || text.trim().length < 12 || text.startsWith("/") || !Object.keys(members).length) return setSuggested("");
+    const t = setTimeout(() => {
+      void api<{ member: string | null }>(`/api/crew/route?ask=${encodeURIComponent(text)}`)
+        .then((r) => setSuggested(r.member ?? ""))
+        .catch(() => setSuggested(""));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [text, run, member, members]);
+
   const slashPrefix = /^\/(\w*)$/.exec(text.trim());
+  const mention = !run ? /^@(\w*)$/.exec(text.trim()) : null;
   const named = /^\/(skill|mcp)\s+(\S*)$/.exec(text);
-  const slash = slashPrefix && !text.includes(" ")
+  const slash = mention
+    ? Object.values(members)
+        .filter((m) => m.name.toLowerCase().startsWith(mention[1]!.toLowerCase()) || m.role.toLowerCase().startsWith(mention[1]!.toLowerCase()))
+        .map((m) => ({ kind: "member" as const, name: m.id, label: `@${m.name}`, hint: m.role, icon: Users }))
+    : slashPrefix && !text.includes(" ")
     ? COMMANDS.filter((c) => c.name.startsWith(slashPrefix[1]!)).map((c) => ({ kind: "cmd" as const, name: c.name, hint: c.hint, icon: c.icon }))
     : named?.[1] === "skill"
       ? skills.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "skill" as const, name: s.name, hint: "Use this skill on the next message", icon: BookOpen }))
@@ -697,8 +725,11 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
     }
   }, []);
 
-  const pick = (name: string, kind: "cmd" | "skill" | "mcp" = "cmd") => {
-    if (kind === "skill") setText(`/skill ${name} `);
+  const pick = (name: string, kind: "cmd" | "skill" | "mcp" | "member" = "cmd") => {
+    if (kind === "member") {
+      setMember(name);
+      setText("");
+    } else if (kind === "skill") setText(`/skill ${name} `);
     else if (kind === "mcp") setText(`/mcp ${name} `);
     else if (name === "task") {
       setTask(true);
@@ -748,11 +779,12 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
       const common = { repo: repo || undefined, runtime: runtime || undefined, model: model || undefined };
       const { id } = task
         ? await launchTask({ markdown: message.startsWith("#") ? message : `# ${message.split("\n")[0]}\n${message}`, ...common })
-        : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto });
+        : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto, member: member || undefined });
       if (repo) localStorage.setItem(RECENT, JSON.stringify([repo, ...recent.filter((r) => r !== repo)].slice(0, 8)));
       setText("");
       setFiles([]);
       setTask(false);
+      setMember("");
       navigate({ to: "/sessions/$id", params: { id } });
     } catch (e) {
       setError((e as Error).message);
@@ -781,7 +813,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
                 className={`flex w-full items-center gap-3 px-3.5 py-2 text-left text-[13px] ${i === slashIndex ? "bg-ink" : ""}`}
               >
                 <c.icon size={14} className="text-amber" />
-                <span className="mono text-fg">{c.kind === "cmd" ? `/${c.name}` : c.name}</span>
+                <span className="mono text-fg">{"label" in c ? c.label : c.kind === "cmd" ? `/${c.name}` : c.name}</span>
                 <span className="truncate text-[12px] text-fg-3">{c.hint}</span>
               </button>
             ))}
@@ -810,6 +842,28 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
               ))}
             </div>
           )}
+          {!run && (member || suggested) && (() => {
+            const m = members[member || suggested];
+            if (!m) return null;
+            return (
+              <div className="mb-2 flex items-center gap-2 text-[12px] text-fg-3">
+                {member ? (
+                  <span className="member-chip" style={{ "--member": m.color } as React.CSSProperties}>
+                    <span>{m.emoji}</span>
+                    {m.name} · {m.role}
+                    <button onClick={() => setMember("")} className="ml-0.5 text-fg-3 hover:text-fg" aria-label="Don't hand to a crew member">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ) : (
+                  <button onClick={() => (setMember(m.id), setSuggested(""))} className="member-chip opacity-80 hover:opacity-100" style={{ "--member": m.color } as React.CSSProperties} title="Their persona, model and lessons come with them">
+                    <span>{m.emoji}</span>
+                    Hand to {m.name}?
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           <textarea
             ref={field}
             value={text}

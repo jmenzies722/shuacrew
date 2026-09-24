@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
 import { Memory } from "./memory.js";
+import { Crew } from "./crew.js";
 import { Terminals } from "./terminals.js";
 import { Uploads } from "./uploads.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
@@ -63,12 +64,14 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const store = new EventStore(path.join(home, "shuacrew.db"));
   const runtimes = await registry();
   const memory = new Memory(store);
+  const crew = new Crew(store);
   const mcp = new Mcp(store, path.join(home, "mcp-auth.json"));
   const terminals = new Terminals();
   const supervisor = new Supervisor(store, runtimes, {
     workspace,
     failover: true,
     memory,
+    crew,
     mcpServers: (id) => (id === "codex" ? mcp.forCodex() : id.startsWith("acp:") ? mcp.forAcp() : mcp.forClaude()),
     mcpList: () => mcp.list(),
   });
@@ -91,6 +94,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     autonomy,
     memory,
     mcp,
+    crew,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
   });
@@ -103,7 +107,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, terminals, port, host, resumed };
+  return { app, hub, store, supervisor, autonomy, memory, crew, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -114,6 +118,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.autonomy.scheduler.stop();
     gateway.autonomy.heartbeats.stop();
     gateway.memory.stop();
+    gateway.crew?.stop();
     gateway.terminals.closeAll();
     gateway.hub.close();
     await gateway.app.close();

@@ -13,7 +13,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 
 export const launchTask = (body: { markdown: string; repo?: string; runtime?: string; model?: string }) => api<{ id: string }>("/api/tasks", { body });
 
-export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean }) =>
+export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; member?: string }) =>
   api<{ id: string }>("/api/runs", { body });
 
 export const decideApproval = (id: string, allow: boolean, extra: { always?: boolean; comment?: string } = {}) =>

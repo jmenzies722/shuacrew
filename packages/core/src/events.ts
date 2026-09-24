@@ -44,6 +44,7 @@ export const bodies = {
     incognito: z.boolean().default(false),
     // A fork: the session and turn it branched from, and the commit its worktree starts at.
     forkOf: z.object({ run: z.string(), turn: z.number().int(), commit: z.string().optional() }).optional(),
+    member: z.string().optional(), // the crew member doing this work
   }),
   "run.status": z.object({ status: RunStatus, reason: z.string().optional() }),
   /** ask stops for approval; auto lets those through. A deny still wins. */
@@ -115,6 +116,19 @@ export const bodies = {
   }),
   // With a model, the limit is that model's own (e.g. a weekly cap on one model); without, the whole agent's.
   // `credits`: not a usage window at all — the model needs paid usage credits on this plan.
+  // The crew: named members with a role, a persona, a default model and the phrases that route work to them.
+  "crew.member.set": z.object({
+    id: z.string(),
+    name: z.string(),
+    role: z.string(),
+    persona: z.string(),
+    runtime: z.string().optional(),
+    model: z.string().optional(),
+    color: z.string().default("#ffb020"),
+    emoji: z.string().default(""),
+    triggers: z.array(z.string()).default([]),
+  }),
+  "crew.member.removed": z.object({ id: z.string() }),
   "runtime.limited": z.object({ runtime: RuntimeId, model: z.string().optional(), until: z.number(), message: z.string(), credits: z.boolean().optional() }),
   "runtime.restored": z.object({ runtime: RuntimeId, model: z.string().optional() }),
 

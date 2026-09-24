@@ -462,3 +462,30 @@ body {
 .rail-count.is-wait { background: color-mix(in srgb, var(--wait) 18%, transparent); color: var(--wait); }
 .rail-count.is-live { background: var(--amber-soft); color: var(--amber); }
 @media (prefers-reduced-motion: reduce) { .rail, .rail-text, .rail-label { transition: none; } }
+
+/* ── Crew ─────────────────────────────────────────────────────────── */
+.crew-cta { border: 1px solid var(--line); border-radius: 18px; padding: 24px; background: radial-gradient(120% 140% at 0% 0%, var(--amber-soft), transparent 55%), var(--panel); }
+.crew-cta-role { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: color-mix(in srgb, var(--panel) 70%, transparent); }
+.member-card { position: relative; display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--member) 7%, var(--panel)), var(--panel) 42%); transition: border-color .2s, box-shadow .2s, transform .2s; }
+.member-card:hover { border-color: color-mix(in srgb, var(--member) 40%, var(--line-strong)); box-shadow: 0 10px 34px -18px color-mix(in srgb, var(--member) 60%, transparent); }
+.member-card.is-active { border-color: color-mix(in srgb, var(--member) 55%, var(--line-strong)); }
+.member-avatar { position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; }
+.member-face { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 999px; font-size: 19px; background: color-mix(in srgb, var(--member) 18%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--member) 45%, transparent); }
+.member-ring { position: absolute; inset: 0; border-radius: 999px; border: 2px solid transparent; }
+.member-card.is-active .member-ring { border-color: var(--member); border-right-color: transparent; animation: member-spin 1.4s linear infinite; }
+@keyframes member-spin { to { transform: rotate(360deg); } }
+.member-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--text-3); transition: background .15s, color .15s; }
+.member-icon:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.member-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; border-radius: 10px; padding: 7px 10px; font-size: 12.5px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.member-persona { margin-top: 12px; font-size: 12.5px; line-height: 1.55; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.member-trigger { border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--text-2); border: 1px solid var(--line); }
+.member-foot { display: flex; gap: 12px; align-items: center; margin-top: auto; padding-top: 14px; font-size: 11.5px; color: var(--text-3); }
+.member-talk { display: flex; align-items: center; gap: 6px; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 4px 4px 4px 12px; background: var(--sunken); transition: border-color .15s, box-shadow .15s; }
+.member-talk:focus-within { border-color: color-mix(in srgb, var(--member) 60%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--member) 18%, transparent); }
+.member-talk input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 13px; color: var(--text); }
+.member-send { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: var(--member); color: #0b0b0c; transition: opacity .15s; }
+.member-send:disabled { opacity: .3; }
+.member-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 0 7px 0 3px; font-size: 11px; line-height: 18px; color: var(--text); background: color-mix(in srgb, var(--member) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--member) 35%, transparent); }
+.field { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--text-3); }
+.field input, .field select, .field textarea { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; color: var(--text); background: var(--sunken); outline: none; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }

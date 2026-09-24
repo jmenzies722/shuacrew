@@ -23,6 +23,7 @@ import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import { Specs } from "./specs.js";
 import type { Mcp } from "./mcp.js";
+import type { Crew, MemberInput } from "./crew.js";
 import { fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
 
@@ -38,6 +39,7 @@ export interface ServerOptions {
   autonomy?: { scheduler: Scheduler; webhooks: Webhooks; heartbeats: Heartbeats; tasks: TaskRunner };
   memory?: Memory;
   mcp?: Mcp;
+  crew?: Crew;
   terminals?: Terminals;
   uploads?: Uploads;
 }
@@ -96,7 +98,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
     );
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Referrer-Policy", "no-referrer");
@@ -175,7 +177,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     store.forRun(request.params.id, Number(request.query.after ?? 0)),
   );
 
-  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[] } }>(
+  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string } }>(
     "/api/runs",
     async (request, reply) => {
       const body = request.body ?? {};
@@ -320,6 +322,52 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   app.get("/api/merge-queue", async () => ({ pending: merges.pending }));
+
+  if (options.crew) {
+    const crew = options.crew;
+    app.get("/api/crew", async () => crew.list());
+    app.post("/api/crew/starter", async () => crew.starter());
+    app.post<{ Body: Partial<MemberInput> }>("/api/crew", async (request, reply) => {
+      const b = request.body ?? {};
+      try {
+        return crew.set({
+          id: b.id ?? b.name ?? "",
+          name: b.name ?? "",
+          role: b.role ?? "",
+          persona: b.persona ?? "",
+          runtime: b.runtime || undefined,
+          model: b.model || undefined,
+          color: b.color ?? "#ffb020",
+          emoji: b.emoji ?? "",
+          triggers: b.triggers ?? [],
+        });
+      } catch (error) {
+        return reply.code(400).send({ error: (error as Error).message });
+      }
+    });
+    app.delete<{ Params: { id: string } }>("/api/crew/:id", async (request, reply) => {
+      try {
+        crew.remove(request.params.id);
+        return { ok: true };
+      } catch (error) {
+        return reply.code(404).send({ error: (error as Error).message });
+      }
+    });
+    app.get<{ Querystring: { ask?: string } }>("/api/crew/route", async (request) => ({ member: crew.route(request.query.ask ?? "")?.id ?? null }));
+    // Talk to a member in its standing thread — the one conversation you keep with it.
+    app.post<{ Params: { id: string }; Body: { text?: string; repo?: string } }>("/api/crew/:id/talk", async (request, reply) => {
+      const member = crew.get(request.params.id);
+      const text = request.body?.text?.trim();
+      if (!member) return reply.code(404).send({ error: "no such crew member" });
+      if (!text) return reply.code(400).send({ error: "say something" });
+      const thread = member.thread && state.runs[member.thread] ? member.thread : undefined;
+      if (thread) {
+        supervisor.followUp(thread, text);
+        return { run: thread };
+      }
+      return { run: supervisor.launch({ ask: text, title: `${member.name} · ${member.role}`, member: member.id, repo: request.body?.repo || undefined, labels: ["standing"] }) };
+    });
+  }
 
   // "Try now": lift a usage limit you believe has cleared. If it hasn't, the next call says so.
   app.post<{ Params: { runtime: string }; Body: { model?: string } }>("/api/runtimes/:runtime/restore", async (request) => {

@@ -9,6 +9,8 @@ import type { AnyEvent, RunStatus } from "./events.js";
 
 export interface RunView {
   id: string;
+  /** The crew member doing this work, if any. */
+  member?: string;
   title: string;
   ask: string;
   project?: string;
@@ -61,8 +63,24 @@ export interface ApprovalView {
   seq: number;
 }
 
+export interface CrewMember {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  runtime?: string;
+  model?: string;
+  color: string;
+  emoji: string;
+  triggers: string[];
+  /** Its standing thread: the session you talk to it in. */
+  thread?: string;
+  sessions: number;
+}
+
 export interface CrewState {
   head: number;
+  members: Record<string, CrewMember>;
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
   limited: Record<string, { until: number; message: string; credits?: boolean }>;
@@ -70,7 +88,7 @@ export interface CrewState {
 }
 
 export function emptyState(): CrewState {
-  return { head: 0, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
+  return { head: 0, members: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
 }
 
 function dayOf(ms: number): string {
@@ -102,6 +120,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         model: b.model,
         effort: b.effort,
         parent: b.parent,
+        member: b.member,
         labels: b.labels,
         incognito: b.incognito,
         status: "queued",
@@ -124,6 +143,12 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         lastSeq: event.seq,
       };
       if (dayOf(event.at) === state.today.day) state.today.runs += 1;
+      // A member's session: count it, and the one labelled "standing" is the member's thread.
+      if (b.member && state.members[b.member]) {
+        const m = state.members[b.member]!;
+        m.sessions += 1;
+        if (b.labels.includes("standing")) m.thread = event.run ?? undefined;
+      }
       break;
     }
     case "run.status":
@@ -145,6 +170,14 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         run.model = event.body.model; // a new runtime means that runtime's model, not the old one's
         run.effort = event.body.effort ?? run.effort;
       }
+      break;
+    case "crew.member.set": {
+      const prev = state.members[event.body.id];
+      state.members[event.body.id] = { ...event.body, thread: prev?.thread, sessions: prev?.sessions ?? 0 };
+      break;
+    }
+    case "crew.member.removed":
+      delete state.members[event.body.id];
       break;
     case "run.archived":
       if (event.run) delete state.runs[event.run];
