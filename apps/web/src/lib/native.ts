@@ -2,7 +2,7 @@
  * The Mac app's side of the bridge. In a browser none of this exists and every call is a no-op,
  * so the page works the same in both.
  */
-type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] };
+type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string };
 
 interface Handler {
   postMessage(message: Message): void;
@@ -58,3 +58,10 @@ export function watchTitleBar(bar: HTMLElement): () => void {
   };
 }
 
+
+/** A filled-in email in your mail app (in a browser: a mailto link, which is length-limited). */
+export function composeEmail(subject: string, body: string, to = "") {
+  const native = handler();
+  if (native) return native.postMessage({ type: "composeEmail", subject, body, to });
+  window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0, 1800))}`;
+}

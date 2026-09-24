@@ -226,6 +226,7 @@ export const bodies = {
     goalMrr: z.number().optional(), // in the currency's major unit
     repo: z.string().optional(),
     website: z.string().optional(),
+    autopilot: z.boolean().default(false), // start each stage's playbook by itself; weekly growth review
   }),
   "venture.stage": z.object({ id: z.string(), stage: z.enum(["idea", "validating", "building", "launching", "earning", "paused", "stopped"]), note: z.string().optional() }),
   "venture.removed": z.object({ id: z.string() }),

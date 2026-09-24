@@ -116,6 +116,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     mcpList: () => mcp.list(),
   });
   const plays = new Plays(store, supervisor);
+  ventures.startPlay = (input) => plays.start(input);
   const autonomy = {
     scheduler: new Scheduler(store, supervisor, workspace),
     webhooks: new Webhooks(store, supervisor, secretsPath(home)),

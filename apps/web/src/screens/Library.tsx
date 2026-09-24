@@ -9,6 +9,7 @@ import { api } from "../lib/api";
 import { upload } from "../lib/attachments";
 import { KIND } from "../lib/kinds";
 import { PublishButton } from "../components/Publish";
+import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 
@@ -297,6 +298,7 @@ function Viewer({ target, onClose }: { target: { type: "artifact" | "knowledge";
               </Button>
             )}
             <span className="flex-1" />
+            {text !== null && artifact.kind === "doc" && <SendMenu title={artifact.title} text={text} />}
             {text !== null && (
               <Button size="s" variant="ghost" onClick={() => void navigator.clipboard.writeText(text).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1400)))}>
                 <Copy size={13} /> {copied ? "Copied" : "Copy"}

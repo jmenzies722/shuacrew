@@ -9,6 +9,7 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { apply, emptyState, type AnyEvent, type CrewState, type VentureStage, type VentureView } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
+import { Cron } from "croner";
 
 export const STAGES: VentureStage[] = ["idea", "validating", "building", "launching", "earning"];
 
@@ -24,35 +25,122 @@ export const NEXT: Record<VentureStage, { playbook: string; why: string } | unde
 };
 
 type Fetch = typeof fetch;
-const RELEVANT = /^(venture\.|run\.created$|play\.started$)/;
+const RELEVANT = /^(venture\.|run\.created$|play\.|crew\.member\.)/;
+
+/** Which stage a finished playbook moves a venture to (from the stage it must be in). */
+const ADVANCE: Record<string, { from: VentureStage; to: VentureStage }> = {
+  "validate-idea": { from: "idea", to: "validating" },
+  "landing-page": { from: "validating", to: "building" },
+  mvp: { from: "building", to: "launching" },
+};
+
+/** The inputs a venture gives each playbook, so it can start without a form. */
+export function inputsFor(v: VentureView): Record<string, string> {
+  const m = v.metrics;
+  return {
+    idea: v.pitch || v.name,
+    customer: v.customer ?? "",
+    product: `${v.name}${v.pitch ? ` — ${v.pitch}` : ""}`,
+    audience: v.customer ?? "",
+    cta: "Join the waitlist",
+    metrics: m ? `MRR ${formatMoney(m.mrr ?? 0, m.currency)}, revenue last 30 days ${formatMoney(m.revenue30d ?? 0, m.currency)}, ${m.customers ?? "?"} paying customers` : "No numbers yet",
+    competitor: "",
+  };
+}
+
+/** GO / NO-GO / PIVOT from a verdict, reading the last word that decides. */
+export function verdictOf(text: string): "go" | "no-go" | "pivot" | undefined {
+  const hits = [...text.matchAll(/\b(NO[- ]GO|PIVOT|GO)\b/g)].map((m) => m[1]!.toUpperCase().replace(" ", "-"));
+  const last = hits.pop();
+  return last === "NO-GO" ? "no-go" : last === "PIVOT" ? "pivot" : last === "GO" ? "go" : undefined;
+}
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 
 export class Ventures {
   private state: CrewState = emptyState();
   private unsubscribe: () => void;
   private timer?: NodeJS.Timeout;
+  private weekly?: Cron;
+  /** How to start a playbook (the Plays service); set at boot. */
+  startPlay?: (input: { playbook: string; venture: string; inputs: Record<string, string>; title: string; repo?: string }) => unknown;
 
   constructor(
     private store: EventStore,
     private keysFile: string,
     private http: Fetch = fetch,
   ) {
-    for (const e of store.read(0)) this.take(e);
-    this.unsubscribe = store.subscribe((e) => this.take(e));
+    for (const e of store.read(0)) this.take(e, false);
+    this.unsubscribe = store.subscribe((e) => this.take(e, true));
   }
 
-  private take(e: AnyEvent) {
-    if (RELEVANT.test(e.kind)) apply(this.state, e);
+  private take(e: AnyEvent, live: boolean) {
+    if (!RELEVANT.test(e.kind)) return;
+    apply(this.state, e);
+    if (!live) return;
+    // Decisions happen after the fact is recorded, never inside another append.
+    if (e.kind === "play.status" && e.body.status === "done") queueMicrotask(() => this.onPlayDone(e.body.play));
+    if (e.kind === "venture.metrics" && !e.body.error) queueMicrotask(() => this.onNumbers(e.body.id));
+  }
+
+  /** A playbook for a venture finished: move the venture on, and (on autopilot) start the next. */
+  private onPlayDone(playId: string) {
+    const play = this.state.plays[playId];
+    const v = play?.venture ? this.state.ventures[play.venture] : undefined;
+    const rule = play ? ADVANCE[play.playbook] : undefined;
+    if (!play || !v || !rule || v.stage !== rule.from) return;
+    if (play.playbook === "validate-idea") {
+      const verdict = verdictOf([...play.phases].reverse().find((p) => p.status === "done" && p.output)?.output ?? "");
+      if (verdict !== "go") {
+        this.store.append("venture.stage", { id: v.id, stage: v.stage, note: verdict ? `Validation said ${verdict.toUpperCase()} — staying put so you can decide` : "Validation finished without a clear GO — staying put so you can decide" });
+        return;
+      }
+    }
+    this.advance(v.id, rule.to, `${play.name} finished`);
+  }
+
+  /** The first money in moves a launching venture to earning. */
+  private onNumbers(id: string) {
+    const v = this.state.ventures[id];
+    const m = v?.metrics;
+    if (v?.stage === "launching" && m && ((m.mrr ?? 0) > 0 || (m.revenue30d ?? 0) > 0)) this.advance(id, "earning", "first revenue came in");
+  }
+
+  private advance(id: string, to: VentureStage, why: string) {
+    this.store.append("venture.stage", { id, stage: to, note: why });
+    const v = this.state.ventures[id]!;
+    const next = NEXT[to];
+    if (v.autopilot && next) this.start(v, next.playbook);
+  }
+
+  private start(v: VentureView, playbook: string) {
+    const running = Object.values(this.state.plays).some((p) => p.venture === v.id && p.playbook === playbook && (p.status === "running" || p.status === "waiting"));
+    if (running || !this.startPlay) return;
+    try {
+      this.startPlay({ playbook, venture: v.id, inputs: inputsFor(v), title: `${v.name} — ${playbook.replace(/-/g, " ")}`, repo: v.repo });
+    } catch {
+      // a playbook that can't start (e.g. missing crew) leaves the stage as it is
+    }
+  }
+
+  /** Autopilot's weekly beat: Mondays at 9:00, earning ventures get a growth review. */
+  weeklyReview(now = Date.now()) {
+    for (const v of Object.values(this.state.ventures)) {
+      if (!v.autopilot || v.stage !== "earning") continue;
+      const recent = Object.values(this.state.plays).some((p) => p.venture === v.id && p.playbook === "growth-review" && now - p.startedAt < 6 * 86_400_000);
+      if (!recent) this.start(v, "growth-review");
+    }
   }
 
   /** Keep revenue fresh: every six hours for connected ventures. */
   schedule() {
     this.timer = setInterval(() => void this.syncAll(), SIX_HOURS);
     this.timer.unref();
+    this.weekly = new Cron("0 9 * * 1", () => this.weeklyReview());
   }
 
   stop() {
     if (this.timer) clearInterval(this.timer);
+    this.weekly?.stop();
     this.unsubscribe();
   }
 
@@ -81,6 +169,7 @@ export class Ventures {
       goalMrr: goalMrr && goalMrr > 0 ? goalMrr : undefined,
       repo: clean(input.repo),
       website: clean(input.website),
+      autopilot: input.autopilot ?? this.get(id)?.autopilot ?? false,
     });
     return this.get(id)!;
   }

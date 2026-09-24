@@ -140,6 +140,12 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             window?.appearance = NSAppearance(named: (body["mode"] as? String) == "light" ? .aqua : .darkAqua)
             // Frost Black is glass on purpose: a darker, heavier frost; every other palette paints over it.
             material?.material = (body["palette"] as? String) == "frost" ? .hudWindow : .sidebar
+        case "composeEmail":
+            // Your mail app's compose window, filled in — you press Send. No automation permission needed.
+            guard let service = NSSharingService(named: .composeEmail) else { break }
+            service.subject = body["subject"] as? String ?? ""
+            if let to = body["to"] as? String, !to.isEmpty { service.recipients = [to] }
+            service.perform(withItems: [body["body"] as? String ?? ""])
         case "pickFolder":
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true

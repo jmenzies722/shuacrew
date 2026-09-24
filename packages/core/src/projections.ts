@@ -139,6 +139,7 @@ export interface VentureView {
   goalMrr?: number;
   repo?: string;
   website?: string;
+  autopilot: boolean;
   stage: VentureStage;
   stages: Array<{ stage: VentureStage; at: number; note?: string }>;
   stripe?: { connected: boolean; account?: string; mode?: "live" | "test" };

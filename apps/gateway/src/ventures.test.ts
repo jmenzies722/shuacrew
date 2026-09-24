@@ -8,7 +8,7 @@ import { Plays } from "./plays.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
-import { parseMoney, summarise, Ventures } from "./ventures.js";
+import { parseMoney, summarise, verdictOf, Ventures } from "./ventures.js";
 
 const cleanups: Array<() => unknown> = [];
 afterEach(async () => {
@@ -58,9 +58,10 @@ async function world() {
   const ventures = new Ventures(store, path.join(home, "keys.json"), fakeStripe(calls));
   const supervisor = new Supervisor(store, new Map([["mock", spy]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [], crew, ventureBrief: (id) => ventures.brief(id) });
   const plays = new Plays(store, supervisor);
+  ventures.startPlay = (input) => plays.start(input);
   const { app, state } = await createServer({ store, supervisor, runtimes: new Map([["mock", spy]]), crew, plays, ventures });
   cleanups.push(async () => (await app.close(), plays.stop(), ventures.stop(), crew.stop(), supervisor.shutdown(), store.close()));
-  return { home, store, ventures, app, state, seen, calls };
+  return { home, store, ventures, app, state, seen, calls, plays };
 }
 const post = (app: Awaited<ReturnType<typeof world>>["app"], url: string, body: object) =>
   app.inject({ method: "POST", url, headers: { "x-shuacrew": "1", "content-type": "application/json" }, payload: JSON.stringify(body) });
@@ -130,5 +131,50 @@ describe("ventures", () => {
     ventures.record("fern", { mrr: 84, customers: 7 });
     expect(ventures.get("fern")!.metrics).toMatchObject({ source: "manual", mrr: 84, customers: 7 });
     expect(ventures.get("fern")!.history).toHaveLength(1);
+  });
+
+  it("moves a venture on when its playbook finishes — and on autopilot, starts the next one", async () => {
+    const { ventures, plays, state, store } = await world();
+    ventures.set({ name: "Fern", pitch: "Steady paychecks", autopilot: true });
+    const finish = (play: string, verdict: string) => {
+      const p = state().plays[play]!;
+      p.phases.forEach((_, i) => store.append("play.phase", { play, index: i, status: "done", output: i === p.phases.length - 1 ? verdict : "ok" }));
+      store.append("play.status", { play, status: "done" });
+    };
+    const settle = () => new Promise((r) => setTimeout(r, 30));
+
+    // A NO-GO keeps it where it is, and says why.
+    const first = plays.start({ playbook: "validate-idea", venture: "fern", inputs: { idea: "Fern" } });
+    plays.cancel(first.id);
+    finish(first.id, "Scores… Finish: NO-GO — nobody pays for this.");
+    await settle();
+    expect(ventures.get("fern")!.stage).toBe("idea");
+    expect(ventures.get("fern")!.stages.at(-1)?.note).toMatch(/NO-GO/);
+
+    // A GO moves it to validating, and autopilot starts the landing page playbook.
+    const second = plays.start({ playbook: "validate-idea", venture: "fern", inputs: { idea: "Fern" } });
+    plays.cancel(second.id);
+    finish(second.id, "Riskiest assumption… Verdict: GO");
+    await settle();
+    expect(ventures.get("fern")!.stage).toBe("validating");
+    const landing = Object.values(state().plays).find((p) => p.playbook === "landing-page" && p.venture === "fern");
+    expect(landing?.inputs.product).toBe("Fern — Steady paychecks");
+
+    // First money in: launching -> earning; the Monday review starts once, not twice.
+    ventures.stage("fern", "launching");
+    ventures.record("fern", { mrr: 12 });
+    await settle();
+    expect(ventures.get("fern")!.stage).toBe("earning");
+    await settle();
+    ventures.weeklyReview();
+    ventures.weeklyReview();
+    expect(Object.values(state().plays).filter((p) => p.playbook === "growth-review")).toHaveLength(1);
+  });
+
+  it("reads a verdict by its last deciding word", () => {
+    expect(verdictOf("Not a NO-GO at all. Final: GO")).toBe("go");
+    expect(verdictOf("It could be GO later, but for now: NO-GO")).toBe("no-go");
+    expect(verdictOf("PIVOT to agencies")).toBe("pivot");
+    expect(verdictOf("going well")).toBeUndefined();
   });
 });

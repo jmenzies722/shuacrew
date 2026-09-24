@@ -181,12 +181,18 @@ export function VenturePage() {
               {v.repo && <span className="mono">{v.repo}</span>}
             </div>
           </div>
+          <AutopilotSwitch venture={v} />
           <Button variant="ghost" size="s" onClick={() => setEditing(true)}>
             <Pencil size={12} /> Edit
           </Button>
         </header>
 
         <StageStepper venture={v} />
+        {v.stages.at(-1)?.note && (
+          <div className="vn-note">
+            <span className="text-fg-3">{new Date(v.stages.at(-1)!.at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span> {v.stages.at(-1)!.note}
+          </div>
+        )}
 
         <div className="mt-5 grid gap-4 lg:grid-cols-[1.35fr_1fr]">
           <section className="vn-panel">
@@ -714,5 +720,22 @@ function LiveSites({ venture: v, pages }: { venture: VentureView; pages: Array<{
       </div>
       {open && <PublishSheet artifact={open.artifact} version={open.version} onClose={() => setOpen(null)} />}
     </section>
+  );
+}
+
+/** Autopilot: each finished stage starts the next playbook, and Mondays bring a growth review. */
+function AutopilotSwitch({ venture: v }: { venture: VentureView }) {
+  const [busy, setBusy] = useState(false);
+  const flip = () => {
+    setBusy(true);
+    void api("/api/ventures", { body: { id: v.id, name: v.name, emoji: v.emoji, color: v.color, pitch: v.pitch, customer: v.customer, goal: v.goal, repo: v.repo, website: v.website, autopilot: !v.autopilot } }).finally(() => setBusy(false));
+  };
+  return (
+    <button className={`vn-auto ${v.autopilot ? "is-on" : ""}`} onClick={flip} disabled={busy} title={v.autopilot ? "Autopilot is on: finished stages start the next playbook, and earning ventures get a growth review every Monday. Review steps still wait for you." : "Turn on Autopilot: when a stage's playbook finishes, the next one starts by itself."}>
+      <span className="vn-auto-track">
+        <span className="vn-auto-knob" />
+      </span>
+      Autopilot
+    </button>
   );
 }
