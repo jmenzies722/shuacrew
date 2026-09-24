@@ -39,3 +39,14 @@ describe("queue", () => {
     expect(queued([...events, ev("turn.started", { turn: 2, text: "c", by: "you" })])).toEqual([]);
   });
 });
+
+import { splitAttachments, withAttachments } from "./attachments";
+describe("attachments in messages", () => {
+  it("round-trip: the agent gets paths, the chat gets its thumbnails back", () => {
+    const files = [{ id: "u_0123456789ab", name: "shot.png", path: "/h/.shuacrew/uploads/u_0123456789ab/shot.png", size: 2048, type: "image/png" }];
+    const text = withAttachments("Why is this red?", files);
+    expect(text).toContain("/h/.shuacrew/uploads/u_0123456789ab/shot.png");
+    expect(splitAttachments(text)).toMatchObject({ body: "Why is this red?", files: [{ id: "u_0123456789ab", name: "shot.png", type: "image/png" }] });
+    expect(splitAttachments("Attached files: are great")).toEqual({ body: "Attached files: are great", files: [] });
+  });
+});

@@ -98,7 +98,7 @@ function TopBar() {
         aria-label={approvals.length ? `${approvals.length} approvals waiting` : "No approvals waiting"}
       >
         <Bell size={16} />
-        {approvals.length > 0 && <span className="absolute right-0.5 top-0.5 min-w-[16px] rounded-full bg-amber px-1 text-center text-[10px] font-bold leading-4 text-[#1a1204]">{approvals.length}</span>}
+        {approvals.length > 0 && <span className="absolute right-0.5 top-0.5 min-w-[16px] rounded-full bg-amber px-1 text-center text-[10px] font-bold leading-4 text-[var(--on-accent)]">{approvals.length}</span>}
       </button>
     </header>
   );

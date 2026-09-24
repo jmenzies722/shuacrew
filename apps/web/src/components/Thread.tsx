@@ -27,6 +27,7 @@ import { parseAnsi } from "../lib/ansi";
 import { api, decideApproval, followUp } from "../lib/api";
 import type { Item } from "../lib/conversation";
 import { suggestions } from "../lib/followups";
+import { splitAttachments } from "../lib/attachments";
 import { DiffView, diffStat } from "./DiffView";
 import { describe } from "../shell/CommandPalette";
 import { CodeBlock, Markdown } from "./Markdown";
@@ -319,9 +320,31 @@ function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
       </div>
     );
   }
+  const { body, files } = splitAttachments(item.text);
   return (
     <div className="group mt-6 flex flex-col items-end" data-turn={item.turn}>
-      <div className="user-bubble">{item.text}</div>
+      {files.length > 0 && (
+        <div className="mb-1.5 flex max-w-[78%] flex-wrap justify-end gap-2">
+          {files.map((f) =>
+            f.type.startsWith("image/") ? (
+              <a key={f.id} href={`/api/uploads/${f.id}`} target="_blank" rel="noreferrer" className="sent-image" title={f.name}>
+                <img src={`/api/uploads/${f.id}`} alt={f.name} loading="lazy" />
+              </a>
+            ) : (
+              <a key={f.id} href={`/api/uploads/${f.id}`} target="_blank" rel="noreferrer" className="attach-chip" title={f.path}>
+                <span className="attach-icon">
+                  <FileText size={15} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block max-w-[180px] truncate text-[12px] text-fg">{f.name}</span>
+                  <span className="block text-[10.5px] uppercase text-fg-3">{f.name.split(".").pop()}</span>
+                </span>
+              </a>
+            ),
+          )}
+        </div>
+      )}
+      {body.trim() && <div className="user-bubble">{body}</div>}
       <div className="msg-actions">
         <button onClick={() => void navigator.clipboard?.writeText(item.text).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1200)))} title="Copy">
           {copied ? <Check size={12} /> : <Copy size={12} />}

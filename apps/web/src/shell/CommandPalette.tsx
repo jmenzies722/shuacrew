@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
+import { ACCENTS, PALETTES } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
 
@@ -17,7 +18,7 @@ export function CommandPalette() {
   const runs = useLive((s) => s.crew.runs);
   const approvals = useLive((s) => s.crew.approvals);
   const openLaunch = useLive((s) => s.openLaunch);
-  const setTheme = useLive((s) => s.setTheme);
+  const setAppearance = useLive((s) => s.setAppearance);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
@@ -79,9 +80,17 @@ export function CommandPalette() {
                   <Item value="launch new run" onSelect={() => openLaunch(query)}>
                     Launch a run <span className="ml-auto"><Kbd>⌘N</Kbd></span>
                   </Item>
-                  <Item value="theme dark" onSelect={() => (setTheme("dark"), close())}>Theme: Night</Item>
-                  <Item value="theme light" onSelect={() => (setTheme("light"), close())}>Theme: Day</Item>
-                  <Item value="theme system" onSelect={() => (setTheme("system"), close())}>Theme: follow system</Item>
+                  {PALETTES.map((p) => (
+                    <Item key={p.id} value={`theme ${p.name} ${p.mode}`} onSelect={() => (setAppearance({ palette: p.id }), close())}>
+                      Theme: {p.name}
+                    </Item>
+                  ))}
+                  <Item value="theme follow system auto" onSelect={() => (setAppearance({ palette: "system" }), close())}>Theme: follow system</Item>
+                  {ACCENTS.map((a) => (
+                    <Item key={a.id} value={`accent ${a.name}`} onSelect={() => (setAppearance({ accent: a.id }), close())}>
+                      Accent: {a.name}
+                    </Item>
+                  ))}
                 </Group>
                 <Group heading="Go to">
                   {NAV.map((n) => (

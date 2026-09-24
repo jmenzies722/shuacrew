@@ -1,0 +1,119 @@
+/*
+ * Themes: each palette redefines the surfaces and text; accents redefine the one signature colour.
+ * `[data-theme]` stays dark/light (the base tokens); `[data-palette]` and `[data-accent]` refine it.
+ * Selectors carry both attributes so they win over the base tokens regardless of order.
+ */
+
+/* ── Dark palettes ─────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette="cursor"] {
+  --ink: #0a0a0a;
+  --panel: #111111;
+  --raised: #181818;
+  --sunken: #070707;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.12);
+  --highlight: rgba(255, 255, 255, 0.04);
+  --text: #ededed;
+  --text-2: #a3a3a3;
+  --text-3: #737373;
+  --idle: #737373;
+  --glass: rgba(17, 17, 17, 0.78);
+  --term-bg: #050505;
+  --term-head: #0e0e0e;
+}
+:root[data-theme][data-palette="graphite"] {
+  --ink: #161618;
+  --panel: #1c1c1f;
+  --raised: #242428;
+  --sunken: #121214;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.12);
+  --highlight: rgba(255, 255, 255, 0.05);
+  --text: #e8e8ea;
+  --text-2: #a1a1a8;
+  --text-3: #75757d;
+  --idle: #75757d;
+  --glass: rgba(28, 28, 31, 0.78);
+  --term-bg: #0f0f11;
+  --term-head: #17171a;
+}
+:root[data-theme][data-palette="carbon"] {
+  --ink: #0f0e0c;
+  --panel: #161412;
+  --raised: #1e1b18;
+  --sunken: #0b0a09;
+  --line: rgba(255, 240, 220, 0.07);
+  --line-strong: rgba(255, 240, 220, 0.12);
+  --highlight: rgba(255, 240, 220, 0.04);
+  --text: #ece6de;
+  --text-2: #a89f94;
+  --text-3: #7a7168;
+  --idle: #7a7168;
+  --glass: rgba(22, 20, 18, 0.78);
+  --term-bg: #0a0908;
+  --term-head: #13110f;
+}
+:root[data-theme][data-palette="midnight"] {
+  --ink: #0a0f1c;
+  --panel: #0f1626;
+  --raised: #151e33;
+  --sunken: #070b15;
+  --line: rgba(160, 190, 255, 0.08);
+  --line-strong: rgba(160, 190, 255, 0.14);
+  --highlight: rgba(160, 190, 255, 0.05);
+  --text: #e4e9f4;
+  --text-2: #98a3bb;
+  --text-3: #6b7690;
+  --idle: #6b7690;
+  --glass: rgba(15, 22, 38, 0.78);
+  --term-bg: #060a14;
+  --term-head: #0c1222;
+}
+
+/* ── Light palettes ────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette="paper"] {
+  --ink: #f7f7f8;
+  --panel: #ffffff;
+  --raised: #f3f3f5;
+  --sunken: #ececef;
+  --line: rgba(0, 0, 0, 0.07);
+  --line-strong: rgba(0, 0, 0, 0.12);
+  --highlight: rgba(255, 255, 255, 0.9);
+  --text: #111113;
+  --text-2: #4d4d55;
+  --text-3: #6b6b74;
+  --idle: #6b6b74;
+  --glass: rgba(255, 255, 255, 0.8);
+}
+:root[data-theme][data-palette="sand"] {
+  --ink: #f6f3ec;
+  --panel: #fdfbf7;
+  --raised: #f0ebe1;
+  --sunken: #e9e3d7;
+  --line: rgba(60, 40, 10, 0.08);
+  --line-strong: rgba(60, 40, 10, 0.14);
+  --highlight: rgba(255, 255, 255, 0.85);
+  --text: #1e1a14;
+  --text-2: #57503f;
+  --text-3: #736a58;
+  --idle: #736a58;
+  --glass: rgba(253, 251, 247, 0.8);
+}
+
+/* ── Accents ───────────────────────────────────────────────────────────────────────────── */
+:root { --on-accent: #1a1204; }
+:root[data-theme="light"] { --on-accent: #ffffff; }
+:root[data-theme][data-accent="mono"] { --amber: #ededed; --amber-soft: rgba(237, 237, 237, 0.12); --on-accent: #0a0a0a; }
+:root[data-theme="light"][data-accent="mono"] { --amber: #18181b; --amber-soft: rgba(24, 24, 27, 0.08); --on-accent: #ffffff; }
+:root[data-theme][data-accent="blue"] { --amber: #5b8cff; --amber-soft: rgba(91, 140, 255, 0.15); --on-accent: #ffffff; }
+:root[data-theme="light"][data-accent="blue"] { --amber: #2f63d6; --amber-soft: rgba(47, 99, 214, 0.1); }
+:root[data-theme][data-accent="green"] { --amber: #3ddc97; --amber-soft: rgba(61, 220, 151, 0.14); --on-accent: #04150d; }
+:root[data-theme="light"][data-accent="green"] { --amber: #0c8a57; --amber-soft: rgba(12, 138, 87, 0.1); --on-accent: #ffffff; }
+:root[data-theme][data-accent="coral"] { --amber: #ff7a59; --amber-soft: rgba(255, 122, 89, 0.14); --on-accent: #1f0a04; }
+:root[data-theme="light"][data-accent="coral"] { --amber: #d9512e; --amber-soft: rgba(217, 81, 46, 0.1); --on-accent: #ffffff; }
+
+/* Theme changes glide instead of flashing. */
+:root.theme-switching,
+:root.theme-switching * {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease !important;
+}

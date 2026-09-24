@@ -151,12 +151,9 @@ export class Supervisor {
 
   cancel(run: string, reason = "cancelled by you"): void {
     this.active.get(run)?.abort();
-    for (const [id, wait] of this.waiting) {
-      if (wait.run === run) {
-        this.waiting.delete(id);
-        wait.resolve({ allow: false, reason });
-      }
-    }
+    // Anything it was waiting on you for is answered "no" — on the record, so it leaves the bell.
+    const asked = this.store.forRun(run).flatMap((e) => (e.kind === "approval.requested" ? [e.body.id] : []));
+    for (const id of asked) if (this.waiting.has(id) || this.pendingFromLog(id)) this.decideApproval(id, false, "stop", false, reason);
     if (this.status(run) && !isFinished(this.status(run)!)) this.setStatus(run, "cancelled", reason);
   }
 

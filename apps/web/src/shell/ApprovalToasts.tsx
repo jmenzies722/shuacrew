@@ -91,7 +91,7 @@ export function ApprovalToasts() {
               )}
               {confirmCritical === a.id && <p className="mt-2 text-[12px] text-bad">Critical: press Allow again to confirm.</p>}
               <div className="mt-2.5 flex items-center gap-1.5">
-                <button onClick={() => allow(a.id, a.risk)} className="h-7 rounded-[var(--radius-s)] bg-amber px-2.5 text-[12px] font-semibold text-[#1a1204]">
+                <button onClick={() => allow(a.id, a.risk)} className="h-7 rounded-[var(--radius-s)] bg-amber px-2.5 text-[12px] font-semibold text-[var(--on-accent)]">
                   Allow {isTop && <Kbd>A</Kbd>}
                 </button>
                 <button onClick={() => void decideApproval(a.id, true, { always: true })} className="h-7 rounded-[var(--radius-s)] border border-line-strong px-2.5 text-[12px] text-fg">

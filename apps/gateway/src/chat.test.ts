@@ -98,3 +98,38 @@ describe("file preview", () => {
     expect((await get("../../../etc/hosts")).statusCode).toBe(404);
   });
 });
+
+describe("attachments", () => {
+  it("stores what you attach under its own id, private, and serves it back by id only", async () => {
+    const store = new EventStore(":memory:");
+    const supervisor = new Supervisor(store, new Map(), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    const { Uploads } = await import("./uploads.js");
+    const root = mkdtempSync(path.join(os.tmpdir(), "shua-up-"));
+    const { app } = await createServer({ store, supervisor, runtimes: new Map(), uploads: new Uploads(root) });
+    cleanups.push(async () => (await app.close(), supervisor.shutdown(), store.close()));
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    const up = await app.inject({ method: "POST", url: `/api/uploads?name=${encodeURIComponent("../../evil shot.png")}`, headers: { "x-shuacrew": "1", "content-type": "application/octet-stream" }, payload: png });
+    expect(up.statusCode).toBe(200);
+    const file = up.json() as { id: string; name: string; path: string; type: string; size: number };
+    expect(file).toMatchObject({ name: "evil shot.png", type: "image/png", size: 8 });
+    expect(file.path.startsWith(root)).toBe(true); // the name never escapes the folder
+    const { statSync } = await import("node:fs");
+    expect(statSync(file.path).mode & 0o777).toBe(0o600);
+    const back = await app.inject({ url: `/api/uploads/${file.id}` });
+    expect(back.headers["content-type"]).toBe("image/png");
+    expect(back.rawPayload.equals(png)).toBe(true);
+    expect((await app.inject({ url: "/api/uploads/..%2F..%2Fetc" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: "/api/uploads?name=x", headers: { "content-type": "application/octet-stream" }, payload: png })).statusCode).toBe(403); // CSRF header required
+  });
+});
+
+describe("stopping a session", () => {
+  it("answers its pending approvals so they leave the queue", async () => {
+    const { store, supervisor } = await world();
+    const run = supervisor.launch({ ask: "Fix it and ship it", runtime: "mock" });
+    await until(() => Object.keys(fold(store.read(0)).approvals).length === 1);
+    supervisor.cancel(run);
+    expect(fold(store.read(0)).approvals).toEqual({});
+    expect(status(store, run)).toBe("cancelled");
+  });
+});

@@ -18,6 +18,7 @@ import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js"
 import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
 import type { Terminals } from "./terminals.js";
+import { MAX_UPLOAD, type Uploads } from "./uploads.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import type { EventStore } from "./store.js";
@@ -34,6 +35,7 @@ export interface ServerOptions {
   autonomy?: { scheduler: Scheduler; webhooks: Webhooks; heartbeats: Heartbeats; tasks: TaskRunner };
   memory?: Memory;
   terminals?: Terminals;
+  uploads?: Uploads;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -98,6 +100,25 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
+
+  if (options.uploads) {
+    const uploads = options.uploads;
+    // Raw bytes, named in the query: no multipart parsing, no temp files.
+    app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_UPLOAD }, (_request, body, done) => done(null, body));
+    app.post<{ Querystring: { name?: string }; Body: Buffer }>("/api/uploads", { bodyLimit: MAX_UPLOAD }, async (request, reply) => {
+      if (!Buffer.isBuffer(request.body) || !request.body.length) return reply.code(400).send({ error: "empty file" });
+      return uploads.save(request.query.name ?? "file", request.body);
+    });
+    // Only what was uploaded here, only by id — for thumbnails and "open".
+    app.get<{ Params: { id: string } }>("/api/uploads/:id", async (request, reply) => {
+      const upload = uploads.get(request.params.id);
+      if (!upload || !existsSync(upload.path)) return reply.code(404).send({ error: "no such file" });
+      reply.header("Content-Type", upload.type).header("Cache-Control", "private, max-age=31536000, immutable");
+      reply.header("Content-Disposition", `${upload.type.startsWith("image/") || upload.type === "application/pdf" ? "inline" : "attachment"}; filename="${upload.name}"`);
+      if (upload.type === "image/svg+xml") reply.header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'"); // SVG can carry script
+      return reply.send(readFileSync(upload.path));
+    });
+  }
 
   if (options.terminals) {
     const terminals = options.terminals;

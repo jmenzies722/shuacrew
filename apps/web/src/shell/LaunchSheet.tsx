@@ -157,7 +157,7 @@ export function LaunchSheet() {
               <button
                 onClick={() => void submit()}
                 disabled={!ask.trim() || busy}
-                className="ml-auto flex h-8.5 items-center gap-2 rounded-[var(--radius-m)] bg-amber px-3.5 text-[13px] font-semibold text-[#1a1204] disabled:opacity-40"
+                className="ml-auto flex h-8.5 items-center gap-2 rounded-[var(--radius-m)] bg-amber px-3.5 text-[13px] font-semibold text-[var(--on-accent)] disabled:opacity-40"
               >
                 Launch <Kbd>⌘↵</Kbd>
               </button>

@@ -146,7 +146,7 @@ export function Button({
     "inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-m)] font-medium transition-[background,border-color,opacity,transform] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--amber)]";
   const sizes = size === "s" ? "h-7 px-2.5 text-[12px]" : "h-8.5 px-3.5 text-[13px]";
   const variants = {
-    primary: "bg-[var(--amber)] text-[#1a1204] hover:brightness-110",
+    primary: "bg-[var(--amber)] text-[var(--on-accent)] hover:brightness-110",
     quiet: "border border-[var(--line-strong)] bg-[var(--raised)] text-[var(--text)] hover:border-[var(--text-3)]",
     ghost: "text-[var(--text-2)] hover:bg-[var(--raised)] hover:text-[var(--text)]",
     danger: "border border-[color-mix(in_srgb,var(--bad)_40%,transparent)] text-[var(--bad)] hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)]",

@@ -130,6 +130,9 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
             }
+        case "appearance":
+            // The chosen palette, not just macOS, decides the window's own chrome.
+            window?.appearance = NSAppearance(named: (body["mode"] as? String) == "light" ? .aqua : .darkAqua)
         case "pickFolder":
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true

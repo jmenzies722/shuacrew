@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
 import { Memory } from "./memory.js";
 import { Terminals } from "./terminals.js";
+import { Uploads } from "./uploads.js";
 import { Heartbeats, Scheduler, TaskRunner, Webhooks, secretsPath } from "./autonomy.js";
 import { Supervisor } from "./runs.js";
 import { createServer } from "./server.js";
@@ -82,6 +83,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     autonomy,
     memory,
     terminals,
+    uploads: new Uploads(path.join(home, "uploads")),
   });
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();

@@ -10,6 +10,7 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import { apply, emptyState, type CrewState } from "@shuacrew/core/projections";
 import { create } from "zustand";
 import { api } from "./api";
+import { applyAppearance, loadAppearance, resolvePalette, saveAppearance, type Appearance } from "./appearance";
 
 export type Connection = "connecting" | "live" | "offline";
 export type Theme = "system" | "dark" | "light";
@@ -19,6 +20,8 @@ interface Live {
   connection: Connection;
   runEvents: Record<string, AnyEvent[]>;
   theme: Theme;
+  appearance: Appearance;
+  setAppearance(change: Partial<Appearance>): void;
   launchOpen: boolean;
   launchDraft: string;
   paletteOpen: boolean;
@@ -31,40 +34,36 @@ interface Live {
   loadRun(id: string): Promise<void>;
 }
 
-const THEME_KEY = "shuacrew.theme";
-
-function storedTheme(): Theme {
-  try {
-    const value = localStorage.getItem(THEME_KEY);
-    return value === "dark" || value === "light" ? value : "system";
-  } catch {
-    return "system";
-  }
+/** The old three-way setting, derived from the appearance (kept for existing callers). */
+function themeOf(a: Appearance): Theme {
+  return a.palette === "system" ? "system" : resolvePalette(a).mode;
 }
 
-export function applyTheme(theme: Theme): void {
-  const root = document.documentElement;
-  if (theme === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", theme);
+export function applyTheme(_theme?: Theme): void {
+  applyAppearance(useLive.getState().appearance);
 }
 
 export const useLive = create<Live>((set, get) => ({
   crew: emptyState(),
   connection: "connecting",
   runEvents: {},
-  theme: storedTheme(),
+  theme: themeOf(loadAppearance()),
+  appearance: loadAppearance(),
   launchOpen: false,
   launchDraft: "",
   paletteOpen: false,
   keymapOpen: false,
   setTheme(theme) {
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      /* private window: the choice lasts for this page */
-    }
-    applyTheme(theme);
-    set({ theme });
+    const current = get().appearance;
+    get().setAppearance({ palette: theme === "system" ? "system" : theme === "dark" ? current.dark : current.light });
+  },
+  setAppearance(change) {
+    const next = { ...get().appearance, ...change };
+    // Picking a palette also makes it the one "follow system" uses for its mode.
+    if (change.palette && change.palette !== "system") next[resolvePalette(next).mode] = change.palette;
+    saveAppearance(next);
+    applyAppearance(next, true);
+    set({ appearance: next, theme: themeOf(next) });
   },
   openLaunch(draft = "") {
     set({ launchOpen: true, launchDraft: draft, paletteOpen: false });

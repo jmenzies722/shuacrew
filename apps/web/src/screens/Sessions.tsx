@@ -9,7 +9,9 @@ import {
   CircleStop,
   Ellipsis,
   FileDiff,
+  FileText as FileIcon,
   Folder,
+  Paperclip,
   GitBranch,
   ListChecks,
   Plus,
@@ -26,6 +28,7 @@ import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation, queued } from "../lib/conversation";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
+import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 
 interface RuntimeInfo {
   id: string;
@@ -142,7 +145,7 @@ function SessionsPanel({ selected }: { selected?: string }) {
         <h2 className="text-[15px] font-semibold">Sessions</h2>
         <button
           onClick={() => navigate({ to: "/" })}
-          className="ml-auto flex h-7 items-center gap-1 rounded-[8px] bg-amber px-2.5 text-[12.5px] font-semibold text-[#1a1204] hover:brightness-110"
+          className="ml-auto flex h-7 items-center gap-1 rounded-[8px] bg-amber px-2.5 text-[12.5px] font-semibold text-[var(--on-accent)] hover:brightness-110"
           title="New session (⌘N)"
         >
           <Plus size={14} strokeWidth={2.5} /> New
@@ -437,6 +440,48 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
   const [effort, setEffort] = useState("");
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [files, setFiles] = useState<Array<{ key: string; name: string; size: number; preview?: string; done?: Attachment; failed?: string }>>([]);
+  const [dropping, setDropping] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const uploading = files.some((f) => !f.done && !f.failed);
+
+  /** Upload as soon as a file arrives, so sending is instant. */
+  const attach = (list: FileList | File[]) => {
+    for (const file of Array.from(list)) {
+      const key = `${file.name}-${file.size}-${Math.random()}`;
+      const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      setFiles((f) => [...f, { key, name: file.name || "pasted image", size: file.size, preview }]);
+      upload(file)
+        .then((done) => setFiles((f) => f.map((x) => (x.key === key ? { ...x, done } : x))))
+        .catch((e: Error) => setFiles((f) => f.map((x) => (x.key === key ? { ...x, failed: e.message } : x))));
+    }
+    field.current?.focus();
+  };
+  // Drop files anywhere on the window.
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+    const enter = (e: DragEvent) => hasFiles(e) && (depth++, setDropping(true));
+    const leave = (e: DragEvent) => hasFiles(e) && --depth <= 0 && ((depth = 0), setDropping(false));
+    const over = (e: DragEvent) => hasFiles(e) && e.preventDefault();
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDropping(false);
+      if (e.dataTransfer?.files.length) attach(e.dataTransfer.files);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
   const field = useRef<HTMLTextAreaElement>(null);
   const working = run ? WORKING.has(run.status) : false;
 
@@ -495,8 +540,9 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
   };
 
   const send = async () => {
-    const message = text.trim();
-    if (!message || busy) return;
+    const ready = files.flatMap((f) => (f.done ? [f.done] : []));
+    const message = withAttachments(text.trim(), ready).trim();
+    if (!message || busy || uploading) return;
     setBusy(true);
     setError("");
     try {
@@ -516,6 +562,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
       if (run) {
         await followUp(run.id, message);
         setText("");
+        setFiles([]);
         return;
       }
       const common = { repo: repo || undefined, runtime: runtime || undefined, model: model || undefined };
@@ -524,6 +571,7 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
         : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: autopilot });
       if (repo) localStorage.setItem(RECENT, JSON.stringify([repo, ...recent.filter((r) => r !== repo)].slice(0, 8)));
       setText("");
+      setFiles([]);
       setTask(false);
       navigate({ to: "/sessions/$id", params: { id } });
     } catch (e) {
@@ -559,7 +607,29 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
             ))}
           </div>
         )}
+        {dropping && (
+          <div className="drop-overlay" aria-hidden>
+            <Paperclip size={22} />
+            Drop to attach — the agent gets the file
+          </div>
+        )}
         <div className="rounded-[16px] border border-line-strong bg-ink px-3.5 pb-2.5 pt-3 transition focus-within:border-[color-mix(in_srgb,var(--amber)_55%,var(--line-strong))]">
+          {files.length > 0 && (
+            <div className="mb-2.5 flex flex-wrap gap-2">
+              {files.map((f) => (
+                <div key={f.key} className={`attach-chip ${f.failed ? "is-failed" : ""}`} title={f.failed ?? f.name}>
+                  {f.preview ? <img src={f.preview} alt="" className="attach-thumb" /> : <span className="attach-icon"><FileIcon size={15} /></span>}
+                  <span className="min-w-0">
+                    <span className="block max-w-[160px] truncate text-[12px] text-fg">{f.name}</span>
+                    <span className="block text-[10.5px] text-fg-3">{f.failed ? "couldn't upload" : f.done ? fileSize(f.size) : "uploading…"}</span>
+                  </span>
+                  <button onClick={() => setFiles((all) => all.filter((x) => x.key !== f.key))} className="attach-x" aria-label={`Remove ${f.name}`}>
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             ref={field}
             value={text}
@@ -580,12 +650,23 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
               }
             }}
             rows={1}
+            onPaste={(e) => {
+              const pasted = [...e.clipboardData.files];
+              if (pasted.length) {
+                e.preventDefault();
+                attach(pasted);
+              }
+            }}
             {...({ writingsuggestions: "false" } as object)}
             placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "Message ShuaCrew… just say what you want done  ( / for commands )"}
             className="block max-h-[240px] w-full resize-none bg-transparent text-[14px] leading-relaxed text-fg outline-none placeholder:text-fg-3"
             aria-label="Message"
           />
           <div className="mt-2 flex items-center gap-1.5">
+            <input ref={picker} type="file" multiple hidden onChange={(e) => (e.target.files && attach(e.target.files), (e.target.value = ""))} />
+            <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach files (or drop / paste them)" aria-label="Attach files">
+              <Paperclip size={14} />
+            </button>
             {!run && (
               <>
                 <Toggle on={autopilot} onClick={() => setAutopilot((v) => !v)} icon={<ShieldCheck size={12} />} label={autopilot ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions; Autopilot approves what policy would ask about. Deny rules always apply." />
@@ -601,15 +682,15 @@ function Composer({ run, seed }: { run?: RunView; seed?: { text: string; n: numb
             {run && <ContextMeter used={run.usage.contextUsed} limit={run.usage.contextLimit} />}
             <div className="ml-auto flex items-center gap-2">
               {error && <span className={`text-[12px] ${/^(Learned|Scheduled)/.test(error) ? "text-ok" : "text-bad"}`}>{error}</span>}
-              {working && !text.trim() && run ? (
+              {working && !text.trim() && !files.length && run ? (
                 <button onClick={() => void cancelRun(run.id)} className="grid h-8 w-8 place-items-center rounded-full bg-raised text-fg hover:bg-line-strong" title="Stop" aria-label="Stop">
                   <CircleStop size={15} />
                 </button>
               ) : (
                 <button
                   onClick={() => void send()}
-                  disabled={!text.trim() || busy}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-amber text-[#1a1204] transition hover:brightness-110 disabled:bg-raised disabled:text-fg-3"
+                  disabled={(!text.trim() && !files.some((f) => f.done)) || busy || uploading}
+                  className="grid h-8 w-8 place-items-center rounded-full bg-amber text-[var(--on-accent)] transition hover:brightness-110 disabled:bg-raised disabled:text-fg-3"
                   title={working ? "Queue (↵)" : "Send (↵)"}
                   aria-label="Send"
                 >
@@ -707,7 +788,7 @@ function ChangesPanel({ id }: { id: string }) {
           <FileDiff size={13} /> Changes
         </span>
         {run.status === "reviewing" && (
-          <Link to="/review/$id" params={{ id }} className="ml-auto rounded-[7px] bg-amber px-2.5 py-1 text-[12px] font-semibold text-[#1a1204] hover:brightness-110">
+          <Link to="/review/$id" params={{ id }} className="ml-auto rounded-[7px] bg-amber px-2.5 py-1 text-[12px] font-semibold text-[var(--on-accent)] hover:brightness-110">
             Review & merge
           </Link>
         )}
