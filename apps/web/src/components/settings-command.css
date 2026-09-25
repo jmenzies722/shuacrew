@@ -30,13 +30,14 @@
 @media (max-width:1000px) { .cmd { grid-template-columns:1fr; } .cmd-mode-grid { grid-template-columns:1fr; } .cmd-checks ul { grid-template-columns:1fr; } }
 
 /* Living background: a slow aurora behind the whole app. */
-.living-bg { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; opacity:0; transition:opacity 1.2s; }
+.living-bg { position:fixed; inset:0; z-index:-1; pointer-events:none; overflow:hidden; opacity:0; transition:opacity 1.2s; }
 :root[data-living="on"] .living-bg { opacity:1; }
 .living-bg i { position:absolute; width:55vmax; height:55vmax; border-radius:50%; filter:blur(90px); opacity:.16; will-change:transform; }
 .living-bg i:nth-child(1) { left:-15vmax; top:-20vmax; background:var(--amber); animation:live-a 40s ease-in-out infinite alternate; }
 .living-bg i:nth-child(2) { right:-20vmax; top:10vmax; background:#7aa2f7; animation:live-b 55s ease-in-out infinite alternate; }
 .living-bg i:nth-child(3) { left:20vmax; bottom:-30vmax; background:#bb9af7; animation:live-a 70s ease-in-out infinite alternate-reverse; }
-[data-frame] > *:not(.living-bg) { position:relative; z-index:1; }
+/* Behind every child of the frame without changing their positioning (fixed overlays stay fixed). */
+[data-frame] { isolation:isolate; }
 @keyframes live-a { to { transform:translate(12vmax, 8vmax) scale(1.15); } }
 @keyframes live-b { to { transform:translate(-10vmax, 12vmax) scale(.9); } }
 @media (prefers-reduced-motion: reduce) { .living-bg i { animation:none; } }
