@@ -13,7 +13,9 @@ export function createCrewMember(crew: { get(id: string): CrewMember | undefined
   if (!name || name.length > 40) throw new Error("Give the new member a name (up to 40 characters).");
   const id = name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
   if (!id) throw new Error("Use letters or numbers in the name.");
-  if (crew.get(id)) throw new Error(`There's already a crew member called ${crew.get(id)!.name}. Pick another name — existing members are only changed in Crew.`);
+  // Same id OR same name (ids can differ from names, e.g. Rhea is "researcher").
+  const existing = crew.get(id) ?? crew.list().find((m) => m.name.trim().toLowerCase() === name.toLowerCase());
+  if (existing) throw new Error(`There's already a crew member called ${existing.name}. Pick another name — existing members are only changed in Crew.`);
   const runtime = input.runtime?.trim();
   if (runtime && !runtimes.includes(runtime)) throw new Error(`No agent called ${runtime}. Available: ${runtimes.join(", ")}.`);
   const role = (input.role ?? "").trim().slice(0, 60) || "Crew member";

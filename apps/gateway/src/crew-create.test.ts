@@ -11,5 +11,7 @@ it("adds a new member without delegation, and refuses to overwrite or invent age
   expect(crew.get("nova")!.persona).toBe("Check diffs for secrets.");
   expect(() => createCrewMember(crew, { name: "Ghost", runtime: "gpt-99" }, ["claude"])).toThrow(/No agent called/);
   expect(createCrewMember(crew, { name: "Quill" }, ["claude"]).persona).toContain("Quill");
+  crew.set({ id: "researcher", name: "Rhea", role: "Researcher", persona: "p", delegatable: false, color: "#fff", emoji: "", triggers: [] });
+  expect(() => createCrewMember(crew, { name: "rhea" }, ["claude"])).toThrow(/already a crew member called Rhea/);
   crew.stop(); store.close();
 });
