@@ -20,6 +20,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     var onMobileSettings: (() -> Void)?
     var onBuddyEnabled: ((Bool) -> Void)?
     var onBuddyHotkey: ((String) -> Void)?
+    var onBuddyMessage: ((WKUserContentController, WKScriptMessage) -> Void)?
 
     init(gateway: Gateway) {
         self.gateway = gateway
@@ -208,12 +209,6 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
                   let on = body["on"] as? Bool else { return }
             onBuddyEnabled?(on)
-        case "buddyHands":
-            // Settings → Spark: is Accessibility on (mouse & keyboard)? Ask macOS when you press the button.
-            let origin = message.frameInfo.securityOrigin
-            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
-            if body["ask"] as? Bool == true { SparkHands.askForAccess() }
-            web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:hands', { detail: { trusted: \(SparkHands.trusted), shortcuts: [] } }))")
         case "buddyHotkey":
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
@@ -251,7 +246,8 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 self?.web.evaluateJavaScript("window.shuacrew && window.shuacrew.folderPicked(\(arg))")
             }
         default:
-            break
+            // Spark's panel inside the app: its screen, pointer and Mac-control messages go to Spark, which replies here.
+            if type.hasPrefix("buddy") { onBuddyMessage?(controller, message) }
         }
     }
 

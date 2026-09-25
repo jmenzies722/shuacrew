@@ -5,6 +5,23 @@
  */
 
 /* ── Dark palettes ─────────────────────────────────────────────────────────────────────── */
+/* Pristine (default): graphite layers, hairline borders, nothing glows. Calm enough to work in all day. */
+:root[data-theme][data-palette="pristine"] {
+  --ink: #0c0c0e;
+  --panel: #131316;
+  --raised: #19191d;
+  --sunken: #09090b;
+  --line: rgba(255, 255, 255, 0.065);
+  --line-strong: rgba(255, 255, 255, 0.11);
+  --highlight: rgba(255, 255, 255, 0.035);
+  --text: #ededf0;
+  --text-2: #a4a4ad;
+  --text-3: #71717b;
+  --idle: #71717b;
+  --glass: rgba(19, 19, 22, 0.9);
+  --term-bg: #0a0a0c;
+  --term-head: #111114;
+}
 /* Frost Black: true black, surfaces are frosted glass (translucent + blurred), hairline edges. */
 :root[data-theme][data-palette="frost"] {
   --ink: #050506;
@@ -120,6 +137,8 @@
 /* ── Accents ───────────────────────────────────────────────────────────────────────────── */
 :root { --on-accent: #1a1204; }
 :root[data-theme="light"] { --on-accent: #ffffff; }
+:root[data-theme][data-accent="iris"] { --amber: #8b7cf6; --amber-soft: rgba(139, 124, 246, 0.14); --on-accent: #ffffff; }
+:root[data-theme="light"][data-accent="iris"] { --amber: #6a55e0; --amber-soft: rgba(106, 85, 224, 0.1); --on-accent: #ffffff; }
 :root[data-theme][data-accent="mono"] { --amber: #ededed; --amber-soft: rgba(237, 237, 237, 0.12); --on-accent: #0a0a0a; }
 :root[data-theme="light"][data-accent="mono"] { --amber: #18181b; --amber-soft: rgba(24, 24, 27, 0.08); --on-accent: #ffffff; }
 :root[data-theme][data-accent="blue"] { --amber: #5b8cff; --amber-soft: rgba(91, 140, 255, 0.15); --on-accent: #ffffff; }

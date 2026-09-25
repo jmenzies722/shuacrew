@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, AudioLines, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
@@ -28,6 +29,11 @@ const post = (m: Record<string, unknown>) => native()?.postMessage(m);
 const KEY = "shuacrew.buddy";
 const SEE = "shuacrew.buddy.see";
 const readSee = () => { try { return localStorage.getItem(SEE) !== "0"; } catch { return true; } };
+/** Which Spark surface (desktop panel or app side panel) asked last: only it speaks, points and acts on the answer. */
+const OWNER = "shuacrew.buddy.owner";
+const ME = Math.random().toString(36).slice(2);
+const claim = () => { try { localStorage.setItem(OWNER, ME); } catch { /* ignore */ } };
+const mine = () => { try { const o = localStorage.getItem(OWNER); return !o || o === ME; } catch { return true; } };
 const ctx: WidgetCtx = { go: (path) => post({ type: "buddyOpen", path }) };
 
 /** Ask the Mac for one screenshot of the display you're on (never stored beyond this question's session). */
@@ -84,9 +90,18 @@ function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean;
 
 type Done = { label: string; ok: boolean; message: string; run?: string };
 
-export function Buddy() {
+/** A small live meter: bars that follow your voice while listening, and Spark's while it speaks. */
+function VoiceBars({ level, active }: { level: number; active: boolean }) {
+  return <span className={`spk-bars ${active ? "is-on" : ""}`} aria-hidden="true">{[0.55, 1, 0.75, 0.9, 0.5].map((k, i) => <i key={i} style={{ transform: `scaleY(${active ? Math.max(0.18, Math.min(1, level * 1.6 * k + 0.12 * (i % 2))) : 0.18})` }} />)}</span>;
+}
+
+/**
+ * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
+ * conversation in both places, kept in sync.
+ */
+export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void } = {}) {
   const prefs = useCompanion(), voice = useBuddyVoice(), note = useNote(), track = useNowPlaying(), { sounds } = useLook();
-  const [open, setOpen] = useState(false), [tab, setTab] = useState<"chat" | "widgets">("chat"), [draft, setDraft] = useState(""), [see, setSee] = useState(readSee);
+  const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets">("chat"), [draft, setDraft] = useState(""), [see, setSee] = useState(readSee);
   const [brief, setBrief] = useState<{ q: string; a: string } | null>(null);
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [speaking, setSpeaking] = useState(false);
   const [done, setDone] = useState<Record<number, Done[]>>({});
@@ -101,6 +116,9 @@ export function Buddy() {
   const [voices, setVoices] = useState<string[]>([]);
   // Open-mic conversation.
   const [phase, setPhase] = useState<Phase>("off"), [level, setLevel] = useState(0);
+  // Inside the app, the mic is only live while the app window is in front (the desktop panel covers the rest).
+  const [focused, setFocused] = useState(() => typeof document !== "undefined" && document.hasFocus());
+  useEffect(() => { const f = () => setFocused(true), b = () => setFocused(false); window.addEventListener("focus", f); window.addEventListener("blur", b); return () => { window.removeEventListener("focus", f); window.removeEventListener("blur", b); }; }, []);
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
   const [convo, setConvo] = useState<{ run: string; first: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
   const input = useRef<HTMLTextAreaElement>(null), thread = useRef<HTMLDivElement>(null);
@@ -120,8 +138,14 @@ export function Buddy() {
   }, []);
   useEffect(() => { if (convo) void loadRun(convo.run); }, [convo, loadRun]);
   // The native panel sizes itself to what's showing, so the clear rest never blocks your clicks.
-  useEffect(() => { post({ type: "buddyExpand", open, wide: open && wide, peek: !open && (!!bubble || !!guide), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size, wide]);
+  useEffect(() => { if (!embedded) post({ type: "buddyExpand", open, wide: open && wide, peek: !open && (!!bubble || !!guide), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size, wide, embedded]);
+  // One conversation in two places: the desktop panel and the app's side panel follow each other.
   useEffect(() => {
+    const on = (e: StorageEvent) => { if (e.key !== KEY) return; try { const next = JSON.parse(e.newValue ?? "null"); handled.current = null; setConvo(next); } catch { /* ignore */ } };
+    window.addEventListener("storage", on); return () => window.removeEventListener("storage", on);
+  }, []);
+  useEffect(() => {
+    if (embedded) return;
     (window as unknown as { buddy: unknown }).buddy = { perform, toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTab("chat"); setTimeout(() => input.current?.focus(), 80); } };
   }, []);
 
@@ -140,7 +164,7 @@ export function Buddy() {
   // Speak in real time: each whole sentence as it streams in.
   const live = messages.at(-1)?.live ? messages.at(-1)!.text : "";
   useEffect(() => {
-    if (!live || handled.current === null) return;
+    if (!live || handled.current === null || !mine()) return;
     const key = `${convo?.run}:${messages.length}`;
     if (streamId.current !== key) { streamId.current = key; spokenUpto.current = 0; }
     const next = nextSentences(live, spokenUpto.current);
@@ -154,6 +178,7 @@ export function Buddy() {
     if (handled.current === null) { handled.current = last?.id ?? 0; return; }
     if (!last?.id || last.id <= handled.current) return;
     handled.current = last.id;
+    if (!mine()) return; // the other Spark surface asked; it speaks and acts
     const key = `${convo?.run}:${messages.length}`;
     const rest = nextSentences(last.text, streamId.current === key ? spokenUpto.current : 0, true);
     rest.chunks.forEach((c) => speech.current.say(c)); streamId.current = ""; spokenUpto.current = 0;
@@ -183,7 +208,7 @@ export function Buddy() {
   useEffect(() => {
     const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs));
     const prev = seen.current; seen.current = Object.fromEntries(work.map((r) => [r.id, r.status]));
-    if (!prev) return;
+    if (!prev || embedded) return; // crew news is the desktop Spark's to announce, once
     for (const r of work) {
       if (prev[r.id] === r.status || !prev[r.id]) continue;
       const who = r.member ? crew.members[r.member]?.name : null;
@@ -231,6 +256,7 @@ export function Buddy() {
   const stopGuide = () => { setGuide(null); post({ type: "buddyGuideStop" }); speech.current.stop(); };
   const ask = async (text = draft) => {
     const q = text.trim(); if (!q) return;
+    claim();
     speech.current.unlock(); speech.current.stop();
     setError(""); setTab("chat");
     const move = producerMove(q);
@@ -267,8 +293,8 @@ export function Buddy() {
     m.onLevel = setLevel;
     m.onTurn = (t) => void askRef.current(t);
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.stop(); };
-    if (prefs.conversation && open) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, open]);
+    if (prefs.conversation && open && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
+  }, [prefs.conversation, open, embedded, focused]);
   useEffect(() => () => mic.current.stop(), []);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
   const toggleTalk = () => { speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
@@ -276,39 +302,50 @@ export function Buddy() {
   const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
   const focusPct = timer ? 1 - remainingFocusMs(timer, now) / timer.durationMs : 0;
 
-  return <div className={`buddy ${open ? "is-open" : ""}`} style={{ "--spark-color": prefs.color } as CSSProperties}>
-    {open && <section className="buddy-card" aria-label="Ask Spark">
-      <header>
-        <strong>{prefs.nickname || "Spark"}</strong><span>{speaking ? "speaking…" : phase === "hearing" ? "hearing you…" : phase === "transcribing" ? "got it…" : working ? "thinking…" : prefs.conversation && phase === "listening" ? "listening" : "on your Mac"}</span>
-        <button type="button" aria-label={voice.on ? "Mute Spark" : "Let Spark talk"} title={voice.on ? "Spark talks · click to mute" : "Muted · click to let Spark talk"} className={voice.on ? "is-on" : ""} onClick={() => { speech.current.unlock(); if (voice.on) speech.current.stop(); saveBuddyVoice({ on: !voice.on }); }}>{voice.on ? <Volume2 size={13} /> : <VolumeX size={13} />}</button>
-        {convo && <button type="button" aria-label="Open in ShuaCrew" title="Open this conversation in ShuaCrew" onClick={() => post({ type: "buddyOpen", run: convo.run })}><Maximize2 size={13} /></button>}
-        {convo && <button type="button" aria-label="New conversation" title="New conversation" onClick={reset}><RotateCcw size={13} /></button>}
-        <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={14} /></button>
+  const status$ = speaking ? "speaking" : phase === "hearing" ? "hearing you" : phase === "transcribing" ? "got it" : working || busy ? "thinking" : prefs.conversation && phase === "listening" ? "listening" : embedded ? "here with you" : "on your Mac";
+  const close = () => { speech.current.stop(); if (embedded) onClose?.(); else setOpen(false); };
+  const mood = cheer ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : "idle";
+  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""}`} aria-label={`Ask ${prefs.nickname || "Spark"}`}>
+      <header className="spk-head">
+        <span className="spk-avatar"><SparkCharacter preferences={prefs} mood={mood} size={30} /></span>
+        <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span className={`spk-status is-${status$.split(" ")[0]}`}><VoiceBars level={speaking ? 0.6 : level} active={speaking || phase === "hearing" || (prefs.conversation && phase === "listening")} />{status$}</span></div>
+        <button type="button" aria-label={voice.on ? "Mute" : "Let it talk"} title={voice.on ? "Talks out loud · click to mute" : "Muted · click to hear answers"} className={voice.on ? "is-on" : ""} onClick={() => { speech.current.unlock(); if (voice.on) speech.current.stop(); saveBuddyVoice({ on: !voice.on }); }}>{voice.on ? <Volume2 size={14} /> : <VolumeX size={14} />}</button>
+        {convo && !embedded && <button type="button" aria-label="Open in ShuaCrew" title="Open this conversation in ShuaCrew" onClick={() => post({ type: "buddyOpen", run: convo.run })}><Maximize2 size={14} /></button>}
+        {convo && <button type="button" aria-label="New conversation" title="New conversation" onClick={reset}><RotateCcw size={14} /></button>}
+        <button type="button" aria-label="Close" onClick={close}><X size={15} /></button>
       </header>
       <nav className="buddy-tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "chat"} onClick={() => setTab("chat")}><MessageCircle size={12} /> Chat</button>
         <button type="button" role="tab" aria-selected={tab === "widgets"} onClick={() => setTab("widgets")}><LayoutGrid size={12} /> Widgets{approvals > 0 && <em>{approvals}</em>}</button>
       </nav>
-      {tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={ctx} /></div> : <>
-        <div className="buddy-thread" ref={thread}>
-          {!messages.length && !brief && <div className="buddy-hint">
+      {tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={embedded ? { go: (path) => { window.shuacrew?.navigate(path); } } : ctx} /></div> : <>
+        <div className="buddy-thread spk-thread" ref={thread}>
+          {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
+            <div className="spk-hello-avatar"><SparkCharacter preferences={prefs} mood="happy" size={56} /></div>
+            <h2>Hey, I'm {prefs.nickname || "Spark"}.</h2>
             <p>Your assistant for everything: I can see your screen and use your Mac, teach you anything, turn ideas into ventures, and hand real work to your crew.</p>
-            <div className="buddy-starters">{["What's going on?", "Teach me Kubernetes", "Help me make money with an idea", "Show me how to do this", "Open Activity Monitor", "Put on rain"].map((s) => <button key={s} type="button" onClick={() => void ask(s)}>{s}</button>)}</div>
-            <p className="buddy-tip"><AudioLines size={12} /> Tap the waveform and just talk. <kbd>⌃⌥Space</kbd> from any app.</p>
-          </div>}
+            <div className="buddy-starters">{["What's going on today?", "Teach me Kubernetes", "Help me make money with an idea", "Show me how to do this", "Design a URL shortener", "Put on rain"].map((s, k) => <motion.button key={s} type="button" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + k * 0.04 }} onClick={() => void ask(s)}>{s}</motion.button>)}</div>
+            <p className="buddy-tip"><AudioLines size={12} /> Tap the waveform and just talk{embedded ? "" : <>. <kbd>⌃⌥Space</kbd> from any app</>}.</p>
+          </motion.div>}
           {brief && !messages.length && <>
             <div className="buddy-msg is-you">{brief.q}</div>
-            <div className="buddy-msg is-spark"><Markdown text={brief.a} /></div>
+            <div className="spk-row"><span className="spk-mini"><SparkCharacter preferences={prefs} size={22} /></span><div className="buddy-msg is-spark"><Markdown text={brief.a} /></div></div>
           </>}
-          {messages.map((m, i) => { const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null, did = m.id ? done[m.id] : undefined; return <div key={i} className={`buddy-msg is-${m.who}`}>
-            {m.who === "spark" ? <>{splitDiagrams(speakable(m.text)).map((part, k) => part.kind === "diagram"
+          <AnimatePresence initial={false}>
+          {messages.map((m, i) => { const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null, did = m.id ? done[m.id] : undefined;
+            const body = m.who === "spark" ? <>{splitDiagrams(speakable(m.text)).map((part, k) => part.kind === "diagram"
               ? (m.live ? <p key={k} className="buddy-typing">Drawing the diagram…</p> : <Diagram key={k} code={part.value} color={prefs.color} expanded={wide} onExpand={(v) => setWide(v)} onSave={(name, svg) => post({ type: "saveFile", name, text: svg })} />)
               : <Markdown key={k} text={part.value.replace(/^\s*-{3,}\s*$/m, "")} streaming={m.live} />)}
-              {did && <div className="buddy-did">{did.map((d, j) => <button type="button" key={j} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</button>)}</div>}
-              {p && <button type="button" className="buddy-point" onClick={() => post({ type: "buddyPoint", ...p })}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text}
-          </div>; })}
-          {(busy || (working && messages.at(-1)?.who === "you")) && <p className="buddy-typing"><span /><span /><span /> {busy}</p>}
-          {convo && !working && !busy && lastQuestion && <button type="button" className="buddy-handoff" onClick={() => void perform({ type: "crew", ask: lastQuestion }).then((r) => r.run && post({ type: "buddyOpen", run: r.run }))}><Send size={11} /> Hand this to the crew as a full session</button>}
+              {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
+              {p && <button type="button" className="buddy-point" onClick={() => post({ type: "buddyPoint", ...p, color: prefs.color })}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
+            return <motion.div key={`${i}-${m.who}`} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
+              {m.who === "spark" && <span className="spk-mini"><SparkCharacter preferences={prefs} mood={m.live ? "speaking" : "idle"} size={22} /></span>}
+              <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
+            </motion.div>; })}
+          </AnimatePresence>
+          {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={22} /></span><p className="buddy-typing spk-typing"><span /><span /><span /> {busy || "thinking"}</p></motion.div>}
+          {convo && !working && !busy && lastQuestion && <button type="button" className="buddy-handoff" onClick={() => void perform({ type: "crew", ask: lastQuestion }).then((r) => r.run && (embedded ? window.shuacrew?.navigate(`/sessions/${r.run}`) : post({ type: "buddyOpen", run: r.run })))}><Send size={11} /> Hand this to the crew as a full session</button>}
         </div>
         {error && <p className="buddy-error">{error}</p>}
       </>}
@@ -317,22 +354,25 @@ export function Buddy() {
         <button type="button" className="buddy-task-stop" aria-label="Stop" onClick={() => stopTask("Stopped.")}><Square size={11} /></button></div>}
       {guide && <div className="buddy-guide"><Compass size={14} /><span><b>Step {guide.step}</b> {guide.label}</span>
         <button type="button" title={prefs.guide === "click" ? "Or just click the highlighted spot" : "Tell me when you've done it"} onClick={() => void advance()}>Done <ChevronRight size={12} /></button><button type="button" aria-label="Stop guiding" onClick={stopGuide}><X size={12} /></button></div>}
-      <form className="buddy-input" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
-        <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => { const next = !v; try { localStorage.setItem(SEE, next ? "1" : "0"); } catch { /* ignore */ } return next; })}>{see ? <Eye size={14} /> : <EyeOff size={14} />}</button>
-        <textarea ref={input} rows={1} value={draft} placeholder={see ? "Ask, or tell me to do something…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") { speech.current.stop(); setOpen(false); } }} aria-label="Ask Spark" />
-        <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={14} /></button>
-        <button className="buddy-send" disabled={!!busy || !draft.trim()} aria-label="Ask"><ArrowUp size={15} /></button>
+      <form className="buddy-input spk-input" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
+        <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => { const next = !v; try { localStorage.setItem(SEE, next ? "1" : "0"); } catch { /* ignore */ } return next; })}>{see ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+        <textarea ref={input} rows={1} value={draft} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask, or tell me to do something…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") close(); }} aria-label="Message" />
+        <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={15} /></button>
+        <motion.button className="buddy-send" disabled={!!busy || !draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>
       </form>
       {note && tab === "chat" && <p className="buddy-note" title={note}><StickyNote size={11} /> {note.split("\n")[0]}</p>}
-    </section>}
+    </section>;
+  if (embedded) return <div className="buddy is-open is-embedded" style={{ "--spark-color": prefs.color } as CSSProperties}>{card}</div>;
+  return <div className={`buddy ${open ? "is-open" : ""}`} style={{ "--spark-color": prefs.color } as CSSProperties}>
+    <AnimatePresence>{open && <motion.div key="card" className="spk-pop" initial={{ opacity: 0, y: 14, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>{card}</motion.div>}</AnimatePresence>
     {!open && guide && <div className="buddy-bubble is-guide"><span><Compass size={12} /> Step {guide.step}: {guide.label}</span>
       <div><button type="button" onClick={() => void advance()}>Done <ChevronRight size={11} /></button><button type="button" onClick={stopGuide}>Stop</button></div></div>}
     {!open && !guide && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !guide && !bubble && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
     <div className={`buddy-spark size-${prefs.size} ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
       {timer && <svg className="buddy-focus" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" /><circle cx="50" cy="50" r="46" className="fill" style={{ strokeDashoffset: `${289 * (1 - focusPct)}` }} /></svg>}
-      <SparkCharacter preferences={prefs} mood={cheer ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : "idle"} /><i className="buddy-shadow" />
+      <SparkCharacter preferences={prefs} mood={mood} /><i className="buddy-shadow" />
       {approvals > 0 && <em className="buddy-badge">{approvals}</em>}
     </div>
   </div>;

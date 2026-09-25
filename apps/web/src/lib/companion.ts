@@ -15,7 +15,7 @@ export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
 export const SPARK_HOTKEYS = { "ctrl-opt-space": "⌃⌥Space", "ctrl-shift-space": "⌃⇧Space", "opt-shift-space": "⌥⇧Space", "ctrl-opt-s": "⌃⌥S" } as const;
 export type SparkHotkey = keyof typeof SPARK_HOTKEYS;
-export const SPARK_COLORS = ["#f5b544", "#ff7a59", "#f472b6", "#a78bfa", "#60a5fa", "#34d399", "#e5e7eb"] as const;
+export const SPARK_COLORS = ["#8b7cf6", "#f5b544", "#ff7a59", "#f472b6", "#a78bfa", "#60a5fa", "#34d399", "#e5e7eb"] as const;
 export function parseCompanion(value: unknown): CompanionPreferences {
   const v = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const choice = <T extends string>(key: string, options: readonly T[], fallback: T): T => options.includes(v[key] as T) ? v[key] as T : fallback;
@@ -23,7 +23,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     face: choice("face", ["calm", "curious", "bright"], "calm"), accessory: choice("accessory", ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"], "none"),
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
-    character: choice("character", SPARK_CHARACTERS, "spark"), color: typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color.toLowerCase() : "#f5b544",
+    character: choice("character", SPARK_CHARACTERS, "spark"), color: typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color.toLowerCase() : "#8b7cf6",
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false };
@@ -37,7 +37,14 @@ export function celebrateCompletion(state: { seen: string[]; watermark: number; 
   const celebrate = fresh && pose === "idle" && now - state.lastCelebratedAt >= 10000;
   return { celebrate, state: { seen: [...state.seen.filter(id => id !== event.id), event.id].slice(-200), watermark: Math.max(state.watermark, event.seq), lastCelebratedAt: celebrate ? now : state.lastCelebratedAt } };
 }
-function load() { try { return parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); } catch { return parseCompanion(null); } }
+function load() {
+  try {
+    const p = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null"));
+    // The Pristine redesign: the old default amber becomes Iris once; a colour you picked yourself stays.
+    if (localStorage.getItem("shuacrew.companion.design") !== "pristine") { if (p.color === "#f5b544") p.color = "#8b7cf6"; localStorage.setItem("shuacrew.companion.design", "pristine"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
+    return p;
+  } catch { return parseCompanion(null); }
+}
 let preferences = load(); const listeners = new Set<() => void>();
 export function saveCompanion(next: CompanionPreferences): boolean {
   preferences = parseCompanion(next); let saved = true;

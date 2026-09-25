@@ -73,7 +73,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         NSLayoutConstraint.activate([gripWidth, gripHeight])
         grip.onClick = { [weak self] in self?.toggle() }
         pointer.onGuideClick = { [weak self] in
-            self?.web.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:guideClick'))")
+            (self?.guideTarget ?? self?.web)?.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:guideClick'))")
         }
         grip.onMoved = { [weak self] in self?.rememberCorner() }
         web.uiDelegate = self
@@ -143,6 +143,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let origin = message.frameInfo.securityOrigin
         guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
               let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        // Replies go back to whoever asked: the desktop panel or the app window's Spark panel.
+        let sender = message.webView
         switch type {
         case "buddyExpand":
             let open = body["open"] as? Bool ?? false, peek = body["peek"] as? Bool ?? false
@@ -159,43 +161,45 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
             switch action["type"] as? String {
             case "click", "type", "key", "scroll":
-                // You see where Spark is about to click before it does: a ring at the spot, then the click.
+                // You see Spark's cursor travel to the spot and land; the real click happens as it lands.
+                var lead = 0.1
                 if action["type"] as? String == "click", let x = action["x"] as? Double, let y = action["y"] as? Double {
-                    pointer.show(on: screen, x: x, y: y, label: action["label"] as? String ?? "", color: action["color"] as? String, from: sparkCenter)
+                    lead = pointer.show(on: screen, x: x, y: y, label: action["label"] as? String ?? "", color: action["color"] as? String, from: sparkCenter) + 0.12
                 }
                 watchForStop()
-                DispatchQueue.main.asyncAfter(deadline: .now() + (action["type"] as? String == "click" ? 0.6 : 0.1)) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in
                     guard let self else { return }
                     let r = SparkHands.act(action, screen: screen)
-                    self.did(["id": id, "ok": r.ok, "message": r.message])
+                    self.did(["id": id, "ok": r.ok, "message": r.message], to: sender)
                 }
             case "media":
-                let r = SparkHands.media(action); did(["id": id, "ok": r.ok, "message": r.message])
+                let r = SparkHands.media(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "system":
-                let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message])
+                let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "shortcut":
-                Task { let r = await SparkHands.shortcut(action); did(["id": id, "ok": r.ok, "message": r.message]) }
+                Task { let r = await SparkHands.shortcut(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
             default:
                 let result = MacActions.perform(action)
-                did(["id": id, "ok": result.ok, "message": result.message])
+                did(["id": id, "ok": result.ok, "message": result.message], to: sender)
             }
         case "buddyHands":
             // What Spark is allowed to do right now, for the page to show (and to ask for access when you choose to).
             if body["ask"] as? Bool == true { SparkHands.askForAccess() }
-            send("shuacrew:hands", ["trusted": SparkHands.trusted, "shortcuts": SparkHands.shortcutNames()])
+            send("shuacrew:hands", ["trusted": SparkHands.trusted, "shortcuts": SparkHands.shortcutNames()], to: sender)
         case "buddyHotkey":
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":
             stopWatch.map(NSEvent.removeMonitor); stopWatch = nil
         case "buddyCapture":
-            Task { await capture() }
+            Task { await capture(to: sender) }
         case "buddyScreenAccess":
-            send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)])
+            send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)], to: sender)
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
                   let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: sparkCenter)
         case "buddyGuide":
+            guideTarget = sender
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
                   [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
@@ -245,25 +249,29 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Esc, from any app, stops Spark mid-task. Armed while it's using your mouse and keyboard.
     private var stopWatch: Any?
+    /// The web view that started the current guided walkthrough.
+    private var guideTarget: WKWebView?
+    /// The app window's web view: Esc-stops go to both places Spark can be working from.
+    weak var appWeb: WKWebView?
     private func watchForStop() {
         guard stopWatch == nil else { return }
         stopWatch = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard e.keyCode == 53 else { return }
             Task { @MainActor in
-                self?.web.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:actStop'))")
+                for w in [self?.web, self?.appWeb].compactMap({ $0 }) { w.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:actStop'))") }
                 self?.stopWatch.map(NSEvent.removeMonitor); self?.stopWatch = nil
             }
         }
     }
 
-    private func did(_ detail: [String: Any]) {
+    private func did(_ detail: [String: Any], to target: WKWebView? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
-        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:did', { detail: \(json) }))")
+        (target ?? web).evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:did', { detail: \(json) }))")
     }
 
-    private func reply(_ detail: [String: Any]) {
+    private func reply(_ detail: [String: Any], to target: WKWebView? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
-        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:capture', { detail: \(json) }))")
+        (target ?? web).evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:capture', { detail: \(json) }))")
     }
 
     // MARK: looking at the screen
@@ -272,16 +280,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         send("shuacrew:screenAccess", ["granted": ScreenAccess.granted()])
     }
 
-    private func send(_ name: String, _ detail: [String: Any]) {
+    private func send(_ name: String, _ detail: [String: Any], to target: WKWebView? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
-        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(name)', { detail: \(json) }))")
+        (target ?? web).evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(name)', { detail: \(json) }))")
     }
 
     /// One screenshot of the display Spark is on, only when you ask, with Spark itself left out.
-    private func capture() async {
+    private func capture(to target: WKWebView? = nil) async {
         if !ScreenAccess.granted() {
             guard ScreenAccess.request() else {
-                reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true])
+                reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true], to: target)
                 return
             }
         }
@@ -290,7 +298,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else {
-                reply(["error": "No display to look at."]); return
+                reply(["error": "No display to look at."], to: target); return
             }
             let mine = content.windows.filter { $0.windowID == CGWindowID(panel.windowNumber) }
             let filter = SCContentFilter(display: display, excludingWindows: mine)
@@ -304,12 +312,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
             guard let small = ScreenText.scaled(full, longest: 1568),
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
-                reply(["error": "Couldn't encode the screenshot."]); return
+                reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
             shotScreen = screen
-            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text])
+            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text], to: target)
         } catch {
-            reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"])
+            reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
         }
     }
 
@@ -476,36 +484,71 @@ final class PointerOverlay {
         return (panel, root)
     }
 
-    /// A glowing comet from Spark (`from`, local coordinates) to the spot, on a gentle arc.
+    /// Spark's cursor: a real arrow that glides from Spark to the spot on a natural arc, presses, and ripples.
+    /// Returns how long the flight takes, so what it points at appears as it lands.
     private func comet(in root: NSView, from: CGPoint?, to: CGPoint, color: NSColor) -> CFTimeInterval {
         guard let from, hypot(from.x - to.x, from.y - to.y) > 40 else { return 0 }
+        let distance = hypot(from.x - to.x, from.y - to.y)
+        let flight = min(0.95, max(0.5, Double(distance) / 1400)) // longer trips take a little longer, never sluggish
+        // The arrow, tip at the origin (AppKit's y points up, so the body hangs below the tip).
+        let arrow = CGMutablePath()
+        arrow.move(to: .zero); arrow.addLine(to: CGPoint(x: 0, y: -21)); arrow.addLine(to: CGPoint(x: 5.2, y: -16))
+        arrow.addLine(to: CGPoint(x: 9.2, y: -24.5)); arrow.addLine(to: CGPoint(x: 12.4, y: -23)); arrow.addLine(to: CGPoint(x: 8.5, y: -14.8))
+        arrow.addLine(to: CGPoint(x: 15, y: -14.8)); arrow.closeSubpath()
+        let cursor = CAShapeLayer()
+        cursor.path = arrow
+        cursor.fillColor = color.cgColor
+        cursor.strokeColor = NSColor.white.cgColor
+        cursor.lineWidth = 1.6
+        cursor.lineJoin = .round
+        cursor.shadowColor = NSColor.black.cgColor; cursor.shadowOpacity = 0.45; cursor.shadowRadius = 6; cursor.shadowOffset = CGSize(width: 0, height: -3)
+        cursor.position = to
+        root.layer?.addSublayer(cursor)
+
+        // A gentle arc, bowing up-and-over like a hand moving a mouse.
         let path = CGMutablePath()
         path.move(to: from)
-        let mid = CGPoint(x: (from.x + to.x) / 2, y: max(from.y, to.y) + min(220, abs(from.x - to.x) * 0.35 + 60))
-        path.addQuadCurve(to: to, control: mid)
-        let duration = 0.55
-        for (i, size) in [14.0, 10, 7, 5].enumerated() {
-            let dot = CALayer()
-            dot.bounds = CGRect(x: 0, y: 0, width: size, height: size)
-            dot.cornerRadius = size / 2
-            dot.backgroundColor = (i == 0 ? NSColor.white.blended(withFraction: 0.35, of: color) ?? color : color).cgColor
-            dot.opacity = 0
-            dot.shadowColor = color.cgColor; dot.shadowRadius = 10; dot.shadowOpacity = 1; dot.shadowOffset = .zero
-            root.layer?.addSublayer(dot)
-            let move = CAKeyframeAnimation(keyPath: "position")
-            move.path = path
-            move.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 0, 0.2, 1)
-            let fade = CAKeyframeAnimation(keyPath: "opacity")
-            fade.values = [0, 1 - Double(i) * 0.2, 1 - Double(i) * 0.2, 0]
-            fade.keyTimes = [0, 0.1, 0.85, 1]
-            let group = CAAnimationGroup()
-            group.animations = [move, fade]
-            group.duration = duration
-            group.beginTime = CACurrentMediaTime() + Double(i) * 0.035
-            group.isRemovedOnCompletion = true
-            dot.add(group, forKey: "fly")
-        }
-        return duration
+        let lift = min(180, distance * 0.28)
+        path.addQuadCurve(to: to, control: CGPoint(x: (from.x + to.x) / 2 + (to.y - from.y) * 0.12, y: max(from.y, to.y) + lift))
+        let move = CAKeyframeAnimation(keyPath: "position")
+        move.path = path
+        move.duration = flight
+        move.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.1, 1) // quick start, soft landing
+        let tilt = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        tilt.values = [0.35, 0.12, 0]; tilt.keyTimes = [0, 0.6, 1]; tilt.duration = flight
+        let appear = CABasicAnimation(keyPath: "opacity")
+        appear.fromValue = 0; appear.toValue = 1; appear.duration = 0.12
+        let fly = CAAnimationGroup()
+        fly.animations = [move, tilt, appear]; fly.duration = flight
+        cursor.add(fly, forKey: "fly")
+
+        // The press: a small squash as it lands, then a ripple where it clicked.
+        let press = CAKeyframeAnimation(keyPath: "transform.scale")
+        press.values = [1, 0.82, 1]; press.keyTimes = [0, 0.4, 1]; press.duration = 0.22
+        press.beginTime = CACurrentMediaTime() + flight
+        cursor.add(press, forKey: "press")
+        let ripple = CAShapeLayer()
+        ripple.path = CGPath(ellipseIn: CGRect(x: -14, y: -14, width: 28, height: 28), transform: nil)
+        ripple.position = to
+        ripple.fillColor = color.withAlphaComponent(0.18).cgColor
+        ripple.strokeColor = color.cgColor
+        ripple.lineWidth = 2
+        ripple.opacity = 0
+        root.layer?.insertSublayer(ripple, below: cursor)
+        let grow = CABasicAnimation(keyPath: "transform.scale"); grow.fromValue = 0.3; grow.toValue = 1.9
+        let fade = CAKeyframeAnimation(keyPath: "opacity"); fade.values = [0, 0.9, 0]; fade.keyTimes = [0, 0.15, 1]
+        let ring = CAAnimationGroup(); ring.animations = [grow, fade]; ring.duration = 0.6
+        ring.beginTime = CACurrentMediaTime() + flight + 0.05
+        ring.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        ripple.add(ring, forKey: "ripple")
+
+        // The cursor rests a beat on the spot, then steps aside for what it's showing you.
+        let leave = CABasicAnimation(keyPath: "opacity")
+        leave.fromValue = 1; leave.toValue = 0; leave.duration = 0.35
+        leave.beginTime = CACurrentMediaTime() + flight + 0.9
+        leave.fillMode = .forwards; leave.isRemovedOnCompletion = false
+        cursor.add(leave, forKey: "leave")
+        return flight
     }
 
     private func pill(_ text: String, color: NSColor, badge: Int? = nil) -> NSView {
@@ -559,7 +602,8 @@ final class PointerOverlay {
     }
 
     /// `from` is where Spark is, in global coordinates.
-    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil) {
+    @discardableResult
+    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil) -> CFTimeInterval {
         hide()
         let frame = screen.frame, color = Self.color(hex)
         let (panel, root) = makePanel(frame)
@@ -601,6 +645,7 @@ final class PointerOverlay {
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay + 6.5, execute: work)
+        return delay
     }
 
     /// One guided step: dim everything but the box, number it, say what to do, and wait for the click.

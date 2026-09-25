@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.onBuddyEnabled = { [weak self] on in self?.buddy.setEnabled(on) }
         window.onBuddyHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
         buddy.onHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
+        window.onBuddyMessage = { [weak self] controller, message in self?.buddy.userContentController(controller, didReceive: message) }
+        buddy.appWeb = window.web
         NSApp.mainMenu = mainMenu()
         if quiet {
             NSApp.setActivationPolicy(.accessory)

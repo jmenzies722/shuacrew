@@ -2,6 +2,7 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/jetbrains-mono";
 import "./styles.css";
 import "./workspace.css";
+import "./pristine.css";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

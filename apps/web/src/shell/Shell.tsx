@@ -2,7 +2,7 @@ import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3, GraduationCap, Disc3 } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
-import { MotionConfig, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Milestones, useSpotlight } from "../lib/motion";
@@ -23,7 +23,11 @@ import { navKey } from "../lib/keys";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
 import { StatusIsland } from "../components/TopBarWidgets";
+import { SparkCharacter } from "../components/SparkCharacter";
+import { useCompanion } from "../lib/companion";
 import { HubRail, HubTabs } from "./HubNav";
+import { Buddy } from "../screens/Buddy";
+import { setSparkPanel, toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
 import { RadioHost } from "../components/NowPlaying";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
@@ -73,13 +77,16 @@ export function Shell() {
       {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
       <HubRail />
-      <main className="min-h-0 min-w-0 overflow-hidden flex flex-col" id="main">
+      <main className="min-h-0 min-w-0 overflow-hidden flex" id="main">
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col">
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
         <motion.div key={section} className="min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
+        </div>
+        <SparkSide />
         {/* In the Mac app Spark lives on the desktop (over every app), so the in-window one steps aside. */}
         {document.documentElement.dataset.shell !== "mac" && <CompanionHost />}
       </main>
@@ -97,6 +104,19 @@ export function Shell() {
     </div>
     </MotionConfig>
   );
+}
+
+/** Spark inside the app: the same assistant and conversation as on the desktop, as a side panel. ⌘J. */
+function SparkSide() {
+  const open = useSparkPanel();
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); toggleSparkPanel(); } };
+    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
+  }, []);
+  return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className="spark-side" aria-label="Spark"
+    initial={{ width: 0, opacity: 0 }} animate={{ width: 400, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
+    <div className="spark-side-inner"><Buddy embedded onClose={() => setSparkPanel(false)} /></div>
+  </motion.aside>}</AnimatePresence>;
 }
 
 /** Kiro Crew's top bar: where you are, search for anything, and what needs you. */
@@ -137,6 +157,7 @@ function TopBar() {
           return { key, label: model ?? runtime ?? key, message: info.message, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
         })}
         tokens={formatTokens(crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0)} />
+      <SparkButton />
       <button
         onClick={() => approvals[0]?.run && navigate({ to: "/sessions/$id", params: { id: approvals[0].run } })}
         className="relative grid h-8 w-8 place-items-center rounded-[8px] text-fg-3 hover:bg-panel hover:text-fg"
@@ -257,4 +278,11 @@ function TokensToday({ tokens }: { tokens: number }) {
   return <Link to="/settings" hash="budget" className={`mono tabular-nums ${tone}`} title={`Recorded input and output tokens today (UTC); excludes demo usage. Not remaining subscription quota.${dailyTokenBudget ? ` Budget: ${formatTokens(dailyTokenBudget)} (${Math.round(used * 100)}%).` : ""}`}>
     {formatTokens(tokens)}{dailyTokenBudget ? ` / ${formatTokens(dailyTokenBudget)}` : ""} today
   </Link>;
+}
+
+function SparkButton() {
+  const open = useSparkPanel(), prefs = useCompanion();
+  return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={{ "--spark-color": prefs.color } as React.CSSProperties}>
+    <SparkCharacter preferences={prefs} size={20} /><span>{prefs.nickname || "Spark"}</span>
+  </button>;
 }

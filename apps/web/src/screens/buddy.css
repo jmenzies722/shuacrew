@@ -91,3 +91,60 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .buddy-send:disabled { opacity: 1; color: var(--text-3); background: color-mix(in srgb, var(--text) 8%, transparent); }
 .buddy-tip { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3); } .buddy-tip svg { color: var(--amber); }
 .buddy-note { display: flex; align-items: center; gap: 5px; }
+
+/* ── Spark's chat, premium edition ───────────────────────────────────────────────────────── */
+.spk-pop { display: flex; flex-direction: column; min-height: 0; max-height: calc(100% - 100px); width: 100%; transform-origin: bottom right; }
+.spk-pop > .buddy-card { max-height: 100%; animation: none; }
+.buddy-card.spk { border-radius: 20px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset, 0 30px 70px -20px rgba(0,0,0,.75); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.spk-head { display: flex; align-items: center; gap: 10px; padding: 12px 10px 10px 14px; }
+.spk-avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: color-mix(in srgb, var(--spark-color) 12%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 25%, transparent); flex-shrink: 0; overflow: hidden; }
+.spk-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.spk-who strong { font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+.spk-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3); text-transform: none; }
+.spk-status.is-listening, .spk-status.is-hearing { color: var(--spark-color); } .spk-status.is-speaking { color: var(--text-2); }
+.spk-bars { display: inline-flex; align-items: center; gap: 2px; height: 12px; }
+.spk-bars i { display: block; width: 2px; height: 12px; border-radius: 2px; background: currentColor; opacity: .45; transform-origin: center; transition: transform .09s linear, opacity .2s; }
+.spk-bars.is-on i { opacity: 1; }
+.spk-head > button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--text-3); transition: background .15s, color .15s; }
+.spk-head > button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.spk-head > button.is-on { color: var(--spark-color); }
+.spk .buddy-tabs { margin: 0 12px 4px; background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line); }
+.spk .buddy-tabs button[aria-selected="true"] { background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spk-thread { gap: 12px; padding: 10px 14px 12px; scroll-behavior: smooth; }
+.spk-row { display: flex; align-items: flex-end; gap: 8px; }
+.spk-row.is-you { justify-content: flex-end; }
+.spk-mini { display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 2px; border-radius: 9px; background: color-mix(in srgb, var(--spark-color) 12%, var(--raised)); flex-shrink: 0; overflow: hidden; }
+.spk .buddy-msg { font-size: 13.5px; line-height: 1.6; }
+.spk .buddy-msg.is-spark { flex: 1; min-width: 0; padding: 10px 13px; border-radius: 14px 14px 14px 5px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.spk .buddy-msg.is-you { max-width: 82%; padding: 9px 13px; border-radius: 14px 14px 5px 14px; color: var(--text); background: color-mix(in srgb, var(--spark-color) 16%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 28%, transparent); }
+.spk .buddy-msg .prose-agent > *:first-child { margin-top: 0; } .spk .buddy-msg .prose-agent > *:last-child { margin-bottom: 0; }
+.spk .buddy-msg.is-live .prose-agent > :last-child::after { content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--spark-color); animation: spk-caret 1s steps(2) infinite; }
+.spk-typing { margin: 0; padding: 10px 13px; border-radius: 14px 14px 14px 5px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.spk-typing span { background: var(--spark-color) !important; animation: spk-wave 1.2s ease-in-out infinite !important; }
+.spk-typing span:nth-child(2) { animation-delay: .15s !important; } .spk-typing span:nth-child(3) { animation-delay: .3s !important; }
+.spk-hello { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 18px 8px 6px; }
+.spk-hello-avatar { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 24px; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--spark-color) 22%, transparent), transparent 70%), var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.spk-hello h2 { margin: 6px 0 0; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
+.spk-hello p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text-3); max-width: 300px; }
+.spk-hello .buddy-starters { justify-content: center; margin: 8px 0 4px; }
+.spk .buddy-starters button { background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.spk .buddy-starters button:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 55%, transparent); }
+.spk-input { margin: 4px 12px 12px; padding: 6px; border-radius: 16px; background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line-strong); transition: box-shadow .2s; }
+.spk-input:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 60%, transparent), 0 0 0 4px color-mix(in srgb, var(--spark-color) 10%, transparent); }
+.spk-input textarea { padding: 7px 4px; font-size: 13.5px; }
+.spk .buddy-send { width: 32px; height: 32px; color: #fff; background: var(--spark-color); transition: transform .15s, opacity .15s, background .2s; }
+.spk .buddy-send:disabled { color: var(--text-3); background: color-mix(in srgb, var(--text) 8%, transparent); }
+.spk .buddy-talk.is-on { color: #fff; background: var(--spark-color); }
+.spk .buddy-see.is-on { color: var(--spark-color); background: color-mix(in srgb, var(--spark-color) 12%, transparent); }
+/* Inside the app: a full-height side panel, not a floating card. */
+.buddy.is-embedded { position: static; inset: auto; height: 100%; padding: 0; display: flex; }
+.buddy.is-embedded .buddy-card.spk { width: 100%; max-height: none; height: 100%; border-radius: 0; box-shadow: inset 1px 0 0 var(--line); animation: none; }
+@keyframes spk-caret { 50% { opacity: 0; } }
+@keyframes spk-wave { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .spk .buddy-msg.is-live .prose-agent > :last-child::after, .spk-typing span { animation: none !important; } }
+/* The new header owns its spans; the older card-header rule mustn't stretch them. */
+.spk-head > span.spk-avatar { flex: 0 0 36px; }
+.spk-head .spk-who > span, .spk-head .spk-status { flex: none; }
+.spk-head .spk-status { justify-content: flex-start; }
+.buddy-card.spk .spk-head span { flex: none; }
+.buddy-card.spk .spk-head .spk-who { flex: 1; }

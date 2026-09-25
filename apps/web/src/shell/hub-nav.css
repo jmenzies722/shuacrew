@@ -29,3 +29,13 @@
 .hub-tab-on { position: absolute; inset: 0; border-radius: 9px; background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset; }
 .hub-tab-on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -9px; height: 2px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent); }
 @media (prefers-reduced-motion: reduce) { .hub, .hub-icon { transition: none; } .hub-badge.is-live { animation: none; } }
+
+/* Spark in the app: a side panel that slides in from the right, and its button in the top bar. */
+.spark-side { flex-shrink: 0; min-height: 0; overflow: hidden; }
+.spark-side-inner { width: 400px; height: 100%; }
+.spark-side .buddy.is-embedded { height: 100%; }
+.spark-btn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 5px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--text-2);
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); transition: color .15s, box-shadow .15s, background .15s; }
+.spark-btn:hover { color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spark-btn.is-on { color: var(--text); background: color-mix(in srgb, var(--spark-color) 14%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 40%, transparent); }
+.spark-btn .spark-character { border-radius: 50%; }
