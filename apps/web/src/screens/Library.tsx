@@ -1,7 +1,7 @@
 import type { ArtifactView, KnowledgeView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { BookMarked, Code2, Copy, Database, Download, FileText, FolderOpen, Globe, Image, NotebookPen, Package, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { BookMarked, Code2, Copy, Database, Download, FileText, FolderOpen, Globe, Image, NotebookPen, Package, Plus, Search, Trash2, Upload, X, LibraryBig } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "../components/Markdown";
@@ -13,6 +13,7 @@ import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 import { Glyph } from "../lib/glyphs";
+import { PaneHeader } from "../components/Pane";
 
 type Kind = ArtifactView["kind"];
 interface Hit {
@@ -62,18 +63,9 @@ export function Library() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <header className="mb-5 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Library</h1>
-            <p className="mt-1 max-w-[640px] text-[13.5px] leading-relaxed text-fg-2">
-              What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here.
-            </p>
-          </div>
-          <Button onClick={() => setAdding(true)}>
-            <Plus size={14} /> Add knowledge
-          </Button>
-        </header>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="Brain" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
+          actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
 
         <label className="lib-search">
           <Search size={15} className="text-fg-3" />

@@ -6,8 +6,9 @@ Implemented: dedicated searchable Settings screen; appearance/workspace preferen
 validated, versioned local persistence; density, reading size, motion, navigation, and start
 screen behavior; existing runtime/service/backup panels retained. Claude crew members now
 have an opt-in native delegation setting, wired through the supervisor to runtime definitions.
-This is not cross-provider gateway orchestration. Notifications, the broader screen redesign,
-and stages 2–3 remain future work.
+This is not cross-provider gateway orchestration. The 2026-09-24 follow-up added chat controls,
+durable in-place queue editing/ordering and native notification settings; see
+`research/parity-status-2026-09-24.md`. The broader screen redesign and stages 2–3 remain future work.
 
 ## Intent
 

@@ -42,7 +42,8 @@ describe("runs", () => {
     const run = state(store).runs[id]!;
     expect(run.checks.map((c) => c.passed)).toEqual([false, true]);
     expect(run.files).toContain("src/upload.ts");
-    expect(run.usage.inputTokens).toBeGreaterThan(0);
+    expect(run.usage.inputTokens).toBe(0); // demo observations never become real consumption
+    expect(store.forRun(id).some(e => e.kind === "usage.recorded" && e.body.inputTokens > 0)).toBe(true);
     expect(store.forRun(id).some((e) => e.kind === "agent.delta")).toBe(true);
   });
 

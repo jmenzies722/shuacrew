@@ -235,6 +235,7 @@ export class ClaudeRuntime implements Runtime {
         // Claude Code's own system prompt, with ShuaCrew's lessons and context appended.
         systemPrompt: { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
         agents: run.agents,
+        disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined,
         mcpServers: run.mcpServers,
         ...(run.plugins?.length ? { plugins: run.plugins } : {}),
         canUseTool: async (tool: string, input: Record<string, unknown>, options: { agentID?: string }) => {

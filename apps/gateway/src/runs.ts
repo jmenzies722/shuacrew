@@ -10,6 +10,10 @@
  *     one burst.
  */
 import { randomUUID } from "node:crypto";
+import { mkdirSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import {
   agentEnv,
   allowAll,
@@ -18,6 +22,7 @@ import {
   defaultRules,
   normalise,
   standingRule,
+  within,
   type AnyEvent,
   type Layer,
   type PolicyContext,
@@ -27,8 +32,11 @@ import type { ApprovalAnswer, Runtime, RunSpec } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
 import { expandAsk } from "./chat-commands.js";
+import { queuedMessages } from "@shuacrew/core/queue";
+import { inputDigest } from "./mobile/digest.js";
 
 export interface LaunchSpec {
+  baseCommit?: string;
   ask: string;
   title?: string;
   repo?: string;
@@ -56,9 +64,12 @@ interface Waiting {
   resolve: (answer: ApprovalAnswer) => void;
   tool: string;
   input: unknown;
+  risk: "low" | "medium" | "high" | "critical";
 }
 
 export interface SupervisorOptions {
+  canStart?: (run: string) => boolean;
+  runHint?: (run: string) => string | undefined;
   workspace: string; // where runs with no repo work
   roots?: string[];
   protectedFolders?: string[];
@@ -118,9 +129,25 @@ export class Supervisor {
 
   // ── launching ────────────────────────────────────────────────────────────────────────
 
-  launch(spec: LaunchSpec): string {
+  roomBase(repo: string): { repo: string; base: string } {
+    if (!path.isAbsolute(repo)) throw new Error("Choose an absolute repository path");
+    const ctx = this.policyFor("", this.options.workspace).ctx;
+    const forbidden = [...ctx.protected, ...ctx.sensitive];
+    if (forbidden.some(root => within(repo, root))) throw new Error("Repository is in a protected folder");
+    const canonical = realpathSync(repo);
+    if (forbidden.some(root => within(canonical, root))) throw new Error("Repository resolves into a protected folder");
+    const allowed = [ctx.workspace, ...ctx.roots].map(root => { const expanded = root.replace(/^~(?=\/|$)/, os.homedir()); try { return realpathSync(expanded); } catch { return path.resolve(expanded); } });
+    if (!allowed.some(root => within(canonical, root))) throw new Error("Repository is outside the configured project roots");
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: canonical, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+    if (!/^[a-f0-9]{40}$/.test(base)) throw new Error("Repository needs an existing commit");
+    return { repo: canonical, base };
+  }
+
+  launch(spec: LaunchSpec, reservedId?: string): string {
     this.expand(spec.ask);
-    const id = `r_${randomUUID().slice(0, 8)}`;
+    const id = reservedId ?? `r_${randomUUID().slice(0, 8)}`;
+    if (!/^r_[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid reserved run ID");
+    if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
     if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? member.model };
     const runtime = spec.runtime ?? this.defaultRuntime();
@@ -131,6 +158,7 @@ export class Supervisor {
         ask: spec.ask,
         project: spec.project,
         repo: spec.repo,
+        baseCommit: spec.baseCommit,
         runtime,
         model: spec.model,
         effort: spec.effort,
@@ -182,6 +210,23 @@ export class Supervisor {
     this.rec("run.followup.withdrawn", { id }, { run });
   }
 
+  editFollowup(run: string, id: string, text: string, expectedText: string): void {
+    const pending = this.unanswered(run, true).find((f) => f.id === id);
+    if (!pending) throw new Error("That message has already started or was withdrawn. Your edit has not been sent.");
+    if (pending.text !== expectedText) throw new Error("That queued message changed. Cancel this edit and reopen it to see the latest text.");
+    if (!text.trim()) throw new Error("empty message");
+    this.expand(text);
+    this.rec("run.followup.edited", { id, text: text.trim() }, { run });
+  }
+
+  reorderFollowups(run: string, ids: string[]): void {
+    const pending = this.unanswered(run, true);
+    if (!pending.length || ids.length !== pending.length || new Set(ids).size !== ids.length || pending.some((f) => !f.id || !ids.includes(f.id))) {
+      throw new Error("The queue changed. Try again with the current messages.");
+    }
+    this.rec("run.followups.reordered", { ids }, { run });
+  }
+
   cancel(run: string, reason = "cancelled by you"): void {
     this.active.get(run)?.abort();
     // Anything it was waiting on you for is answered "no" — on the record, so it leaves the bell.
@@ -196,6 +241,8 @@ export class Supervisor {
     const runs = this.projectRuns();
     const queued = runs.filter((r) => r.status === "queued").sort((a, b) => b.priority - a.priority || a.seq - b.seq);
     for (const run of queued) {
+      if (this.active.has(run.id)) continue;
+      if (this.options.canStart && !this.options.canStart(run.id)) continue;
       const agent = this.currentRuntime(run.id, run.runtime);
       if (this.limitedUntil(agent) > Date.now() || this.allModelsLimited(agent)) continue;
       const cap = this.options.concurrency?.[run.runtime] ?? (run.runtime === "mock" ? 8 : 2);
@@ -217,6 +264,11 @@ export class Supervisor {
     const runtime = this.runtimes.get(runtimeId);
     const controller = this.active.get(runId) ?? new AbortController();
     this.active.set(runId, controller);
+    const ready = () => {
+      if (controller.signal.aborted || this.halted) { this.active.delete(runId); return false; }
+      if (this.options.canStart && !this.options.canStart(runId)) { this.active.delete(runId); return false; }
+      return true;
+    };
     if (!runtime) {
       this.setStatus(runId, "failed", `no runtime called ${runtimeId}`);
       this.active.delete(runId);
@@ -225,8 +277,13 @@ export class Supervisor {
 
     let cwd = this.options.workspace;
     try {
+      if (spec.labels.includes("crew-room")) {
+        const status = await runtime.status();
+        if (!status.installed || status.signedIn === false || status.overridingKeys.length) throw new Error("Room provider unavailable; connect its subscription without API-key overrides");
+        if (!ready()) return;
+      }
       // A task's steps share the task's worktree, so each step builds on the last.
-      const parentTree = spec.parent ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
+      const parentTree = spec.parent && !spec.labels.includes("crew-room") ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
       if (parentTree?.kind === "run.worktree") {
         cwd = parentTree.body.path;
       } else if (spec.repo && spec.labels.includes("in-place")) {
@@ -236,17 +293,22 @@ export class Supervisor {
         if (existing && existing.kind === "run.worktree") {
           cwd = existing.body.path;
         } else {
-          const tree = await this.worktrees.create(spec.repo, runId, spec.forkOf?.commit);
+          const tree = await this.worktrees.create(spec.repo, runId, spec.baseCommit ?? spec.forkOf?.commit);
           cwd = tree.path;
           this.rec("run.worktree", tree, { run: runId });
         }
+      } else if (spec.labels.includes("crew-room")) {
+        cwd = path.join(this.options.workspace, "rooms", runId);
+        mkdirSync(cwd, { recursive: true });
       }
     } catch (error) {
-      this.setStatus(runId, "failed", `could not create a worktree: ${(error as Error).message}`);
+      if (controller.signal.aborted || this.halted) { this.active.delete(runId); return; }
+      this.setStatus(runId, "failed", `could not prepare run: ${(error as Error).message}`);
       this.active.delete(runId);
       return;
     }
 
+    if (!ready()) return;
     this.setStatus(runId, "running");
     const turn = this.turns(runId) + 1;
     const spoken = this.currentAsk(runId, spec.ask);
@@ -267,9 +329,10 @@ export class Supervisor {
       model,
       effort: spec.effort,
       resume,
-      agents: this.options.crew?.agentsFor?.(runtime.id, spec.member),
+      agents: spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
+      disableNativeAgents: spec.labels.includes("crew-room"),
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
+      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
       mcpServers: this.options.mcpServers?.(runtime.id, runId),
       plugins: this.options.plugins?.(runtime.id),
     };
@@ -326,6 +389,7 @@ export class Supervisor {
                 outputTokens: event.outputTokens,
                 cacheTokens: event.cacheTokens ?? 0,
                 costUsd: runtime.authMode === "subscription" ? undefined : event.costUsd,
+                accounting: event.accounting,
                 contextUsed: event.contextUsed,
                 contextLimit: event.contextLimit,
               },
@@ -430,6 +494,11 @@ export class Supervisor {
     const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && / is out until | needs usage credits /.test(e.body.reason)).length;
     const created = this.store.forRun(run).find((e) => e.kind === "run.created");
     const launched = created?.kind === "run.created" ? created.body.model : undefined;
+    if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) {
+      this.setStatus(run, "paused", `${runtime} usage window — resumes ${when(until)}; room provider stays unchanged`);
+      this.scheduleResume(runtime, until, model);
+      return;
+    }
     const what = model ?? runtime;
     const why = credits ? `${what} needs usage credits on your plan` : `${what} is out until ${when(until)}`;
     // First choice: another model on the same agent (a weekly cap on one model isn't the account's).
@@ -555,6 +624,11 @@ export class Supervisor {
     input: unknown,
     subagent?: string,
   ): Promise<ApprovalAnswer> {
+    const created = this.store.forRun(run).find(e => e.kind === "run.created");
+    if (created?.kind === "run.created" && created.body.labels.includes("crew-room") && /^(Agent|Task|spawn_agent|collabAgentToolCall)$/i.test(tool)) {
+      this.rec("policy.decided", { tool, verdict: "deny", rule: "room-delegation-only", layer: "room", reason: "Use tracked crew delegation; native child agents are disabled" }, { run });
+      return { allow: false, reason: "Use tracked crew delegation; native child agents are disabled" };
+    }
     const decision = decide(normalise(tool, input), policy.ctx, policy.layers());
     this.rec("policy.decided", { tool, verdict: decision.verdict, rule: decision.rule, layer: decision.layer, reason: decision.reason }, { run });
     if (decision.verdict === "allow") return { allow: true, reason: decision.reason };
@@ -573,13 +647,17 @@ export class Supervisor {
       this.waiting.set(id, {
         run,
         tool,
-        input,
+        input: structuredClone(input),
+        risk: decision.risk,
         resolve: (answer) => {
           clearTimeout(timeout);
-          if (this.status(run) === "awaiting_approval" && ![...this.waiting.values()].some((w) => w.run === run)) {
-            this.setStatus(run, "running");
+          try {
+            if (this.status(run) === "awaiting_approval" && ![...this.waiting.values()].some((w) => w.run === run)) this.setStatus(run, "running");
+          } finally {
+            // approval.decided is already durable. A secondary status error must not strand
+            // the provider after its waiter and timeout have been consumed.
+            resolve(answer);
           }
-          resolve(answer);
         },
       });
     });
@@ -587,6 +665,7 @@ export class Supervisor {
 
   /** Cycle this session: ask stops for approval, auto lets those through. A deny still wins. */
   setPermission(run: string, mode: "ask" | "auto"): void {
+    if (mode === "auto" && this.store.forRun(run).some(e => e.kind === "run.created" && e.body.labels.includes("crew-room"))) throw new Error("Crew rooms must remain supervised");
     if (!this.status(run) && !this.store.forRun(run).some((e) => e.kind === "run.created")) throw new Error(`no run ${run}`);
     this.rec("run.permission", { mode }, { run });
     if (mode === "auto") {
@@ -597,14 +676,44 @@ export class Supervisor {
 
   /** A person (or a timeout) answers an approval. Returns false when nothing was waiting. */
   decideApproval(id: string, allow: boolean, by = "you", always = false, comment?: string): boolean {
+    if (this.halted) return false;
     const wait = this.waiting.get(id);
     const known = wait ?? this.pendingFromLog(id);
     if (!known) return false;
-    this.rec("approval.decided", { id, allow, by, always: always && allow, comment }, { run: known.run });
+    if (wait) this.waiting.delete(id);
+    try {
+      this.store.append("approval.decided", { id, allow, by, always: always && allow, comment }, { run: known.run });
+    } catch (error) {
+      if (wait) this.waiting.set(id, wait);
+      throw error;
+    }
     if (wait) {
-      this.waiting.delete(id);
       wait.resolve({ allow, reason: allow ? `${by} allowed it` : comment ? `${by} said no: ${comment}` : `${by} said no` });
     }
+    return true;
+  }
+
+  /** A detached copy from the live waiter, never historical audit state. */
+  liveApproval(id: string): { run: string; tool: string; input: unknown; risk: Waiting["risk"] } | undefined {
+    if (this.halted) return undefined;
+    const wait = this.waiting.get(id);
+    return wait ? { run: wait.run, tool: wait.tool, input: structuredClone(wait.input), risk: wait.risk } : undefined;
+  }
+
+  /** Synchronous compare-and-consume for remotely signed, single-use decisions. */
+  decideLiveApproval(id: string, expectedRun: string, expectedDigest: string, allow: boolean, by: string, commandId: string): boolean {
+    if (this.halted) return false;
+    const wait = this.waiting.get(id);
+    if (!wait || wait.run !== expectedRun || inputDigest(wait.input) !== expectedDigest) return false;
+    // Reserve before append: synchronous event listeners must not consume this waiter twice.
+    this.waiting.delete(id);
+    try {
+      this.store.append("approval.decided", { id, allow, by, always: false, mobileCommandId: commandId }, { run: wait.run });
+    } catch (error) {
+      this.waiting.set(id, wait);
+      throw error;
+    }
+    wait.resolve({ allow, reason: `${by} ${allow ? "allowed" : "denied"} this request` });
     return true;
   }
 
@@ -617,10 +726,36 @@ export class Supervisor {
   // ── follow-ups ──────────────────────────────────────────────────────────────────────
 
   /** Send another message to a run: a new turn in the same runtime conversation. */
-  followUp(run: string, text: string, by = "you"): string {
+  isActive(run: string): boolean { return this.active.has(run); }
+
+  followUp(run: string, text: string, by = "you", requestId?: string): string {
+    const created = this.store.forRun(run).find(e => e.kind === "run.created");
+    if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) throw new Error("Continue this conversation in its crew room, not the source session.");
+    return this.enqueueFollowUp(run, text, by, requestId);
+  }
+
+  /** Only a durably authorized coordinator summary can resume a room conversation. */
+  roomSummary(run: string, text: string, requestId: string): string {
+    const authorized = this.store.ofKinds("room.summary-requested").findLast(e => e.kind === "room.summary-requested" && e.body.runId === run && `room-summary:${e.body.requestId}` === requestId);
+    if (!authorized || authorized.kind !== "room.summary-requested") throw new Error("Room summary is not authorized");
+    const latest = this.store.ofKinds("room.turn").findLast(e => e.kind === "room.turn" && e.body.room === authorized.body.room);
+    if (latest?.kind !== "room.turn" || latest.body.runId !== run) throw new Error("Stale room summary");
+    return this.enqueueFollowUp(run, text, "crew results", requestId);
+  }
+
+  private enqueueFollowUp(run: string, text: string, by: string, requestId?: string): string {
     if (!this.status(run)) throw new Error(`no run ${run}`);
     this.expand(text);
-    const id = `f_${randomUUID().slice(0, 8)}`;
+    const id = requestId ?? `f_${randomUUID().slice(0, 8)}`;
+    const previous = this.store.forRun(run).find(e => e.kind === "run.followup" && e.body.id === id);
+    if (previous?.kind === "run.followup") {
+      if (previous.body.text !== text || previous.body.by !== by) throw new Error("Follow-up request conflict");
+      // Recover only a message no turn has consumed, never an interrupted turn.
+      if (!this.active.has(run) && ["done", "reviewing", "merged"].includes(this.status(run)!) && this.unanswered(run, true).some(f => f.id === id)) {
+        this.setStatus(run, "queued", "persisted follow-up awaiting its first turn"); this.pump();
+      }
+      return id;
+    }
     this.rec("run.followup", { id, text, by }, { run });
     // Mid-turn, a message waits its turn: the one after this answers everything queued.
     if (this.active.has(run)) return id;
@@ -633,12 +768,7 @@ export class Supervisor {
   private unanswered(run: string): string[];
   private unanswered(run: string, detailed: true): Array<{ id?: string; text: string }>;
   private unanswered(run: string, detailed?: boolean): Array<string | { id?: string; text: string }> {
-    let pending: Array<{ id?: string; text: string }> = [];
-    for (const e of this.store.forRun(run)) {
-      if (e.kind === "run.followup") pending.push({ id: e.body.id, text: e.body.text });
-      if (e.kind === "run.followup.withdrawn") pending = pending.filter((f) => f.id !== e.body.id);
-      if (e.kind === "turn.started") pending = [];
-    }
+    const pending = queuedMessages(this.store.forRun(run));
     return detailed ? pending : pending.map((f) => f.text);
   }
 
@@ -714,6 +844,12 @@ export class Supervisor {
   recover(): string[] {
     const resumed: string[] = [];
     for (const run of this.projectRuns()) {
+      const created = this.store.forRun(run.id).find(e => e.kind === "run.created");
+      if (created?.kind === "run.created" && created.body.labels.includes("crew-room") && ["running", "planning", "awaiting_approval", "paused"].includes(run.status)) {
+        this.cancel(run.id, "Gateway restarted; room work interrupted. Inspect side effects before retrying.");
+        this.setStatus(run.id, "failed", "Gateway restarted; room work interrupted. Explicit retry required.");
+        continue;
+      }
       if (["running", "planning", "awaiting_approval"].includes(run.status)) {
         this.setStatus(run.id, "queued", "gateway restarted — resuming from the last checkpoint");
         resumed.push(run.id);

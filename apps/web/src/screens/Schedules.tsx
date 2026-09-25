@@ -2,6 +2,8 @@ import { Button, Chip, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { CalendarClock } from "lucide-react";
+import { PaneHeader } from "../components/Pane";
 
 interface Schedule {
   id: string;
@@ -57,9 +59,8 @@ export function Schedules() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] px-6 py-6">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Schedules & Triggers</h1>
-        <p className="mt-1 text-[13px] text-fg-2">Cron jobs, webhooks and heartbeats. Script-only jobs and heartbeats make no model call — they wake an agent only when something needs one.</p>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="Brain" icon={CalendarClock} title="Schedules & Triggers" description="Cron jobs, webhooks and heartbeats. Script-only jobs and heartbeats make no model call — they wake an agent only when something needs one." />
 
         <NewSchedule onSaved={refresh} />
 

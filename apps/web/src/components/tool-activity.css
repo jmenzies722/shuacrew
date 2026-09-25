@@ -1,0 +1,25 @@
+.tool-activity { border:1px solid var(--line); border-radius:12px; margin:6px 0; background:var(--panel); overflow:hidden; }
+.tool-activity-heading { width:100%; display:flex; align-items:center; gap:10px; padding:12px 14px; text-align:left; }
+.tool-activity-heading:hover { background:var(--raised); }
+.tool-activity-heading:focus-visible { outline:2px solid var(--amber); outline-offset:-3px; }
+.tool-activity-name { flex:1; min-width:0; overflow-wrap:anywhere; font-size:var(--reading-size,14px); color:var(--text); }
+.tool-activity-status { display:flex; gap:4px; align-items:center; color:var(--text-2); font-size:11px; text-transform:capitalize; }
+.status-succeeded .tool-activity-status { color:var(--ok); }
+.status-failed .tool-activity-status { color:var(--bad); }
+.status-running .tool-activity-status, .status-pending .tool-activity-status { color:var(--wait); }
+.tool-activity time { color:var(--text-3); font-size:11px; font-variant-numeric:tabular-nums; }
+.tool-activity-heading svg { flex-shrink:0; }
+.tool-activity-heading .is-open { transform:rotate(90deg); }
+.tool-activity-detail { padding:0 14px 14px; font-size:var(--reading-size,14px); }
+.tool-provenance { color:var(--text-3); font-size:12px; line-height:1.5; margin:0 0 12px; overflow-wrap:anywhere; }
+.tool-activity pre { background:var(--sunken); border:1px solid var(--line); border-radius:8px; padding:12px; max-height:280px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:1.6; color:var(--text-2); }
+.tool-output { margin-top:12px; } .tool-output > span { font-size:10px; letter-spacing:.08em; color:var(--text-3); }
+.tool-activity footer { display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-top:12px; }
+.tool-activity footer button { display:flex; align-items:center; gap:5px; color:var(--text-2); font-size:12px; }
+.tool-brand { width:28px; height:28px; flex-shrink:0; display:inline-block; } .tool-brand img { width:100%; height:100%; }
+.brand-light { display:none; } [data-theme="light"] .brand-light { display:block; } [data-theme="light"] .brand-dark { display:none; }
+.tool-neutral { color:var(--text-3); }
+.density-compact .tool-activity-heading, [data-density="compact"] .density-inherit .tool-activity-heading { padding:8px 10px; }
+@media(max-width:650px) { .tool-activity-heading { flex-wrap:wrap; gap:7px; } .tool-activity-name { flex-basis:60%; } }
+/* In catalog/server cards the mark sits in the same tile as a monogram, so branded and unbranded cards align. */
+.tl-card .tool-brand, .tl-row .tool-brand { width:34px; height:34px; padding:7px; box-sizing:border-box; border-radius:10px; background:linear-gradient(145deg, color-mix(in srgb, var(--text) 10%, transparent), color-mix(in srgb, var(--text) 3%, transparent)); box-shadow:inset 0 0 0 1px var(--line-strong); }

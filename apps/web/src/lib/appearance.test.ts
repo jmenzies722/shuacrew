@@ -2,6 +2,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_APPEARANCE, loadAppearance, normalizeAppearance, saveAppearance } from "./appearance";
 afterEach(() => vi.unstubAllGlobals());
 describe("workspace preferences", () => {
+  it("preserves an explicit arrow-only selection across reload", () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value) });
+    saveAppearance(normalizeAppearance({ sendShortcut: "button-only" }));
+    expect(loadAppearance().sendShortcut).toBe("button-only");
+  });
+  it("retains chat controls across reloads and rejects unsupported values", () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value) });
+    const next = normalizeAppearance({ sendShortcut: "modifier-enter", spellcheck: "off", turnMap: "hide" });
+    saveAppearance(next);
+    expect(loadAppearance()).toMatchObject({ sendShortcut: "modifier-enter", spellcheck: "off", turnMap: "hide" });
+    expect(normalizeAppearance({ sendShortcut: "auto", spellcheck: false, turnMap: "bad" })).toMatchObject({ sendShortcut: "enter", spellcheck: "on", turnMap: "show" });
+  });
   it("preserves deliberate palettes while migrating older preferences", () => {
     vi.stubGlobal("localStorage", { getItem: (key: string) => key === "shuacrew.appearance" ? JSON.stringify({ palette: "night", dark: "night", accent: "blue" }) : null });
     expect(loadAppearance()).toEqual({ ...DEFAULT_APPEARANCE, palette: "night", dark: "night", accent: "blue" });

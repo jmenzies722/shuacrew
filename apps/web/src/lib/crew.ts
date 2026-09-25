@@ -9,6 +9,17 @@ export function runRepo(run: RunView, runs: Record<string, RunView>): string | u
   return run.repo ?? (run.parent ? runs[run.parent]?.repo : undefined);
 }
 
+/**
+ * The one rule every pane (Board, Today, Floor) uses for "is this a session you'd see on its own?".
+ * `runs` is the full, unscoped run map so a child's parent can be looked up even when it's out of scope or archived.
+ */
+export function isTopLevelWork(run: RunView, runs: Record<string, RunView>): boolean {
+  // TODO(human): decide how a child run (delegation/subagent) whose parent is archived or missing should appear.
+  // Placeholder keeps today's Board behaviour: every child is hidden.
+  void runs;
+  return !run.parent;
+}
+
 export function inScope(repo: string | undefined, scope: string | null): boolean {
   return scope === null || repo === scope;
 }

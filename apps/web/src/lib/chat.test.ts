@@ -20,6 +20,16 @@ describe("follow-up pills", () => {
 });
 
 describe("turn footer", () => {
+  it("shows a streamed answer once when a checkpoint precedes its final result", () => {
+    const items = conversation([
+      ev("turn.started", { turn: 1, text: "Smoke test", by: "you" }),
+      ev("agent.delta", { turn: 1, text: "SHUACREW_READY" }),
+      ev("checkpoint.created", { turn: 1, note: "" }),
+      ev("agent.message", { turn: 1, text: "SHUACREW_READY", final: true }),
+    ]);
+    expect(items.filter((i) => i.kind === "prose")).toHaveLength(1);
+    expect(items.some((i) => i.kind === "checkpoint")).toBe(true);
+  });
   it("carries the model, tokens, checkpoint and the lessons the turn was given", () => {
     const items = conversation([
       ev("turn.started", { turn: 1, text: "fix it", by: "you" }),
@@ -33,6 +43,13 @@ describe("turn footer", () => {
 });
 
 describe("queue", () => {
+  it("replays edits and ordering, preserves unlisted arrivals, and clears consumed messages", () => {
+    const events = [ev("run.followup", { id: "a", text: "first" }), ev("run.followup", { id: "b", text: "second" }),
+      ev("run.followup.edited", { id: "a", text: "revised" }), ev("run.followups.reordered", { ids: ["b", "a"] })];
+    expect(queued(events)).toEqual([{ id: "b", text: "second" }, { id: "a", text: "revised" }]);
+    expect(queued([...events, ev("run.followup", { id: "c", text: "new" })])).toEqual([{ id: "b", text: "second" }, { id: "a", text: "revised" }, { id: "c", text: "new" }]);
+    expect(queued([...events, ev("turn.started", { turn: 1, text: "second\n\nrevised" }), ev("run.followup.edited", { id: "a", text: "stale" })])).toEqual([]);
+  });
   it("lists what's waiting, minus what was taken back, until the next turn starts", () => {
     const events = [ev("turn.started", { turn: 1, text: "a", by: "you" }), ev("run.followup", { id: "f1", text: "b" }), ev("run.followup", { id: "f2", text: "c" }), ev("run.followup.withdrawn", { id: "f1" })];
     expect(queued(events)).toEqual([{ id: "f2", text: "c" }]);

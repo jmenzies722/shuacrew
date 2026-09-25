@@ -1,4 +1,5 @@
 import type { RunView } from "@shuacrew/core/projections";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Button, Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -28,11 +29,15 @@ import {
   History,
   RefreshCw,
   Sunrise,
+  Trash2,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
-import { conversation, queued } from "../lib/conversation";
+import { conversation } from "../lib/conversation";
+import { MessageQueue } from "../components/MessageQueue";
+import { shouldSend } from "../lib/composer-keys";
+import { canRemoveSession, removeSession } from "../lib/session-removal";
 import { pauseClock, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
@@ -202,15 +207,24 @@ function Group({ title, runs, selected, accent }: { title?: string; runs: RunVie
 }
 
 function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
+  const [removing, setRemoving] = useState(false), [removeError, setRemoveError] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const navigate = useNavigate();
+  const remove = async () => {
+    setRemoving(true); setRemoveError("");
+    try { await removeSession(run.id, run.status); setConfirmRemove(false); if (selected) await navigate({ to: "/" }); }
+    catch (error) { setRemoveError((error as Error).message); }
+    finally { setRemoving(false); }
+  };
   const limited = useLive((s) => s.crew.limited);
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
   const pause = pauseClock(run, limited);
   const member = useLive((s) => (run.member ? s.crew.members[run.member] : undefined));
   return (
-    <Link
+    <Dialog.Root open={confirmRemove} onOpenChange={open => { if (!removing) { setConfirmRemove(open); setRemoveError(""); } }}><div className="session-sidebar-row"><Link
       to="/sessions/$id"
       params={{ id: run.id }}
-      className={`relative mb-0.5 block rounded-[10px] px-2.5 py-2 transition-colors ${selected ? "bg-raised" : "hover:bg-raised/60"}`}
+      className={`relative mb-0.5 block rounded-[10px] px-2.5 py-2 pr-9 transition-colors ${selected ? "bg-raised" : "hover:bg-raised/60"}`}
       aria-current={selected ? "page" : undefined}
     >
       {selected && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-full bg-amber" />}
@@ -246,7 +260,14 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
         {run.lessons.length > 0 && <Chip>{run.lessons.length === 1 ? "1 lesson" : `${run.lessons.length} lessons`}</Chip>}
         {run.status === "reviewing" && <Chip>review</Chip>}
       </div>
-    </Link>
+    </Link><Dialog.Trigger asChild><button className="session-remove" aria-label={`Remove chat: ${run.title}`} title={canRemoveSession(run.status) ? "Remove chat from sidebar" : "Stop this session before removing it"} disabled={removing || !canRemoveSession(run.status)}><Trash2 size={14} /></button></Dialog.Trigger></div>
+      <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm" /><Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl">
+        <Dialog.Title className="text-lg font-semibold text-fg">Remove chat?</Dialog.Title>
+        <Dialog.Description className="mt-3 text-sm leading-relaxed text-fg-2">“{run.title}” will be archived from the sidebar. Its audit history and project files are retained.</Dialog.Description>
+        {removeError && <p role="alert" className="mt-3 text-sm text-bad">{removeError}</p>}
+        <div className="mt-5 flex justify-end gap-3"><Dialog.Close asChild><Button disabled={removing}>Cancel</Button></Dialog.Close><Button disabled={removing || !canRemoveSession(run.status)} onClick={() => void remove()}>{removing ? "Removing…" : "Remove chat"}</Button></div>
+      </Dialog.Content></Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -319,13 +340,15 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       </header>
       <Thread items={items} working={working && scrub === null} run={run} />
       {!replay && <ReviewBar run={run} />}
-      {!replay && <Queue run={run} events={events ?? []} />}
+      {!replay && !run.labels.includes("crew-room") && <MessageQueue key={run.id} run={run.id} events={events ?? []} />}
       {replay ? (
         <div className="shrink-0 px-4 pb-3 pt-1">
           <div className="mx-auto max-w-[820px]">
             <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} />
           </div>
         </div>
+      ) : run.labels.includes("crew-room") ? (
+        <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This is a crew-room source conversation. <Link to="/rooms/$id" params={{ id: run.labels.find(label => label.startsWith("room:"))?.slice(5) ?? "" }}>Continue in the crew room →</Link></div>
       ) : (
         <Composer run={run} />
       )}
@@ -348,7 +371,7 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
   }, [open]);
   const archive = async () => {
     try {
-      await api(`/api/runs/${run.id}/archive`, { body: {} });
+      await removeSession(run.id, run.status);
       setOpen(false);
       navigate({ to: "/" });
     } catch (e) {
@@ -374,7 +397,7 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
             Copy session id
           </button>
           <div className="my-1 h-px bg-line" />
-          <button role="menuitem" disabled={working} onClick={() => void archive()} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={working ? "Stop it first" : undefined}>
+          <button role="menuitem" disabled={!canRemoveSession(run.status)} onClick={() => void archive()} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={!canRemoveSession(run.status) ? "Stop it first" : undefined}>
             Archive session
           </button>
           {error && <div className="px-3 pb-1.5 text-[11.5px] text-bad">{error}</div>}
@@ -479,37 +502,6 @@ function ReviewBar({ run }: { run: RunView }) {
   );
 }
 
-/** Messages you sent while it worked: they go with the next turn — edit or take them back until then. */
-function Queue({ run, events }: { run: RunView; events: import("@shuacrew/core/events").AnyEvent[] }) {
-  const waiting = queued(events);
-  if (!waiting.length) return null;
-  const withdraw = (id: string) => api(`/api/runs/${run.id}/followups/${id}/withdraw`, { body: {} });
-  return (
-    <div className="mx-auto w-full max-w-[820px] px-4">
-      <div className="queue">
-        <div className="queue-head">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" /> Queued — sent together when this turn ends
-        </div>
-        {waiting.map((q, i) => (
-          <div key={q.id ?? i} className="queue-item">
-            <span className="min-w-0 flex-1 truncate">{q.text}</span>
-            {q.id && (
-              <>
-                <button onClick={() => void withdraw(q.id!)?.then(() => window.dispatchEvent(new CustomEvent("shuacrew:insert", { detail: q.text })))} title="Edit (takes it back into the composer)">
-                  Edit
-                </button>
-                <button onClick={() => void withdraw(q.id!)} title="Take it back" aria-label="Withdraw message">
-                  ×
-                </button>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** How full the agent's context is: a ring that turns amber, then red, as it fills. */
 function ContextMeter({ used, limit }: { used?: number; limit?: number }) {
   if (!used || !limit) return null;
@@ -538,7 +530,7 @@ function NewSession() {
   const [terminal, setTerminal] = useTerminal();
   const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
   const ideas = [
-    { icon: CheckCircle2, text: "Review my uncommitted changes across ~/Developer and tell me what's risky" },
+    { icon: CheckCircle2, text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
     { icon: Bug, text: "Find a failing test in one of my projects and fix it" },
     { icon: Telescope, text: "Summarise what changed in my repos today" },
     { icon: Sparkles, text: "Look at my most recent project and suggest the next three things to build" },
@@ -589,6 +581,8 @@ const loadRuntimes = () => (runtimeCache ??= api<RuntimeInfo[]>("/api/runtimes")
 
 function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n: number }; hero?: boolean }) {
   const navigate = useNavigate();
+  const sendShortcut = useLive((s) => s.appearance.sendShortcut);
+  const spellcheck = useLive((s) => s.appearance.spellcheck);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -882,6 +876,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
           })()}
           <textarea
             ref={field}
+            spellCheck={spellcheck === "on"}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -893,7 +888,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                 setSlashIndex((i) => (i + (e.key === "ArrowDown" ? 1 : slash.length - 1)) % slash.length);
                 return;
               }
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (shouldSend(e.nativeEvent, slash.length && sendShortcut !== "button-only" ? "enter" : sendShortcut)) {
                 e.preventDefault();
                 if (slash.length) pick(slash[slashIndex]!.name, slash[slashIndex]!.kind);
                 else void send();
@@ -918,6 +913,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               <Paperclip size={14} />
             </button>
             <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
+            <button className="rounded-full px-2 py-1 text-[11px] text-fg-2 hover:bg-raised" title="Talk with Shua or a crew member" onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:voice", { detail: { runId: run?.member ? run.id : undefined, memberId: run?.member || member || "shua", runtime: run?.runtime || runtime || undefined } }))}>Voice mode</button>
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
             {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
             {run?.worktree && (
@@ -938,7 +934,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   onClick={() => void send()}
                   disabled={(!text.trim() && !files.some((f) => f.done)) || busy || uploading}
                   className="grid h-8 w-8 place-items-center rounded-full bg-amber text-[var(--on-accent)] transition hover:brightness-110 disabled:bg-raised disabled:text-fg-3"
-                  title={working ? "Queue (↵)" : "Send (↵)"}
+                  title={`${working ? "Queue" : "Send"}${sendShortcut === "button-only" ? "" : ` (${sendShortcut === "enter" ? "↵" : "⌘ / Ctrl + ↵"})`}`}
                   aria-label="Send"
                 >
                   <ArrowUp size={16} strokeWidth={2.5} />

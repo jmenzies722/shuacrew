@@ -16,6 +16,9 @@ export default defineConfig({
     },
   },
   build: {
+    // Existing Mac windows may still import a prior build's lazy chunks. Content-hashed
+    // assets are immutable; retain them across local updates until those windows reload.
+    emptyOutDir: false,
     target: "es2023",
     sourcemap: false,
     chunkSizeWarningLimit: 600,

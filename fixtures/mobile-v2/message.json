@@ -1,0 +1,1 @@
+{"version":2,"installationId":"mac_fixture","deviceId":"phone_fixture","commandId":"command_fixture","issuedAt":1000,"expiresAt":61000,"action":{"kind":"room-message","roomId":"room_fixture","text":"Review the result","recipient":"eli","replyTo":"result_fixture"}}

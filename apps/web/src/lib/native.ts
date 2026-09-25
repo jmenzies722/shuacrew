@@ -2,10 +2,63 @@
  * The Mac app's side of the bridge. In a browser none of this exists and every call is a no-op,
  * so the page works the same in both.
  */
-type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string };
+type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string } | { type: "notificationSettings"; requestId: string; preferences?: NativeNotificationPreferences } | { type: "voiceSettings"; requestId: string; action: "read" | "save" | "preview" | "stop"; preferences?: NativeVoicePreferences };
+
+export interface NativeVoicePreferences { voiceID: string; speed: number }
+export interface NativeVoiceSnapshot {
+  requestId: string;
+  preferences: NativeVoicePreferences;
+  voices: Array<{ id: string; name: string; language: string; gender: string; quality: number }>;
+  selectedID?: string;
+  speaking: boolean;
+  error?: string;
+}
+
+export function voiceSettings(action: "read" | "save" | "preview" | "stop" = "read", preferences?: NativeVoicePreferences): string | null {
+  const native = handler();
+  if (!native) return null;
+  const requestId = crypto.randomUUID();
+  native.postMessage({ type: "voiceSettings", requestId, action, preferences });
+  return requestId;
+}
+
+export interface NativeNotificationPreferences {
+  enabled: boolean;
+  approvals: boolean;
+  completions: boolean;
+  reviews: boolean;
+  briefings: boolean;
+  sounds: boolean;
+  quietHours: boolean;
+  quietStart: number;
+  quietEnd: number;
+}
+
+/** Reading never prompts; only explicitly enabling notifications asks macOS for permission. */
+export function notificationSettings(preferences?: NativeNotificationPreferences): string | null {
+  const native = handler();
+  if (!native) return null;
+  const requestId = crypto.randomUUID();
+  native.postMessage({ type: "notificationSettings", requestId, preferences });
+  return requestId;
+}
+
+/** A refresh is not an acknowledgement of a pending write/permission prompt. */
+export function settleNotificationRequest(pending: string | null, responseId: string, nativeBusy: boolean) {
+  const next = pending === responseId ? null : pending;
+  return { pending: next, busy: next !== null || nativeBusy };
+}
 
 interface Handler {
-  postMessage(message: Message): void;
+  postMessage(message: Message | { type: "mobileSettings" }): void;
+}
+
+/** Opens a native window only; no key, credential or pairing authority crosses WebKit. */
+export function openMobileSettings(): boolean {
+  const native = handler();
+  if (!native) return false;
+  native.postMessage({ type: "mobileSettings" });
+  return true;
 }
 
 const handler = (): Handler | undefined =>

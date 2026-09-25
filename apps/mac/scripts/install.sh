@@ -4,6 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}"
+# The installed window and the gateway must use the same current interface.
+pnpm --dir ../.. --filter @shuacrew/web build
 if [ ! -f Resources/AppIcon.icns ]; then
   ICON=$(mktemp -d)
   swift scripts/make-icon.swift "$ICON/icon.png"
@@ -41,16 +43,24 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 codesign --force --sign "${SHUACREW_SIGN_IDENTITY:--}" "$STAGE"
-# If it's open, quit it politely (a normal Quit — agents keep running in the gateway), install,
-# and open it again where it was.
-WAS_RUNNING=0
+# Quit through the app before installing. Running agents belong to the gateway and continue.
 if pgrep -xq ShuaCrew; then
-  WAS_RUNNING=1
-  osascript -e 'quit app id "dev.shuacrew.mac"' >/dev/null 2>&1 || true
-  for _ in $(seq 50); do pgrep -xq ShuaCrew || break; sleep 0.1; done
-  if pgrep -xq ShuaCrew; then echo "ShuaCrew didn't quit — close it and run this again." >&2; exit 1; fi
+  echo "Quit ShuaCrew before installing. Agents keep running in the gateway." >&2
+  exit 1
 fi
-rm -rf /Applications/ShuaCrew.app
-cp -R "$STAGE" /Applications/ShuaCrew.app
+INSTALL_STAGE=$(mktemp -d /Applications/.shuacrew-install.XXXXXX)
+ditto "$STAGE" "$INSTALL_STAGE/ShuaCrew.app"
+codesign --verify --strict "$INSTALL_STAGE/ShuaCrew.app"
+BACKUP="/Applications/ShuaCrew.backup-$(date +%Y%m%d-%H%M%S).app"
+if [ -e "$BACKUP" ]; then echo "Backup destination already exists: $BACKUP" >&2; exit 1; fi
+if [ -d /Applications/ShuaCrew.app ]; then
+  mv /Applications/ShuaCrew.app "$BACKUP"
+  echo "Previous app retained at $BACKUP"
+fi
+if ! mv "$INSTALL_STAGE/ShuaCrew.app" /Applications/ShuaCrew.app; then
+  [ ! -e /Applications/ShuaCrew.app ] && [ -d "$BACKUP" ] && mv "$BACKUP" /Applications/ShuaCrew.app
+  exit 1
+fi
+rmdir "$INSTALL_STAGE"
 echo "installed /Applications/ShuaCrew.app"
-if [ "$WAS_RUNNING" = 1 ]; then open -a /Applications/ShuaCrew.app && echo "reopened"; fi
+codesign --verify --strict /Applications/ShuaCrew.app

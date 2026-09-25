@@ -2,6 +2,8 @@ import { Button, Chip, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { BookOpen } from "lucide-react";
+import { PaneHeader } from "../components/Pane";
 
 interface Lesson {
   id: string;
@@ -67,14 +69,9 @@ export function Memory() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] px-6 py-6">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Memory</h1>
-            <p className="mt-1 text-[13px] text-fg-2">Lessons with provenance and confidence, skills you approve — all inspectable, all deletable. Confidence moves with the reviews of the runs a lesson was used in.</p>
-          </div>
-          <Button onClick={async () => (setEvolve(await api<Evolve>("/api/memory/evolve", { body: {} })), refresh())}>Evolve now</Button>
-        </div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="Brain" icon={BookOpen} title="Memory" description="Lessons with provenance and confidence, skills you approve — all inspectable, all deletable. Confidence moves with the reviews of the runs a lesson was used in."
+          actions={<Button onClick={async () => (setEvolve(await api<Evolve>("/api/memory/evolve", { body: {} })), refresh())}>Evolve now</Button>} />
 
         {evolve && (
           <Panel className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 text-[12.5px]">

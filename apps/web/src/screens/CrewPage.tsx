@@ -7,6 +7,9 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { Glyph, IconPicker } from "../lib/glyphs";
+import { SHUA_PERSONA, type MemberVoice } from "@shuacrew/core/voice";
+import { VoiceCastPicker } from "../components/VoiceCastPicker";
+import { PaneHeader } from "../components/Pane";
 
 interface Runtime {
   id: string;
@@ -38,18 +41,13 @@ export function CrewPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <header className="mb-6 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Your crew</h1>
-            <p className="mt-1 max-w-[640px] text-[13.5px] leading-relaxed text-fg-2">
-              A standing team you hand work to. Each member keeps its own thread, model and lessons — and new work is routed to whoever it's for.
-            </p>
-          </div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="Work" icon={Users} title="Your crew" description="A standing team you hand work to. Each member keeps its own thread, model and lessons — and new work is routed to whoever it's for." actions={<>
           <Button onClick={() => setEditing({ color: COLORS[list.length % COLORS.length], triggers: [] })}>
             <Plus size={14} /> New member
           </Button>
-        </header>
+          <Button variant="ghost" onClick={() => setEditing({ role: "Personal assistant", persona: SHUA_PERSONA, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "aiden", speed: 1, personality: "calm" } })}>Start from Shua</Button>
+        </>} />
 
         {list.length === 0 ? (
           <StarterCta />
@@ -227,6 +225,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
 }
 
 function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMember>; runtimes: Runtime[]; onClose: () => void }) {
+  const [voice, setVoice] = useState<MemberVoice>(member.voice ?? { voiceId: "aiden", speed: 1, personality: "calm" });
   const [draft, setDraft] = useState({
     id: member.id ?? "",
     name: member.name ?? "",
@@ -244,7 +243,7 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
   const set = (k: keyof typeof draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
   const save = async () => {
     try {
-      await api("/api/crew", { body: { ...draft, id: draft.id || draft.name, model: draft.model || undefined, triggers: draft.triggers.split(",").map((t) => t.trim()).filter(Boolean) } });
+      await api("/api/crew", { body: { ...draft, voice, id: draft.id || draft.name, model: draft.model || undefined, triggers: draft.triggers.split(",").map((t) => t.trim()).filter(Boolean) } });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -300,9 +299,10 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
           <span>Hand it work about… (comma-separated phrases)</span>
           <input value={draft.triggers} onChange={set("triggers")} placeholder="growth, retention, funnel, cohorts" />
         </label>
-        {draft.runtime === "claude" && <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-[12px]">
+        <div className="mt-4"><VoiceCastPicker value={voice} onChange={setVoice} /><p className="mt-2 text-[11px] text-fg-3">Preview the two local voices in Settings → Shua voice. Personality adds speaking style without replacing your instructions. Playback pace also changes pitch; 1× preserves the natural voice.</p></div>
+        {["claude", "codex"].includes(draft.runtime) && <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-[12px]">
           <input type="checkbox" className="mt-1 accent-[var(--amber)]" checked={draft.delegatable} onChange={(e) => setDraft((d) => ({ ...d, delegatable: e.target.checked }))} />
-          <span><strong className="block font-medium">Available for delegation</strong><span className="mt-1 block text-fg-3">Claude sessions can call this member as a specialist using its persona and model. It shares the parent’s tools and approvals; its private thread and lessons stay separate. Applies next turn.</span></span>
+          <span><strong className="block font-medium">Available for delegation</strong><span className="mt-1 block text-fg-3">Crew rooms can assign this member supervised tasks using its provider, persona and model, in a separate workspace. Claude members are also available as native specialists outside rooms. Applies to new assignments.</span></span>
         </label>}
         <div className="mt-3 flex gap-2">
           {COLORS.map((c) => (

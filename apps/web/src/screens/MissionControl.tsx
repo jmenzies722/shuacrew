@@ -3,10 +3,12 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { useMemo } from "react";
 import { AgentCard } from "../components/AgentCard";
-import { policyLine, scopeRuns } from "../lib/crew";
+import { policyLine, isTopLevelWork, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
 import { newSession } from "../shell/Shell";
+import { PaneHeader } from "../components/Pane";
+import { Radar } from "lucide-react";
 
 /** Home: what's running, what needs you, what just finished, what it's costing. */
 export function MissionControl() {
@@ -16,10 +18,10 @@ export function MissionControl() {
   const scoped = useMemo(() => scopeRuns(crew.runs, scope), [crew.runs, scope]);
   const runs = useMemo(() => Object.values(scoped), [scoped]);
   const live = runs
-    .filter((r) => ["running", "planning", "awaiting_approval", "paused", "queued"].includes(r.status) && !r.parent)
+    .filter((r) => ["running", "planning", "awaiting_approval", "paused", "queued"].includes(r.status) && isTopLevelWork(r, crew.runs))
     .sort((a, b) => rank(a.status) - rank(b.status) || b.updatedAt - a.updatedAt);
   const finished = runs
-    .filter((r) => ["done", "failed", "merged", "reviewing", "cancelled"].includes(r.status))
+    .filter((r) => ["done", "failed", "merged", "reviewing", "cancelled"].includes(r.status) && isTopLevelWork(r, crew.runs))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 8);
   const approvals = Object.values(crew.approvals)
@@ -35,19 +37,14 @@ export function MissionControl() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1440px] px-6 pb-10 pt-6">
-        <header className="mb-5 flex items-end gap-4">
-          <div>
-            <Eyebrow>{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</Eyebrow>
-            <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">Today</h1>
-          </div>
-          <div className="ml-auto flex items-center gap-6 pb-1 text-[12px] text-fg-2">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow={new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })} icon={Radar} title="Today" description="What needs you, what's moving, and what finished — each item opens where it came from."
+          actions={<div className="flex items-center gap-6 pb-1 text-[12px] text-fg-2">
             <Stat label="running" value={running} tone={running ? "live" : "idle"} />
             <Stat label="awaiting you" value={approvals.length} tone={approvals.length ? "wait" : "idle"} />
             <Stat label="finished today" value={finished.filter((r) => isToday(r.updatedAt)).length} tone="ok" />
             <Stat label="tokens today" value={formatTokens(crew.today.tokens)} tone="idle" />
-          </div>
-        </header>
+          </div>} />
 
         <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-5 max-[1100px]:grid-cols-1">
           <section aria-label="Live agents">

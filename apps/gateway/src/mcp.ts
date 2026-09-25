@@ -10,6 +10,7 @@ import { execFile } from "node:child_process";
 import type { AnyEvent } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
 import { listTools, type Connection } from "./mcp-client.js";
+import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 
 export interface McpServer {
   id: string;
@@ -19,6 +20,7 @@ export interface McpServer {
   url?: string;
   auth: "none" | "oauth";
   signedIn: boolean;
+  brand?: ReturnType<typeof resolveMcpBrand>;
 }
 
 interface Token {
@@ -96,7 +98,7 @@ export class Mcp {
 
   list(): McpServer[] {
     const tokens = this.tokens();
-    return [...fold(this.store.read(0)).values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(tokens[s.id]?.access) }));
+    return [...fold(this.store.read(0)).values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(tokens[s.id]?.access), brand: resolveMcpBrand({ name: s.name, url: s.url, packageId: mcpPackage(s.command, s.args) }) }));
   }
 
   /** What Claude should be given. Headers carry the bearer; callers must not log this. */

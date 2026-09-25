@@ -8,11 +8,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: MainWindow!
     private var tray: Tray?
     private var hotKey: HotKey?
+    private var mobile: MobileBridge!
+    private var mobileWindow: MobileSettingsWindow?
     /// For headless checks: no Dock icon, no menu-bar item, never takes focus.
     private let quiet = ProcessInfo.processInfo.environment["SHUACREW_NO_ACTIVATE"] == "1"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         window = MainWindow(gateway: gateway)
+        mobile = MobileBridge(gateway: gateway)
+        window.onMobileSettings = { [weak self] in self?.showMobileSettings() }
         NSApp.mainMenu = mainMenu()
         if quiet {
             NSApp.setActivationPolicy(.accessory)
@@ -21,11 +25,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.showWindow(nil)
             NSApp.activate()
             tray = Tray(gateway: gateway, window: window, notifications: true)
+            window.onNotificationSettings = { [weak self] body in self?.tray?.notificationSettings(body) }
             // ⌥Space, anywhere: ShuaCrew comes forward with the message box ready; again, it hides.
             hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
         }
         window.start()
         tray?.start()
+        Task { await mobile.start() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { quiet }
@@ -49,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate()
         window.showWindow(nil)
-        window.page("window.dispatchEvent(new Event('shuacrew:compose'))")
+        window.page("compose()")
     }
 
     // MARK: menus
@@ -61,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "About ShuaCrew", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(item("Settings…", ",", #selector(go(_:)), "/settings"))
+        app.addItem(item("Mobile Settings…", "", #selector(showMobileSettings)))
         app.addItem(.separator())
         let services = NSMenu()
         app.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services
@@ -141,6 +148,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func newRun() { window.page("launch()") }
+    @objc private func showMobileSettings() {
+        if mobileWindow == nil { mobileWindow = MobileSettingsWindow(model: mobile) }
+        mobileWindow?.showWindow(nil)
+        NSApp.activate()
+        Task { await mobile.refreshRooms() }
+    }
     @objc private func palette() { window.page("palette()") }
     @objc private func go(_ sender: NSMenuItem) { if let path = sender.representedObject as? String { window.navigate(path) } }
     @objc private func toggleTerminal() { window.page("terminal()") }
@@ -152,8 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openLog() { NSWorkspace.shared.open(Launcher.log) }
     @objc private func shortcuts() {
         window.showWindow(nil)
-        // The page's keymap overlay opens on "?".
-        window.web.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: '?'}))")
+        window.page("shortcuts()")
     }
 }
 

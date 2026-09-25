@@ -45,10 +45,13 @@ export interface Appearance {
   motion: "system" | "reduced" | "full";
   navigation: "icons" | "labels";
   startPage: "/" | "/floor" | "/activity" | "/ventures" | "/board";
+  sendShortcut: "enter" | "modifier-enter" | "button-only";
+  spellcheck: "on" | "off";
+  turnMap: "show" | "hide";
 }
 
 const KEY = "shuacrew.appearance";
-export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "frost", light: "daylight", accent: "amber", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/" };
+export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "frost", light: "daylight", accent: "amber", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
 
 export function normalizeAppearance(value: unknown): Appearance {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -59,6 +62,7 @@ export function normalizeAppearance(value: unknown): Appearance {
     accent: ACCENTS.map((a) => a.id), density: ["comfortable", "compact"],
     reading: ["small", "default", "large"], motion: ["system", "reduced", "full"],
     navigation: ["icons", "labels"], startPage: ["/", "/floor", "/activity", "/ventures", "/board"],
+    sendShortcut: ["enter", "modifier-enter", "button-only"], spellcheck: ["on", "off"], turnMap: ["show", "hide"],
   };
   return Object.fromEntries(Object.entries(choices).map(([key, allowed]) => [key,
     typeof raw[key] === "string" && allowed.includes(raw[key]) ? raw[key] : DEFAULT_APPEARANCE[key as keyof Appearance],

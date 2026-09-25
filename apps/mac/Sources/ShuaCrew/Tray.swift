@@ -16,6 +16,8 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
     private var primed = false
     private var timer: Timer?
     private let notifications: Bool
+    private var preferences = NotificationPreferences.read()
+    private var updatingNotifications = false
 
     init(gateway: Gateway, window: MainWindow, notifications: Bool) {
         self.gateway = gateway
@@ -203,48 +205,92 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
             UNNotificationCategory(identifier: "APPROVAL", actions: [allow, deny], intentIdentifiers: []),
             UNNotificationCategory(identifier: "REVIEW", actions: [approvePhase], intentIdentifiers: []),
         ])
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        // Only the user's Enable action in Settings may request OS permission.
+    }
+
+    func notificationSettings(_ body: [String: Any]) {
+        Task {
+            var error: String?
+            if let raw = body["preferences"] as? [String: Any] {
+                if updatingNotifications {
+                    error = "A notification setting is still being saved. Wait for the macOS permission prompt, then retry."
+                } else {
+                updatingNotifications = true
+                do {
+                    let next = try JSONDecoder().decode(NotificationPreferences.self, from: JSONSerialization.data(withJSONObject: raw))
+                    let ask = next.enabled && !preferences.enabled
+                    try next.save()
+                    preferences = next
+                    if !next.enabled {
+                        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+                        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+                    }
+                    if ask { _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
+                } catch let caught { error = caught.localizedDescription }
+                updatingNotifications = false
+                }
+            }
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            let permission: String
+            switch settings.authorizationStatus {
+            case .notDetermined: permission = "notDetermined"
+            case .denied: permission = "denied"
+            case .authorized: permission = "authorized"
+            case .provisional: permission = "provisional"
+            default: permission = "unknown"
+            }
+            guard let encoded = try? JSONEncoder().encode(preferences),
+                  let prefs = try? JSONSerialization.jsonObject(with: encoded) else { return }
+            var detail: [String: Any] = ["preferences": prefs, "permission": permission, "requestId": body["requestId"] as? String ?? "", "updating": updatingNotifications]
+            if let error { detail["error"] = error }
+            guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
+            _ = try? await window.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:notifications', {detail: \(json)}))")
+        }
+    }
+
+    private func shouldNotify(_ kind: NotificationPreferences.Kind) -> Bool {
+        notifications && preferences.shouldNotify(kind, hour: Calendar.current.component(.hour, from: Date()), appActive: NSApp.isActive)
     }
 
     private func notify(_ approval: CrewStatus.Approval) {
-        guard notifications else { return }
+        guard shouldNotify(.approval) else { return }
         let content = UNMutableNotificationContent()
         content.title = "Allow \(approval.tool)?"
         content.subtitle = approval.runTitle
         content.body = approval.summary
         content.categoryIdentifier = "APPROVAL"
-        content.sound = .default
-        content.interruptionLevel = approval.risk == "critical" ? .timeSensitive : .active
+        content.sound = preferences.sounds ? .default : nil
+        content.interruptionLevel = .active
         content.userInfo = ["approval": approval.id, "run": approval.run ?? ""]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: approval.id, content: content, trigger: nil))
     }
 
     private func notify(_ outcome: CrewStatus.Finished) {
-        guard notifications else { return }
+        guard shouldNotify(.completion) else { return }
         let content = UNMutableNotificationContent()
         content.title = outcome.headline
         content.body = outcome.detail
-        content.sound = outcome.status == "failed" ? .defaultCritical : .default
+        content.sound = preferences.sounds ? .default : nil
         content.userInfo = ["run": outcome.id]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: outcome.key, content: content, trigger: nil))
     }
 
     private func notify(_ briefing: CrewStatus.Briefing) {
-        guard notifications else { return }
+        guard shouldNotify(.briefing) else { return }
         let content = UNMutableNotificationContent()
         content.title = "Your morning briefing"
         content.body = briefing.headline
-        content.sound = .default
+        content.sound = preferences.sounds ? .default : nil
         content.userInfo = ["home": true]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: briefing.id, content: content, trigger: nil))
     }
 
     private func notify(_ review: CrewStatus.Review) {
-        guard notifications else { return }
+        guard shouldNotify(.review) else { return }
         let content = UNMutableNotificationContent()
         content.title = review.headline
         content.body = review.detail
-        content.sound = review.failed ? .defaultCritical : .default
+        content.sound = preferences.sounds ? .default : nil
         if !review.failed { content.categoryIdentifier = "REVIEW" }
         content.userInfo = ["play": review.play, "phase": "\(review.play)#\(review.index)"]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: review.key, content: content, trigger: nil))

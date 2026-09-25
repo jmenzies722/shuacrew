@@ -1,5 +1,9 @@
 # Kiro Crew: parity research for ShuaCrew
 
+> Historical research inventory, not a coverage score. See [the 2026-09-24 implementation status](parity-status-2026-09-24.md)
+> for code-backed coverage and the 0.7.0 changelog comparison. In particular, the provider-lock-in
+> characterization below is outdated: current Kiro Crew documents several alternative backends.
+
 Researched 2026-09-23 from public sources only: the GitHub repo `kirodotdev/KiroCrew` (main branch, Apache-2.0, about 4.1k stars) and kiro.dev/crew. This is a behaviour and feature checklist. No code was copied.
 `GH` = https://github.com/kirodotdev/KiroCrew/blob/main/ · `UD` = GH + src/kiro_crew/docs/ · `SS` = GH + docs/system-specs/modules/
 

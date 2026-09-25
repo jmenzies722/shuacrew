@@ -1,5 +1,6 @@
 import { Kbd } from "@shuacrew/ui";
 import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef } from "react";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
 
@@ -17,6 +18,20 @@ const KEYS: Array<[string, string[]]> = [
 export function KeymapOverlay() {
   const open = useLive((s) => s.keymapOpen);
   const setOpen = useLive((s) => s.setKeymap);
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    close.current?.focus();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => { window.removeEventListener("keydown", escape, true); previous?.focus(); };
+  }, [open, setOpen]);
   return (
     <AnimatePresence>
       {open && (
@@ -28,6 +43,7 @@ export function KeymapOverlay() {
           onMouseDown={() => setOpen(false)}
           onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
           role="dialog"
+          aria-modal="true"
           aria-label="Keyboard shortcuts"
         >
           <motion.div
@@ -38,7 +54,7 @@ export function KeymapOverlay() {
             className="grid w-[640px] max-w-[94vw] grid-cols-2 gap-x-8 gap-y-2 rounded-[var(--radius-l)] border border-line-strong p-6 backdrop-blur-xl"
             style={{ background: "var(--glass)" }}
           >
-            <h2 className="col-span-2 mb-2 text-[15px] font-semibold">Keyboard</h2>
+            <div className="col-span-2 mb-2 flex items-center justify-between"><h2 className="text-[15px] font-semibold">Keyboard</h2><button ref={close} onClick={() => setOpen(false)} aria-label="Close keyboard shortcuts" className="rounded-md border border-line px-2 py-1 text-[12px] text-fg-2">Close · Esc</button></div>
             {KEYS.map(([label, keys]) => (
               <Row key={label} label={label} keys={keys} />
             ))}

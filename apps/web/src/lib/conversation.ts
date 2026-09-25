@@ -5,6 +5,7 @@
  * the chosen sequence number, which is all "replay" needs to be.
  */
 import type { AnyEvent } from "@shuacrew/core/events";
+export { queuedMessages as queued } from "@shuacrew/core/queue";
 
 export type Item =
   | { kind: "ask"; seq: number; turn: number; text: string; by: string; at: number }
@@ -82,9 +83,10 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         break;
       case "agent.message": {
         const text = e.body.text.trim();
-        const last = items[items.length - 1];
-        // Runtimes often repeat their last words as the final result; show them once.
-        if (e.body.final && last?.kind === "prose" && last.text.trim().endsWith(text)) {
+        // A runtime checkpoint can arrive between the streamed answer and its final copy.
+        // Ignore that bookkeeping, but never deduplicate across turns or actual tool work.
+        const last = items.findLast((item) => item.kind !== "checkpoint");
+        if (e.body.final && last?.kind === "prose" && last.turn === e.body.turn && last.text.trim() === text) {
           endProse();
           break;
         }
@@ -204,15 +206,4 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
     }
   }
   return items;
-}
-
-/** Messages sent while the agent worked, still waiting for their turn (withdrawn ones excluded). */
-export function queued(events: AnyEvent[]): Array<{ id?: string; text: string }> {
-  let pending: Array<{ id?: string; text: string }> = [];
-  for (const e of events) {
-    if (e.kind === "run.followup") pending.push({ id: e.body.id, text: e.body.text });
-    if (e.kind === "run.followup.withdrawn") pending = pending.filter((f) => f.id !== e.body.id);
-    if (e.kind === "turn.started") pending = [];
-  }
-  return pending;
 }

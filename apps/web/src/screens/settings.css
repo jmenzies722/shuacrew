@@ -43,5 +43,18 @@
 .settings-empty svg { margin:auto auto 16px; }
 .settings-empty h3 { font-size:16px; color:var(--text); margin-bottom:8px; }
 .settings-notice { font-size:12px; color:var(--ok); margin-bottom:16px; }
+.preference-row input[role=switch] { appearance:none; flex-shrink:0; position:relative; width:34px; height:20px; border:1px solid var(--line-strong); background:var(--raised); border-radius:20px; cursor:pointer; }
+.preference-row input[role=switch]::after { content:""; display:block; width:14px; height:14px; margin:2px; border-radius:50%; background:var(--text-3); }
+.preference-row input[role=switch]:checked { background:var(--amber); border-color:var(--amber); }
+.preference-row input[role=switch]:checked::after { transform:translateX(14px); background:var(--on-accent); }
+.preference-row input[role=switch]:disabled { opacity:.4; cursor:wait; }
+.notification-status { display:flex; gap:12px; padding:20px; border-bottom:1px solid var(--line); color:var(--text-2); }
+.notification-status > svg { flex-shrink:0; margin-top:2px; color:var(--amber); }
+.notification-status strong { font-size:13px; font-weight:550; }
+.notification-status p { font-size:12px; color:var(--text-3); line-height:1.6; margin-top:5px; }
+.notification-status button { margin-left:auto; align-self:flex-start; padding:4px; }
+.notification-hours { display:flex; gap:20px; padding:0 20px 20px; }
+.notification-hours label { display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text-2); }
+.notification-hours select { padding:6px 10px; background:var(--raised); color:var(--text); border:1px solid var(--line-strong); border-radius:7px; }
 @media(max-width:850px) { .settings-save,.settings-sidebar-note { display:none; } .settings-layout { grid-template-columns:1fr; gap:24px; } .settings-sidebar { position:static; } .settings-sidebar nav { flex-direction:row; flex-wrap:wrap; margin-top:12px; } .settings-sidebar nav button { padding:9px; } }
 @media(max-width:520px) { .preference-row { align-items:stretch; flex-direction:column; gap:10px; } .preference-row select { width:100%; } .settings-section-heading { align-items:flex-start; } .settings-reset { font-size:10px; } }

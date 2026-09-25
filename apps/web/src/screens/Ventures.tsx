@@ -10,6 +10,7 @@ import { KIND } from "../lib/kinds";
 import { PublishButton, PublishSheet } from "../components/Publish";
 import { Glyph, IconPicker } from "../lib/glyphs";
 import { CountUp } from "../lib/motion";
+import { PaneHeader } from "../components/Pane";
 
 const STAGES: Array<{ id: VentureStage; label: string; hint: string }> = [
   { id: "idea", label: "Idea", hint: "Worth testing?" },
@@ -45,21 +46,17 @@ export function Ventures() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <header className="mb-6 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Ventures</h1>
-            <p className="mt-1 max-w-[640px] text-[13.5px] leading-relaxed text-fg-2">Each startup you're building — from idea to revenue. The crew works on it with its full context, and you see where it stands and what it earns.</p>
-          </div>
-          {list.length > 1 && mrr > 0 && (
-            <div className="vn-total">
-              <span>Total MRR</span>
-              <strong><CountUp value={mrr} format={(n) => money(n, list.find((v) => v.metrics)?.metrics?.currency)} /></strong>
-            </div>
-          )}
-          <Button variant={list.length ? "quiet" : "primary"} onClick={() => setEditing({})}>
-            <Plus size={14} /> New venture
-          </Button>
-        </header>
+        <PaneHeader eyebrow="Work" icon={Rocket} title="Ventures"
+          description="Each startup you're building — from idea to revenue. The crew works on it with its full context, and you see where it stands and what it earns."
+          actions={list.length > 0 && <>
+            {list.length > 1 && mrr > 0 && (
+              <div className="vn-total">
+                <span>Total MRR</span>
+                <strong><CountUp value={mrr} format={(n) => money(n, list.find((v) => v.metrics)?.metrics?.currency)} /></strong>
+              </div>
+            )}
+            <Button variant="quiet" onClick={() => setEditing({})}><Plus size={14} /> New venture</Button>
+          </>} />
         {list.length === 0 ? (
           <div className="crew-cta flex flex-col items-center py-14 text-center">
             <span className="grid h-14 w-14 place-items-center rounded-full bg-[var(--amber-soft)] text-amber">

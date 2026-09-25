@@ -2,7 +2,7 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
 import { Button, formatTokens } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldAlert, SquareTerminal, Wrench, Check } from "lucide-react";
+import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldAlert, SquareTerminal, Wrench, Check, Waypoints } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
@@ -10,6 +10,9 @@ import { inScope, runRepo } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
 import { Glyph } from "../lib/glyphs";
+import { CrewWorkspace } from "../components/CrewWorkspace";
+import { selectRooms } from "../lib/room-view";
+import { PaneHeader } from "../components/Pane";
 
 /**
  * The crew floor: every agent at work, live. Pods show what each is doing this second, the last
@@ -64,6 +67,8 @@ function useNow(ms = 1000) {
 }
 
 export function CrewFloor() {
+  const rooms = useLive(s => selectRooms(s.crew));
+  const [roomId, setRoomId] = useState("");
   const allRuns = useLive((s) => s.crew.runs);
   const scope = useLive((s) => s.scope);
   const runs = useMemo(() => {
@@ -106,20 +111,17 @@ export function CrewFloor() {
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <div>
-          <h1 className="text-[20px] font-semibold tracking-[-0.02em]">Crew floor</h1>
-          <p className="text-[12.5px] text-fg-3">Every agent at work, live.</p>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <PaneHeader eyebrow="Work" icon={Waypoints} title="Crew floor" description="Every agent at work, live. Select one to open its session." actions={<div className="flex flex-wrap items-center gap-2">
           <Stat value={working} label="working" live={working > 0} />
           <Stat value={waiting} label="waiting on you" tone={waiting ? "wait" : undefined} />
           <Stat value={perMinute} label="steps / min" />
           <Stat value={formatTokens(today.tokens)} label="tokens today" />
-        </div>
+        </div>} />
       </header>
 
       <div className="floor-body">
         <section className="floor-pods" aria-label="Agents">
+          {!!Object.keys(rooms).length && <div className="mb-5"><label className="text-[12px] text-fg-3">Room workspace <select className="ml-2 rounded-lg border border-line bg-panel px-3 py-2" value={roomId} onChange={e => setRoomId(e.target.value)}><option value="">All activity below</option>{Object.values(rooms).filter(room => !scope || room.repo === scope).map(room => <option key={room.id} value={room.id}>{room.title}</option>)}</select></label>{rooms[roomId] && <div className="mt-3 max-h-[520px] overflow-auto rounded-2xl border border-line"><CrewWorkspace room={rooms[roomId]} /></div>}</div>}
           {onFloor.length === 0 ? (
             <Quiet />
           ) : (

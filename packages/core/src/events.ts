@@ -7,6 +7,9 @@
  * and replay/time-travel cost nothing extra.
  */
 import { z } from "zod";
+import { MemberVoice } from "./voice.js";
+import { roomBodies } from "./rooms.js";
+import { mobileBodies } from "./mobile.js";
 
 export const RunStatus = z.enum([
   "queued",
@@ -48,12 +51,15 @@ const route = z.object({ runtime: RuntimeId, model: z.string().optional(), effor
 
 /** Bodies, by kind. Adding a kind means deciding what it proves, not where to put a field. */
 export const bodies = {
+  ...roomBodies,
+  ...mobileBodies,
   // work
   "run.created": z.object({
     title: z.string(),
     ask: z.string(),
     project: z.string().optional(),
     repo: z.string().optional(),
+    baseCommit: z.string().regex(/^[a-f0-9]{40}$/).optional(),
     runtime: RuntimeId,
     model: z.string().optional(),
     effort: z.string().optional(),
@@ -76,6 +82,8 @@ export const bodies = {
   "run.archived": z.object({ reason: z.string().default("") }),
   "run.followup": z.object({ id: z.string().optional(), text: z.string(), by: z.string().default("you") }), // another turn, same run
   "run.followup.withdrawn": z.object({ id: z.string() }), // taken back before its turn started
+  "run.followup.edited": z.object({ id: z.string(), text: z.string() }),
+  "run.followups.reordered": z.object({ ids: z.array(z.string()) }),
   "run.session": z.object({ runtime: RuntimeId, id: z.string() }), // the runtime's own conversation, for resume
 
   // conversation
@@ -115,6 +123,7 @@ export const bodies = {
     by: z.string(), // "you", "you (slack)", "policy", "timeout"
     always: z.boolean().default(false),
     comment: z.string().optional(),
+    mobileCommandId: z.string().optional(),
   }),
   "policy.decided": z.object({
     tool: z.string(),
@@ -131,6 +140,7 @@ export const bodies = {
     outputTokens: z.number().default(0),
     cacheTokens: z.number().default(0),
     costUsd: z.number().optional(), // only for api-key/bedrock runtimes
+    accounting: z.enum(["codex-delta-v1", "codex-last-v1"]).optional(),
     contextUsed: z.number().optional(),
     contextLimit: z.number().optional(),
   }),
@@ -142,6 +152,7 @@ export const bodies = {
     name: z.string(),
     role: z.string(),
     persona: z.string(),
+    voice: MemberVoice.optional(),
     delegatable: z.boolean().optional(),
     runtime: z.string().optional(),
     model: z.string().optional(),

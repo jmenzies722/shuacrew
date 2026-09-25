@@ -1,16 +1,28 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Check, Keyboard, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
+import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles } from "lucide-react";
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { AlwaysOn, Appearance, BackupsPanel, RuntimeSettings } from "./Pages";
+import { NotificationSettings } from "../components/NotificationSettings";
+import { VoiceSettings } from "../components/VoiceSettings";
+import { DeveloperSettings } from "../components/DeveloperSettings";
+import { openMobileSettings } from "../lib/native";
+import { CompanionSettings } from "../components/CompanionSettings";
+import { ToolCardSettings } from "../components/ToolCardSettings";
 import "./settings.css";
 
 const SECTIONS = [
+  { id: "play", title: "Personality & Play", description: "A little character. Your kind of workspace.", icon: Sparkles },
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette },
   { id: "workspace", title: "Workspace", description: "Shape the way you move through your day.", icon: Monitor },
+  { id: "chat", title: "Chat", description: "Your pace, your shortcuts, your conversations.", icon: MessageSquare },
+  { id: "voice", title: "Shua voice", description: "Find a voice that feels right. Hear it before you choose.", icon: AudioLines },
+  { id: "notifications", title: "Notifications", description: "Let the right things interrupt you.", icon: Bell },
+  { id: "mobile", title: "Mobile", description: "Your crew, within reach. Your Mac stays in control.", icon: Smartphone },
   { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles },
   { id: "data", title: "Data & service", description: "Keep your workspace available and backed up.", icon: ShieldCheck },
+  { id: "developer", title: "Developer", description: "Inspect the real system behind your crew.", icon: SlidersHorizontal },
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 
@@ -27,13 +39,21 @@ function Choice<K extends keyof Preferences>({ name, detail, field, options }: {
 }
 
 export function Settings() {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<Section>(() => window.location.hash === "#developer" ? "developer" : "appearance");
   const [query, setQuery] = useState("");
   const saved = useLive((s) => s.preferenceSaved);
   const set = useLive((s) => s.setAppearance);
   const keymap = useLive((s) => s.setKeymap);
   const [notice, setNotice] = useState("");
   const groups: Array<{ id: string; section: Section; title: string; terms: string; body: ReactNode }> = [
+    { id: "companion", section: "play", title: "Spark & Mini Crew", terms: "companion pet spark mini crew robot nickname accessory fun personality play focus timer", body: <CompanionSettings /> },
+    { id: "tool-cards", section: "chat", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
+    { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">
+      <p>Choose which crew rooms leave this Mac, compare pairing fingerprints, and revoke devices in the native setup window. Mobile sync is off by default.</p>
+      <button className="settings-link-card" onClick={() => { if (!openMobileSettings()) setNotice("Open ShuaCrew for Mac to configure mobile sync. No browser credentials or cloud connection were created."); }}><Smartphone size={22} /><span><strong>Open native Mobile settings <span>↗</span></strong><small>Checks this build’s signing and CloudKit setup. Opening settings never enables sync.</small></span></button>
+      <p className="dim">Delivery is not execution. Decisions require a signed Mac acknowledgment; a sleeping Mac may not respond until it wakes.</p>
+    </div> },
+    { id: "diagnostics", section: "developer", title: "Diagnostics & observability", terms: "developer diagnostics logs metrics usage cost tokens latency audit verify refresh gateway version memory", body: <DeveloperSettings /> },
     { id: "themes", section: "appearance", title: "Palette & accent", terms: "theme dark light system frost night graphite carbon midnight daylight paper sand blue green coral amber mono", body: <Appearance /> },
     { id: "reading", section: "appearance", title: "Reading & motion", terms: "font size small large text accessibility animations reduced motion", body: <div className="settings-card">
       <Choice name="Reading size" detail="Agent responses and documents. Code scales with the text." field="reading" options={[["small", "Small"], ["default", "Default"], ["large", "Large"]]} />
@@ -46,7 +66,14 @@ export function Settings() {
       <Choice name="Start screen" detail="Where a fresh launch opens. Direct links keep their destination." field="startPage" options={[["/", "Sessions"], ["/floor", "Crew floor"], ["/activity", "Today"], ["/ventures", "Ventures"], ["/board", "Board"]]} />
     </div> },
     { id: "keys", section: "workspace", title: "Keyboard shortcuts", terms: "commands keyboard shortcuts hotkeys search", body: <button className="settings-link-card" onClick={() => keymap(true)}><Keyboard size={22} /><span><strong>Stay in the flow</strong><small>Explore shortcuts for sessions, search, navigation, and more.</small></span><kbd>?</kbd></button> },
+    { id: "composer", section: "chat", title: "Composer & conversation", terms: "send enter command control shortcut spell check spelling minimap map turn navigator queue messages", body: <div className="settings-card">
+      <Choice name="Send shortcut" detail="Shift + Enter always inserts a new line. Arrow only also makes Enter a new line; click the send arrow when ready. While an agent works, messages join the queue." field="sendShortcut" options={[["enter", "Enter"], ["modifier-enter", "⌘ / Ctrl + Enter"], ["button-only", "Arrow only"]]} />
+      <Choice name="Spell check" detail="Use the system's spelling suggestions in the message composer." field="spellcheck" options={[["on", "On"], ["off", "Off"]]} />
+      <Choice name="Turn navigator" detail="Jump between prompts using the markers beside a desktop conversation." field="turnMap" options={[["show", "Show"], ["hide", "Hide"]]} />
+    </div> },
     { id: "runtimes", section: "agents", title: "Runtime connections", terms: "claude codex acp subscription auth model provider connection", body: <RuntimeSettings /> },
+    { id: "shua-voice", section: "voice", title: "Voice & speaking style", terms: "shua speech voice male female accent language local free preview speed audio", body: <VoiceSettings /> },
+    { id: "desktop-alerts", section: "notifications", title: "Mac desktop alerts", terms: "notifications permission desktop alerts background finish complete failure approval reviews quiet hours sounds morning briefing mute", body: <NotificationSettings /> },
     { id: "crew", section: "agents", title: "Build your crew", terms: "persona role member model prompts skills tools mcp policy approvals", body: <div className="settings-card settings-destinations">
       <Link to="/crew"><strong>Crew members <span>↗</span></strong><small>Choose roles, instructions, models, and which Claude specialists are available for delegation.</small></Link>
       <Link to="/integrations"><strong>Tools & skills <span>↗</span></strong><small>Give agents the capabilities your projects need.</small></Link>
@@ -60,7 +87,7 @@ export function Settings() {
   const selected = SECTIONS.find((s) => s.id === section)!;
   const reset = () => {
     const d = DEFAULT_APPEARANCE;
-    set(section === "appearance" ? { palette: d.palette, dark: d.dark, light: d.light, accent: d.accent, reading: d.reading, motion: d.motion } : { density: d.density, navigation: d.navigation, startPage: d.startPage });
+    set(section === "appearance" ? { palette: d.palette, dark: d.dark, light: d.light, accent: d.accent, reading: d.reading, motion: d.motion } : section === "chat" ? { sendShortcut: d.sendShortcut, spellcheck: d.spellcheck, turnMap: d.turnMap } : { density: d.density, navigation: d.navigation, startPage: d.startPage });
     setNotice(`${selected.title} restored to defaults.`);
   };
   return <div className="settings-page">
@@ -69,7 +96,7 @@ export function Settings() {
       <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
       <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, icon: Icon }) => <button key={id} aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); }}><Icon size={17} /><span>{title}</span></button>)}</nav>
       <div className="settings-sidebar-note"><span className="settings-kicker">BUILT AROUND YOU</span><p>One workspace.<br />Your entire crew.</p><Link to="/crew">Meet your agents ↗</Link></div>
-    </aside><div className="settings-content"><div className="settings-section-heading"><div><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && (section === "appearance" || section === "workspace") && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
+    </aside><div className="settings-content"><div className="settings-section-heading"><div><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && ["appearance", "workspace", "chat"].includes(section) && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
       {notice && <p role="status" className="settings-notice">{notice}</p>}
       {!visible.length && <div className="settings-empty"><Search size={28} /><h3>No settings found</h3><p>Try “motion”, “model”, “navigation”, or “backup”.</p></div>}
       {visible.map((g) => <section key={g.id} aria-label={g.title} className="settings-group"><h3>{words.length > 0 && <span>{SECTIONS.find((s) => s.id === g.section)!.title} / </span>}{g.title}</h3>{g.body}</section>)}

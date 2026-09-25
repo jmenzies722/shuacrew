@@ -1,9 +1,10 @@
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users } from "lucide-react";
+import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3 } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
 import { MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Milestones, useSpotlight } from "../lib/motion";
 import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
@@ -13,11 +14,14 @@ import { ApprovalToasts } from "./ApprovalToasts";
 import { CommandPalette } from "./CommandPalette";
 import { KeymapOverlay } from "./KeymapOverlay";
 import { LaunchSheet } from "./LaunchSheet";
+import { VoiceConversationHost } from "../components/VoiceConversation";
+import { CompanionHost } from "../components/Companion";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
   { to: "/ventures", label: "Ventures", hint: "Your startups, idea → revenue", icon: Rocket, key: "v", group: "Work" },
   { to: "/crew", label: "Crew", hint: "Your standing team", icon: Users, key: "r", group: "Work" },
+  { to: "/rooms", label: "Crew rooms", hint: "Shared conversation and real delegation", icon: MessagesSquare, key: "g", group: "Work" },
   { to: "/floor", label: "Crew floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
   { to: "/terminal", label: "Terminal", hint: "Your shells + ask the crew", icon: SquareTerminal, key: "t", group: "Work" },
   { to: "/playbooks", label: "Playbooks", hint: "Idea → shipped, in phases", icon: ListChecks, key: "w", group: "Plan" },
@@ -29,6 +33,9 @@ export const NAV = [
   { to: "/schedules", label: "Schedules", hint: "Runs while you're away", icon: CalendarClock, key: "c", group: "Brain" },
   { to: "/integrations", label: "Tools & Skills", hint: "MCP servers and skills", icon: Cable, key: "i", group: "Brain" },
   { to: "/policy", label: "Policy & Audit", hint: "What agents may do", icon: ShieldCheck, key: "a", group: "System" },
+  { to: "/observability", label: "Observability", hint: "Health, latency and recorded activity", icon: Activity, key: "o", group: "System" },
+  { to: "/usage", label: "Usage", hint: "Recorded tokens and honest coverage", icon: BarChart3, key: "u", group: "System" },
+  { to: "/developer", label: "Developer", hint: "Gateway diagnostics and audit integrity", icon: SquareTerminal, key: "d", group: "System" },
   { to: "/settings", label: "Settings", hint: "Agents, look, data", icon: Settings, key: ",", group: "System" },
 ] as const;
 
@@ -48,16 +55,20 @@ export function Shell() {
     <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>
       <TopBar />
       <IconRail />
-      <main className="min-h-0 min-w-0 overflow-hidden" id="main">
-        <motion.div key={section} className="h-full" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}>
+      <main className="min-h-0 min-w-0 overflow-hidden flex flex-col" id="main">
+        {/* WebKit may suspend animations while the native window is occluded. Core content
+            must be visible on its first frame, independent of animation scheduling. */}
+        <motion.div key={section} className="min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
+        <CompanionHost />
       </main>
       <Milestones />
       <CommandPalette />
       <LaunchSheet />
       <ApprovalToasts />
       <KeymapOverlay />
+      <VoiceConversationHost />
     </div>
     </MotionConfig>
   );
@@ -113,8 +124,8 @@ function TopBar() {
           <StatusGlyph tone={running ? "live" : "idle"} size={7} />
           <span className="tabular-nums text-fg-2">{running}</span> running
         </span>
-        <span className="mono tabular-nums" title="Tokens used today across every runtime">
-          {formatTokens(crew.today.tokens)} today
+        <span className="mono tabular-nums" title="Recorded input and output tokens today (UTC); excludes demo usage. Not remaining subscription quota.">
+          {formatTokens(crew.today.day === new Date().toISOString().slice(0, 10) ? crew.today.tokens : 0)} today
         </span>
       </span>
       <span
@@ -190,24 +201,24 @@ function RepoChip() {
 }
 
 /**
- * The rail: icons grouped by purpose. Hover (or focus) opens it into a labelled panel over the
- * page — every icon explains itself, and the page never reflows.
+ * Collapsed navigation stays fixed; only the hovered/focused item's label appears.
  */
 function IconRail() {
   const labeled = useLive((s) => s.appearance.navigation === "labels");
   const path = useRouterState({ select: (s) => s.location.pathname });
   const awaiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
-  const [open, setOpen] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const hover = (on: boolean) => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setOpen(on), on ? 280 : 120);
+  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
+  const show = (element: HTMLElement, label: string) => {
+    if (labeled) return;
+    const rect = element.getBoundingClientRect();
+    setTooltip({ label, left: rect.right + 12, top: Math.min(window.innerHeight - 46, Math.max(8, rect.top)) });
   };
+  useEffect(() => { setTooltip(null); }, [path, labeled]);
   const groups = ["Work", "Plan", "Brain", "System"] as const;
   const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
   return (
-    <nav aria-label="Primary" className={`rail ${open || labeled ? "is-open" : ""} ${labeled ? "is-pinned" : ""}`} onMouseEnter={() => hover(true)} onMouseLeave={() => hover(false)} onFocus={() => hover(true)} onBlur={() => hover(false)}>
+    <nav aria-label="Primary" className={`rail ${labeled ? "is-open is-pinned" : ""}`} onScroll={() => setTooltip(null)} onKeyDown={e => { if (e.key === "Escape") setTooltip(null); }}>
       {groups.map((group) => (
         <div key={group} className={`rail-group ${group === "System" ? "mt-auto" : ""}`}>
           <div className="rail-label">{group}</div>
@@ -215,7 +226,7 @@ function IconRail() {
             const active = to === "/" ? path === "/" || path.startsWith("/sessions") : path.startsWith(to);
             const b = badge(to);
             return (
-              <Link key={to} to={to} aria-label={label} aria-current={active ? "page" : undefined} className={`rail-item ${active ? "is-active" : ""}`} onClick={() => setOpen(false)}>
+              <Link key={to} to={to} aria-label={label} aria-current={active ? "page" : undefined} className={`rail-item ${active ? "is-active" : ""}`} onClick={() => setTooltip(null)} onMouseEnter={e => show(e.currentTarget, label)} onMouseLeave={() => setTooltip(null)} onFocus={e => show(e.currentTarget, label)} onBlur={() => setTooltip(null)}>
                 {active && <motion.span layoutId="rail-active" className="rail-active" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
                 <span className="rail-icon">
                   <Icon size={18} strokeWidth={1.75} />
@@ -231,6 +242,7 @@ function IconRail() {
           })}
         </div>
       ))}
+      {tooltip && createPortal(<div role="tooltip" className="rail-tooltip" style={{ top: tooltip.top, left: tooltip.left }}>{tooltip.label}</div>, document.body)}
     </nav>
   );
 }

@@ -7,6 +7,8 @@
 import { randomBytes } from "node:crypto";
 import type { CrewState } from "@shuacrew/core";
 import type { Library } from "./library.js";
+import type { RoomCoordinator } from "./rooms.js";
+import { ROOM_TOOLS, callRoomTool } from "./room-tools.js";
 
 export const TOOL_SERVER = "shuacrew";
 
@@ -73,6 +75,7 @@ export class ToolServer {
   constructor(
     private library: Library,
     private state: () => CrewState,
+    public rooms?: RoomCoordinator,
   ) {}
 
   /** One stable token per run for this gateway's life. */
@@ -110,12 +113,12 @@ export class ToolServer {
           protocolVersion: typeof m.params?.protocolVersion === "string" ? m.params.protocolVersion : "2025-06-18",
           capabilities: { tools: { listChanged: false } },
           serverInfo: { name: TOOL_SERVER, title: "ShuaCrew Library", version: "0.1.0" },
-          instructions: LIBRARY_HINT,
+          instructions: [LIBRARY_HINT, this.rooms?.hint(run)].filter(Boolean).join("\n\n"),
         });
       case "ping":
         return ok({});
       case "tools/list":
-        return ok({ tools: TOOLS });
+        return ok({ tools: [...TOOLS, ...(this.rooms?.roomFor(run) ? ROOM_TOOLS : [])] });
       case "tools/call": {
         const name = String(m.params?.name ?? "");
         const args = (m.params?.arguments ?? {}) as Record<string, unknown>;
@@ -131,6 +134,10 @@ export class ToolServer {
   }
 
   private call(name: string, args: Record<string, unknown>, run: string): string {
+    if (name.startsWith("crew_")) {
+      if (!this.rooms) throw new Error("Crew rooms unavailable");
+      return callRoomTool(this.rooms, name, args, run);
+    }
     const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : undefined);
     switch (name) {
       case "save_artifact": {
@@ -141,7 +148,7 @@ export class ToolServer {
           filename: str("filename"),
           summary: str("summary"),
           id: str("id"),
-          run: view?.parent ?? run, // a subagent's work belongs to the session you see
+          run: view?.labels.includes("crew-room") ? run : view?.parent ?? run,
           member: view?.member,
         });
         return `Saved "${saved.title}" to the Library as ${saved.id} (version ${saved.version}, ${saved.kind}). The user can open it from the Library.`;

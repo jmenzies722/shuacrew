@@ -4,16 +4,17 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { ACCENTS, PALETTES, resolvePalette, type Palette } from "../lib/appearance";
 import { useLive } from "../lib/live";
+import { PaneHeader } from "../components/Pane";
+import { ShieldCheck } from "lucide-react";
 
 export { Specs } from "./Specs";
 
 function Page({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] px-6 py-6">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{title}</h1>
-        <p className="mt-1 text-[13px] text-fg-2">{subtitle}</p>
-        <div className="mt-6 flex flex-col gap-5">{children}</div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="System" icon={ShieldCheck} title={title} description={subtitle} />
+        <div className="flex flex-col gap-5">{children}</div>
       </div>
     </div>
   );

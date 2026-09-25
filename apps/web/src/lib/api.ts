@@ -1,3 +1,6 @@
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); this.name = "ApiError"; }
+}
 /** Every request carries the CSRF header the gateway requires for anything that changes state. */
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const response = await fetch(path, {
@@ -7,7 +10,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+  if (!response.ok) throw new ApiError(data.error ?? `HTTP ${response.status}`, response.status);
   return data;
 }
 

@@ -68,7 +68,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
             <Gauge used={run.usage.contextUsed} limit={run.usage.contextLimit} />
             <span className="mono text-[11px] tabular-nums text-fg-2" title="Tokens used by this run">
               {formatTokens(tokens)}
-              {run.usage.costUsd > 0 && <> · ${run.usage.costUsd.toFixed(2)}</>}
+              {run.usage.costUsd != null && <> · ${run.usage.costUsd.toFixed(2)} reported</>}
             </span>
             <span className="text-[11px] text-fg-3">{since(run.updatedAt)}</span>
           </span>

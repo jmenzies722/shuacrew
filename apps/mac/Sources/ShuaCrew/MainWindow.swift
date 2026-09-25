@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import ShuaCrewCore
 
 /// One window: native chrome and sidebar material, the screens in WebKit on top of it.
 @MainActor
@@ -11,14 +12,18 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     static let titleBarHeight: CGFloat = 38
     private let gateway: Gateway
     private let overlay = StartOverlay()
+    private let voiceSettings = VoiceSettings()
+    private let voiceAudio = NativeVoiceAudio()
     private static let lastPathKey = "lastPath"
+    var onNotificationSettings: (([String: Any]) -> Void)?
+    var onMobileSettings: (() -> Void)?
 
     init(gateway: Gateway) {
         self.gateway = gateway
         let config = WKWebViewConfiguration()
         // Mark the page before it renders so the CSS lays out for the Mac window from the first frame.
         config.userContentController.addUserScript(WKUserScript(
-            source: "document.documentElement.dataset.shell = 'mac';",
+            source: "document.documentElement.dataset.shell = 'mac'; document.documentElement.dataset.nativeVoice = '1';",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.preferences.isElementFullscreenEnabled = true
         config.writingToolsBehavior = .none // no Writing Tools badge hanging off the composer
@@ -65,6 +70,13 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             strip.heightAnchor.constraint(equalToConstant: Self.titleBarHeight),
         ])
         super.init(window: window)
+        voiceAudio.onEvent = { [weak self] body in
+            guard let data = try? JSONSerialization.data(withJSONObject: body), let json = String(data: data, encoding: .utf8) else { return }
+            self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:voiceAudio', { detail: \(json) }))")
+        }
+        voiceSettings.onSnapshot = { [weak self] json in
+            self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:voices', { detail: \(json) }))")
+        }
         window.delegate = self
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -121,16 +133,36 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     }
 
     func windowDidResize(_ notification: Notification) { placeTrafficLights() }
+    func windowWillClose(_ notification: Notification) { voiceSettings.stop(); voiceAudio.end() }
     func windowDidExitFullScreen(_ notification: Notification) { placeTrafficLights() }
     // Full screen has no desktop behind it: the page paints its chrome solid, in the app's colour.
-    func windowWillEnterFullScreen(_ notification: Notification) { page("document.documentElement.dataset.fullscreen = '1'") }
-    func windowWillExitFullScreen(_ notification: Notification) { page("delete document.documentElement.dataset.fullscreen") }
+    func windowWillEnterFullScreen(_ notification: Notification) { page("fullscreen(true)") }
+    func windowWillExitFullScreen(_ notification: Notification) { page("fullscreen(false)") }
 
     // MARK: messages from the page
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
+        case "voiceAudio":
+            let origin = message.frameInfo.securityOrigin
+            guard let url = URL(string: "\(origin.protocol)://\(origin.host):\(origin.port)"),
+                  let command = try? VoiceAudioCommand.decode(body, mainFrame: message.frameInfo.isMainFrame, origin: url, expected: gateway.base) else { return }
+            voiceAudio.handle(command)
+        case "mobileSettings":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.protocol == gateway.base.scheme,
+                  origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            onMobileSettings?()
+        case "voiceSettings":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.protocol == gateway.base.scheme,
+                  origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            voiceSettings.handle(body)
+        case "notificationSettings":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            onNotificationSettings?(body)
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
@@ -172,6 +204,11 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     }
 
     // MARK: navigation
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        voiceSettings.stop()
+        voiceAudio.end()
+    }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         web.isHidden = false
@@ -215,6 +252,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
 
     /// WebKit can kill a page's process under memory pressure; come back rather than go blank.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        voiceAudio.end()
         webView.reload()
     }
 }

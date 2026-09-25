@@ -48,9 +48,9 @@ export function status(t = tools()) {
   };
 }
 
-function run(file: string, args: string[], timeoutMs = 300_000): Promise<string> {
+function run(file: string, args: string[], timeoutMs = 300_000, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(file, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, signal }, (error, stdout, stderr) => {
       if (error) reject(new Error(`${path.basename(file)}: ${(stderr || error.message).toString().trim().split("\n").pop()}`));
       else resolve(stdout.toString());
     });
@@ -58,13 +58,14 @@ function run(file: string, args: string[], timeoutMs = 300_000): Promise<string>
 }
 
 /** Speech → text. `timestamps` keeps "[00:01.2 → 00:04.0]" markers (for video). */
-export async function transcribe(file: string, options: { timestamps?: boolean } = {}, t = tools()): Promise<string> {
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number } = {}, t = tools()): Promise<string> {
+  options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);
   try {
-    await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], 120_000);
+    await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], options.timeoutMs ?? 120_000, options.signal);
     const threads = String(Math.max(2, Math.min(8, os.cpus().length - 2)));
-    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", ...(options.timestamps ? [] : ["-nt"])], 600_000);
+    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
     return out
       .split("\n")
       .map((l) => l.replace(/^\[(\d\d:\d\d:\d\d)\.\d+ --> (\d\d:\d\d:\d\d)\.\d+\]\s*/, (_, a: string, b: string) => `[${a.replace(/^00:/, "")}–${b.replace(/^00:/, "")}] `).trim())

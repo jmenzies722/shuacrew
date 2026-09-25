@@ -6,6 +6,7 @@
 import { apply, emptyState, type AnyEvent, type CrewMember, type CrewState } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
 import type { RunSpec } from "@shuacrew/runtimes";
+import { PERSONALITIES } from "@shuacrew/core/voice";
 
 export type MemberInput = Omit<CrewMember, "thread" | "sessions">;
 
@@ -125,7 +126,7 @@ export class Crew {
   persona(id: string): string | undefined {
     const m = this.get(id);
     if (!m) return undefined;
-    return `You are ${m.name}, the crew's ${m.role}. ${m.persona}`;
+    return `You are ${m.name}, the crew's ${m.role}. ${m.persona}${m.voice ? `\nConversational style: ${PERSONALITIES[m.voice.personality]}` : ""}`;
   }
 
   /** Native Claude specialists share the parent's session tools and approval policy.

@@ -6,6 +6,7 @@
  * another site can't set that header without a CORS preflight this server never approves, which is
  * the CSRF defence. The dashboard is served with a strict CSP (no inline script, no remote origins).
  */
+import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,6 +37,15 @@ import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
 import { FEATURED, fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
 import type { EventStore } from "./store.js";
+import { speechRoutes } from "./speech-routes.js";
+import type { SpeechService } from "./speech.js";
+import { speechManifest } from "./speech.js";
+import { VoiceSessions } from "./voice-sessions.js";
+import { randomUUID } from "node:crypto";
+import type { RoomCoordinator } from "./rooms.js";
+import { roomRoutes } from "./room-routes.js";
+import { observabilityRoutes } from "./observability.js";
+import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 
 export interface ServerOptions {
   store: EventStore;
@@ -63,6 +73,9 @@ export interface ServerOptions {
   tools?: ToolServer;
   terminals?: Terminals;
   uploads?: Uploads;
+  speech?: SpeechService;
+  rooms?: RoomCoordinator;
+  mobile?: MobileRoutesSource;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -128,6 +141,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     reply.header("Referrer-Policy", "no-referrer");
     return payload;
   });
+  speechRoutes(app, options.speech);
+  roomRoutes(app, options.rooms);
+  observabilityRoutes(app, store);
+  mobileRoutes(app, options.mobile);
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
 
@@ -141,16 +158,23 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       return uploads.process(uploads.save(request.query.name ?? "file", request.body));
     });
     // Dictation: speech in, text out — nothing kept.
-    app.post<{ Querystring: { name?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
+    app.post<{ Querystring: { name?: string; voice?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
       if (!Buffer.isBuffer(request.body) || !request.body.length) return reply.code(400).send({ error: "no audio" });
       const ext = (request.query.name ?? "voice.webm").split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "webm";
-      const file = path.join(os.tmpdir(), `shuacrew-dictation-${Date.now()}.${ext}`);
+      if (request.query.voice === "1" && request.body.length > 8 * 1024 * 1024) return reply.code(413).send({ error: "Voice recording exceeds 8 MiB." });
+      const file = path.join(os.tmpdir(), `shuacrew-dictation-${randomUUID()}.${ext}`);
+      const abort = new AbortController();
+      const cancel = () => abort.abort();
+      reply.raw.once("close", cancel);
+      const deadline = request.query.voice === "1" ? setTimeout(cancel, 45_000) : undefined;
       writeFileSync(file, request.body, { mode: 0o600 });
       try {
-        return { text: await transcribe(file) };
+        return { text: await transcribe(file, { signal: abort.signal, timeoutMs: request.query.voice === "1" ? 45_000 : undefined }) };
       } catch (error) {
         return reply.code(422).send({ error: (error as Error).message });
       } finally {
+        clearTimeout(deadline);
+        reply.raw.off("close", cancel);
         rmSync(file, { force: true });
       }
     });
@@ -320,6 +344,28 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     }
   });
 
+  app.post<{ Params: { id: string; followup: string }; Body: { text?: unknown; expectedText?: unknown } }>("/api/runs/:id/followups/:followup/edit", async (request, reply) => {
+    const { text, expectedText } = request.body ?? {};
+    if (typeof text !== "string" || !text.trim() || text.length > 100_000 || typeof expectedText !== "string") return reply.code(400).send({ error: "Provide a nonempty message (up to 100,000 characters) and its original text." });
+    try {
+      supervisor.editFollowup(request.params.id, request.params.followup, text, expectedText);
+      return { ok: true };
+    } catch (error) {
+      return reply.code(409).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { ids?: unknown } }>("/api/runs/:id/followups/reorder", async (request, reply) => {
+    const ids = request.body?.ids;
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) return reply.code(400).send({ error: "Provide the ordered message ids." });
+    try {
+      supervisor.reorderFollowups(request.params.id, ids);
+      return { ok: true };
+    } catch (error) {
+      return reply.code(409).send({ error: (error as Error).message });
+    }
+  });
+
   app.post<{ Params: { id: string }; Body: { turn?: number } }>("/api/runs/:id/fork", async (request, reply) => {
     const run = state.runs[request.params.id];
     if (!run) return reply.code(404).send({ error: "no such session" });
@@ -366,7 +412,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Params: { id: string } }>("/api/runs/:id/archive", async (request, reply) => {
     const run = state.runs[request.params.id];
     if (!run) return reply.code(404).send({ error: "no such session" });
-    if (["running", "planning", "queued", "awaiting_approval"].includes(run.status)) {
+    if (["running", "planning", "queued", "awaiting_approval", "paused"].includes(run.status)) {
       return reply.code(409).send({ error: "stop the session before archiving it" });
     }
     store.append("run.archived", { reason: "archived by you" }, { run: run.id });
@@ -438,11 +484,22 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   if (options.crew) {
     const crew = options.crew;
+    const voice = new VoiceSessions(store, supervisor, crew, options.runtimes);
+    app.post<{ Body: { runtime?: string } }>("/api/voice/initialize", async (request, reply) => {
+      try { return voice.initialize(request.body?.runtime ?? ""); }
+      catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    });
+    app.post<{ Body: Parameters<VoiceSessions["submit"]>[0] }>("/api/voice/utterances", async (request, reply) => {
+      try { return voice.submit(request.body ?? {}); }
+      catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    });
+    app.get<{ Params: { id: string } }>("/api/voice/runs/:id/idle", async request => ({ idle: !supervisor.isActive(request.params.id) }));
     app.get("/api/crew", async () => crew.list());
     app.post("/api/crew/starter", async () => crew.starter());
     app.post<{ Body: Partial<MemberInput> }>("/api/crew", async (request, reply) => {
       const b = request.body ?? {};
       try {
+        if (b.voice && !speechManifest.voices.some(v => v.id === b.voice!.voiceId)) throw new Error("Choose an available neural voice.");
         return crew.set({
           id: b.id ?? b.name ?? "",
           name: b.name ?? "",
@@ -454,6 +511,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
           color: b.color ?? "#ffb020",
           emoji: b.emoji ?? "",
           triggers: b.triggers ?? [],
+          voice: b.voice ?? crew.get(b.id ?? "")?.voice,
         });
       } catch (error) {
         return reply.code(400).send({ error: (error as Error).message });
@@ -972,7 +1030,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     // Servers we checked work: each says whether you've added it already.
     app.get("/api/mcp/featured", async () => {
       const mine = mcp.list();
-      return FEATURED.map((f) => ({ ...f, added: mine.find((s) => s.name === f.name)?.id ?? null }));
+      return FEATURED.map((f) => ({ ...f, added: mine.find((s) => s.name === f.name)?.id ?? null, brand: resolveMcpBrand({ name: f.name, url: f.url, packageId: mcpPackage(f.command, f.args ?? []) }) }));
     });
     app.post<{ Params: { id: string }; Body: { folder?: string } }>("/api/mcp/featured/:id", async (request, reply) => {
       const f = FEATURED.find((x) => x.id === request.params.id);

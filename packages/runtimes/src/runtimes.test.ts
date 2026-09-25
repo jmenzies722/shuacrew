@@ -64,6 +64,26 @@ describe("usage-window messages", () => {
 });
 
 describe("Codex's stream", () => {
+  it("deduplicates cumulative usage and does not add reasoning twice", () => {
+    const t = new CodexTranslator(); t.translate("turn/started", { turn: { id: "turn1" } });
+    const first = { turnId: "turn1", tokenUsage: { last: { inputTokens: 100, outputTokens: 30, reasoningOutputTokens: 20, cachedInputTokens: 40 }, total: { inputTokens: 100, outputTokens: 30, cachedInputTokens: 40, totalTokens: 130 } } };
+    const events = t.translate("thread/tokenUsage/updated", first);
+    expect(t.translate("thread/tokenUsage/updated", first)).toEqual([]);
+    events.push(...t.translate("thread/tokenUsage/updated", { turnId: "turn1", tokenUsage: { last: { inputTokens: 80, outputTokens: 20, reasoningOutputTokens: 10, cachedInputTokens: 20 }, total: { inputTokens: 180, outputTokens: 50, cachedInputTokens: 60, totalTokens: 230 } } }));
+    const usage = events.filter(e => e.type === "usage");
+    expect(usage.reduce((n, e) => n + e.inputTokens, 0)).toBe(180);
+    expect(usage.reduce((n, e) => n + e.outputTokens, 0)).toBe(50);
+    expect(usage.reduce((n, e) => n + (e.cacheTokens ?? 0), 0)).toBe(60);
+    expect(usage[0]).not.toHaveProperty("contextUsed");
+  });
+  it("uses a resumed baseline without counting previous turns and labels counter resets", () => {
+    const t = new CodexTranslator();
+    const notification = (inputTokens: number, outputTokens: number) => ({ tokenUsage: { last: { inputTokens: 10, outputTokens: 5, cachedInputTokens: 0 }, total: { inputTokens, outputTokens, cachedInputTokens: 0 } } });
+    expect(t.translate("thread/tokenUsage/updated", notification(1000, 100))).toEqual([]);
+    t.translate("turn/started", { turn: { id: "new" } });
+    expect(t.translate("thread/tokenUsage/updated", notification(1010, 105))[0]).toMatchObject({ inputTokens: 10, outputTokens: 5, accounting: "codex-delta-v1" });
+    expect(t.translate("thread/tokenUsage/updated", notification(10, 5))[0]).toMatchObject({ inputTokens: 10, outputTokens: 5, accounting: "codex-last-v1" });
+  });
   it("maps items and marks a failed usage window as limited", () => {
     const t = new CodexTranslator();
     const events = [
@@ -118,11 +138,12 @@ rl.on("line", (line) => {
     const env = { ...process.env, OPENAI_API_KEY: "sk-should-never-arrive" };
     const events = await collect(
       runtime.start(
-        { id: "r1", ask: "push it", cwd: dir, mcpServers: { github: { command: "true", args: [] } } },
+        { id: "r1", ask: "push it", cwd: dir, disableNativeAgents: true, mcpServers: { github: { command: "true", args: [] } } },
         { signal: new AbortController().signal, env: agentEnv(env, "subscription"), approve: async (tool, input) => (asked.push(`${tool}:${(input as { command: string }).command}`), { allow: false, reason: "policy" }) },
       ),
     );
     expect(JSON.parse(readFileSync(path.join(dir, "started.json"), "utf8")).config.mcp_servers).toEqual({ github: { command: "true", args: [] } });
+    expect(JSON.parse(readFileSync(path.join(dir, "started.json"), "utf8")).config.features.multi_agent).toBe(false);
     expect(asked).toEqual(["commandExecution:git push origin main"]);
     expect(events.find((e) => e.type === "tool-result")).toMatchObject({ ok: false });
     expect(events.find((e) => e.type === "done")).toMatchObject({ text: "leaked:" });

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "asset": "spark-atlas.png",
+  "origin": "Original artwork generated with built-in image generation for ShuaCrew, 2026-09-25",
+  "layout": { "columns": 7, "rows": 3 },
+  "columns": ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"],
+  "rows": ["calm", "curious", "bright"],
+  "prompt": "Original optional Spark companion: transparent 7-column by 3-row production sprite atlas. Same friendly intelligent silver/ceramic robot, charcoal face screen, amber eyes, tiny arms and feet, centered at consistent scale. Rows calm, curious, bright; columns no accessory, cap, headphones, scarf, glasses, antenna, badge. No text, watermark, company or competitor likeness. Legible at 48px. No AI calls at runtime."
+}

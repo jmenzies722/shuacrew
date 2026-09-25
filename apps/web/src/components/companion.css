@@ -1,0 +1,23 @@
+.spark-art { display:block; width:64px; height:64px; flex-shrink:0; background-image:url('/companion/spark-atlas.png'); background-size:700% 300%; background-repeat:no-repeat; }
+.companion-dock { flex-shrink:0; border-top:1px solid var(--line); background:var(--panel); padding:6px 20px; display:flex; flex-wrap:wrap; gap:12px; justify-content:flex-end; align-items:center; }
+.companion-widget { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.companion-trigger { display:flex; align-items:center; text-align:left; gap:8px; border-radius:12px; }
+.companion-trigger strong, .companion-trigger small { display:block; }
+.companion-trigger strong { font-size:13px; font-weight:600; color:var(--text); }
+.companion-trigger small { color:var(--text-3); font-size:11px; margin-top:3px; }
+.companion-trigger:focus-visible, .companion-controls button:focus-visible { outline:2px solid var(--amber); outline-offset:3px; }
+.companion-controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.companion-controls button { border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--text-2); background:var(--raised); }
+.companion-controls button:hover { color:var(--text); border-color:var(--line-strong); }
+.companion-members { display:flex; gap:4px; } .companion-members button { border:1px solid var(--line); border-radius:50%; width:30px; height:30px; background:var(--raised); }
+.companion-widget.pose-offline .spark-art { opacity:.55; } .pose-review .companion-trigger small { color:var(--wait); } .pose-failed .companion-trigger small { color:var(--bad); }
+.is-waving .spark-art { animation:spark-wave .65s ease-in-out; }
+.is-celebrating .spark-art { animation:spark-wave .8s ease-in-out; }
+@keyframes spark-wave { 0%,100% { transform:rotate(0); } 30% { transform:rotate(-8deg); } 65% { transform:rotate(8deg); } }
+[data-motion="reduced"] .spark-art, .is-background .spark-art { animation:none!important; }
+@media(prefers-reduced-motion:reduce) { .spark-art { animation:none!important; } }
+.companion-preview { padding:24px; border:1px dashed var(--line-strong); border-radius:16px; background:var(--sunken); margin:16px 0; }
+.companion-preview > small { display:block; color:var(--text-3); font-size:10px; letter-spacing:.08em; margin-bottom:12px; }
+.companion-preview .spark-art { width:96px; height:96px; }
+.focus-control { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:12px; }
+.focus-control strong,.focus-control small { display:block; } .focus-control small { font-size:11px; color:var(--text-3); margin-top:4px; }

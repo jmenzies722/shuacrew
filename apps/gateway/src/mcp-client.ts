@@ -6,6 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { boundedIcons, type McpIcon } from "./mcp-icons.js";
 
 export interface ToolInfo {
   name: string;
@@ -13,11 +14,12 @@ export interface ToolInfo {
   description: string;
   readOnly?: boolean;
   destructive?: boolean;
+  icons?: McpIcon[];
 }
 
 export interface Connection {
   ok: boolean;
-  server?: { name: string; version: string };
+  server?: { name: string; version: string; icons?: McpIcon[] };
   tools: ToolInfo[];
   error?: string;
   at: number;
@@ -62,12 +64,13 @@ export async function listTools(target: { command?: string; args?: string[]; url
           description: (t.description ?? "").replace(/\s+/g, " ").trim().slice(0, 400),
           readOnly: t.annotations?.readOnlyHint,
           destructive: t.annotations?.destructiveHint,
+          icons: boundedIcons(t.icons),
         });
       }
       cursor = page.nextCursor;
     } while (cursor && tools.length < 500);
     const info = client.getServerVersion();
-    return { ok: true, server: info ? { name: info.name, version: info.version } : undefined, tools, at: Date.now() };
+    return { ok: true, server: info ? { name: info.name, version: info.version, icons: boundedIcons(info.icons) } : undefined, tools, at: Date.now() };
   } catch (error) {
     const message = (error as Error).message.split("\n")[0] ?? "couldn't connect";
     return { ok: false, tools: [], error: /401|unauthori[sz]ed|invalid_token/i.test(message) ? "needs sign-in" : message, at: Date.now() };

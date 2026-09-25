@@ -23,8 +23,10 @@ import { Backups } from "./backup.js";
 import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
+import { RoomCoordinator } from "./rooms.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
+import { nativeBridgeSource } from "./mobile/native-config.js";
 
 export const VERSION = "0.1.0";
 
@@ -108,7 +110,12 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     return { ...mcp.forClaude(), [TOOL_SERVER]: { type: "http" as const, url: self, headers: { Authorization: auth } } };
   };
   const terminals = new Terminals(zshIntegration(home));
+  let rooms: RoomCoordinator;
   const supervisor = new Supervisor(store, runtimes, {
+    roots: [path.join(os.homedir(), "Developer/projects"), path.join(os.homedir(), "Developer/learn")],
+    protectedFolders: [path.join(os.homedir(), "Nectar-Work"), path.join(os.homedir(), "Developer/work")],
+    canStart: id => rooms?.canStart(id) ?? false,
+    runHint: id => rooms?.hint(id),
     workspace,
     failover: true,
     memory,
@@ -119,6 +126,8 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     ventureBrief: (id) => ventures.brief(id),
     mcpList: () => mcp.list(),
   });
+  rooms = new RoomCoordinator(store, supervisor, crew, runtimes);
+  tools.rooms = rooms;
   const plays = new Plays(store, supervisor);
   ventures.startPlay = (input) => plays.start(input);
   const autonomy = {
@@ -128,10 +137,13 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     tasks: new TaskRunner(store, supervisor),
   };
   const here = path.dirname(fileURLToPath(import.meta.url));
+  const { SpeechService } = await import("./speech.js");
   const { app, hub, state, briefing } = await createServer({
     store,
     supervisor,
     runtimes,
+    rooms,
+    mobile: nativeBridgeSource(path.join(home, "mobile", "bridge.json"), store, supervisor, rooms),
     host: options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1",
     port: options.port,
     token: process.env.SHUACREW_TOKEN,
@@ -150,10 +162,13 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     skills,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
+    speech: new SpeechService({ home: path.join(home, "speech") }),
   });
   live = state;
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
+  rooms.recover();
+  app.addHook("onClose", async () => rooms.close());
   autonomy.tasks.recover();
   plays.recover();
   ventures.schedule();

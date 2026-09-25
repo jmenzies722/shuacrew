@@ -1,0 +1,7 @@
+{
+  "publicKey": "BH7iiPnO7eRonW8EUMjyxRNfw0fG3UI3SUWVjnOM4ln0UknVtJ070hRgoX-yK4-EDdMyw2AVpCqMQiEAGB-QEuE",
+  "envelope": {
+    "payload": "{\"version\":1}",
+    "signature": "vkBVigSfCbjpLr0oghjUyQ_-Vhw9sljMJXBqX8O1OM_3Q8O7LyYFr4jkFU5nStJzWUY8buBljU6CkG-_xxpH5A"
+  }
+}

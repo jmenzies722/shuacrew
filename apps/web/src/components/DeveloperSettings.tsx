@@ -1,0 +1,38 @@
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { subscribeVoiceTimings, voiceTimingSnapshot, voiceTimingSummary } from "../lib/voice-timing";
+import { Link } from "@tanstack/react-router";
+import { api } from "../lib/api";
+import { readObservabilityPreferences, saveObservabilityPreferences, type ObservabilityPreferences } from "../lib/observability-preferences";
+import { ProviderStrip, type ProviderHealth } from "../screens/Observability";
+import { MetricLineChart } from "./MetricLineChart";
+import { appendHealthSample, type HealthSample } from "../lib/health-history";
+import { analyticsPolling } from "../lib/observability-polling";
+type Health = { ok: boolean; version: string; build: string; head: number; rssMb: number; uptimeS: number; service: boolean; pendingApprovals: number };
+export function DeveloperSettings() {
+  const timings = useSyncExternalStore(subscribeVoiceTimings, voiceTimingSnapshot);
+  const timingSummary = voiceTimingSummary(timings), latestTiming = timings.at(-1);
+  const [health, setHealth] = useState<Health>(), [providers, setProviders] = useState<ProviderHealth[]>([]), [prefs, setPrefs] = useState(readObservabilityPreferences), [error, setError] = useState(""), [notice, setNotice] = useState(""), [busy, setBusy] = useState(false), [refresh, setRefresh] = useState(0);
+  const [audit, setAudit] = useState<{ ok: boolean; count: number; brokenAt?: number; why?: string; at: number }>();
+  const [samples, setSamples] = useState<HealthSample[]>([]);
+  useEffect(() => {
+    let last: Health | undefined;
+    const poller = analyticsPolling(async () => ({ health: await api<Health>("/api/health"), at: Date.now() }), () => api<ProviderHealth[]>("/api/runtimes"), state => {
+      if (state.report && state.report.health !== last) {
+        const { health: h, at } = state.report; last = h; setHealth(h);
+        setSamples(previous => appendHealthSample(previous, { at, rssMb: h.rssMb, uptimeS: h.uptimeS }));
+      }
+      if (state.providers) setProviders(state.providers);
+      setError([state.error, state.providerError].filter(Boolean).join(" · "));
+    }, prefs.refreshSeconds);
+    void poller.start(); return () => poller.stop();
+  }, [prefs.refreshSeconds, refresh]);
+  const change = (next: ObservabilityPreferences) => { setPrefs(next); setNotice(saveObservabilityPreferences(next) ? "Saved on this device. Applies when opening analytics." : "Storage unavailable; this change lasts only in this panel."); };
+  const verify = async () => { setBusy(true); setError(""); try { const result = await api<Omit<NonNullable<typeof audit>, "at">>("/api/audit/verify"); setAudit({ ...result, at: Date.now() }); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  return <div className="obs-developer"><div className="settings-card"><div className="obs-panel-heading"><div><h3>Local gateway</h3><p>Read-only diagnostics. No credentials or transcript content.</p></div><button onClick={() => setRefresh(n => n + 1)}>Refresh</button></div>{error && <p className="obs-warning" role="alert">Diagnostics unavailable or stale: {error}</p>}{health ? <dl className="obs-diagnostics"><div><dt>Gateway</dt><dd>{health.ok ? "Responding" : "Unavailable"}</dd></div><div><dt>Version</dt><dd>{health.version}</dd></div><div><dt>Build</dt><dd>{health.build}</dd></div><div><dt>Uptime</dt><dd>{Math.floor(health.uptimeS / 60)}m {health.uptimeS % 60}s</dd></div><div><dt>Gateway memory</dt><dd>{health.rssMb} MB</dd></div><div><dt>Event sequence</dt><dd>{health.head}</dd></div><div><dt>Background service</dt><dd>{health.service ? "Enabled" : "Manual launch"}</dd></div><div><dt>Pending approvals</dt><dd>{health.pendingApprovals}</dd></div></dl> : <p>{error ? "No successful gateway measurement yet." : "Loading gateway diagnostics…"}</p>}<ProviderStrip providers={providers} /></div>
+    <section className="settings-card"><h3>Gateway memory · live observations</h3><p className="obs-note">Measured process RSS in MB. This view keeps the latest 120 samples while open; no history is invented before the first measurement. Last sample: {samples.at(-1) ? new Date(samples.at(-1)!.at).toLocaleTimeString() : "Unknown"}.</p><MetricLineChart label="Gateway memory" unit="MB" formatTime={at => new Date(at).toLocaleTimeString()} series={[{ name: "Memory", color: "var(--amber)", values: samples }]} /></section>
+    <div className="settings-card"><h3>Dashboard preferences</h3><label className="preference-row"><span><strong>Refresh cadence</strong><small>Local analytics and developer diagnostics.</small></span><select aria-label="Dashboard refresh cadence" value={prefs.refreshSeconds} onChange={e => change({ ...prefs, refreshSeconds: Number(e.target.value) as typeof prefs.refreshSeconds })}>{[0, 5, 15, 30].map(n => <option key={n} value={n}>{n ? `Every ${n} seconds` : "Manual only"}</option>)}</select></label><label className="preference-row"><span><strong>Default usage window</strong><small>UTC boundaries, independent of your Mac timezone.</small></span><select aria-label="Default usage window" value={prefs.days} onChange={e => change({ ...prefs, days: Number(e.target.value) as typeof prefs.days })}><option value={7}>7 days</option><option value={30}>30 days</option><option value={0}>All history</option></select></label>{notice && <p role="status" className="obs-note">{notice}</p>}</div>
+    <div className="settings-card"><h3>Audit integrity</h3><p className="obs-note">Checks the stored hash chain now. This is not a blanket security certification and does not change records.</p><button className="obs-refresh" disabled={busy} onClick={() => void verify()}>{busy ? "Verifying…" : "Verify audit chain"}</button>{audit && <p role="status" className={audit.ok ? "obs-note" : "obs-warning"}>{audit.ok ? `Chain verified · ${audit.count} events` : `Verification failed at ${audit.brokenAt}: ${audit.why}`} · checked {new Date(audit.at).toLocaleString()}</p>}</div>
+    <div className="settings-card settings-destinations"><Link to="/observability"><strong>Observability ↗</strong><small>Find blocked work and inspect recorded events.</small></Link><Link to="/usage"><strong>Usage ↗</strong><small>Observed tokens, coverage and reported costs.</small></Link><Link to="/policy"><strong>Policy & audit ↗</strong><small>Inspect existing approval rules. Diagnostics do not loosen them.</small></Link></div>
+    <section className="settings-card"><h3>Voice responsiveness · actual observations</h3><p className="obs-note">Latest 20 spoken turns in this app session. No transcript or audio is stored here. Timings include provider wait; they are not a voice-engine benchmark.</p><dl className="obs-diagnostics"><div><dt>Measured turns</dt><dd>{timingSummary.count}</dd></div><div><dt>First playback · median</dt><dd>{timingSummary.medianMs === null ? "Not measured" : `${timingSummary.medianMs} ms`}</dd></div><div><dt>First playback · p95</dt><dd>{timingSummary.p95Ms === null ? "Not measured" : `${timingSummary.p95Ms} ms`}</dd></div>{([ ["transcriptionMs", "Transcription"], ["providerMs", "Provider first text"], ["synthesisMs", "First audio received"], ["playbackMs", "Playback setup"] ] as const).map(([key, label]) => <div key={key}><dt>{label} · latest</dt><dd>{latestTiming?.[key] == null ? "Not measured" : `${latestTiming[key]} ms`}</dd></div>)}</dl><Link to="/settings">Voice configuration ↗</Link></section>
+  </div>;
+}

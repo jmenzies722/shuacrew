@@ -34,9 +34,11 @@ import { describe } from "../shell/CommandPalette";
 import { CodeBlock, Markdown } from "./Markdown";
 import { KIND } from "../lib/kinds";
 import { useLive } from "../lib/live";
+import { ToolActivityCard } from "./ToolActivityCard";
+type ToolServer = { name: string; url?: string; command?: string; brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" } };
 
 /** What every card in a thread may need: the session it belongs to, and whether it's working. */
-const ThreadContext = createContext<{ run?: RunView; working: boolean }>({ working: false });
+const ThreadContext = createContext<{ run?: RunView; working: boolean; servers?: ToolServer[] }>({ working: false });
 
 type Step = Extract<Item, { kind: "tool" | "files" | "check" | "subagent" | "denied" | "checkpoint" | "thought" }>;
 type Block = { kind: "item"; key: string; item: Item } | { kind: "work"; key: string; steps: Step[]; live: boolean };
@@ -59,8 +61,11 @@ function toBlocks(items: Item[], working: boolean): Block[] {
 
 /** A run's conversation, virtualised so a thousand-turn session scrolls like a short one. */
 export function Thread({ items, working, empty, run }: { items: Item[]; working: boolean; empty?: ReactNode; run?: RunView }) {
+  const turnMap = useLive((s) => s.appearance.turnMap);
   const blocks = useMemo(() => toBlocks(items, working), [items, working]);
-  const context = useMemo(() => ({ run, working }), [run, working]);
+  const [servers, setServers] = useState<ToolServer[]>([]);
+  useEffect(() => { let mounted = true; void api<ToolServer[]>("/api/mcp").then(value => { if (mounted) setServers(value); }).catch(() => {}); return () => { mounted = false; }; }, []);
+  const context = useMemo(() => ({ run, working, servers }), [run, working, servers]);
   const parent = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const virtualizer = useVirtualizer({
@@ -115,7 +120,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
   return (
     <ThreadContext.Provider value={context}>
     <div className="relative flex min-h-0 flex-1">
-    {turns.length > 1 && <Minimap turns={turns} onJump={(index) => ((stick.current = false), virtualizer.scrollToIndex(index, { align: "start" }))} />}
+    {turnMap === "show" && turns.length > 1 && <Minimap turns={turns} onJump={(index) => ((stick.current = false), virtualizer.scrollToIndex(index, { align: "start" }))} />}
     <Find blocks={blocks} scroller={parent} onJump={(index) => ((stick.current = false), virtualizer.scrollToIndex(index, { align: "center" }))} />
     <div
       ref={parent}
@@ -858,24 +863,8 @@ function DiffBar({ added, removed }: { added: number; removed: number }) {
 }
 
 function ToolLine({ step }: { step: Extract<Step, { kind: "tool" }> }) {
-  const [open, setOpen] = useState(false);
-  const { past, doing, Icon } = verbOf(step.tool);
-  return (
-    <div className="tool-line">
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2.5 py-1 text-left text-[12.5px]" aria-expanded={open}>
-        <Icon size={14} className={step.ok === undefined ? "text-amber" : step.ok ? "text-fg-3" : "text-bad"} />
-        <span className={step.ok === undefined ? "shimmer-text" : "text-fg-2"}>{step.ok === undefined ? doing : past}</span>
-        <span className="mono min-w-0 flex-1 truncate text-[12px] text-fg-3">{describe(step.input) || JSON.stringify(step.input)}</span>
-        {step.subagent && <Chip mono>{step.subagent}</Chip>}
-        {step.durationMs !== undefined && <span className="mono text-[11px] tabular-nums text-fg-3">{fmtMs(step.durationMs)}</span>}
-      </button>
-      {open && (
-        <pre className="mono ml-6 mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-[8px] border border-line bg-ink px-3 py-2 text-[11.5px] leading-relaxed text-fg-2">
-          {step.output !== undefined && step.output !== "" ? step.output : JSON.stringify(step.input, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
+  const { run, working } = useContext(ThreadContext);
+  return <ToolActivityCard name={step.tool} status={step.ok === true ? "succeeded" : step.ok === false ? "failed" : working ? "running" : "unknown"} input={step.input} output={step.output} startedAt={step.at} endedAt={step.durationMs === undefined ? undefined : step.at + step.durationMs} runId={run?.id} />;
 }
 
 function Thought({ step }: { step: Extract<Step, { kind: "thought" }> }) {
@@ -999,42 +988,11 @@ const SERVER_NAMES: Record<string, string> = { shuacrew: "Library" };
 
 /** A call to a connected service: who, what, the arguments that matter, and a readable result. */
 function McpLine({ step }: { step: Extract<Step, { kind: "tool" }> }) {
-  const [open, setOpen] = useState(false);
-  const [, server = "", ...rest] = step.tool.split("__");
-  const tool = rest.join("__");
-  const label = SERVER_NAMES[server] ?? server.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const verb = tool.replace(/[-_]/g, " ");
-  const input = (step.input ?? {}) as Record<string, unknown>;
-  const args = Object.entries(input)
-    .filter(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")
-    .slice(0, 3)
-    .map(([k, v]) => `${k}: ${String(v).replace(/\s+/g, " ").slice(0, 60)}`)
-    .join("  ·  ");
-  const pretty = (() => {
-    if (!step.output) return "";
-    try {
-      return JSON.stringify(JSON.parse(step.output), null, 2);
-    } catch {
-      return step.output;
-    }
-  })();
-  return (
-    <div className="mcp-line">
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full min-w-0 items-center gap-2.5 py-1 text-left text-[12.5px]" aria-expanded={open}>
-        <span className="mcp-mono">{label.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase()}</span>
-        <span className="shrink-0 font-medium text-fg">{label}</span>
-        <span className={`shrink-0 ${step.ok === undefined ? "shimmer-text" : step.ok ? "text-fg-2" : "text-bad"}`}>{verb}</span>
-        <span className="mono min-w-0 flex-1 truncate text-[11.5px] text-fg-3">{args}</span>
-        {step.ok === false && <span className="text-[11px] text-bad">failed</span>}
-        {step.durationMs !== undefined && <span className="mono text-[11px] tabular-nums text-fg-3">{fmtMs(step.durationMs)}</span>}
-        <ChevronRight size={12} className={`shrink-0 text-fg-3 transition-transform ${open ? "rotate-90" : ""}`} />
-      </button>
-      {open && (
-        <div className="ml-8 mt-1 grid gap-1.5">
-          {Object.keys(input).length > 0 && <pre className="mcp-pre">{JSON.stringify(input, null, 2)}</pre>}
-          {pretty && <pre className="mcp-pre is-out">{pretty.slice(0, 12_000)}</pre>}
-        </div>
-      )}
-    </div>
-  );
+  const { run, working, servers } = useContext(ThreadContext);
+  const serverName = step.tool.split("__")[1];
+  const matches = servers?.filter(server => server.name === serverName || server.name.replace(/[^A-Za-z0-9_-]/g, "_") === serverName) ?? [];
+  const server = matches.length === 1 ? matches[0] : undefined;
+  let origin: string | undefined;
+  try { if (server?.url) origin = new URL(server.url).origin; } catch {}
+  return <ToolActivityCard name={step.tool} status={step.ok === true ? "succeeded" : step.ok === false ? "failed" : working ? "running" : "unknown"} input={step.input} output={step.output} startedAt={step.at} endedAt={step.durationMs === undefined ? undefined : step.at + step.durationMs} runId={run?.id} brand={server?.brand} origin={origin ?? server?.command} />;
 }
