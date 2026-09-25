@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { BookOpenCheck, Brain, Check, Dumbbell, GraduationCap, Plus, RotateCcw, Sparkles, Target, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import { PaneHeader } from "../components/Pane";
+import { Coach } from "../components/Coach";
 import "../components/setting-controls.css";
 import "./settings.css";
 import "./learning.css";
@@ -14,9 +15,9 @@ interface Course { id: string; topic: string; level: number; title: string; plan
 interface Milestone { title: string; why: string; skills: string[]; project: string; weeks: number; done: boolean }
 interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
 interface Doc { id: string; kind: "resume" | "interview"; title: string; run: string; created: number }
-interface State { profile: { goal: string; about: string; tracks: Track[] }; cards: Card[]; due: number; days: Array<{ day: string; reviews: number }>; totalReviews: number; drill: { day: string; track: string; run: string; done: boolean } | null; studied: Array<{ run: string; study: string }>; courses: Course[]; roadmaps: Roadmap[]; docs: Doc[] }
-type Tab = "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
-const TABS: Array<[Tab, string]> = [["today", "Today"], ["learn", "Learn anything"], ["roadmap", "Roadmap"], ["career", "Career kit"], ["work", "From my work"], ["review", "Review"], ["profile", "Profile"]];
+interface State { profile: { goal: string; about: string; tracks: Track[] }; cards: Card[]; due: number; days: Array<{ day: string; reviews: number }>; totalReviews: number; drill: { day: string; track: string; run: string; done: boolean } | null; studied: Array<{ run: string; study: string }>; coach: Partial<Record<"analyze" | "quiz" | "explain" | "plan", { run: string }>>; courses: Course[]; roadmaps: Roadmap[]; docs: Doc[] }
+type Tab = "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
+const TABS: Array<[Tab, string]> = [["coach", "Coach"], ["today", "Today"], ["learn", "Learn anything"], ["roadmap", "Roadmap"], ["career", "Career kit"], ["work", "From my work"], ["review", "Review"], ["profile", "Profile"]];
 interface Session { id: string; title: string; at: number; studied: boolean }
 
 /** Suggestions only — nothing is added until you pick it. */
@@ -27,7 +28,7 @@ const SUGGESTED: Array<[string, string]> = [
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
 export function Learning() {
-  const [tab, setTab] = useState<Tab>(() => { try { return (localStorage.getItem("shuacrew.learnTab") as Tab) || "today"; } catch { return "today"; } });
+  const [tab, setTab] = useState<Tab>(() => { try { return (localStorage.getItem("shuacrew.learnTab") as Tab) || "coach"; } catch { return "today"; } });
   const [s, setS] = useState<State | null>(null), [sessions, setSessions] = useState<Session[]>([]), [error, setError] = useState(""), [busy, setBusy] = useState("");
   const load = useCallback(async () => {
     try { const [st, se] = await Promise.all([api<State>("/api/learning"), api<Session[]>("/api/learning/sessions")]); setS(st); setSessions(se); setError(""); } catch (e) { setError((e as Error).message); }
@@ -59,6 +60,7 @@ export function Learning() {
     </section>
     <nav className="lx-tabs" role="tablist" aria-label="Learning">{TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
     {error && <p className="lx-error" role="alert">{error}</p>}
+    {tab === "coach" && <Coach runs={s.coach ?? {}} onChange={() => void load()} />}
     {tab === "today" && <div className="lx-top">
       <TodayCard s={s} busy={busy} onDrill={() => act("drill", () => api("/api/learning/drill", { body: {} }))} />
       <ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} />

@@ -90,3 +90,45 @@ it("accepts a ```json fence when the model skips the named one", async () => {
   expect(parseBlock('```json\n{"other":1}\n```', "course", "lessons")).toBeUndefined();
   expect(parseBlock('Here: {"milestones":[{"title":"A"}]} done', "roadmap", "milestones")).toMatchObject({ milestones: [{ title: "A" }] });
 });
+
+it("analyzes real reviews: accuracy per skill, weakest, hardest cards, stale areas", async () => {
+  const { analyze } = await import("./learning.js");
+  const l = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
+  l.setProfile({ goal: "x", tracks: [{ id: "evals", name: "Evals", level: 2, focus: true }, { id: "ts", name: "TypeScript", level: 4, focus: true }] });
+  const [e1, e2] = l.addCards([{ front: "E1", back: "a" }, { front: "E2", back: "b" }], "evals", {}, now);
+  const [t1] = l.addCards([{ front: "T1", back: "c" }], "ts", {}, now - 30 * DAY);
+  l.review(e1!.id, "again", now); l.review(e1!.id, "again", now); l.review(e2!.id, "good", now);
+  l.review(t1!.id, "good", now - 20 * DAY); l.review(t1!.id, "easy", now - 20 * DAY); l.review(t1!.id, "good", now - 20 * DAY);
+  const a = analyze(l.get(), now);
+  const evals = a.tracks.find((t) => t.id === "evals")!;
+  expect(evals).toMatchObject({ reviews: 3, lapses: 2, stale: false }); expect(evals.accuracy).toBeCloseTo(1 / 3);
+  expect(a.weakest?.name).toBe("Evals");
+  expect(a.hardest[0]).toMatchObject({ front: "E1", lapses: 2 });
+  expect(a.stale).toEqual(["TypeScript"]);
+  expect(a.week.reviews).toBe(3);
+});
+
+it("coach: starts a mode with real learner data, continues the same session, and restarts on request", async () => {
+  const Fastify = (await import("fastify")).default, { EventStore } = await import("./store.js"), { learningRoutes } = await import("./learning-routes.js");
+  const store = new EventStore(":memory:"), app = Fastify(), l = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
+  const launched: string[] = [], followed: Array<[string, string]> = []; let n = 0;
+  learningRoutes(app, { learning: l, store, supervisor: { status: () => "done", launch: (s: { ask: string }) => (launched.push(s.ask), `r_${++n}`), followUp: (run: string, text: string) => followed.push([run, text]) } as never });
+  l.setProfile({ goal: "Agentic software engineer", tracks: [{ id: "evals", name: "LLM evals", level: 2, focus: true }] });
+  const first = (await app.inject({ method: "POST", url: "/api/learning/coach", payload: { mode: "quiz" } })).json();
+  expect(launched[0]).toContain("LLM evals (level 2/5"); expect(launched[0]).toContain("one question at a time".replace("one", "ONE"));
+  const second = (await app.inject({ method: "POST", url: "/api/learning/coach", payload: { mode: "quiz", message: "An eval is a test for model output" } })).json();
+  expect(second.run).toBe(first.run); expect(followed[0]![1].split("\n\n[coach] ")[0]).toBe("An eval is a test for model output"); expect(followed[0]![1]).toContain("```cards");
+  const fresh = (await app.inject({ method: "POST", url: "/api/learning/coach", payload: { mode: "quiz", fresh: true } })).json();
+  expect(fresh.run).not.toBe(first.run);
+  expect((await app.inject({ method: "POST", url: "/api/learning/coach", payload: { mode: "nope" } })).statusCode).toBe(400);
+  expect((await app.inject("/api/learning/insights")).json()).toMatchObject({ weakest: { name: "LLM evals" } });
+  await app.close(); store.close();
+});
+
+it("new cards are not stale, and untracked cards read as General", async () => {
+  const { analyze } = await import("./learning.js");
+  const l = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
+  l.addCards([{ front: "Q", back: "A" }], "general", {}, now);
+  expect(analyze(l.get(), now + DAY).tracks[0]).toMatchObject({ name: "General", stale: false });
+  expect(analyze(l.get(), now + 8 * DAY).tracks[0]!.stale).toBe(true);
+});

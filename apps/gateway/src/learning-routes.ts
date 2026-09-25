@@ -3,11 +3,13 @@ import type { AnyEvent } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
 import type { Supervisor } from "./runs.js";
 import { randomUUID } from "node:crypto";
-import { Learning, parseBlock, parseCards, type Grade } from "./learning.js";
+import { Learning, analyze, parseBlock, parseCards, type Grade } from "./learning.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MODEL = { runtime: "claude", model: "claude-haiku-4-5", effort: "low" } as const; // efficient on your plan
 const DEEP = { runtime: "claude", model: "claude-sonnet-5", effort: "low" } as const; // one careful call for plans and resumes
+/** Separates your words from the hidden coach reminder; the chat shows only what precedes it. */
+export const COACH_MARK = "\n\n[coach] ";
 const str = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "");
 
 /** What happened in a session, as plain text for a teacher: your asks, the crew's replies, tools used. */
@@ -56,8 +58,10 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
       }] : [])) : [];
       learning.edit((s) => ({ ...s, roadmaps: s.roadmaps.map((x) => (x.id === roadmapId && !x.milestones.length ? { ...x, title: str(r?.title, 200) || x.title, milestones } : x)) }));
     }
-    if (learning.get().cards.some((c) => c.source.run === e.run)) return;
-    const cards = parseCards(text);
+    const coaching = created.body.labels.includes("learn-kind:coach");
+    if (!coaching && learning.get().cards.some((c) => c.source.run === e.run)) return;
+    const known = new Set(learning.get().cards.map((c) => c.front.trim().toLowerCase()));
+    const cards = parseCards(text).filter((c) => !known.has(c.front.trim().toLowerCase()));
     const trackId = created.body.labels.find((l) => l.startsWith("learn-track:"))?.slice(12) ?? "general";
     if (cards.length) learning.addCards(cards, trackId, { run: e.run, title: created.body.title });
     if (created.body.labels.includes("learn-kind:drill")) learning.markDrillDone(today());
@@ -208,5 +212,44 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const id = `d_${randomUUID().slice(0, 8)}`;
     learning.edit((s) => ({ ...s, docs: [...s.docs, { id, kind: "interview", title: `Interview prep · ${focus}`, run, created: Date.now() }] }));
     return { id, run };
+  });
+
+  // ── The coach: analyzes your real progress and guides you, one conversation per mode ─────────
+  app.get("/api/learning/insights", async () => analyze(learning.get()));
+  const MODES = {
+    analyze: { model: DEEP, title: "Coach · progress review", brief: "Give a crisp, honest analysis of their progress from the data: 3 specific insights (cite the numbers), what to focus on this week and why, and one calibrating question. Keep it under 250 words." },
+    quiz: { model: MODEL, title: "Coach · quiz", brief: "Quiz them ONE question at a time, starting with their weakest and most-forgotten areas. After each answer: grade it (correct / partly / not yet), explain the gap in 2–3 sentences, then ask the next question. Keep a running score like 'Score 3/4'. When they get something wrong, add it as a card." },
+    explain: { model: MODEL, title: "Coach · explain", brief: "Be a Socratic tutor: explain what they ask at their level with a concrete engineering example, then check understanding with one short question before moving on. Add a card for each key idea." },
+    plan: { model: DEEP, title: "Coach · today's plan", brief: "Build today's 30–45 minute plan from the data: which due cards to review, the next lesson or milestone to push, and one hands-on task in their own repos. Use a short checklist. Then ask what they want to start with." },
+  } as const;
+  type Mode = keyof typeof MODES;
+  const context = () => {
+    const s = learning.get(), a = analyze(s);
+    const tracks = a.tracks.map((t) => `${t.name} (level ${t.level}/5, ${t.cards} cards, ${t.due} due, accuracy ${t.accuracy === null ? "n/a" : `${Math.round(t.accuracy * 100)}%`}, ${t.lapses} lapses${t.stale ? ", stale" : ""})`).join("; ");
+    return [who(), `Skills: ${tracks || "none yet"}.`, a.weakest ? `Weakest: ${a.weakest.name}.` : "",
+      a.hardest.length ? `Most-forgotten cards: ${a.hardest.map((h) => `"${h.front}" (${h.lapses}×)`).join("; ")}.` : "",
+      `This week: ${a.week.reviews} reviews${a.week.accuracy === null ? "" : `, ${Math.round(a.week.accuracy * 100)}% correct`} (${a.week.change >= 0 ? "+" : ""}${a.week.change} vs last week). Cards due now: ${a.due}.`,
+      a.courses.length ? `Courses: ${a.courses.map((c) => `${c.title} ${c.done}/${c.total}`).join("; ")}.` : "",
+      a.roadmap ? `Roadmap "${a.roadmap.title}": ${a.roadmap.done}/${a.roadmap.total} milestones, next: ${a.roadmap.next ?? "done"}.` : ""].filter(Boolean).join("\n");
+  };
+  app.post<{ Body: { mode?: Mode; message?: string; fresh?: boolean } }>("/api/learning/coach", async (req, reply) => {
+    const mode = req.body?.mode, message = str(req.body?.message, 4000);
+    if (!mode || !(mode in MODES)) return reply.code(400).send({ error: "mode: analyze | quiz | explain | plan" });
+    const current = learning.get().coach[mode];
+    const live = current && !req.body?.fresh && supervisor.status(current.run) && !["failed", "cancelled"].includes(supervisor.status(current.run)!);
+    if (live && current) {
+      if (!message) return { run: current.run };
+      // A short reminder rides along (hidden in the chat) so grading and cards stay consistent over a long session.
+      const nudge = mode === "quiz" ? "Grade this answer and keep the score. If it was not fully correct, end with a ```cards block covering exactly the gap." : mode === "explain" ? "If you teach a new idea, end with a ```cards block for it." : "";
+      try { supervisor.followUp(current.run, nudge ? `${message}${COACH_MARK}${nudge}` : message); return { run: current.run }; } catch (e) { return reply.code(409).send({ error: (e as Error).message }); }
+    }
+    const m = MODES[mode];
+    const ask = ["You are ShuaCrew's learning coach for a software engineer. Do not use any tools. Be warm, direct and specific — no generic advice.",
+      "Ground everything in the learner data below; say so when data is thin.", m.brief,
+      'When you teach something worth remembering, end that message with a ```cards fenced JSON array of {"front": "...", "back": "..."} (only new ideas).',
+      "\n--- LEARNER DATA ---", context(), message ? `\n--- THEY SAY ---\n${message}` : ""].join("\n");
+    const run = supervisor.launch({ ask, title: m.title, ...m.model, labels: ["learning", "learn-kind:coach", `learn-coach:${mode}`, `learn-track:${analyze(learning.get()).weakest?.id ?? "general"}`] });
+    learning.edit((s) => ({ ...s, coach: { ...s.coach, [mode]: { run, started: Date.now() } } }));
+    return { run };
   });
 }

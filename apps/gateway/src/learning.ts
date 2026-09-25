@@ -25,7 +25,9 @@ export const LearningSchema = z.object({
   cards: z.array(card).max(5000).default([]),
   drills: z.array(drill).max(400).default([]),
   studied: z.array(z.object({ run: z.string(), at: z.number(), study: z.string() })).max(400).default([]),
-  reviews: z.array(z.object({ at: z.number(), grade: z.enum(["again", "good", "easy"]) })).max(20000).default([]),
+  reviews: z.array(z.object({ at: z.number(), grade: z.enum(["again", "good", "easy"]), track: z.string().max(40).optional(), card: z.string().max(40).optional() })).max(20000).default([]),
+  /** The coach conversation per mode (one session each, continued with follow-ups). */
+  coach: z.record(z.string().regex(/^(analyze|quiz|explain|plan)$/), z.object({ run: z.string(), started: z.number() })).default({}),
   courses: z.array(course).max(200).default([]),
   roadmaps: z.array(roadmap).max(50).default([]),
   docs: z.array(doc).max(200).default([]),
@@ -98,7 +100,7 @@ export class Learning {
   review(id: string, grade: Grade, now = Date.now()) {
     const c = this.value.cards.find((x) => x.id === id); if (!c) throw new Error("No such card");
     const next = { ...c, ...schedule(c, grade, now) };
-    this.save({ ...this.value, cards: this.value.cards.map((x) => (x.id === id ? next : x)), reviews: [...this.value.reviews, { at: now, grade }].slice(-20000) });
+    this.save({ ...this.value, cards: this.value.cards.map((x) => (x.id === id ? next : x)), reviews: [...this.value.reviews, { at: now, grade, track: c.track, card: c.id }].slice(-20000) });
     return next;
   }
   removeCard(id: string) { this.save({ ...this.value, cards: this.value.cards.filter((c) => c.id !== id) }); }
@@ -114,4 +116,31 @@ export class Learning {
     const pool = focus.length ? focus : this.value.profile.tracks;
     return [...pool].sort((a, b) => a.level - b.level || this.value.cards.filter((c) => c.track === a.id).length - this.value.cards.filter((c) => c.track === b.id).length)[0];
   }
+}
+
+export interface TrackInsight { id: string; name: string; level: number; cards: number; due: number; reviews: number; accuracy: number | null; lapses: number; lastPractice: number | null; stale: boolean }
+/** What the coach (and you) see about your learning — computed from recorded reviews, never guessed. */
+export function analyze(s: LearningState, now = Date.now()) {
+  const names = new Map<string, { name: string; level: number }>([...s.profile.tracks.map((t) => [t.id, { name: t.name, level: t.level }] as const), ...s.courses.map((c) => [c.id, { name: c.title || c.topic, level: c.level }] as const), ["interview", { name: "Interview prep", level: 2 }] as const, ["general", { name: "General", level: 2 }] as const]);
+  const ids = new Set([...s.profile.tracks.map((t) => t.id), ...s.cards.map((c) => c.track)]);
+  const tracks: TrackInsight[] = [...ids].map((id) => {
+    const cards = s.cards.filter((c) => c.track === id), revs = s.reviews.filter((r) => r.track === id);
+    const good = revs.filter((r) => r.grade !== "again").length, last = revs.length ? Math.max(...revs.map((r) => r.at)) : null;
+    const info = names.get(id) ?? { name: id, level: 2 };
+    return { id, name: info.name, level: info.level, cards: cards.length, due: cards.filter((c) => c.due <= now).length, reviews: revs.length, accuracy: revs.length ? good / revs.length : null, lapses: cards.reduce((n, c) => n + c.lapses, 0), lastPractice: last,
+      // Stale = not practised for a week (new cards aren't stale until they've waited a week unreviewed).
+      stale: cards.length > 0 && now - (last ?? Math.min(...cards.map((c) => c.created))) > 7 * 86_400_000 };
+  });
+  const scored = tracks.filter((t) => t.accuracy !== null && t.reviews >= 3);
+  const weakest = [...scored].sort((a, b) => a.accuracy! - b.accuracy! || b.lapses - a.lapses)[0] ?? [...tracks].sort((a, b) => a.level - b.level)[0] ?? null;
+  const hardest = [...s.cards].filter((c) => c.lapses > 0).sort((a, b) => b.lapses - a.lapses).slice(0, 5).map((c) => ({ front: c.front, lapses: c.lapses, track: c.track }));
+  const week = s.reviews.filter((r) => now - r.at < 7 * 86_400_000), prev = s.reviews.filter((r) => now - r.at >= 7 * 86_400_000 && now - r.at < 14 * 86_400_000);
+  const road = s.roadmaps.at(-1), next = road?.milestones.find((m) => !m.done);
+  return {
+    tracks, weakest: weakest ? { id: weakest.id, name: weakest.name } : null, hardest, stale: tracks.filter((t) => t.stale).map((t) => t.name),
+    week: { reviews: week.length, accuracy: week.length ? week.filter((r) => r.grade !== "again").length / week.length : null, change: week.length - prev.length },
+    courses: s.courses.map((c) => ({ title: c.title || c.topic, done: c.lessons.filter((l) => l.done).length, total: c.lessons.length })),
+    roadmap: road ? { title: road.title || road.goal, done: road.milestones.filter((m) => m.done).length, total: road.milestones.length, next: next?.title ?? null } : null,
+    due: s.cards.filter((c) => c.due <= now).length,
+  };
 }
