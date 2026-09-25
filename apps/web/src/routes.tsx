@@ -14,6 +14,7 @@ const Rooms = lazyRouteComponent(() => import("./screens/Rooms"), "Rooms");
 const Observability = lazyRouteComponent(() => import("./screens/Observability"), "Observability");
 const Usage = lazyRouteComponent(() => import("./screens/Observability"), "Usage");
 const Developer = lazyRouteComponent(() => import("./screens/Developer"), "Developer");
+const Learning = lazyRouteComponent(() => import("./screens/Learning"), "Learning");
 const Library = lazyRouteComponent(() => import("./screens/Library"), "Library");
 const Review = lazyRouteComponent(() => import("./screens/Review"), "Review");
 const RunDetail = lazyRouteComponent(() => import("./screens/RunDetail"), "RunDetail");
@@ -41,6 +42,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/observability", component: Observability }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/developer", component: Developer }),
+  createRoute({ getParentRoute: () => root, path: "/learn", component: Learning }),
   createRoute({ getParentRoute: () => root, path: "/rooms/$id", component: Rooms }),
   createRoute({ getParentRoute: () => root, path: "/library", component: Library }),
   createRoute({ getParentRoute: () => root, path: "/playbooks", component: Playbooks }),

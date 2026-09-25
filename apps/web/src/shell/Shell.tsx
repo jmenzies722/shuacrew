@@ -1,6 +1,6 @@
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3 } from "lucide-react";
+import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3, GraduationCap } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
 import { MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -35,6 +35,7 @@ export const NAV = [
   { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
   { to: "/activity", label: "Today", hint: "Everything at a glance", icon: Radar, key: "m", group: "Plan" },
   { to: "/library", label: "Library", hint: "What the crew made + knows", icon: LibraryBig, key: "l", group: "Brain" },
+  { to: "/learn", label: "Learning", hint: "Skill up from your own work", icon: GraduationCap, key: "e", group: "Brain" },
   { to: "/memory", label: "Memory", hint: "Lessons and skills", icon: BookOpen, key: "y", group: "Brain" },
   { to: "/schedules", label: "Schedules", hint: "Runs while you're away", icon: CalendarClock, key: "c", group: "Brain" },
   { to: "/integrations", label: "Tools & Skills", hint: "MCP servers and skills", icon: Cable, key: "i", group: "Brain" },

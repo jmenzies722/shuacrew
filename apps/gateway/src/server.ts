@@ -10,6 +10,8 @@ import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
 import { settingsRoutes } from "./settings-routes.js";
 import { createCrewMember } from "./crew-create.js";
+import { learningRoutes } from "./learning-routes.js";
+import type { Learning } from "./learning.js";
 import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -52,6 +54,7 @@ import { observabilityRoutes } from "./observability.js";
 import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 
 export interface ServerOptions {
+  learning?: Learning;
   settings?: GatewaySettings;
   builtinProtected?: string[];
   store: EventStore;
@@ -150,6 +153,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   speechRoutes(app, options.speech);
   roomRoutes(app, options.rooms);
   devRoutes(app, options.store, options.supervisor);
+  if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
   mobileRoutes(app, options.mobile);
