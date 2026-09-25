@@ -49,3 +49,44 @@ it("puts a finished lesson's cards into the deck once, and ignores ordinary sess
   const res = await app.inject("/api/learning"); expect(res.json()).toMatchObject({ due: 1 });
   await app.close(); store.close();
 });
+
+it("reads a named JSON block and keeps courses and roadmaps validated", async () => {
+  const { parseBlock } = await import("./learning.js");
+  expect(parseBlock('intro\n```course\n{"title":"K8s","lessons":[{"title":"Pods"}]}\n```', "course")).toEqual({ title: "K8s", lessons: [{ title: "Pods" }] });
+  expect(parseBlock("```course\nnope\n```", "course")).toBeUndefined();
+  const l = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
+  l.edit((s) => ({ ...s, courses: [{ id: "k", topic: "Kubernetes", level: 2, title: "", created: 1, lessons: [{ title: "Pods", summary: "", done: false }] }] }));
+  expect(l.get().courses[0]!.lessons[0]!.title).toBe("Pods");
+  expect(() => l.edit((s) => ({ ...s, roadmaps: [{ id: "r", goal: "x", months: 99, title: "", run: "r", created: 1, milestones: [] }] }))).toThrow();
+});
+
+it("fills a course plan and a roadmap from finished runs, once, ignoring junk entries", async () => {
+  const Fastify = (await import("fastify")).default, { EventStore } = await import("./store.js"), { learningRoutes } = await import("./learning-routes.js");
+  const store = new EventStore(":memory:"), app = Fastify(), l = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
+  let n = 0; learningRoutes(app, { learning: l, store, supervisor: { status: () => "done", launch: () => `r_${++n}` } as never });
+  l.setProfile({ goal: "Agentic software engineer" });
+  const c = (await app.inject({ method: "POST", url: "/api/learning/courses", payload: { topic: "Kubernetes", level: 2 } })).json();
+  const r = (await app.inject({ method: "POST", url: "/api/learning/roadmaps", payload: { months: 6 } })).json();
+  const finish = (run: string, labels: string[], text: string) => {
+    store.append("run.created", { title: "t", ask: "a", runtime: "claude", labels, incognito: false }, { run });
+    store.append("agent.message", { turn: 1, text }, { run });
+    store.append("run.status", { status: "done" }, { run });
+  };
+  finish(c.run, ["learning", "learn-kind:course-plan", `learn-course:${c.id}`], 'Plan:\n```course\n{"title":"K8s for builders","lessons":[{"title":"Pods","summary":"Run one"},{"summary":"no title"},{"title":"Services"}]}\n```');
+  finish(r.run, ["learning", "learn-kind:roadmap", `learn-roadmap:${r.id}`], '```roadmap\n{"title":"To agentic engineer","milestones":[{"title":"Evals","skills":["pytest",5],"project":"Eval harness","weeks":3},{"title":"","why":"x"}]}\n```');
+  const s = l.get();
+  expect(s.courses[0]).toMatchObject({ title: "K8s for builders", lessons: [{ title: "Pods", summary: "Run one" }, { title: "Services" }] });
+  expect(s.roadmaps[0]).toMatchObject({ goal: "Agentic software engineer", months: 6, title: "To agentic engineer", milestones: [{ title: "Evals", skills: ["pytest"], project: "Eval harness", weeks: 3 }] });
+  const lesson = (await app.inject({ method: "POST", url: `/api/learning/courses/${c.id}/lessons/0` })).json();
+  expect((await app.inject({ method: "POST", url: `/api/learning/courses/${c.id}/lessons/0` })).json()).toEqual(lesson); // opening again reuses it
+  expect((await app.inject({ method: "POST", url: "/api/learning/resume", payload: { resume: "short" } })).statusCode).toBe(400);
+  await app.close(); store.close();
+});
+
+it("accepts a ```json fence when the model skips the named one", async () => {
+  const { parseBlock } = await import("./learning.js");
+  const reply = 'Intro\n```json\n{"title":"K8s","lessons":[{"title":"Pods","summary":"x"}]}\n```\nbye';
+  expect(parseBlock(reply, "course", "lessons")).toMatchObject({ title: "K8s" });
+  expect(parseBlock('```json\n{"other":1}\n```', "course", "lessons")).toBeUndefined();
+  expect(parseBlock('Here: {"milestones":[{"title":"A"}]} done', "roadmap", "milestones")).toMatchObject({ milestones: [{ title: "A" }] });
+});

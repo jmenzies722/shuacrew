@@ -2,10 +2,13 @@ import type { FastifyInstance } from "fastify";
 import type { AnyEvent } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
 import type { Supervisor } from "./runs.js";
-import { Learning, parseCards, type Grade } from "./learning.js";
+import { randomUUID } from "node:crypto";
+import { Learning, parseBlock, parseCards, type Grade } from "./learning.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MODEL = { runtime: "claude", model: "claude-haiku-4-5", effort: "low" } as const; // efficient on your plan
+const DEEP = { runtime: "claude", model: "claude-sonnet-5", effort: "low" } as const; // one careful call for plans and resumes
+const str = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "");
 
 /** What happened in a session, as plain text for a teacher: your asks, the crew's replies, tools used. */
 function transcript(store: EventStore, run: string): { title: string; text: string } {
@@ -27,19 +30,48 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
   const levelOf = (id: string) => learning.get().profile.tracks.find((t) => t.id === id);
 
   // When a teaching or drill session finishes, its cards go into your deck (once).
-  store.subscribe((e) => {
-    if (e.kind !== "run.status" || e.body.status !== "done" || !e.run) return;
+  const capture = (runId: string) => {
+    const e = { run: runId };
     const created = store.forRun(e.run).find((x) => x.kind === "run.created");
     if (created?.kind !== "run.created" || !created.body.labels.includes("learning")) return;
-    if (learning.get().cards.some((c) => c.source.run === e.run)) return;
     const reply = [...store.forRun(e.run)].reverse().find((x) => x.kind === "agent.message");
-    const cards = reply?.kind === "agent.message" ? parseCards(reply.body.text) : [];
+    const text = reply?.kind === "agent.message" ? reply.body.text : "";
+    const tag = (k: string) => created.body.labels.find((l) => l.startsWith(`${k}:`))?.slice(k.length + 1);
+    // A course plan: fill the course's lessons (once).
+    const courseId = tag("learn-course");
+    if (created.body.labels.includes("learn-kind:course-plan") && courseId) {
+      const plan = parseBlock(text, "course", "lessons") as { title?: unknown; lessons?: unknown } | undefined;
+      const lessons = Array.isArray(plan?.lessons) ? plan!.lessons.slice(0, 12).flatMap((x: { title?: unknown; summary?: unknown }) => (str(x?.title, 200) ? [{ title: str(x.title, 200), summary: str(x.summary, 600), done: false }] : [])) : [];
+      learning.edit((s) => ({ ...s, courses: s.courses.map((c) => (c.id === courseId && !c.lessons.length ? { ...c, title: str(plan?.title, 200) || c.topic, lessons } : c)) }));
+      return;
+    }
+    // A roadmap: its milestones (once).
+    const roadmapId = tag("learn-roadmap");
+    if (created.body.labels.includes("learn-kind:roadmap") && roadmapId) {
+      const r = parseBlock(text, "roadmap", "milestones") as { title?: unknown; milestones?: unknown } | undefined;
+      const milestones = Array.isArray(r?.milestones) ? r!.milestones.slice(0, 16).flatMap((m: Record<string, unknown>) => (str(m?.title, 200) ? [{
+        title: str(m.title, 200), why: str(m.why, 600), project: str(m.project, 600), done: false,
+        skills: Array.isArray(m.skills) ? (m.skills as unknown[]).map((k) => str(k, 80)).filter(Boolean).slice(0, 12) : [],
+        weeks: typeof m.weeks === "number" && m.weeks >= 0 && m.weeks <= 104 ? m.weeks : 2,
+      }] : [])) : [];
+      learning.edit((s) => ({ ...s, roadmaps: s.roadmaps.map((x) => (x.id === roadmapId && !x.milestones.length ? { ...x, title: str(r?.title, 200) || x.title, milestones } : x)) }));
+    }
+    if (learning.get().cards.some((c) => c.source.run === e.run)) return;
+    const cards = parseCards(text);
     const trackId = created.body.labels.find((l) => l.startsWith("learn-track:"))?.slice(12) ?? "general";
     if (cards.length) learning.addCards(cards, trackId, { run: e.run, title: created.body.title });
     if (created.body.labels.includes("learn-kind:drill")) learning.markDrillDone(today());
-  });
+  };
+  store.subscribe((e) => { if (e.kind === "run.status" && e.body.status === "done" && e.run) capture(e.run); });
+  // Self-heal: a plan that finished but wasn't captured (parse miss, restart mid-run) is picked up on the next load.
+  const heal = () => {
+    const s = learning.get();
+    for (const c of s.courses) if (!c.lessons.length && c.plan && supervisor.status(c.plan) === "done") capture(c.plan);
+    for (const r of s.roadmaps) if (!r.milestones.length && supervisor.status(r.run) === "done") capture(r.run);
+  };
 
   app.get("/api/learning", async () => {
+    heal();
     const s = learning.get(), now = Date.now();
     const week = Array.from({ length: 14 }, (_, i) => { const d = new Date(now - (13 - i) * 86_400_000).toISOString().slice(0, 10); return { day: d, reviews: s.reviews.filter((r) => new Date(r.at).toISOString().slice(0, 10) === d).length }; });
     return { ...s, reviews: undefined, due: learning.due(now).length, days: week, totalReviews: s.reviews.length, drill: s.drills.find((d) => d.day === today()) ?? null };
@@ -103,5 +135,78 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const run = supervisor.launch({ ask, title: `Drill · ${track.name}`, ...MODEL, labels: ["learning", "learn-kind:drill", `learn-track:${track.id}`] });
     const d = { day: today(), track: track.id, run, done: false };
     learning.recordDrill(d); return d;
+  });
+
+  // ── Career supercharger ─────────────────────────────────────────────────────────────────────
+  const course = (id: string) => learning.get().courses.find((c) => c.id === id);
+  // Learn anything: a course sized to you (the plan is one small call; lessons are written when opened).
+  app.post<{ Body: { topic?: string; level?: number } }>("/api/learning/courses", async (req, reply) => {
+    const topic = str(req.body?.topic, 160); if (!topic) return reply.code(400).send({ error: "What do you want to learn?" });
+    const level = Math.max(1, Math.min(5, Math.round(Number(req.body?.level) || 2))), id = `k_${randomUUID().slice(0, 8)}`;
+    const ask = ["You design a focused engineering course. Do not use any tools.", who(), `Topic: ${topic}. The learner's level in it: ${level}/5.`,
+      "Plan 5–8 lessons that build on each other toward real, job-relevant competence (not trivia). Each lesson: a clear title and a one-sentence summary of what they'll be able to do.",
+      'Reply with a short intro, then exactly one ```course fenced JSON object: {"title": "...", "lessons": [{"title": "...", "summary": "..."}]}.'].join("\n");
+    const run = supervisor.launch({ ask, title: `Course plan · ${topic}`.slice(0, 90), ...MODEL, labels: ["learning", "learn-kind:course-plan", `learn-course:${id}`, `learn-track:${id}`] });
+    learning.edit((s) => ({ ...s, courses: [...s.courses, { id, topic, level, title: "", plan: run, created: Date.now(), lessons: [] }] }));
+    return { id, run };
+  });
+  app.post<{ Params: { id: string; n: string } }>("/api/learning/courses/:id/lessons/:n", async (req, reply) => {
+    const c = course(req.params.id), n = Number(req.params.n), lesson = c?.lessons[n];
+    if (!c || !lesson) return reply.code(404).send({ error: "No such lesson." });
+    if (lesson.run) return { run: lesson.run };
+    const ask = ["You are an expert engineer teaching one lesson of a course. Do not use any tools.", who(),
+      `Course: ${c.title || c.topic} (learner level ${c.level}/5). Lessons so far: ${c.lessons.map((l, i) => `${i + 1}. ${l.title}`).join("; ")}.`,
+      `Teach lesson ${n + 1}: "${lesson.title}" — ${lesson.summary}`,
+      "Structure: the idea in plain words, a worked example with real code or commands, common mistakes, and a hands-on exercise they can do in their own projects with what 'done' looks like.",
+      'Finish with 3–5 flashcards as a ```cards fenced JSON array of {"front": "...", "back": "..."}.'].join("\n");
+    const run = supervisor.launch({ ask, title: `${c.title || c.topic} · ${lesson.title}`.slice(0, 90), ...MODEL, labels: ["learning", "learn-kind:lesson", `learn-track:${c.id}`] });
+    learning.edit((s) => ({ ...s, courses: s.courses.map((x) => (x.id === c.id ? { ...x, lessons: x.lessons.map((l, i) => (i === n ? { ...l, run } : l)) } : x)) }));
+    return { run };
+  });
+  app.post<{ Params: { id: string; n: string }; Body: { done?: boolean } }>("/api/learning/courses/:id/lessons/:n/done", async (req) => {
+    learning.edit((s) => ({ ...s, courses: s.courses.map((x) => (x.id === req.params.id ? { ...x, lessons: x.lessons.map((l, i) => (i === Number(req.params.n) ? { ...l, done: req.body?.done !== false } : l)) } : x)) }));
+    return { ok: true };
+  });
+  app.delete<{ Params: { id: string } }>("/api/learning/courses/:id", async (req) => { learning.edit((s) => ({ ...s, courses: s.courses.filter((c) => c.id !== req.params.id) })); return { ok: true }; });
+
+  // Roadmap: milestones toward your goal over N months (one careful call).
+  app.post<{ Body: { goal?: string; months?: number } }>("/api/learning/roadmaps", async (req, reply) => {
+    const goal = str(req.body?.goal, 200) || learning.get().profile.goal; if (!goal) return reply.code(400).send({ error: "Set a goal first." });
+    const months = Math.max(1, Math.min(36, Math.round(Number(req.body?.months) || 6))), id = `m_${randomUUID().slice(0, 8)}`;
+    const tracks = learning.get().profile.tracks.map((t) => `${t.name} ${t.level}/5`).join(", ");
+    const ask = ["You are a staff engineer and career coach building a realistic plan. Do not use any tools.", who(), `Goal: ${goal}. Horizon: ${months} months. Current skills: ${tracks || "not stated"}.`,
+      "Plan 5–10 milestones in order. Each: a title, why it matters for the goal, the skills it builds, one concrete portfolio project that proves it (ideally shippable in their own repos), and weeks it takes. Be specific to the current market for AI/agentic, platform and DevOps engineering; no filler.",
+      'Reply with a short summary, then exactly one ```roadmap fenced JSON object: {"title": "...", "milestones": [{"title": "...", "why": "...", "skills": ["..."], "project": "...", "weeks": 3}]}.'].join("\n");
+    const run = supervisor.launch({ ask, title: `Roadmap · ${goal}`.slice(0, 90), ...DEEP, labels: ["learning", "learn-kind:roadmap", `learn-roadmap:${id}`] });
+    learning.edit((s) => ({ ...s, roadmaps: [...s.roadmaps, { id, goal, months, title: "", run, created: Date.now(), milestones: [] }] }));
+    return { id, run };
+  });
+  app.post<{ Params: { id: string; n: string }; Body: { done?: boolean } }>("/api/learning/roadmaps/:id/milestones/:n", async (req) => {
+    learning.edit((s) => ({ ...s, roadmaps: s.roadmaps.map((r) => (r.id === req.params.id ? { ...r, milestones: r.milestones.map((m, i) => (i === Number(req.params.n) ? { ...m, done: req.body?.done !== false } : m)) } : r)) }));
+    return { ok: true };
+  });
+  app.delete<{ Params: { id: string } }>("/api/learning/roadmaps/:id", async (req) => { learning.edit((s) => ({ ...s, roadmaps: s.roadmaps.filter((r) => r.id !== req.params.id) })); return { ok: true }; });
+
+  // Career kit: resume review and interview prep.
+  app.post<{ Body: { resume?: string; role?: string } }>("/api/learning/resume", async (req, reply) => {
+    const resume = str(req.body?.resume, 20_000), role = str(req.body?.role, 200) || learning.get().profile.goal;
+    if (resume.length < 200) return reply.code(400).send({ error: "Paste your resume text (at least a few lines)." });
+    const ask = ["You are a senior engineering hiring manager reviewing a resume. Do not use any tools. Never invent experience; only sharpen what is there.", who(), `Target role: ${role || "not stated"}.`,
+      "Give: 1) a one-paragraph honest read of how it lands for that role, 2) the 5 highest-impact fixes, 3) every bullet rewritten with a strong verb, concrete scope and a measurable result (use [X] placeholders where numbers are missing — do not make numbers up), 4) keywords the role expects that are missing, 5) a 3-line summary section.",
+      `\n--- RESUME ---\n${resume}`].join("\n");
+    const run = supervisor.launch({ ask, title: `Resume review · ${role || "general"}`.slice(0, 90), ...DEEP, labels: ["learning", "learn-kind:resume"], incognito: true });
+    const id = `d_${randomUUID().slice(0, 8)}`;
+    learning.edit((s) => ({ ...s, docs: [...s.docs, { id, kind: "resume", title: `Resume review · ${role || "general"}`, run, created: Date.now() }] }));
+    return { id, run };
+  });
+  app.post<{ Body: { role?: string; focus?: string } }>("/api/learning/interview", async (req) => {
+    const role = str(req.body?.role, 200) || learning.get().profile.goal || "software engineer", focus = str(req.body?.focus, 60) || "system design";
+    const ask = ["You are an interviewer at a strong engineering company. Do not use any tools.", who(), `Role: ${role}. Focus: ${focus}.`,
+      "Write 6 realistic questions for this round, increasing in difficulty. For each: what a great answer covers, a model answer outline, and the follow-up an interviewer would push on.",
+      'Finish with 5–8 flashcards as a ```cards fenced JSON array of {"front": "...", "back": "..."}.'].join("\n");
+    const run = supervisor.launch({ ask, title: `Interview prep · ${focus} · ${role}`.slice(0, 90), ...MODEL, labels: ["learning", "learn-kind:interview", "learn-track:interview"] });
+    const id = `d_${randomUUID().slice(0, 8)}`;
+    learning.edit((s) => ({ ...s, docs: [...s.docs, { id, kind: "interview", title: `Interview prep · ${focus}`, run, created: Date.now() }] }));
+    return { id, run };
   });
 }

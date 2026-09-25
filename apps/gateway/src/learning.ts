@@ -14,6 +14,11 @@ const card = z.object({
   created: z.number(), due: z.number(), interval: z.number().min(0), ease: z.number().min(1.3).max(3.5), reps: z.number().int().min(0), lapses: z.number().int().min(0),
 });
 const drill = z.object({ day: z.string(), track: z.string(), run: z.string(), done: z.boolean() });
+const lesson = z.object({ title: z.string().max(200), summary: z.string().max(600).default(""), run: z.string().optional(), done: z.boolean().default(false) });
+const course = z.object({ id: z.string(), topic: z.string().max(160), level: z.number().int().min(1).max(5), title: z.string().max(200).default(""), plan: z.string().optional(), created: z.number(), lessons: z.array(lesson).max(20).default([]) });
+const milestone = z.object({ title: z.string().max(200), why: z.string().max(600).default(""), skills: z.array(z.string().max(80)).max(12).default([]), project: z.string().max(600).default(""), weeks: z.number().min(0).max(104).default(2), done: z.boolean().default(false) });
+const roadmap = z.object({ id: z.string(), goal: z.string().max(200), months: z.number().int().min(1).max(36), title: z.string().max(200).default(""), run: z.string(), created: z.number(), milestones: z.array(milestone).max(24).default([]) });
+const doc = z.object({ id: z.string(), kind: z.enum(["resume", "interview"]), title: z.string().max(200), run: z.string(), created: z.number() });
 export const LearningSchema = z.object({
   version: z.literal(1).default(1),
   profile: z.object({ goal: z.string().max(200).default(""), about: z.string().max(1000).default(""), tracks: z.array(track).max(24).default([]) }).default({ goal: "", about: "", tracks: [] }),
@@ -21,7 +26,12 @@ export const LearningSchema = z.object({
   drills: z.array(drill).max(400).default([]),
   studied: z.array(z.object({ run: z.string(), at: z.number(), study: z.string() })).max(400).default([]),
   reviews: z.array(z.object({ at: z.number(), grade: z.enum(["again", "good", "easy"]) })).max(20000).default([]),
+  courses: z.array(course).max(200).default([]),
+  roadmaps: z.array(roadmap).max(50).default([]),
+  docs: z.array(doc).max(200).default([]),
 });
+export type Course = z.infer<typeof course>;
+export type Roadmap = z.infer<typeof roadmap>;
 export type LearningState = z.infer<typeof LearningSchema>;
 export type Card = z.infer<typeof card>;
 export type Grade = "again" | "good" | "easy";
@@ -48,6 +58,22 @@ export function parseCards(text: string): Array<{ front: string; back: string }>
       ? [{ front: (x as { front: string }).front.trim().slice(0, 800), back: (x as { back: string }).back.trim().slice(0, 2000) }] : []))
       .filter((c) => c.front && c.back).slice(0, 8);
   } catch { return []; }
+}
+
+/**
+ * A structured block from a model reply: the ```name fence if present, otherwise any fenced (or bare)
+ * JSON object that has `key` — models often write ```json instead of the fence they were asked for.
+ */
+export function parseBlock(text: string, name: string, key?: string): unknown {
+  const tryParse = (raw: string) => { try { return JSON.parse(raw.trim()) as unknown; } catch { return undefined; } };
+  const named = new RegExp("```" + name + "\\s*([\\s\\S]*?)```", "i").exec(text);
+  if (named) { const v = tryParse(named[1]!); if (v !== undefined) return v; }
+  if (!key) return undefined;
+  const has = (v: unknown) => v && typeof v === "object" && !Array.isArray(v) && key in (v as object);
+  for (const m of text.matchAll(/```[a-z]*\s*([\s\S]*?)```/gi)) { const v = tryParse(m[1]!); if (has(v)) return v; }
+  const bare = text.indexOf("{"), end = text.lastIndexOf("}");
+  if (bare >= 0 && end > bare) { const v = tryParse(text.slice(bare, end + 1)); if (has(v)) return v; }
+  return undefined;
 }
 
 export class Learning {
@@ -79,6 +105,8 @@ export class Learning {
   recordDrill(d: z.infer<typeof drill>) { this.save({ ...this.value, drills: [...this.value.drills.filter((x) => x.day !== d.day), d].slice(-400) }); }
   markDrillDone(day: string) { this.save({ ...this.value, drills: this.value.drills.map((d) => (d.day === day ? { ...d, done: true } : d)) }); }
   recordStudy(run: string, study: string, now = Date.now()) { this.save({ ...this.value, studied: [...this.value.studied.filter((s) => s.run !== run), { run, at: now, study }].slice(-400) }); }
+  /** Update a course / roadmap / doc list with a function (validated on save). */
+  edit(fn: (s: LearningState) => LearningState) { return this.save(fn(structuredClone(this.value))); }
   due(now = Date.now()) { return this.value.cards.filter((c) => c.due <= now).sort((a, b) => a.due - b.due); }
   /** The focus track you're least confident in (lowest level; ties → fewest cards). */
   weakest() {
