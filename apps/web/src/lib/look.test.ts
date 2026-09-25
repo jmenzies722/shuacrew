@@ -21,3 +21,15 @@ it("writes nothing at defaults, so the app looks exactly as before", () => {
   applyLook(DEFAULT_LOOK, root as unknown as HTMLElement);
   expect(vars.size).toBe(0);
 });
+it("custom accent sets the accent tokens with readable on-accent text, and clears back to the preset", async () => {
+  const { contrast } = await import("./look");
+  const vars = new Map<string, string>();
+  const root = { style: { setProperty: (k: string, v: string) => void vars.set(k, v), removeProperty: (k: string) => void vars.delete(k) }, dataset: {} as Record<string, string> };
+  applyLook(parseLook({ customAccent: "#FFE066" }), root as unknown as HTMLElement);
+  expect(vars.get("--amber")).toBe("#ffe066"); expect(vars.get("--on-accent")).toBe("#0b0b0c");
+  applyLook(parseLook({ customAccent: "#1e3a8a" }), root as unknown as HTMLElement);
+  expect(vars.get("--on-accent")).toBe("#ffffff");
+  applyLook(parseLook({ customAccent: "not-a-colour" }), root as unknown as HTMLElement);
+  expect(vars.has("--amber")).toBe(false);
+  expect(contrast("#ffffff", "#000000")).toBeCloseTo(21, 0);
+});

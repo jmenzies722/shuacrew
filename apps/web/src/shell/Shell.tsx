@@ -21,6 +21,7 @@ import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
 import { getPower, savePower, usePower } from "../lib/power";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
+import "../components/settings-command.css";
 import "../lib/look";
 
 export const NAV = [
@@ -61,6 +62,7 @@ export function Shell() {
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
     <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
+      <div className="living-bg" aria-hidden="true"><i /><i /><i /></div>
       {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
       <IconRail />

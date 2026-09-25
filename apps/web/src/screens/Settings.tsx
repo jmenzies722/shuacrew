@@ -13,6 +13,7 @@ import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
 import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, InstructionsSettings, LookSettings, MenuBarSettings, QuietHoursSettings, SafetySettings, SoundSettings, SpeechStorageSettings } from "../components/BatchSettings";
+import { SettingsCommand } from "../components/SettingsCommand";
 import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, SoundscapeSettings } from "../components/BatchSettings2";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
@@ -138,6 +139,7 @@ export function Settings() {
   };
   return <div className="settings-page">
     <header className="settings-hero"><div><span className="settings-kicker"><SlidersHorizontal size={12} /> YOUR WORKSPACE</span><h1>Make room for your best work.</h1><p>The look, the flow, the intelligence. Make ShuaCrew yours.</p></div><span className="settings-save" role="status">{saved ? <><Check size={13} /> Preferences save on this device</> : "Storage unavailable · changes last this session"}</span></header>
+    <SettingsCommand go={(hash) => { window.location.hash = hash; setSection(sectionFromHash(`#${hash}`)); setQuery(""); }} />
     <div className="settings-layout"><aside className="settings-sidebar">
       <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
       <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, icon: Icon }) => <button key={id} aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); }}><Icon size={17} /><span>{title}</span></button>)}</nav>

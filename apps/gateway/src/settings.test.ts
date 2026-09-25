@@ -50,3 +50,16 @@ it("routes by your keywords, whole words only, first match wins", async () => {
   expect(matchRoute(rules, "Update the contest page")).toBeUndefined(); // "test" inside "contest" doesn't count
   expect(() => GatewaySettingsSchema.parse({ router: [{ name: "x", match: "a", model: "bad model!" }] })).toThrow();
 });
+
+it("keeps a history of versions and can restore (and undo the restore)", () => {
+  const f = file(), s = new GatewaySettings(f);
+  s.update({ git: { squash: true } });
+  s.update({ menuBar: "tokens" });
+  const h = s.history();
+  expect(h).toHaveLength(2);
+  expect(h[0]!.value.git.squash).toBe(false);
+  s.restore(h[0]!.at);
+  expect(s.get()).toMatchObject({ menuBar: "attention", git: { squash: false } });
+  expect(s.history()).toHaveLength(3); // the restore itself is undoable
+  expect(() => s.restore(123)).toThrow(/No saved version/);
+});

@@ -79,3 +79,5 @@
 .prompt-inspector h4 { margin:10px 0 6px; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); }
 .prompt-inspector pre { max-height:280px; overflow:auto; padding:10px; border-radius:8px; font-family:var(--font-mono); font-size:11.5px; white-space:pre-wrap; word-break:break-word; color:var(--text-2); background:var(--ink); }
 @media (max-width:900px) { .router-new { grid-template-columns:1fr 1fr; } .router-rule { grid-template-columns:1fr 32px; } }
+.accent-well { width:44px; height:30px; padding:0; border:0; border-radius:9px; background:none; cursor:pointer; box-shadow:inset 0 0 0 1px var(--line-strong); }
+.accent-well::-webkit-color-swatch-wrapper { padding:3px; } .accent-well::-webkit-color-swatch { border:0; border-radius:7px; }

@@ -60,6 +60,21 @@ export class GatewaySettings {
     } catch { return GatewaySettingsSchema.parse({}); }
   }
   get(): GatewaySettingsValue { return this.value; }
+
+  // Time machine: the version before each change (last 50), so any change can be undone.
+  private get historyFile() { return this.file.replace(/\.json$/, "") + "-history.json"; }
+  history(): Array<{ at: number; value: GatewaySettingsValue }> {
+    try { const raw = JSON.parse(readFileSync(this.historyFile, "utf8")) as Array<{ at: number; value: unknown }>; return raw.flatMap((h) => { const p = GatewaySettingsSchema.safeParse(h.value); return p.success && typeof h.at === "number" ? [{ at: h.at, value: p.data }] : []; }); } catch { return []; }
+  }
+  private remember(value: GatewaySettingsValue) {
+    const list = [...this.history(), { at: Date.now(), value }].slice(-50), tmp = `${this.historyFile}.tmp`;
+    writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 }); renameSync(tmp, this.historyFile); chmodSync(this.historyFile, 0o600);
+  }
+  /** Put back the version saved at `at` (itself recorded, so a restore can be undone too). */
+  restore(at: number): GatewaySettingsValue {
+    const hit = this.history().find((h) => h.at === at); if (!hit) throw new Error("No saved version at that time.");
+    return this.update(hit.value as GatewaySettingsPatch);
+  }
   /** Shallow-merges each section, validates the whole, writes atomically. Throws on invalid input. */
   update(patch: GatewaySettingsPatch): GatewaySettingsValue {
     const merged: Record<string, unknown> = { ...this.value };
@@ -68,6 +83,7 @@ export class GatewaySettings {
       merged[key] = v && typeof v === "object" && !Array.isArray(v) && current && typeof current === "object" && !Array.isArray(current) ? { ...current, ...v } : v;
     }
     const next = GatewaySettingsSchema.parse(merged);
+    this.remember(this.value);
     const tmp = `${this.file}.tmp`;
     writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, this.file);

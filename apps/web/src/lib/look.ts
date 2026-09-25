@@ -11,9 +11,13 @@ export interface LookPrefs {
   chatWidth: "narrow" | "default" | "wide";
   timestamps: "hover" | "always";
   sounds: { approval: boolean; done: boolean; failed: boolean; volume: number };
+  /** Any accent colour (#rrggbb) — overrides the preset accent. null = use the preset. */
+  customAccent: string | null;
+  /** A slow aurora behind the whole app (GPU transforms only). */
+  livingBackground: boolean;
 }
 const KEY = "shuacrew.look";
-export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "geist", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 } };
+export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "geist", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false };
 
 export const FONT_STACK = {
   ui: { geist: `"Geist Variable", system-ui, sans-serif`, system: `-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif` },
@@ -33,6 +37,8 @@ export function parseLook(value: unknown): LookPrefs {
     chatStyle: pick("chatStyle", ["document", "bubbles"], "bubbles"), chatWidth: pick("chatWidth", ["narrow", "default", "wide"], "default"),
     timestamps: pick("timestamps", ["hover", "always"], "hover"),
     sounds: { approval: s.approval === true, done: s.done === true, failed: s.failed === true, volume: vol },
+    customAccent: typeof v.customAccent === "string" && /^#[0-9a-f]{6}$/i.test(v.customAccent) ? v.customAccent.toLowerCase() : null,
+    livingBackground: v.livingBackground === true,
   };
 }
 
@@ -44,6 +50,10 @@ export function applyLook(p: LookPrefs, root: HTMLElement = document.documentEle
   set("--font-mono", p.monoFont === DEFAULT_LOOK.monoFont ? null : FONT_STACK.mono[p.monoFont]);
   set("--font-reading", p.readingFont === DEFAULT_LOOK.readingFont ? null : FONT_STACK.reading[p.readingFont]);
   set("--chat-width", p.chatWidth === DEFAULT_LOOK.chatWidth ? null : WIDTH[p.chatWidth]);
+  // Custom accent: the three accent tokens, inline so they win over the preset; cleared → preset returns.
+  const hex = p.customAccent;
+  set("--amber", hex); set("--amber-soft", hex ? `${hex}26` : null); set("--on-accent", hex ? (luminance(hex) > 0.45 ? "#0b0b0c" : "#ffffff") : null);
+  root.dataset.living = p.livingBackground ? "on" : "off";
   root.dataset.ligatures = p.ligatures ? "on" : "off";
   root.dataset.chatStyle = p.chatStyle;
   root.dataset.timestamps = p.timestamps;
@@ -63,3 +73,11 @@ export function saveLook(patch: Partial<LookPrefs>): boolean {
   return saved;
 }
 export function useLook() { return useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l); }; }, () => current, () => current); }
+
+/** Relative luminance (WCAG) of #rrggbb. */
+export function luminance(hex: string) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+/** WCAG contrast ratio between two #rrggbb colours. */
+export function contrast(a: string, b: string) { const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m); return (x! + 0.05) / (y! + 0.05); }

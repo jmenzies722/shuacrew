@@ -27,6 +27,17 @@ export function settingsRoutes(app: FastifyInstance, deps: {
       return reply.code(400).send({ error: issue ? `${issue.path.map(String).join(".")}: ${issue.message}` : (error as Error).message.slice(0, 300) });
     }
   });
+  // Time machine: what changed at each save, newest first; restore any version.
+  app.get("/api/settings/history", async () => {
+    const list = settings.history(), cur = settings.get() as Record<string, unknown>;
+    return list.map((h, i) => {
+      const after = (list[i + 1]?.value ?? cur) as Record<string, unknown>, before = h.value as Record<string, unknown>;
+      return { at: h.at, changed: Object.keys(after).filter((k) => JSON.stringify(after[k]) !== JSON.stringify(before[k])) };
+    }).reverse();
+  });
+  app.post<{ Body: { at?: number } }>("/api/settings/restore", async (req, reply) => {
+    try { return settings.restore(Number(req.body?.at)); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+  });
   // Exactly what an agent would receive as your instructions (plus the member's persona), for a repo.
   app.get<{ Querystring: { repo?: string; member?: string } }>("/api/settings/instructions-preview", async (req) => {
     const parts = [standingInstructions(settings.get(), req.query.repo || undefined), req.query.member ? deps.persona?.(req.query.member) : undefined].filter(Boolean);
