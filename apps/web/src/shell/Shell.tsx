@@ -26,6 +26,7 @@ import { StatusIsland } from "../components/TopBarWidgets";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { useCompanion } from "../lib/companion";
 import { HubRail, HubTabs } from "./HubNav";
+import { Welcome, welcomed } from "../components/Welcome";
 import { Buddy } from "../screens/Buddy";
 import { setSparkPanel, toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
 import { RadioHost } from "../components/NowPlaying";
@@ -101,6 +102,7 @@ export function Shell() {
       <RadioHost />
       <AutomationsHost />
       <DevHud />
+      <FirstRun />
     </div>
     </MotionConfig>
   );
@@ -285,4 +287,11 @@ function SparkButton() {
   return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={{ "--spark-color": prefs.color } as React.CSSProperties}>
     <SparkCharacter preferences={prefs} size={20} /><span>{prefs.nickname || "Spark"}</span>
   </button>;
+}
+
+/** The welcome tour, once (and again after a big release, or from Settings → Spark). */
+function FirstRun() {
+  const [show, setShow] = useState(() => !welcomed());
+  useEffect(() => { const on = () => setShow(true); window.addEventListener("shuacrew:welcome", on); return () => window.removeEventListener("shuacrew:welcome", on); }, []);
+  return show ? <Welcome onDone={() => setShow(false)} /> : null;
 }

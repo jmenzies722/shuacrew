@@ -1,3 +1,4 @@
+import { plain } from "../lib/plain";
 import type { PhaseView, PlayView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -461,7 +462,7 @@ function PhaseCard({ play, phase, index }: { play: PlayView; phase: PhaseView; i
               {member ? `${member.name} · ${member.role}` : "Any agent"}
               {" — "}
               {phase.status === "running" ? (
-                <span className="shimmer-text">{run?.currentTool ? `using ${run.currentTool}…` : run?.ticker || "working…"}</span>
+                <span className="shimmer-text">{run?.currentTool ? `using ${run.currentTool}…` : plain(run?.ticker) || "working…"}</span>
               ) : phase.status === "review" ? (
                 <span className="text-amber">ready for your review</span>
               ) : phase.status === "failed" ? (

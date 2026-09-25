@@ -1,3 +1,4 @@
+import { plain } from "../lib/plain";
 import type { RunView } from "@shuacrew/core/projections";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button, Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
@@ -247,13 +248,13 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
         {run.pendingApprovals.length > 0 ? (
           <span className="text-wait">Waiting for your approval</span>
         ) : working ? (
-          <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : run.ticker || "Thinking…"}</span>
+          <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : plain(run.ticker) || "Thinking…"}</span>
         ) : run.status === "failed" ? (
           <span className="text-bad">{run.statusReason ?? "Failed"}</span>
         ) : pause ? (
           <span className="text-amber">{pause}</span>
         ) : (
-          <span className="text-fg-3">{run.ticker || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
+          <span className="text-fg-3">{plain(run.ticker) || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">

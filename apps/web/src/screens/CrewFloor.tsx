@@ -1,3 +1,4 @@
+import { plain } from "../lib/plain";
 import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
 import { Button, formatTokens } from "@shuacrew/ui";
@@ -213,7 +214,7 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
         ) : active ? (
           <span className="min-w-0 flex-1 truncate">
             <span className="shimmer-text font-medium">{current ? KIND_LABEL[kind] : "Thinking"}</span>
-            <span className="mono ml-2 text-[11.5px] text-fg-3">{current ? brief(current.input) : run.ticker}</span>
+            <span className="mono ml-2 text-[11.5px] text-fg-3">{current ? brief(current.input) : plain(run.ticker)}</span>
           </span>
         ) : (
           <span className={`min-w-0 flex-1 truncate ${run.status === "failed" ? "text-bad" : "text-fg-2"}`}>

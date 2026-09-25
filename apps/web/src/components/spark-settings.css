@@ -29,3 +29,4 @@
 @media (max-width: 760px) { .spark-hero { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .spark-stage .spark-character { animation: none; } }
 .spark-link { margin-left: 4px; font-weight: 600; color: var(--amber); } .spark-link:hover { text-decoration: underline; }
+.spark-foot { gap: 8px; }

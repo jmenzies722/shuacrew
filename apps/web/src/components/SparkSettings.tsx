@@ -6,6 +6,7 @@ import { parseCompanion, saveCompanion, SPARK_CHARACTERS, SPARK_COLORS, SPARK_HO
 import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
+import { resetWelcome } from "./Welcome";
 
 type Native = { postMessage(m: unknown): void };
 const native = () => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;
@@ -103,7 +104,7 @@ export function SparkSettings() {
           : <button type="button" className="tb-btn" onClick={() => native()?.postMessage({ type: "buddyScreenAccess" })}>Check</button>)}
       </SettingRow>
       <SettingRow name="Doing things" detail="Opens apps, websites, and files or folders in your home folder; starts focus timers; adds to your note; hands big jobs to the crew. The Mac app checks every action. It never clicks or types for you: it shows you." />
-      <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
+      <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => { resetWelcome(); window.dispatchEvent(new Event("shuacrew:welcome")); }}>Replay welcome</button><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
     </section>
   </div>;
 }

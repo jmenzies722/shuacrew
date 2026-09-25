@@ -1,3 +1,4 @@
+import { plain } from "../lib/plain";
 import { Check, X } from "lucide-react";
 import type { RunView } from "@shuacrew/core/projections";
 import { Chip, Gauge, StatusPill, formatTokens, since } from "@shuacrew/ui";
@@ -41,7 +42,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
 
         {!compact && (
           <div className="mono mt-3 h-[34px] overflow-hidden text-[12px] leading-[17px] text-fg-2" aria-live="off">
-            {run.ticker ? <span className="line-clamp-2">{run.ticker}</span> : <span className="text-fg-3">{run.status === "queued" ? "Waiting for a free slot…" : run.statusReason ?? "—"}</span>}
+            {run.ticker ? <span className="line-clamp-2">{plain(run.ticker)}</span> : <span className="text-fg-3">{run.status === "queued" ? "Waiting for a free slot…" : run.statusReason ?? "—"}</span>}
           </div>
         )}
 
