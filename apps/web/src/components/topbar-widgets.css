@@ -1,0 +1,34 @@
+.tb-pop { position:relative; }
+.tb-chip { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:9px; font-size:12px; color:var(--text-2); transition:background .15s, color .15s, box-shadow .15s; }
+.tb-chip:hover, .tb-chip.is-open { color:var(--text); background:color-mix(in srgb, var(--text) 7%, transparent); }
+.tb-chip.is-active { color:var(--amber); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent); background:var(--amber-soft); }
+.tb-dim { color:var(--text-3); }
+.tb-wx-icon { color:#fbbf24; }
+.tb-panel { position:absolute; right:0; top:calc(100% + 8px); z-index:70; min-width:260px; padding:14px; border-radius:16px;
+  background:color-mix(in srgb, var(--raised) 94%, var(--ink)); backdrop-filter:blur(28px) saturate(1.6); -webkit-backdrop-filter:blur(28px) saturate(1.6);
+  box-shadow:inset 0 0 0 1px var(--line-strong), inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent), 0 22px 60px rgba(0,0,0,.5); animation:tb-in .18s cubic-bezier(.2,.9,.3,1.2); transform-origin:top right; }
+@keyframes tb-in { from { opacity:0; transform:translateY(-4px) scale(.97); } }
+.tb-weather header { display:flex; align-items:center; gap:12px; } .tb-weather header div { flex:1; display:flex; flex-direction:column; }
+.tb-weather header strong { font-size:28px; font-weight:600; letter-spacing:-.03em; line-height:1; } .tb-weather header span { font-size:12px; color:var(--text-3); margin-top:3px; }
+.tb-wx-meta { display:flex; align-items:center; gap:4px; margin:10px 0; font-size:12px; color:var(--text-2); }
+.tb-hours { display:grid; grid-template-columns:repeat(6, 1fr); gap:4px; }
+.tb-hours li { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 0; border-radius:10px; font-size:11px; background:var(--sunken); }
+.tb-hours small { color:var(--text-3); } .tb-hours b { font-weight:600; } .tb-hours em { font-style:normal; font-size:10px; color:#7aa2f7; } .tb-hours svg { color:var(--text-2); }
+.tb-foot { margin-top:10px; font-size:10.5px; color:var(--text-3); }
+.tb-icon-btn { display:grid; place-items:center; width:28px; height:28px; border-radius:8px; color:var(--text-3); } .tb-icon-btn:hover { color:var(--text); background:var(--raised); }
+.tb-spin { animation:tb-spin 1s linear infinite; } @keyframes tb-spin { to { transform:rotate(360deg); } }
+.tb-ring { width:16px; height:16px; transform:rotate(-90deg); } .tb-ring circle { fill:none; stroke:color-mix(in srgb, var(--amber) 25%, transparent); stroke-width:2.6; }
+.tb-ring .tb-ring-fill { stroke:var(--amber); stroke-dasharray:50.27; stroke-linecap:round; transition:stroke-dashoffset 1s linear; }
+.tb-timer { display:flex; flex-direction:column; gap:12px; min-width:250px; } .tb-title { font-size:13px; }
+.tb-presets { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+.tb-presets button { display:flex; flex-direction:column; align-items:center; padding:10px 0; border-radius:12px; font-size:16px; font-weight:600; background:var(--sunken); box-shadow:inset 0 0 0 1px var(--line); transition:transform .15s, box-shadow .15s; }
+.tb-presets button:hover { transform:translateY(-1px); box-shadow:inset 0 0 0 1px var(--amber); } .tb-presets small { font-size:10px; font-weight:400; color:var(--text-3); }
+.tb-big-ring { position:relative; display:grid; place-items:center; width:140px; height:140px; margin:0 auto; }
+.tb-big-ring .tb-ring { position:absolute; inset:0; width:100%; height:100%; } .tb-big-ring .tb-ring circle { stroke-width:1.4; }
+.tb-big-ring strong { font-size:30px; font-weight:600; letter-spacing:-.03em; } .tb-big-ring span { position:absolute; bottom:34px; font-size:11px; color:var(--text-3); }
+.tb-row { display:flex; gap:6px; justify-content:center; }
+.tb-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:999px; font-size:12px; color:var(--text); background:var(--raised); box-shadow:inset 0 0 0 1px var(--line-strong); }
+.tb-btn:hover { box-shadow:inset 0 0 0 1px var(--amber); }
+/* The search sits dead centre of the window, whatever is on either side. */
+.tb-center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(460px, 38vw); }
+@media (prefers-reduced-motion: reduce) { .tb-panel, .tb-spin { animation:none; } .tb-ring .tb-ring-fill { transition:none; } }

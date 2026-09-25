@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import "./setting-controls.css";
 
 /** One setting: its name, what it does, whether it differs from the default, and its control. */
-export function SettingRow({ name, detail, modified, children }: { name: string; detail?: ReactNode; modified?: boolean; children: ReactNode }) {
+export function SettingRow({ name, detail, modified, children }: { name: string; detail?: ReactNode; modified?: boolean; children?: ReactNode }) {
   return <div className="preference-row">
     <span><strong>{name}{modified && <i className="setting-modified" title="Changed from default" aria-label="Changed from default" />}</strong>{detail && <small>{detail}</small>}</span>
     <div className="setting-control">{children}</div>

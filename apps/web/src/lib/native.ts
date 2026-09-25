@@ -126,3 +126,27 @@ export function saveTextFile(name: string, text: string, type = "application/jso
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type })), download: name });
   a.click(); URL.revokeObjectURL(a.href);
 }
+
+/** A native macOS notification (Mac app); in a browser, the Notification API if you've allowed it. */
+export function notifyNative(title: string, body = "") {
+  const native = handler();
+  if (native) { native.postMessage({ type: "notify", title, body } as never); return; }
+  try { if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body }); } catch { /* ignore */ }
+}
+/** Your location once, from macOS Location (Mac app) or the browser — rounded to ~1 km. */
+export function requestLocation(timeoutMs = 20_000): Promise<{ lat: number; lon: number }> {
+  return new Promise((resolve, reject) => {
+    const native = handler();
+    if (native) {
+      const t = setTimeout(() => { window.removeEventListener("shuacrew:location", on as EventListener); reject(new Error("Location timed out.")); }, timeoutMs);
+      const on = (e: CustomEvent<{ lat?: number; lon?: number; error?: string }>) => {
+        clearTimeout(t); window.removeEventListener("shuacrew:location", on as EventListener);
+        if (typeof e.detail.lat === "number" && typeof e.detail.lon === "number") resolve({ lat: e.detail.lat, lon: e.detail.lon }); else reject(new Error(e.detail.error ?? "Location unavailable."));
+      };
+      window.addEventListener("shuacrew:location", on as EventListener);
+      native.postMessage({ type: "location" } as never); return;
+    }
+    if (!navigator.geolocation) { reject(new Error("Location isn't available here.")); return; }
+    navigator.geolocation.getCurrentPosition((p) => resolve({ lat: Math.round(p.coords.latitude * 100) / 100, lon: Math.round(p.coords.longitude * 100) / 100 }), (e) => reject(new Error(e.message)), { timeout: timeoutMs, maximumAge: 3_600_000 });
+  });
+}

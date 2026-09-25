@@ -22,6 +22,7 @@ import { getPower, savePower, usePower } from "../lib/power";
 import { navKey } from "../lib/keys";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
+import { TimerChip, WeatherChip } from "../components/TopBarWidgets";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../components/surfaces.css";
@@ -107,13 +108,13 @@ function TopBar() {
   useEffect(() => (bar.current ? watchTitleBar(bar.current) : undefined), []);
 
   return (
-    <header ref={bar} className="col-span-2 flex items-center gap-3 px-3 [[data-shell=mac]_&]:pl-[84px]" aria-label="Top bar">
+    <header ref={bar} className="relative col-span-2 flex items-center gap-3 px-3 [[data-shell=mac]_&]:pl-[84px]" aria-label="Top bar">
       <img src="/icon.svg" alt="ShuaCrew" className="h-6 w-6 [[data-shell=mac]_&]:hidden" />
       <span className="flex h-7 items-center gap-1.5 rounded-[8px] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] px-2.5 text-[12px] font-medium text-fg-2" data-no-drag>
         <House size={13} className="text-fg-3" /> Local
       </span>
       <RepoChip />
-      <div className="flex flex-1 justify-center">
+      <div className="tb-center" data-no-drag>
         <button
           onClick={() => setPalette(true)}
           className="flex h-8 w-full max-w-[460px] items-center gap-2 rounded-[9px] border border-line bg-panel px-3 text-[12.5px] text-fg-3 transition hover:border-line-strong hover:text-fg-2"
@@ -123,6 +124,9 @@ function TopBar() {
           <Kbd>⌘K</Kbd>
         </button>
       </div>
+      <span className="flex-1" />
+      <WeatherChip />
+      <TimerChip />
       {limited.map(([key, info]) => {
         const [runtime, model] = key.split(" · ");
         const soon = info.until - Date.now() < 86_400_000;

@@ -4,7 +4,8 @@ import { saveSchedule, useSchedule, type Mode, type ModeRule } from "../lib/mode
 import { encodeTheme, decodeTheme } from "../lib/theme-code";
 import { getLook, saveLook, useLook } from "../lib/look";
 import { useLive } from "../lib/live";
-import { SettingRow } from "./SettingControls";
+import { Segmented, SettingRow, Switch } from "./SettingControls";
+import { saveWeatherPrefs, useWeatherPrefs } from "../lib/weather";
 
 const NAMES: Record<Mode, { name: string; icon: typeof Target }> = { deep: { name: "Deep work", icon: Target }, saver: { name: "Cost saver", icon: PiggyBank }, wind: { name: "Wind down", icon: Moon } };
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -49,5 +50,24 @@ export function ThemeShareSettings() {
       }}><Wand2 size={12} /> Apply</button>
     </SettingRow>
     {notice && <p role="status" className="power-hint">{notice}</p>}
+  </div>;
+}
+
+/** Top bar: live weather (Open-Meteo) from your Mac's location or a city you type. */
+export function TopBarSettings() {
+  const w = useWeatherPrefs();
+  const [city, setCity] = useState(w.city);
+  return <div className="settings-card">
+    <SettingRow name="Weather in the top bar" detail="Current conditions, today's high/low and the next hours. Free, no account; only rounded coordinates or your city are sent to Open-Meteo." modified={w.enabled}>
+      <Switch label="Weather" on={w.enabled} onChange={(enabled) => saveWeatherPrefs({ enabled })} />
+    </SettingRow>
+    {w.enabled && <>
+      <SettingRow name="Units"><Segmented label="Units" value={w.unit} onChange={(unit) => saveWeatherPrefs({ unit })} options={[["c", "°C · km/h"], ["f", "°F · mph"]]} /></SettingRow>
+      <SettingRow name="Location" detail={w.source === "mac" ? "macOS asks once. Rounded to about a kilometre." : w.place ? `Using ${w.place.name}` : "Type a city and press Enter."}>
+        <Segmented label="Location source" value={w.source} onChange={(source) => saveWeatherPrefs({ source })} options={[["mac", "This Mac"], ["city", "A city"]]} />
+        {w.source === "city" && <input className="setting-input" style={{ width: 160 }} placeholder="Brooklyn" value={city} onChange={(e) => setCity(e.target.value)} onBlur={() => city !== w.city && saveWeatherPrefs({ city, place: undefined })} onKeyDown={(e) => { if (e.key === "Enter") saveWeatherPrefs({ city, place: undefined }); }} aria-label="City" />}
+      </SettingRow>
+    </>}
+    <SettingRow name="Focus timer" detail="The timer icon in the top bar: 5–90 minute blocks, a native notification and a chime when done. Its minutes count toward Today's Flow." />
   </div>;
 }

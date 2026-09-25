@@ -37,6 +37,8 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocationUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
   <key>NSMicrophoneUsageDescription</key><string>So you can talk to your crew instead of typing. Speech is transcribed on this Mac.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>

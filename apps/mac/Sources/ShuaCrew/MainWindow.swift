@@ -12,6 +12,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     static let titleBarHeight: CGFloat = 38
     private let gateway: Gateway
     private let overlay = StartOverlay()
+    private let location = LocationOnce()
     private let voiceSettings = VoiceSettings()
     private let voiceAudio = NativeVoiceAudio()
     private static let lastPathKey = "lastPath"
@@ -177,6 +178,24 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             panel.beginSheetModal(for: window) { response in
                 guard response == .OK, let url = panel.url else { return }
                 try? text.write(to: url, atomically: true, encoding: .utf8)
+            }
+        case "notify":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let title = body["title"] as? String else { return }
+            NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
+        case "location":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            location.request { [weak self] result in
+                let detail: String
+                switch result {
+                case .success(let c): detail = "{\"lat\": \((c.latitude * 100).rounded() / 100), \"lon\": \((c.longitude * 100).rounded() / 100)}"
+                case .failure(let e):
+                    let msg = (try? String(data: JSONEncoder().encode(e.localizedDescription), encoding: .utf8)) ?? "\"Location unavailable\""
+                    detail = "{\"error\": \(msg)}"
+                }
+                self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:location', { detail: \(detail) }))")
             }
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
