@@ -133,6 +133,8 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   useEffect(() => { void loadMemory(); const on = () => void loadMemory(); window.addEventListener("shuacrew:memory", on); return () => window.removeEventListener("shuacrew:memory", on); }, []);
   // Open-mic conversation.
   const [phase, setPhase] = useState<Phase>("off"), [level, setLevel] = useState(0);
+  // What you're saying, live, while you're still saying it.
+  const [heard, setHeard] = useState("");
   // Inside the app, the mic is only live while the app window is in front (the desktop panel covers the rest).
   const [focused, setFocused] = useState(() => typeof document !== "undefined" && document.hasFocus());
   // A live mic never starts just because the app opened: inside the app it waits until you engage the panel this session.
@@ -328,6 +330,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     const m = mic.current;
     m.onPhase = (p, detail) => { setPhase(p); if (p === "error" && detail) setError(detail); };
     m.onLevel = setLevel;
+    m.onPartial = setHeard;
     m.onTurn = (t) => void askRef.current(t);
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.stop(); };
     if (prefs.conversation && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
@@ -381,6 +384,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
               <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
             </motion.div>; })}
           </AnimatePresence>
+          {(phase === "hearing" || phase === "transcribing") && <motion.div className="spk-row is-you" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="buddy-msg is-you is-hearing">{heard || (phase === "hearing" ? "Listening…" : "…")}<i className="spk-live-caret" /></div>
+          </motion.div>}
           {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={22} /></span><p className="buddy-typing spk-typing"><span /><span /><span /> {busy || "thinking"}</p></motion.div>}
           {convo && !working && !busy && lastQuestion && <button type="button" className="buddy-handoff" onClick={() => void perform({ type: "crew", ask: lastQuestion }).then((r) => r.run && (embedded ? window.shuacrew?.navigate(`/sessions/${r.run}`) : post({ type: "buddyOpen", run: r.run })))}><Send size={11} /> Hand this to the crew as a full session</button>}
         </div>

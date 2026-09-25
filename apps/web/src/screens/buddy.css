@@ -153,3 +153,6 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .spk-avatar, .spk-mini { background: color-mix(in srgb, var(--spark-color) 10%, var(--raised)); }
 .spk .buddy-msg.is-you { background: color-mix(in srgb, var(--spark-color) 14%, var(--raised)); }
 .buddy-bubble.is-morning { background: linear-gradient(135deg, color-mix(in srgb, var(--spark-color) 22%, var(--float-hi)), var(--float-hi)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 45%, transparent), 0 14px 34px rgba(0,0,0,.45); font-weight: 600; }
+/* Your words, live, as you say them. */
+.spk .buddy-msg.is-you.is-hearing { color: var(--text-2); font-style: normal; background: color-mix(in srgb, var(--spark-color) 9%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 40%, transparent); }
+.spk-live-caret { display: inline-block; width: 2px; height: 14px; margin-left: 3px; vertical-align: -2px; border-radius: 1px; background: var(--spark-color); animation: spk-caret 1s steps(2) infinite; }

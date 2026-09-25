@@ -64,11 +64,17 @@ export class HandsFree {
   /** The last ~0.4 s before speech starts, so the first word is never clipped. */
   private preroll: Float32Array[] = [];
   private turn: Float32Array[] | null = null;
+  /** Live captions: one quick transcription of the words so far at a time; results for an old turn are dropped. */
+  private turnId = 0;
+  private captionBusy = false;
+  private captionAt = 0;
   /** Spark is talking: listen harder (echo), and a real interruption stops it. */
   speaking = false;
   onPhase?: (p: Phase, detail?: string) => void;
   onLevel?: (level: number) => void;
   onTurn?: (text: string) => void;
+  /** Your words so far, while you're still talking ("" when a turn starts or ends). */
+  onPartial?: (text: string) => void;
   onBargeIn?: () => void;
 
   get active() { return !!this.stream; }
@@ -93,7 +99,8 @@ export class HandsFree {
       if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > keep) this.preroll.shift(); }
       const r = vadStep(this.state, rms, frameMs, VAD, this.speaking);
       this.state = r.state;
-      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.turn = [...this.preroll]; this.preroll = []; this.onPhase?.("hearing"); }
+      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
+      else if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption();
       else if (r.event === "end") void this.finish(true);
       else if (r.event === "discard") void this.finish(false);
     };
@@ -102,8 +109,21 @@ export class HandsFree {
     this.onPhase?.("listening");
   }
 
+  /** The words so far, quickly (the fast model); the accurate transcript still comes when you stop. */
+  private async caption() {
+    if (!this.turn || !this.ctx) return;
+    const id = this.turnId, audio = this.turn.slice(-Math.ceil((20 * this.ctx.sampleRate) / 2048)); // the last 20 s is plenty
+    this.captionBusy = true; this.captionAt = performance.now();
+    try {
+      const r = await fetch("/api/transcribe?voice=1&fast=1&name=live.wav", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(audio, this.ctx.sampleRate) });
+      const { text = "" } = await r.json() as { text?: string };
+      if (id === this.turnId && this.turn && meaningful(text)) this.onPartial?.(text.trim());
+    } catch { /* a missed caption is fine; the final transcript is what counts */ }
+    finally { this.captionBusy = false; }
+  }
+
   private async finish(keep: boolean) {
-    const turn = this.turn; this.turn = null;
+    const turn = this.turn; this.turn = null; this.turnId++;
     if (!keep || !turn?.length || !this.ctx) { this.onPhase?.("listening"); return; }
     this.paused = true; this.onPhase?.("transcribing");
     try {
@@ -111,6 +131,7 @@ export class HandsFree {
       const { text = "", error } = await r.json() as { text?: string; error?: string };
       if (error) this.onPhase?.("error", error);
       else if (meaningful(text)) this.onTurn?.(text.trim());
+      this.onPartial?.("");
     } catch { this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
     finally { this.paused = false; if (this.stream) this.onPhase?.("listening"); }
   }

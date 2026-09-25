@@ -27,10 +27,10 @@ export interface MediaTools {
   model?: string;
 }
 
-export function tools(modelsDir = path.join(process.env.SHUACREW_HOME ?? path.join(HOME, ".shuacrew"), "models")): MediaTools {
-  // The most accurate English model you have, else any model.
+export function tools(modelsDir = path.join(process.env.SHUACREW_HOME ?? path.join(HOME, ".shuacrew"), "models"), speed: "accurate" | "fast" = "accurate"): MediaTools {
+  // Accurate: the best English model you have. Fast (live captions while you talk): the quickest good one.
   const models = existsSync(modelsDir) ? readdirSync(modelsDir).filter((f) => /^ggml-.*\.bin$/.test(f)) : [];
-  const rank = ["large-v3-turbo", "medium.en", "small.en", "base.en", "small", "base", "tiny.en", "tiny"];
+  const rank = speed === "fast" ? ["base.en", "small.en", "tiny.en", "base", "small", "large-v3-turbo", "medium.en", "tiny"] : ["large-v3-turbo", "medium.en", "small.en", "base.en", "small", "base", "tiny.en", "tiny"];
   const best = [...models].sort((a, b) => rank.findIndex((r) => a.includes(r)) - rank.findIndex((r) => b.includes(r)))[0];
   return { ffmpeg: bin("ffmpeg"), ffprobe: bin("ffprobe"), whisper: bin("whisper-cli") ?? bin("whisper-cpp"), model: best ? path.join(modelsDir, best) : undefined };
 }
@@ -84,14 +84,14 @@ export function fixNames(text: string, names: string[]): string {
   });
 }
 
-export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string } = {}, t = tools()): Promise<string> {
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean } = {}, t = tools(undefined, options.fast ? "fast" : "accurate")): Promise<string> {
   options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);
   try {
     await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], options.timeoutMs ?? 120_000, options.signal);
     const threads = String(Math.max(2, Math.min(8, os.cpus().length - 2)));
-    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", "en", "-bs", "5", ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
+    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", "en", ...(options.fast ? ["-bs", "1", "-bo", "1"] : ["-bs", "5"]), ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
     return out
       .split("\n")
       .map((l) => l.replace(/^\[(\d\d:\d\d:\d\d)\.\d+ --> (\d\d:\d\d:\d\d)\.\d+\]\s*/, (_, a: string, b: string) => `[${a.replace(/^00:/, "")}–${b.replace(/^00:/, "")}] `).trim())
