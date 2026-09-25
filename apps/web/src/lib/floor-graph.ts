@@ -21,7 +21,7 @@ export function buildStage(input: {
   const ownerOf = (r: RunView) => (r.member && members[r.member] ? r.member : `agent:${r.runtime}`);
   const waitingRuns = new Set(Object.values(approvals).map((a) => a.run).filter(Boolean) as string[]);
   const byOwner = new Map<string, RunView[]>();
-  for (const r of Object.values(runs)) if (!r.parent && recent(r)) (byOwner.get(ownerOf(r)) ?? byOwner.set(ownerOf(r), []).get(ownerOf(r))!).push(r);
+  for (const r of Object.values(runs)) if (!r.parent && !r.labels?.includes("learning") && recent(r)) (byOwner.get(ownerOf(r)) ?? byOwner.set(ownerOf(r), []).get(ownerOf(r))!).push(r);
   // Delegations inside rooms: coordinator → member, for work that's live or just finished.
   const edges: StageEdge[] = [];
   for (const room of Object.values(rooms)) for (const a of Object.values(room.assignments)) {

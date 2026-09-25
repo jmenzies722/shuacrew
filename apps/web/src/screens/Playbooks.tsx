@@ -10,6 +10,7 @@ import { useLive } from "../lib/live";
 import { KIND } from "../lib/kinds";
 import { Glyph, IconPicker } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
 
 interface Phase {
   id: string;
@@ -51,7 +52,7 @@ export function Playbooks() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
-        <PaneHeader eyebrow="Plan" icon={ListChecks} title="Playbooks" description="Repeatable work in phases. Each phase goes to the right crew member, builds on the last, saves its output to the Library, and waits for you where it matters."
+        <PaneHeader children={<StatStrip stats={[{ value: books.length, label: "playbooks" }, { value: Object.values(plays).filter((p) => p.status === "running").length, label: "running", live: Object.values(plays).some((p) => p.status === "running") }, { value: Object.values(plays).filter((p) => p.status === "waiting").length, label: "waiting for you", tone: "wait" }, { value: Object.values(plays).filter((p) => p.status === "done" && p.updatedAt > Date.now() - 7 * 86_400_000).length, label: "finished this week", tone: "ok" }]} />} eyebrow="Plan" icon={ListChecks} title="Playbooks" description="Repeatable work in phases. Each phase goes to the right crew member, builds on the last, saves its output to the Library, and waits for you where it matters."
           actions={<Button onClick={() => setEditing({ emoji: "workflow", inputs: [{ key: "goal", label: "Goal", long: true }], phases: [{ id: "phase-1", name: "", prompt: "", gate: "approve" }] })}><Plus size={14} /> New playbook</Button>} />
 
         {active.length > 0 && (

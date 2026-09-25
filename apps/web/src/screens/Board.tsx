@@ -9,6 +9,7 @@ import { useLive } from "../lib/live";
 import { PaneHeader, PaneState } from "../components/Pane";
 import { useNavigate } from "@tanstack/react-router";
 import { KanbanSquare } from "lucide-react";
+import { StatStrip } from "../components/StatStrip";
 
 const EMPTY: Record<string, string> = { queued: "Nothing waiting to start", running: "No one is working", awaiting: "Nothing needs you", reviewing: "Nothing to review", done: "Nothing finished yet" };
 
@@ -32,7 +33,7 @@ export function Board() {
   return (
     <div className="flex h-full flex-col">
       <div className="px-8 pt-8">
-        <PaneHeader eyebrow="Plan" icon={KanbanSquare} title="Board" description="Every session by where it stands. Drag a queued card to the top to run it next; cards move on their own as the work changes."
+        <PaneHeader children={<StatStrip stats={[{ value: all.filter((r) => ["running", "planning", "queued"].includes(r.status)).length, label: "in flight", live: all.some((r) => ["running", "planning"].includes(r.status)) }, { value: all.filter((r) => r.status === "awaiting_approval").length, label: "need you", tone: "wait" }, { value: all.filter((r) => ["done", "merged"].includes(r.status) && r.updatedAt > Date.now() - 7 * 86_400_000).length, label: "done this week", tone: "ok" }]} />} eyebrow="Plan" icon={KanbanSquare} title="Board" description="Every session by where it stands. Drag a queued card to the top to run it next; cards move on their own as the work changes."
           actions={runtimes.length > 1 ? <>
         <div className="flex items-center gap-1.5 text-[12px]" role="radiogroup" aria-label="Filter by runtime">
           {["all", ...runtimes].map((r) => (

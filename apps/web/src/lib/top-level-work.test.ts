@@ -21,3 +21,11 @@ describe("isTopLevelWork with an archived parent", () => {
     expect(isTopLevelWork(runs.c, runs)).toBe(false);
   });
 });
+
+describe("isTopLevelWork and learning", () => {
+  it("keeps coach, course and drill sessions out of work views", () => {
+    const runs = { l: run("l", { labels: ["learning", "learn-kind:coach"] }), w: run("w", { labels: [] }) };
+    expect(isTopLevelWork(runs.l, runs)).toBe(false);
+    expect(isTopLevelWork(runs.w, runs)).toBe(true);
+  });
+});

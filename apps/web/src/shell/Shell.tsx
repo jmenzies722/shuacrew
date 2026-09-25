@@ -24,6 +24,7 @@ import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
+import "../components/surfaces.css";
 import "../lib/look";
 
 export const NAV = [

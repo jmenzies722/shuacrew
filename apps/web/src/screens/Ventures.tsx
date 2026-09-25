@@ -11,6 +11,7 @@ import { PublishButton, PublishSheet } from "../components/Publish";
 import { Glyph, IconPicker } from "../lib/glyphs";
 import { CountUp } from "../lib/motion";
 import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
 
 const STAGES: Array<{ id: VentureStage; label: string; hint: string }> = [
   { id: "idea", label: "Idea", hint: "Worth testing?" },
@@ -46,7 +47,7 @@ export function Ventures() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <PaneHeader eyebrow="Work" icon={Rocket} title="Ventures"
+        <PaneHeader children={<StatStrip stats={[{ value: list.length, label: list.length === 1 ? "venture" : "ventures" }, { value: list.filter((v) => ["building", "launching", "earning"].includes(v.stage)).length, label: "past the idea stage", tone: "amber" }, { value: list.filter((v) => v.stage === "earning").length, label: "earning", tone: "ok" }]} />} eyebrow="Work" icon={Rocket} title="Ventures"
           description="Each startup you're building — from idea to revenue. The crew works on it with its full context, and you see where it stands and what it earns."
           actions={list.length > 0 && <>
             {list.length > 1 && mrr > 0 && (

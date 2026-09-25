@@ -18,7 +18,8 @@ export function isTopLevelWork(run: RunView, runs: Record<string, RunView>): boo
   // before its children, and the projection deletes archived runs — so a missing parent means it was archived,
   // and archiving a session hides its whole thread.
   void runs;
-  return !run.parent;
+  // Learning sessions (coach, courses, drills, resume) live in Learning, not in your work views.
+  return !run.parent && !run.labels?.includes("learning");
 }
 
 export function inScope(repo: string | undefined, scope: string | null): boolean {

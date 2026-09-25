@@ -14,6 +14,7 @@ import { useLive } from "../lib/live";
 import { isMac, pickFolder } from "../lib/native";
 import { Glyph } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
 
 type Kind = ArtifactView["kind"];
 interface Hit {
@@ -64,7 +65,7 @@ export function Library() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
-        <PaneHeader eyebrow="Brain" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
+        <PaneHeader children={<StatStrip stats={[{ value: Object.keys(artifacts).length, label: "made by the crew" }, { value: Object.keys(knowledge).length, label: "in your knowledge" }, { value: Object.values(artifacts).filter((a) => a.createdAt > Date.now() - 7 * 86_400_000).length, label: "saved this week", tone: "ok" }]} />} eyebrow="Brain" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
           actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
 
         <label className="lib-search">
