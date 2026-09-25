@@ -7,7 +7,9 @@ import "./pane.css";
 export function PaneHeader({ title, description, actions, eyebrow, icon: Icon, children }: {
   title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: string; icon?: ComponentType<{ size?: number }>; children?: ReactNode;
 }) {
-  return <header className="pane-header"><div>{eyebrow && <span className="pane-eyebrow">{Icon && <Icon size={12} />}{eyebrow}</span>}<h1>{title}</h1>{description && <p>{description}</p>}{children}</div>{actions && <div className="pane-actions">{actions}</div>}</header>;
+  // The hub strip already says where you are; an eyebrow that only repeats the group name is noise. Dates and real context stay.
+  const showEyebrow = eyebrow && !/^(work|plan|brain|system|build|know|crew|home|your workspace|the evidence behind your crew)$/i.test(eyebrow.trim());
+  return <header className="pane-header"><div>{showEyebrow && <span className="pane-eyebrow">{Icon && <Icon size={12} />}{eyebrow}</span>}<h1>{title}</h1>{description && <p>{description}</p>}{children}</div>{actions && <div className="pane-actions">{actions}</div>}</header>;
 }
 /** The one page frame: scrolls, centres and pads every standard pane the same way. */
 export function PaneLayout({ children, wide = false }: { children: ReactNode; wide?: boolean }) {

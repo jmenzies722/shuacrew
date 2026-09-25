@@ -136,10 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         let view = submenu(main, "View")
+        // The five hubs, as in the rail. Each opens on its first tab; the tabs are one click from there.
         let screens: [(String, String, String)] = [
-            ("Sessions", "1", "/"), ("Ventures", "2", "/ventures"), ("Crew", "3", "/crew"), ("Crew Floor", "4", "/floor"),
-            ("Playbooks", "5", "/playbooks"), ("Library", "6", "/library"), ("Tools & Skills", "7", "/integrations"),
-            ("Memory", "8", "/memory"), ("Policy & Audit", "9", "/policy"),
+            ("Home", "1", "/"), ("Crew", "2", "/crew"), ("Build", "3", "/ventures"), ("Know", "4", "/library"), ("System", "5", "/integrations"),
         ]
         for (title, key, path) in screens { view.addItem(item(title, key, #selector(go(_:)), path)) }
         view.addItem(.separator())

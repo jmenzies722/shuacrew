@@ -1,0 +1,31 @@
+/* ── The hub rail: five places and Settings, always labelled ─────────────────────────────────── */
+.hub-rail { position: relative; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 76px; min-height: 0; padding: 6px 8px 10px; overflow-y: auto; scrollbar-width: none; }
+.hub { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 60px; padding: 9px 0 7px; border-radius: 14px; color: var(--text-3);
+  transition: color .16s ease, background-color .16s ease, transform .16s cubic-bezier(.2,.9,.3,1.3); -webkit-tap-highlight-color: transparent; }
+.hub:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.hub:active { transform: scale(.95); }
+.hub:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.hub-on { position: absolute; inset: 0; border-radius: 14px; background: color-mix(in srgb, var(--amber) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 32%, transparent), 0 6px 18px -8px color-mix(in srgb, var(--amber) 55%, transparent); }
+.hub.is-on { color: var(--text); } .hub.is-on .hub-icon { color: var(--amber); }
+.hub-icon { position: relative; z-index: 1; display: grid; place-items: center; width: 24px; height: 22px; transition: transform .2s cubic-bezier(.2,.9,.3,1.4); }
+.hub:hover .hub-icon { transform: translateY(-1px); }
+.hub-label { position: relative; z-index: 1; font-size: 10.5px; font-weight: 550; letter-spacing: .01em; }
+.hub-badge { position: absolute; top: -5px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border-radius: 999px;
+  font-style: normal; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--on-accent, #111); box-shadow: 0 0 0 2px var(--ink); }
+.hub-badge.is-wait { background: var(--amber); } .hub-badge.is-live { background: var(--ok, #34d399); animation: hub-live 1.8s ease-in-out infinite; }
+.hub-spacer { flex: 1; min-height: 12px; }
+@keyframes hub-live { 50% { box-shadow: 0 0 0 2px var(--ink), 0 0 0 5px color-mix(in srgb, var(--ok, #34d399) 30%, transparent); } }
+
+/* ── The tab strip at the top of every hub page ──────────────────────────────────────────────── */
+.hub-tabs { display: flex; align-items: center; gap: 2px; flex-shrink: 0; height: 46px; padding: 0 22px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.hub-title { font-size: 13px; font-weight: 650; letter-spacing: -.01em; color: var(--text); padding-right: 6px; }
+.hub-sep { width: 1px; height: 16px; margin: 0 8px 0 4px; background: var(--line-strong); }
+.hub-tab { position: relative; display: inline-flex; align-items: center; height: 30px; padding: 0 13px; border-radius: 9px; font-size: 12.5px; font-weight: 500; color: var(--text-3); white-space: nowrap; transition: color .15s ease; }
+.hub-tab:hover { color: var(--text); }
+.hub-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.hub-tab-label { position: relative; z-index: 1; }
+.hub-tab.is-on { color: var(--text); }
+.hub-tab-on { position: absolute; inset: 0; border-radius: 9px; background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset; }
+.hub-tab-on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -9px; height: 2px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent); }
+@media (prefers-reduced-motion: reduce) { .hub, .hub-icon { transition: none; } .hub-badge.is-live { animation: none; } }

@@ -23,6 +23,7 @@ import { navKey } from "../lib/keys";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
 import { StatusIsland } from "../components/TopBarWidgets";
+import { HubRail, HubTabs } from "./HubNav";
 import { RadioHost } from "../components/NowPlaying";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
@@ -67,14 +68,15 @@ export function Shell() {
   const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
-    <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
+    <div className="workspace-frame grid h-full grid-cols-[76px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
       <div className="living-bg" aria-hidden="true"><i /><i /><i /></div>
       {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
-      <IconRail />
+      <HubRail />
       <main className="min-h-0 min-w-0 overflow-hidden flex flex-col" id="main">
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
+        <HubTabs />
         <motion.div key={section} className="min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
@@ -204,50 +206,6 @@ function RepoChip() {
 /**
  * Collapsed navigation stays fixed; only the hovered/focused item's label appears.
  */
-function IconRail() {
-  const labeled = useLive((s) => s.appearance.navigation === "labels");
-  const path = useRouterState({ select: (s) => s.location.pathname });
-  const awaiting = useLive((s) => Object.keys(s.crew.approvals).length);
-  const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
-  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
-  const show = (element: HTMLElement, label: string) => {
-    if (labeled) return;
-    const rect = element.getBoundingClientRect();
-    setTooltip({ label, left: rect.right + 12, top: Math.min(window.innerHeight - 46, Math.max(8, rect.top)) });
-  };
-  useEffect(() => { setTooltip(null); }, [path, labeled]);
-  const groups = ["Work", "Plan", "Brain", "System"] as const;
-  const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/studio" && (awaiting > 0 || working > 0) ? { tone: awaiting ? "wait" : "live", n: awaiting || working } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
-  return (
-    <nav aria-label="Primary" className={`rail ${labeled ? "is-open is-pinned" : ""}`} onScroll={() => setTooltip(null)} onKeyDown={e => { if (e.key === "Escape") setTooltip(null); }}>
-      {groups.map((group) => (
-        <div key={group} className={`rail-group ${group === "System" ? "mt-auto" : ""}`}>
-          <div className="rail-label">{group}</div>
-          {NAV.filter((n) => n.group === group).map(({ to, label, hint, icon: Icon }) => {
-            const active = to === "/" ? path === "/" || path.startsWith("/sessions") : path.startsWith(to);
-            const b = badge(to);
-            return (
-              <Link key={to} to={to} aria-label={label} aria-current={active ? "page" : undefined} className={`rail-item ${active ? "is-active" : ""}`} onClick={() => setTooltip(null)} onMouseEnter={e => show(e.currentTarget, label)} onMouseLeave={() => setTooltip(null)} onFocus={e => show(e.currentTarget, label)} onBlur={() => setTooltip(null)}>
-                {active && <motion.span layoutId="rail-active" className="rail-active" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
-                <span className="rail-icon">
-                  <Icon size={18} strokeWidth={1.75} />
-                  {b && <span className={`rail-dot is-${b.tone}`} />}
-                </span>
-                <span className="rail-text">
-                  <span className="rail-name">{label}</span>
-                  <span className="rail-hint">{hint}</span>
-                </span>
-                {b && <span className={`rail-count is-${b.tone}`}>{b.n}</span>}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
-      {tooltip && createPortal(<div role="tooltip" className="rail-tooltip" style={{ top: tooltip.top, left: tooltip.left }}>{tooltip.label}</div>, document.body)}
-    </nav>
-  );
-}
-
 function useGlobalKeys() {
   const navigate = useNavigate();
   useEffect(() => {
