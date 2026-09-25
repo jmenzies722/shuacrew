@@ -38,3 +38,15 @@ describe("workspace preferences", () => {
     expect(saveAppearance(DEFAULT_APPEARANCE)).toBe(false);
   });
 });
+
+describe("the Pristine move", () => {
+  const store = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }; };
+  it("moves only the old defaults, once", async () => {
+    const { migrateToPristine, DEFAULT_APPEARANCE } = await import("./appearance");
+    const s = store();
+    const moved = migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "frost", palette: "frost", accent: "amber" }, true, s);
+    expect(moved).toMatchObject({ dark: "pristine", palette: "pristine", accent: "iris" });
+    expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "frost", accent: "amber" }, true, s)).toMatchObject({ dark: "frost", accent: "amber" }); // already moved once
+    expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "night", accent: "blue" }, true, store())).toMatchObject({ dark: "night", accent: "blue" }); // yours stays
+  });
+});

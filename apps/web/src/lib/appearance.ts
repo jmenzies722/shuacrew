@@ -71,6 +71,21 @@ export function normalizeAppearance(value: unknown): Appearance {
   ])) as unknown as Appearance;
 }
 
+/**
+ * The Pristine redesign, once: a setup still on the old defaults (Frost Black, Amber) moves to Pristine and Iris.
+ * A palette or accent you chose yourself is left exactly as it is.
+ */
+export function migrateToPristine(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
+  let done = false; try { done = store.getItem("shuacrew.design") === "pristine"; } catch { /* ignore */ }
+  if (!saved || done) return a;
+  const next = { ...a };
+  if (next.dark === "frost") next.dark = "pristine";
+  if (next.palette === "frost") next.palette = "pristine";
+  if (next.accent === "amber") next.accent = "iris";
+  try { store.setItem("shuacrew.design", "pristine"); } catch { /* the move is cosmetic; never lose your settings over it */ }
+  return next;
+}
+
 export function loadAppearance(): Appearance {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Appearance> | null;
@@ -79,14 +94,7 @@ export function loadAppearance(): Appearance {
     const base = normalizeAppearance(saved);
     if (!saved && legacy === "dark") base.palette = "night";
     if (!saved && legacy === "light") base.palette = "daylight";
-    // The Pristine redesign: move a saved setup onto it once. Anything chosen after this sticks.
-    if (saved && localStorage.getItem("shuacrew.design") !== "pristine") {
-      base.dark = "pristine"; base.accent = "iris";
-      if (base.palette !== "system" && PALETTES.find((p) => p.id === base.palette)?.mode === "dark") base.palette = "pristine";
-      localStorage.setItem("shuacrew.design", "pristine");
-      localStorage.setItem(KEY, JSON.stringify(base));
-    }
-    return base;
+    return migrateToPristine(base, Boolean(saved));
   } catch {
     return DEFAULT_APPEARANCE;
   }
