@@ -10,6 +10,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private static let cornerKey = "buddyCorner"
     private static let closed = NSSize(width: 104, height: 108)
     private static let open = NSSize(width: 380, height: 560)
+    /// Room for a speech bubble beside Spark ("Aria finished…") without the whole card.
+    private static let peek = NSSize(width: 320, height: 190)
 
     private let gateway: Gateway
     private let panel: BuddyPanel
@@ -19,7 +21,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
     private var loaded = false
-    var onOpenRun: ((String) -> Void)?
+    private let location = LocationOnce()
+    /// Opens a path in the main window (a session, Learning, Usage…).
+    var onOpen: ((String) -> Void)?
 
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
@@ -30,6 +34,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         self.gateway = gateway
         let config = WKWebViewConfiguration()
         config.writingToolsBehavior = .none
+        config.mediaTypesRequiringUserActionForPlayback = [] // Spark talks back as the answer streams in
         web = WKWebView(frame: .zero, configuration: config)
         web.setValue(false, forKey: "drawsBackground")
         panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: Self.closed), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -125,9 +130,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
               let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
         case "buddyExpand":
-            let open = body["open"] as? Bool ?? false
-            place(size: open ? Self.open : Self.closed)
+            let open = body["open"] as? Bool ?? false, peek = body["peek"] as? Bool ?? false
+            place(size: open ? Self.open : peek ? Self.peek : Self.closed)
             if !open { panel.resignKey() }
+        case "buddyDo":
+            guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
+            let result = MacActions.perform(action)
+            did(["id": id, "ok": result.ok, "message": result.message])
         case "buddyCapture":
             Task { await capture() }
         case "buddyPoint":
@@ -135,11 +144,28 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                   let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)))
         case "buddyOpen":
-            guard let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil else { return }
-            onOpenRun?(run)
+            if let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil { onOpen?("/sessions/\(run)") }
+            else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }
+        case "notify":
+            guard let title = body["title"] as? String else { return }
+            NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
+        case "location":
+            location.request { [weak self] result in
+                let detail: String
+                switch result {
+                case .success(let c): detail = "{\"lat\": \((c.latitude * 100).rounded() / 100), \"lon\": \((c.longitude * 100).rounded() / 100)}"
+                case .failure: detail = "{\"error\": \"Location unavailable\"}"
+                }
+                self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:location', { detail: \(detail) }))")
+            }
         default:
             break
         }
+    }
+
+    private func did(_ detail: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:did', { detail: \(json) }))")
     }
 
     private func reply(_ detail: [String: Any]) {
@@ -341,5 +367,48 @@ final class PointerOverlay {
         hideWork?.cancel()
         panel?.orderOut(nil)
         panel = nil
+    }
+}
+
+/// The things Spark can do on your Mac, each checked here — the page's word is never enough.
+@MainActor
+enum MacActions {
+    static func perform(_ action: [String: Any]) -> (ok: Bool, message: String) {
+        switch action["type"] as? String {
+        case "open_app":
+            guard let name = action["name"] as? String, let url = findApp(name) else { return (false, "Couldn't find an app called \((action["name"] as? String) ?? "that").") }
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            return (true, "Opened \(url.deletingPathExtension().lastPathComponent)")
+        case "open_url":
+            guard let s = action["url"] as? String, let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return (false, "Only web links can be opened.") }
+            NSWorkspace.shared.open(url)
+            return (true, "Opened \(url.host ?? "the link")")
+        case "open_path":
+            guard let raw = action["path"] as? String else { return (false, "No path.") }
+            let home = NSHomeDirectory()
+            let path = URL(fileURLWithPath: (raw as NSString).expandingTildeInPath).standardizedFileURL.resolvingSymlinksInPath().path
+            // Your home folder only, and never the sealed day-job folders.
+            let sealed = ["\(home)/Nectar-Work", "\(home)/Developer/work"]
+            guard path.hasPrefix(home + "/"), !sealed.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) else { return (false, "Spark only opens things in your home folder.") }
+            guard FileManager.default.fileExists(atPath: path) else { return (false, "\(raw) doesn't exist.") }
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            return (true, "Opened \((path as NSString).lastPathComponent)")
+        default:
+            return (false, "Spark can't do that.")
+        }
+    }
+
+    /// "vs code", "VS Code", "Visual Studio Code", "chrome": exact name first, then the closest installed app.
+    static func findApp(_ query: String) -> URL? {
+        let aliases = ["vs code": "Visual Studio Code", "vscode": "Visual Studio Code", "code": "Visual Studio Code", "chrome": "Google Chrome", "settings": "System Settings", "system preferences": "System Settings", "iterm": "iTerm", "xcode": "Xcode"]
+        let want = (aliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query).lowercased().replacingOccurrences(of: ".app", with: "")
+        let roots = ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities", NSHomeDirectory() + "/Applications"]
+        var apps: [URL] = []
+        for root in roots {
+            let items = (try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: root), includingPropertiesForKeys: nil)) ?? []
+            apps += items.filter { $0.pathExtension == "app" }
+        }
+        let name = { (u: URL) in u.deletingPathExtension().lastPathComponent.lowercased() }
+        return apps.first { name($0) == want } ?? apps.first { name($0).hasPrefix(want) } ?? apps.filter { name($0).contains(want) }.min { name($0).count < name($1).count }
     }
 }

@@ -85,7 +85,12 @@ export function CrewFloor() {
     [allApprovals, runs, scope],
   );
   const allActivity = useLive((s) => s.activity);
-  const activity = useMemo(() => (scope ? allActivity.filter((e) => e.run && runs[e.run]) : allActivity), [allActivity, runs, scope]);
+  // Spark chats and learning sessions are yours, not crew work: they stay off the floor.
+  const activity = useMemo(() => allActivity.filter((e) => {
+    const run = e.run ? allRuns[e.run] : undefined;
+    if (run?.labels?.some((l) => l === "buddy" || l === "learning")) return false;
+    return !scope || (e.run && runs[e.run]);
+  }), [allActivity, allRuns, runs, scope]);
   const today = useLive((s) => s.crew.today);
   const now = useNow();
 

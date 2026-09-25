@@ -21,9 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mobile = MobileBridge(gateway: gateway)
         window.onMobileSettings = { [weak self] in self?.showMobileSettings() }
         buddy = Buddy(gateway: gateway)
-        buddy.onOpenRun = { [weak self] run in
+        buddy.onOpen = { [weak self] path in
             NSApp.activate()
-            self?.window.navigate("/sessions/\(run)")
+            self?.window.navigate(path)
         }
         window.onBuddyEnabled = { [weak self] on in self?.buddy.setEnabled(on) }
         NSApp.mainMenu = mainMenu()

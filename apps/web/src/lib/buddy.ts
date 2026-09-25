@@ -1,5 +1,14 @@
-/** The desktop buddy's contract with the model: short answers, and an optional place to point on screen. */
+/** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
 export interface Point { x: number; y: number; label: string }
+
+/** What Spark may do on your Mac. The Mac app checks every one again before doing it. */
+export type Action =
+  | { type: "open_app"; name: string }
+  | { type: "open_url"; url: string }
+  | { type: "open_path"; path: string }
+  | { type: "focus"; minutes: number }
+  | { type: "crew"; ask: string }
+  | { type: "note"; text: string };
 
 /** A ```point {"x":0..1,"y":0..1,"label":"…"}``` block (normalized to the screenshot), validated. */
 export function parsePoint(text: string): Point | null {
@@ -12,15 +21,72 @@ export function parsePoint(text: string): Point | null {
     return { x, y, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "" };
   } catch { return null; }
 }
+
+const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+function toAction(v: unknown): Action | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  switch (o.type) {
+    case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
+    case "open_url": { const url = str(o.url, 2000); try { return url && /^https?:$/.test(new URL(url).protocol) ? { type: "open_url", url } : null; } catch { return null; } }
+    case "open_path": { const path = str(o.path, 500); return path && /^~?\//.test(path) && !path.split("/").includes("..") ? { type: "open_path", path } : null; }
+    case "focus": { const minutes = Number(o.minutes); return [5, 10, 15, 25, 45, 50, 60, 90].includes(minutes) ? { type: "focus", minutes } : null; }
+    case "crew": { const ask = str(o.ask, 4000); return ask ? { type: "crew", ask } : null; }
+    case "note": { const text = str(o.text, 2000); return text ? { type: "note", text } : null; }
+    default: return null;
+  }
+}
+/** Every ```do``` block: one action or a list; anything unknown or unsafe-looking is dropped. At most 5. */
+export function parseActions(text: string): Action[] {
+  const out: Action[] = [];
+  for (const m of text.matchAll(/```do\s*([\s\S]*?)```/gi)) {
+    try { const v = JSON.parse(m[1]!.trim()) as unknown; for (const a of Array.isArray(v) ? v : [v]) { const ok = toAction(a); if (ok) out.push(ok); } } catch { /* skip a malformed block */ }
+  }
+  return out.slice(0, 5);
+}
+export function describeAction(a: Action): string {
+  switch (a.type) {
+    case "open_app": return `Open ${a.name}`;
+    case "open_url": { try { return `Open ${new URL(a.url).host}`; } catch { return "Open link"; } }
+    case "open_path": return `Open ${a.path.split("/").filter(Boolean).at(-1) ?? a.path}`;
+    case "focus": return `${a.minutes}-minute focus`;
+    case "crew": return "Hand to the crew";
+    case "note": return "Add to your note";
+  }
+}
+
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return text.replace(/```point[\s\S]*?```/gi, "").trim(); }
+export function speakable(text: string) { return text.replace(/```(point|do)[\s\S]*?(```|$)/gi, "").trim(); }
+
+/** Plain words for the voice: no markdown, no code, no link targets. */
+export function spoken(text: string) {
+  return speakable(text).replace(/```[\s\S]*?(```|$)/g, " ").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/`([^`]*)`/g, "$1")
+    .replace(/^\s*(#+|[-*]|\d+\.)\s+/gm, "").replace(/[*_~>#]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** Real-time speech: the whole sentences that arrived since `from` in a streaming reply. Stops at any code block. */
+export function nextSentences(text: string, from: number, final = false): { chunks: string[]; upto: number } {
+  const fence = text.indexOf("```");
+  const end = fence >= 0 ? fence : text.length;
+  if (from >= end) return { chunks: [], upto: from };
+  const tail = text.slice(from, end);
+  let cut = 0;
+  for (const m of tail.matchAll(/[.!?:](?=\s)|\n/g)) cut = m.index! + 1;
+  if (final || fence >= 0) cut = tail.length;
+  const chunks = tail.slice(0, cut).split(/(?<=[.!?:])\s+|\n+/).map(spoken).filter((s) => /\w/.test(s));
+  return { chunks, upto: from + cut };
+}
 
 export function buddyPrompt(question: string, screen: { width: number; height: number } | null) {
   return [
-    "You are Spark, the user's friendly desktop buddy inside ShuaCrew. Be warm, quick and concrete: answer in at most ~120 words, plain language, steps as a short list when needed. Do not use tools except to read the attached screenshot.",
+    "You are Spark, the user's desktop buddy on their Mac, part of ShuaCrew. Be warm, quick and concrete: at most ~100 words, plain spoken language (your reply is read aloud), a short list only when steps need it. Do not use tools except to read the attached screenshot.",
+    "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
+    '```do [{"type":"open_app","name":"Safari"}]```',
+    'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
+    "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps or sites. You can't click or type inside other apps; for that, point at the spot, or hand it to the crew.",
     screen
-      ? `The attached image is the user's screen right now (${screen.width}×${screen.height}). Ground your answer in what is actually visible. If pointing at one thing on screen would help (a button, menu, field, line), add exactly one block: \`\`\`point {"x": 0.0-1.0, "y": 0.0-1.0, "label": "2–5 words"}\`\`\` with x,y the CENTER of that thing as fractions of the image width and height. If nothing needs pointing at, don't add it.`
+      ? `The attached image is the user's screen right now (${screen.width}×${screen.height}). Ground your answer in what is actually visible. If pointing at one thing would help (a button, menu, field, line), add exactly one block: \`\`\`point {"x": 0.0-1.0, "y": 0.0-1.0, "label": "2–5 words"}\`\`\` with x,y the CENTER of that thing as fractions of the image width and height.`
       : "No screenshot this time; answer from the question alone.",
-    `\nThe user asks: ${question}`,
+    `\nThe user says: ${question}`,
   ].join("\n");
 }

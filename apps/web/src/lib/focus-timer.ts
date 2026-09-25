@@ -29,4 +29,6 @@ let focusNow: FocusTimer | null = loadFocus();
 export function setFocus(timer: FocusTimer | null) { focusNow = timer; saveFocus(timer); focusListeners.forEach((l) => l()); if (typeof window !== "undefined") window.dispatchEvent(new Event("shuacrew:focus")); }
 // The companion's timer control announces changes with the same event; pick them up.
 if (typeof window !== "undefined") window.addEventListener("shuacrew:focus", () => { const next = loadFocus(); if (JSON.stringify(next) !== JSON.stringify(focusNow)) { focusNow = next; focusListeners.forEach((l) => l()); } });
+// Spark's desktop panel is another page on the same origin: its changes arrive as `storage` events.
+if (typeof window !== "undefined") window.addEventListener("storage", (e) => { if (e.key === "shuacrew.focus") window.dispatchEvent(new Event("shuacrew:focus")); });
 export function useFocusTimer() { return useSyncExternalStore((l) => { focusListeners.add(l); return () => { focusListeners.delete(l); }; }, () => focusNow, () => focusNow); }

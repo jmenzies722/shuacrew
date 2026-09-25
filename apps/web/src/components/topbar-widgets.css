@@ -32,3 +32,37 @@
 /* The search sits dead centre of the window, whatever is on either side. */
 .tb-center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(460px, 38vw); }
 @media (prefers-reduced-motion: reduce) { .tb-panel, .tb-spin { animation:none; } .tb-ring .tb-ring-fill { transition:none; } }
+/* Widgets: chips add-ons, then tiles (popovers and Spark's board). */
+.wg-badge { font-style:normal; min-width:16px; height:16px; padding:0 4px; display:grid; place-items:center; border-radius:999px; font-size:10px; font-weight:700; color:#0b0b0c; background:var(--amber); }
+.wg-live { color:var(--amber); animation:wg-pulse 1.6s ease-in-out infinite; } @keyframes wg-pulse { 50% { opacity:.55; } }
+.wg-trunc { max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wg-head { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; } .wg-head strong { font-size:13px; } .wg-head span { flex:1; min-width:0; font-size:11px; color:var(--text-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+.wg-crew, .wg-spend, .wg-system, .wg-learning, .wg-note, .wg-clock, .wg-countdown, .wg-countdown-form { display:flex; flex-direction:column; gap:6px; min-width:260px; }
+.wg-run { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:10px; text-align:left; font-size:12px; background:var(--sunken); transition:background .15s; } .wg-run:hover { background:var(--panel); }
+.wg-run span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .wg-run small { font-size:10.5px; color:var(--text-3); }
+.wg-run i { width:7px; height:7px; border-radius:50%; background:var(--amber); box-shadow:0 0 8px var(--amber); animation:wg-pulse 1.4s infinite; }
+.wg-run i[data-status="awaiting_approval"] { background:#f472b6; box-shadow:0 0 8px #f472b6; } .wg-run i[data-status="paused"] { background:var(--text-3); box-shadow:none; animation:none; }
+.wg-approval { display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:var(--amber-soft); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent); }
+.wg-approval > svg { color:var(--amber); flex-shrink:0; } .wg-approval div { flex:1; min-width:0; display:flex; flex-direction:column; } .wg-approval b { font-size:12px; } .wg-approval small { font-size:10.5px; color:var(--text-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wg-approval button { display:grid; place-items:center; width:26px; height:26px; border-radius:8px; } .wg-yes { color:#0b0b0c; background:var(--amber); } .wg-no { color:var(--text-2); background:var(--raised); } .wg-approval button:disabled { opacity:.4; }
+.wg-more { align-self:flex-start; margin-top:4px; padding:5px 12px; }
+.wg-big { font-size:30px; font-weight:600; letter-spacing:-.03em; line-height:1.05; }
+.wg-clock ul { display:flex; flex-direction:column; gap:4px; margin-top:6px; } .wg-clock li { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:9px; font-size:12px; background:var(--sunken); }
+.wg-clock li span { flex:1; } .wg-clock li small { font-size:10.5px; color:var(--text-3); } .wg-clock li button { color:var(--text-3); } .wg-clock li button:hover { color:var(--text); }
+.wg-add { display:flex; gap:6px; margin-top:4px; } .wg-add input, .wg-countdown-form input, .wg-note textarea { flex:1; min-width:0; padding:6px 9px; border-radius:9px; font-size:12px; color:var(--text); background:var(--sunken); box-shadow:inset 0 0 0 1px var(--line); outline:none; }
+.wg-add input:focus, .wg-countdown-form input:focus, .wg-note textarea:focus { box-shadow:inset 0 0 0 1px var(--amber); }
+.wg-add button { display:grid; place-items:center; width:30px; border-radius:9px; background:var(--raised); } .wg-add button:disabled { opacity:.35; }
+.wg-note textarea { resize:vertical; min-height:84px; line-height:1.5; font-family:inherit; }
+.wg-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(70px, 1fr)); gap:6px; } .wg-stats div { display:flex; flex-direction:column; padding:10px; border-radius:11px; background:var(--sunken); }
+.wg-stats b { font-size:19px; font-weight:600; letter-spacing:-.02em; } .wg-stats small { font-size:10.5px; color:var(--text-3); }
+.wg-bar { display:grid; grid-template-columns:54px 1fr auto; align-items:center; gap:8px; font-size:11.5px; } .wg-bar small { font-size:10.5px; color:var(--text-3); }
+.wg-bar i { height:6px; border-radius:999px; background:var(--sunken); overflow:hidden; } .wg-bar b { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--amber) 60%, #fff)); transition:width .6s ease; }
+.wg-bar b[data-hot] { background:linear-gradient(90deg, #f97316, var(--bad)); }
+.wg-battery { display:flex; align-items:center; gap:6px; margin-top:4px; font-size:12px; } .wg-battery svg { color:var(--good, #34d399); } .wg-battery svg[data-low] { color:var(--bad); }
+.wg-days { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; } .wg-days li { aspect-ratio:1; border-radius:3px; background:var(--sunken); }
+.wg-days li[data-level="1"] { background:color-mix(in srgb, var(--amber) 35%, transparent); } .wg-days li[data-level="2"] { background:color-mix(in srgb, var(--amber) 65%, transparent); } .wg-days li[data-level="3"] { background:var(--amber); }
+.wg-countdown span { font-size:13px; color:var(--text-2); }
+.wg-board { display:flex; flex-direction:column; gap:8px; }
+.wg-tile { padding:12px; border-radius:16px; background:var(--panel); box-shadow:inset 0 0 0 1px var(--line); } .wg-tile > * { min-width:0 !important; }
+.wg-tile .tb-presets button { padding:7px 0; font-size:14px; } .wg-tile .tb-big-ring { width:110px; height:110px; }
+@media (prefers-reduced-motion: reduce) { .wg-live, .wg-run i { animation:none; } }

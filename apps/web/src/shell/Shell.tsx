@@ -22,7 +22,7 @@ import { getPower, savePower, usePower } from "../lib/power";
 import { navKey } from "../lib/keys";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
-import { TimerChip, WeatherChip } from "../components/TopBarWidgets";
+import { TopBarWidgets } from "../components/TopBarWidgets";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../components/surfaces.css";
@@ -76,7 +76,8 @@ export function Shell() {
         <motion.div key={section} className="min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
-        <CompanionHost />
+        {/* In the Mac app Spark lives on the desktop (over every app), so the in-window one steps aside. */}
+        {document.documentElement.dataset.shell !== "mac" && <CompanionHost />}
       </main>
       <Milestones />
       <CommandPalette />
@@ -125,8 +126,7 @@ function TopBar() {
         </button>
       </div>
       <span className="flex-1" />
-      <WeatherChip />
-      <TimerChip />
+      <TopBarWidgets ctx={{ go: (path) => void navigate({ to: path }) }} />
       {limited.map(([key, info]) => {
         const [runtime, model] = key.split(" · ");
         const soon = info.until - Date.now() < 86_400_000;
