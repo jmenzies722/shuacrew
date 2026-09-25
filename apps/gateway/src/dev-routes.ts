@@ -5,7 +5,7 @@ import { redact, redactDeep } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
 
 /** Read-only developer tools. Everything returned is bounded and redacted; nothing here writes. */
-export function devRoutes(app: FastifyInstance, store: EventStore) {
+export function devRoutes(app: FastifyInstance, store: EventStore, prompts?: { promptsFor(run: string): unknown[]; promptRuns(): string[] }) {
   const home = path.dirname(store.path);
 
   // Newest-first tail of the event log, optionally filtered by kind prefix ("run.", "room.queue").
@@ -23,6 +23,13 @@ export function devRoutes(app: FastifyInstance, store: EventStore) {
       if (matches.length > limit) matches.shift();
     }
     return { head, events: matches.reverse() };
+  });
+
+  // Prompt inspector: exactly what recent turns were sent (redacted). In memory since the gateway started.
+  app.get<{ Querystring: { run?: string } }>("/api/dev/prompts", async (req) => {
+    if (!prompts) return { runs: [], prompts: [] };
+    const run = req.query.run ?? prompts.promptRuns()[0];
+    return { runs: prompts.promptRuns(), run: run ?? null, prompts: run ? redactDeep(prompts.promptsFor(run)) : [] };
   });
 
   // Activity over a window: events per bucket by group, tool usage, run outcomes. Read-only, from the log.

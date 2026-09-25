@@ -30,6 +30,18 @@ export const GatewaySettingsSchema = z.object({
   }).default({ branchPrefix: "shua/", author: "shuacrew", squash: false, protectedBranches: ["main", "master", "release", "production"] }),
   /** Scheduled jobs, webhooks and heartbeats wait (queued) during these local hours. */
   quietHours: z.object({ enabled: z.boolean().default(false), start: minutes.default(22 * 60), end: minutes.default(7 * 60) }).default({ enabled: false, start: 22 * 60, end: 7 * 60 }),
+  /** "If the prompt mentions …, use …" — applied only when you left agent and model on Auto. First match wins. */
+  router: z.array(z.object({
+    name: z.string().trim().min(1).max(40),
+    match: z.string().trim().min(1).max(300),
+    runtime: z.string().regex(/^[a-z0-9:-]{0,40}$/).default(""),
+    model: z.string().regex(/^[A-Za-z0-9._:-]{0,64}$/).default(""),
+    effort: z.enum(["", "low", "medium", "high", "max"]).default(""),
+  })).max(20).default([]),
+  /** Stop a session that runs past these (a follow-up continues it). null = no cap. */
+  caps: z.object({ maxMinutes: z.number().int().min(1).max(1440).nullable().default(null), maxTokens: z.number().int().min(1000).max(1e9).nullable().default(null) }).default({ maxMinutes: null, maxTokens: null }),
+  /** Your own shell commands when a session of yours finishes or fails. Env: SHUA_RUN_ID, SHUA_STATUS, SHUA_TITLE, SHUA_REPO. */
+  hooks: z.object({ onDone: z.string().max(2000).default(""), onFailed: z.string().max(2000).default("") }).default({ onDone: "", onFailed: "" }),
   /** What the Mac menu-bar item shows beside its icon. */
   menuBar: z.enum(["attention", "running", "tokens", "off"]).default("attention"),
   flags: z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.boolean()).default({}),
@@ -85,4 +97,11 @@ export function standingInstructions(s: GatewaySettingsValue, repo?: string): st
 export function failoverCandidates(order: string[], available: string[], exclude: string): string[] {
   const known = order.filter(id => available.includes(id) && id !== exclude);
   return [...known, ...available.filter(id => !known.includes(id) && id !== exclude)];
+}
+
+/** The first rule whose keywords appear in the prompt (comma-separated, case-insensitive, whole words). */
+export function matchRoute(rules: GatewaySettingsValue["router"], ask: string) {
+  const text = ask.toLowerCase();
+  return rules.find((r) => r.match.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean)
+    .some((k) => new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(text)));
 }

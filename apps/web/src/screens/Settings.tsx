@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap, Lock } from "lucide-react";
+import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap, Lock, Timer } from "lucide-react";
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { AlwaysOn, Appearance, BackupsPanel, RuntimeSettings } from "./Pages";
@@ -13,27 +13,29 @@ import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
 import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, InstructionsSettings, LookSettings, MenuBarSettings, QuietHoursSettings, SafetySettings, SoundSettings, SpeechStorageSettings } from "../components/BatchSettings";
+import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, SoundscapeSettings } from "../components/BatchSettings2";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
 import "./settings.css";
 
 const SECTIONS = [
-  { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock },
-  { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap },
-  { id: "play", title: "Personality & Play", description: "A little character. Your kind of workspace.", icon: Sparkles },
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette },
   { id: "workspace", title: "Workspace", description: "Shape the way you move through your day.", icon: Monitor },
   { id: "chat", title: "Chat", description: "Your pace, your shortcuts, your conversations.", icon: MessageSquare },
+  { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles },
+  { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap },
+  { id: "automation", title: "Automation", description: "What runs on its own — and when it waits.", icon: Timer },
+  { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock },
+  { id: "play", title: "Personality & Play", description: "A little character. Your kind of workspace.", icon: Sparkles },
   { id: "voice", title: "Shua voice", description: "Find a voice that feels right. Hear it before you choose.", icon: AudioLines },
   { id: "notifications", title: "Notifications", description: "Let the right things interrupt you.", icon: Bell },
   { id: "mobile", title: "Mobile", description: "Your crew, within reach. Your Mac stays in control.", icon: Smartphone },
-  { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles },
   { id: "data", title: "Data & service", description: "Keep your workspace available and backed up.", icon: ShieldCheck },
   { id: "developer", title: "Developer", description: "Inspect the real system behind your crew.", icon: SlidersHorizontal },
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "workspace", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -68,7 +70,12 @@ export function Settings() {
     { id: "instructions", section: "agents", title: "Your instructions", terms: "custom instructions system prompt rules always every agent project global preview", body: <InstructionsSettings /> },
     { id: "protected", section: "safety", title: "Protected folders & branches", terms: "protected folders paths never touch deny branches main push safety security", body: <SafetySettings /> },
     { id: "git", section: "safety", title: "Git", terms: "git branch prefix commit author squash merge identity", body: <GitSettings /> },
-    { id: "quiet", section: "workspace", title: "Quiet hours for automation", terms: "quiet hours night schedule cron webhook heartbeat pause wait", body: <QuietHoursSettings /> },
+    { id: "router", section: "agents", title: "Model router rules", terms: "router routing rules keywords model effort auto choose which model cheap haiku opus", body: <RouterSettings /> },
+    { id: "caps", section: "agents", title: "Session caps", terms: "cap limit max minutes tokens stop runaway session budget", body: <CapsSettings /> },
+    { id: "hooks", section: "automation", title: "Hooks", terms: "hooks script shell command on done on failed notify automation webhook", body: <HooksSettings /> },
+    { id: "soundscape", section: "power", title: "Focus soundscape", terms: "focus sound ambient noise rain brown cafe music concentrate fun", body: <SoundscapeSettings /> },
+    { id: "prompts", section: "developer", title: "Prompt inspector", terms: "prompt inspector system instructions what was sent debug context", body: <PromptInspector /> },
+    { id: "quiet", section: "automation", title: "Quiet hours for automation", terms: "quiet hours night schedule cron webhook heartbeat pause wait", body: <QuietHoursSettings /> },
     { id: "menubar", section: "notifications", title: "Menu bar", terms: "menu bar status icon badge tokens running", body: <MenuBarSettings /> },
     { id: "sounds", section: "notifications", title: "Sounds", terms: "sounds audio chime approval done failed volume", body: <SoundSettings /> },
     { id: "look", section: "appearance", title: "Fonts & conversation", terms: "font fonts typeface serif mono code ligatures bubbles document width timestamps chat layout", body: <LookSettings /> },

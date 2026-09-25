@@ -7,6 +7,7 @@ import { PaneHeader } from "../components/Pane";
 import { DeveloperSettings } from "../components/DeveloperSettings";
 import { EventInspector, GatewayLog, StorageUsage, bytes } from "../components/DevTools";
 import { DiagnosticsSettings, FlagSettings } from "../components/BatchSettings";
+import { PromptInspector } from "../components/BatchSettings2";
 import { Segmented } from "../components/SettingControls";
 import "./observability.css";
 import "./developer.css";
@@ -19,7 +20,7 @@ const COLORS: Record<Group, string> = { agent: "#e879f9", run: "var(--amber)", t
 // Default order pairs the half-width widgets side by side.
 const WIDGETS = [
   ["health", "Health"], ["outcomes", "Run outcomes"], ["activity", "Activity"], ["tools", "Tool leaderboard"], ["storage", "Storage"],
-  ["events", "Event inspector"], ["api", "API explorer"], ["log", "Gateway log"], ["diagnostics", "Memory, audit & voice"], ["flags", "Experimental"], ["report", "Debug report"],
+  ["events", "Event inspector"], ["prompts", "Prompt inspector"], ["api", "API explorer"], ["log", "Gateway log"], ["diagnostics", "Memory, audit & voice"], ["flags", "Experimental"], ["report", "Debug report"],
 ] as const;
 type WidgetId = (typeof WIDGETS)[number][0];
 interface Layout { order: WidgetId[]; hidden: WidgetId[]; minutes: 15 | 60 | 360 | 1440; refresh: 0 | 5 | 15 | 60 }
@@ -58,6 +59,7 @@ export function Developer() {
       case "tools": return <ToolsWidget m={metrics} />;
       case "outcomes": return <OutcomesWidget m={metrics} />;
       case "events": return <EventInspector />;
+      case "prompts": return <PromptInspector />;
       case "api": return <ApiExplorer />;
       case "log": return <GatewayLog />;
       case "storage": return <StorageUsage />;
@@ -66,7 +68,7 @@ export function Developer() {
       case "report": return <DiagnosticsSettings />;
     }
   };
-  const wide = new Set<WidgetId>(["activity", "events", "api", "log", "diagnostics"]);
+  const wide = new Set<WidgetId>(["activity", "events", "prompts", "api", "log", "diagnostics"]);
   return <div className="pane-scroll dc">
     <div className="pane-body pane-body-wide">
       <PaneHeader eyebrow="System" icon={SquareTerminal} title="Developer" description="Live instruments for the gateway: real activity from the event log, tools, logs and a read-only API explorer. Arrange it the way you work."

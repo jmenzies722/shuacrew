@@ -149,7 +149,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
   speechRoutes(app, options.speech);
   roomRoutes(app, options.rooms);
-  devRoutes(app, options.store);
+  devRoutes(app, options.store, options.supervisor);
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
   mobileRoutes(app, options.mobile);

@@ -41,3 +41,12 @@ it("orders failover by your list, then the rest", () => {
   expect(failoverCandidates(["codex", "ghost", "claude"], ["claude", "codex", "acp:kiro"], "claude")).toEqual(["codex", "acp:kiro"]);
   expect(failoverCandidates([], ["claude", "codex"], "claude")).toEqual(["codex"]);
 });
+
+it("routes by your keywords, whole words only, first match wins", async () => {
+  const { matchRoute, GatewaySettingsSchema } = await import("./settings.js");
+  const rules = GatewaySettingsSchema.parse({ router: [{ name: "tests", match: "test, flaky", model: "claude-haiku-4-5", effort: "low" }, { name: "deep", match: "architecture, refactor", model: "claude-opus-5-5", effort: "high" }] }).router;
+  expect(matchRoute(rules, "Fix the flaky upload test")?.name).toBe("tests");
+  expect(matchRoute(rules, "Plan the architecture")?.name).toBe("deep");
+  expect(matchRoute(rules, "Update the contest page")).toBeUndefined(); // "test" inside "contest" doesn't count
+  expect(() => GatewaySettingsSchema.parse({ router: [{ name: "x", match: "a", model: "bad model!" }] })).toThrow();
+});

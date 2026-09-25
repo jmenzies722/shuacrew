@@ -11,7 +11,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -31,7 +31,7 @@ import {
 import type { ApprovalAnswer, Runtime, RunSpec } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
-import { failoverCandidates, inQuietHours, standingInstructions, type GatewaySettingsValue } from "./settings.js";
+import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
 import { inputDigest } from "./mobile/digest.js";
@@ -156,6 +156,9 @@ export class Supervisor {
     if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
     if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? member.model };
+    // Your router rules apply only when agent and model were left on Auto (never over a member or an explicit choice).
+    const rule = !member && !spec.runtime && !spec.model && this.options.settings ? matchRoute(this.options.settings().router, spec.ask) : undefined;
+    if (rule) spec = { ...spec, runtime: rule.runtime && this.runtimes.has(rule.runtime) ? rule.runtime : undefined, model: rule.model || undefined, effort: spec.effort || rule.effort || undefined, labels: [...(spec.labels ?? []), `rule:${rule.name}`] };
     const runtime = spec.runtime ?? this.defaultRuntime();
     this.rec(
       "run.created",
@@ -273,6 +276,13 @@ export class Supervisor {
     const runtime = this.runtimes.get(runtimeId);
     const controller = this.active.get(runId) ?? new AbortController();
     this.active.set(runId, controller);
+    // Session cap (minutes): stops only this stretch of work, and only if it's still this one.
+    const maxMinutes = this.options.settings?.().caps.maxMinutes;
+    if (maxMinutes) {
+      const timer = setTimeout(() => { if (this.active.get(runId) === controller && !controller.signal.aborted) this.cancel(runId, `Stopped at your ${maxMinutes}-minute session cap (Settings → Agents). Send a follow-up to continue.`); }, maxMinutes * 60_000);
+      timer.unref?.();
+      controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+    }
     const ready = () => {
       if (controller.signal.aborted || this.halted) { this.active.delete(runId); return false; }
       if (this.options.canStart && !this.options.canStart(runId)) { this.active.delete(runId); return false; }
@@ -345,6 +355,7 @@ export class Supervisor {
       mcpServers: this.options.mcpServers?.(runtime.id, runId),
       plugins: this.options.plugins?.(runtime.id),
     };
+    this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort: spec.effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
 
     let ended = false;
     let buffered = "";
@@ -404,6 +415,13 @@ export class Supervisor {
               },
               { run: runId },
             );
+            {
+              const maxTokens = this.options.settings?.().caps.maxTokens;
+              if (maxTokens && this.active.get(runId) === controller) {
+                const used = this.store.forRun(runId).reduce((n, e) => n + (e.kind === "usage.recorded" ? e.body.inputTokens + e.body.outputTokens : 0), 0);
+                if (used > maxTokens) this.cancel(runId, `Stopped at your ${maxTokens.toLocaleString()}-token session cap (Settings → Agents). Send a follow-up to continue.`);
+              }
+            }
             break;
           case "checkpoint": {
             const commit = spec.repo || cwd !== this.options.workspace ? await this.worktrees.checkpoint(cwd, `turn ${turn}: ${event.note ?? ""}`).catch(() => undefined) : undefined;
@@ -806,6 +824,27 @@ export class Supervisor {
     if (this.halted) return;
     if (this.status(run) === status && !reason) return;
     this.rec("run.status", { status, reason }, { run });
+    if (status === "done" || status === "failed") this.runHook(run, status);
+  }
+
+  /** The last 50 prompts exactly as sent — in memory only, gone on restart (Developer → Prompt inspector). */
+  private prompts = new Map<string, Array<{ at: number; turn: number; runtime: string; model?: string; effort?: string; resumed: boolean; system: string; ask: string; tools: string[] }>>();
+  private rememberPrompt(run: string, p: { at: number; turn: number; runtime: string; model?: string; effort?: string; resumed: boolean; system: string; ask: string; tools: string[] }) {
+    const list = this.prompts.get(run) ?? [];
+    list.push(p); this.prompts.delete(run); this.prompts.set(run, list.slice(-10));
+    while (this.prompts.size > 50) this.prompts.delete(this.prompts.keys().next().value!);
+  }
+  promptsFor(run: string) { return this.prompts.get(run) ?? []; }
+  promptRuns() { return [...this.prompts.keys()].reverse(); }
+
+  /** Settings → Automation hooks: your command, for sessions you started (not delegated steps). */
+  private runHook(run: string, status: "done" | "failed"): void {
+    const hooks = this.options.settings?.().hooks, command = status === "done" ? hooks?.onDone : hooks?.onFailed;
+    if (!command?.trim()) return;
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    if (!created || created.kind !== "run.created" || created.body.parent || created.body.labels.includes("held")) return;
+    execFile("/bin/sh", ["-c", command], { cwd: this.options.workspace, timeout: 60_000, env: { ...process.env, SHUA_RUN_ID: run, SHUA_STATUS: status, SHUA_TITLE: created.body.title, SHUA_REPO: created.body.repo ?? "" } },
+      (error) => { if (error) console.error(`hook (${status}) for ${run} failed: ${error.message.split("\n")[0]}`); });
   }
 
   status(run: string): RunStatus | undefined {
