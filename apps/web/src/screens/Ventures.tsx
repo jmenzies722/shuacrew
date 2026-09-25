@@ -1,3 +1,4 @@
+import "./ventures-pipe.css";
 import type { PlayView, RunView, VentureStage, VentureView } from "@shuacrew/core/projections";
 import { Button, StatusGlyph, toneOf } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -46,10 +47,10 @@ export function Ventures() {
   const mrr = list.reduce((sum, v) => sum + (v.metrics?.mrr ?? 0), 0);
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-6 py-6">
+      <div className="mx-auto max-w-[1600px] px-8 py-6">
         <PaneHeader children={<StatStrip stats={[{ value: list.length, label: list.length === 1 ? "venture" : "ventures" }, { value: list.filter((v) => ["building", "launching", "earning"].includes(v.stage)).length, label: "past the idea stage", tone: "amber" }, { value: list.filter((v) => v.stage === "earning").length, label: "earning", tone: "ok" }]} />} eyebrow="Work" icon={Rocket} title="Ventures"
           description="Each startup you're building — from idea to revenue. The crew works on it with its full context, and you see where it stands and what it earns."
-          actions={list.length > 0 && <>
+          actions={<>
             {list.length > 1 && mrr > 0 && (
               <div className="vn-total">
                 <span>Total MRR</span>
@@ -58,34 +59,23 @@ export function Ventures() {
             )}
             <Button variant="quiet" onClick={() => setEditing({})}><Plus size={14} /> New venture</Button>
           </>} />
-        {list.length === 0 ? (
-          <div className="crew-cta flex flex-col items-center py-14 text-center">
-            <span className="grid h-14 w-14 place-items-center rounded-full bg-[var(--amber-soft)] text-amber">
-              <Rocket size={24} />
-            </span>
-            <div className="mt-4 text-[18px] font-semibold">Start your first venture</div>
-            <p className="mt-2 max-w-[520px] text-[13.5px] leading-relaxed text-fg-3">
-              Name the idea and say who it's for. The crew validates it, builds the page and the product, plans the launch, and — once you connect a read-only Stripe key — tracks what it earns.
-            </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-2 text-[12px] text-fg-2">
-              {STAGES.map((s, i) => (
-                <span key={s.id} className="flex items-center gap-2">
-                  {i > 0 && <span className="text-fg-3">→</span>}
-                  <span className="vn-stage-chip">{s.label}</span>
-                </span>
-              ))}
-            </div>
-            <Button variant="primary" className="mt-6" onClick={() => setEditing({})}>
-              <Plus size={14} /> New venture
-            </Button>
-          </div>
-        ) : (
-          <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
-            {list.map((v) => (
-              <VentureCard key={v.id} venture={v} />
-            ))}
-          </div>
-        )}
+        <div className="vn-pipe" role="list" aria-label="Pipeline">
+          {STAGES.map((stage, i) => {
+            const here = list.filter((v) => v.stage === stage.id);
+            return <section key={stage.id} className={`vn-lane ${here.length ? "has-cards" : ""}`} role="listitem" aria-label={stage.label}>
+              <header><span className="vn-lane-n">{i + 1}</span><div><strong>{stage.label}</strong><small>{stage.hint}</small></div><em>{here.length}</em></header>
+              <div className="vn-lane-cards">
+                {here.map((v) => <VentureCard key={v.id} venture={v} />)}
+                {stage.id === "idea" && <button type="button" className="vn-new" onClick={() => setEditing({})}><Plus size={15} /><strong>New venture</strong><span>Name the idea and who it's for. The crew validates it first.</span></button>}
+                {stage.id !== "idea" && !here.length && <div className="vn-lane-empty"><span>Next move</span>{NEXT[STAGES[i - 1]!.id]?.label ?? stage.hint}</div>}
+              </div>
+            </section>;
+          })}
+        </div>
+        {list.some((v) => v.stage === "paused" || v.stage === "stopped") && <section className="vn-shelf" aria-label="On the shelf">
+          <h2>On the shelf</h2>
+          <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">{list.filter((v) => v.stage === "paused" || v.stage === "stopped").map((v) => <VentureCard key={v.id} venture={v} />)}</div>
+        </section>}
       </div>
       {editing && <VentureEditor venture={editing} onClose={() => setEditing(null)} />}
     </div>

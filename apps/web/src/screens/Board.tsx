@@ -6,7 +6,8 @@ import { AgentCard } from "../components/AgentCard";
 import { api } from "../lib/api";
 import { isTopLevelWork, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
-import { PaneHeader, PaneState } from "../components/Pane";
+import { PaneHeader } from "../components/Pane";
+import "./board.css";
 import { useNavigate } from "@tanstack/react-router";
 import { KanbanSquare } from "lucide-react";
 import { StatStrip } from "../components/StatStrip";
@@ -50,7 +51,6 @@ export function Board() {
         </div>
           </> : undefined} />
       </div>
-      {all.length === 0 ? <div className="px-8"><PaneState kind="empty" title="Nothing on the board yet" detail="Sessions you start land here and move through Queued → Running → Awaiting me → Reviewing → Done." action={<Button variant="primary" onClick={() => void navigate({ to: "/" })}>Start a session</Button>} /></div> : (
       <LayoutGroup>
         <div className="grid min-h-0 flex-1 grid-cols-5 gap-3 overflow-x-auto px-8 pb-8 max-[1200px]:grid-cols-[repeat(5,300px)]">
           {COLUMNS.map((column) => {
@@ -60,7 +60,7 @@ export function Board() {
             return (
               <section
                 key={column.id}
-                className="flex min-h-0 flex-col rounded-[var(--radius-l)] bg-panel/60"
+                className={`board-col is-${column.id}`}
                 aria-label={column.title}
                 onDragOver={(e) => column.id === "queued" && e.preventDefault()}
                 onDrop={() => {
@@ -74,7 +74,9 @@ export function Board() {
                   <span className="mono ml-auto text-[11px] text-fg-3">{cards.length}</span>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
-                  {cards.length === 0 && <div className="rounded-[var(--radius-m)] border border-dashed border-line px-3 py-6 text-center text-[12px] text-fg-3">{EMPTY[column.id] ?? "Nothing here"}</div>}
+                  {cards.length === 0 && (column.id === "queued" && all.length === 0
+                    ? <div className="board-start"><strong>Start the board</strong><span>Every session you start lands here and moves right on its own: Running → Awaiting me → Reviewing → Done.</span><Button variant="primary" onClick={() => void navigate({ to: "/" })}>Start a session</Button></div>
+                    : <div className="board-empty">{EMPTY[column.id] ?? "Nothing here"}</div>)}
                   {cards.map((run) => (
                     <div
                       key={run.id}
@@ -91,7 +93,6 @@ export function Board() {
           })}
         </div>
       </LayoutGroup>
-      )}
     </div>
   );
 }
