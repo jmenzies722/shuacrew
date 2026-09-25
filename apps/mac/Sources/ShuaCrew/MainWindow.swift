@@ -280,6 +280,16 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         web.isHidden = false
         overlay.hide()
         if ProcessInfo.processInfo.environment["SHUACREW_DEBUG_HIT"] == "1" { reportHits() }
+        // SHUACREW_APP_SELFTEST='{"type":"open_app","name":"Calculator"}' at launch: the app window's Spark panel path
+        // (page → this window → Spark → back here) runs one action and logs the result. Only the launcher can set it.
+        if let spec = ProcessInfo.processInfo.environment["SHUACREW_APP_SELFTEST"], spec.hasPrefix("{") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.web.evaluateJavaScript("""
+                window.addEventListener('shuacrew:did', e => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: e.detail.ok, message: 'app window: ' + e.detail.message }), { once: true });
+                window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDo', id: 'selftest', action: \(spec) });
+                """)
+            }
+        }
     }
 
     /// For checking without clicking: which view gets a click at a few title-bar points.
