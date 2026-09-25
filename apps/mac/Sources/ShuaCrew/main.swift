@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// ShuaCrew for Mac. Closing the window doesn't stop anything: agents keep working in the
 /// gateway, and the menu-bar icon and notifications keep you in the loop.
@@ -8,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: MainWindow!
     private var tray: Tray?
     private var hotKey: HotKey?
+    private var buddyKey: HotKey?
+    private var buddy: Buddy!
     private var mobile: MobileBridge!
     private var mobileWindow: MobileSettingsWindow?
     /// For headless checks: no Dock icon, no menu-bar item, never takes focus.
@@ -17,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window = MainWindow(gateway: gateway)
         mobile = MobileBridge(gateway: gateway)
         window.onMobileSettings = { [weak self] in self?.showMobileSettings() }
+        buddy = Buddy(gateway: gateway)
+        buddy.onOpenRun = { [weak self] run in
+            NSApp.activate()
+            self?.window.navigate("/sessions/\(run)")
+        }
+        window.onBuddyEnabled = { [weak self] on in self?.buddy.setEnabled(on) }
         NSApp.mainMenu = mainMenu()
         if quiet {
             NSApp.setActivationPolicy(.accessory)
@@ -28,9 +37,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.onNotificationSettings = { [weak self] body in self?.tray?.notificationSettings(body) }
             // ⌥Space, anywhere: ShuaCrew comes forward with the message box ready; again, it hides.
             hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
+            // ⌃⌥Space, anywhere: Spark, your desktop buddy, ready for a question about whatever you're looking at.
+            buddyKey = HotKey(modifiers: UInt32(controlKey | optionKey)) { [weak self] in Task { @MainActor in self?.buddy.summon() } }
         }
         window.start()
         tray?.start()
+        Task {
+            // The buddy's page comes from the gateway, so it appears once the gateway answers.
+            try? await Launcher.ensureRunning(gateway)
+            if !quiet { buddy.start() }
+        }
         Task { await mobile.start() }
     }
 
@@ -124,6 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
         windowMenu.addItem(item("ShuaCrew", "0", #selector(showMain)))
+        let spark = item("Ask Spark", " ", #selector(askSpark))
+        spark.keyEquivalentModifierMask = [.control, .option]
+        windowMenu.addItem(spark)
         windowMenu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         NSApp.windowsMenu = windowMenu
 
@@ -162,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func zoomIn() { window.web.pageZoom = min(window.web.pageZoom + 0.1, 2) }
     @objc private func zoomOut() { window.web.pageZoom = max(window.web.pageZoom - 0.1, 0.6) }
     @objc private func showMain() { window.showWindow(nil) }
+    @objc private func askSpark() { buddy.summon() }
     @objc private func openLog() { NSWorkspace.shared.open(Launcher.log) }
     @objc private func shortcuts() {
         window.showWindow(nil)

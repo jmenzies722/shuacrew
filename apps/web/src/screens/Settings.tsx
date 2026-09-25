@@ -15,7 +15,7 @@ import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../compone
 import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, InstructionsSettings, LookSettings, MenuBarSettings, QuietHoursSettings, SafetySettings, SoundSettings, SpeechStorageSettings } from "../components/BatchSettings";
 import { SettingsCommand } from "../components/SettingsCommand";
 import { ShortcutSettings } from "../components/ShortcutSettings";
-import { ScheduleSettings, ThemeShareSettings, TopBarSettings } from "../components/MoreSettings";
+import { DesktopBuddySettings, ScheduleSettings, ThemeShareSettings, TopBarSettings } from "../components/MoreSettings";
 import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, SoundscapeSettings } from "../components/BatchSettings2";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
@@ -38,7 +38,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { topbar: "workspace", shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { topbar: "workspace", shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "desktop-buddy": "play", "tool-cards": "chat", "shua-voice": "voice" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -99,6 +99,7 @@ export function Settings() {
     { id: "hud", section: "developer", title: "Live HUD", terms: "hud overlay fps events per second stream lag connection debug floating", body: <HudToggle /> },
     { id: "gateway-log", section: "developer", title: "Gateway log", terms: "log logs gateway errors crash stderr tail search", body: <GatewayLog /> },
     { id: "storage", section: "developer", title: "Storage", terms: "disk storage size space database library models snapshots usage bytes", body: <StorageUsage /> },
+    { id: "desktop-buddy", section: "play", title: "Spark on your desktop", terms: "desktop buddy spark floating clicky screen screenshot point pointer hotkey control option space ask anywhere", body: <DesktopBuddySettings /> },
     { id: "companion", section: "play", title: "Spark & Mini Crew", terms: "companion pet spark mini crew robot nickname accessory fun personality play focus timer", body: <CompanionSettings /> },
     { id: "tool-cards", section: "chat", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
     { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">

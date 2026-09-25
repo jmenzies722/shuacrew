@@ -18,6 +18,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     private static let lastPathKey = "lastPath"
     var onNotificationSettings: (([String: Any]) -> Void)?
     var onMobileSettings: (() -> Void)?
+    var onBuddyEnabled: ((Bool) -> Void)?
 
     init(gateway: Gateway) {
         self.gateway = gateway
@@ -197,6 +198,11 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 }
                 self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:location', { detail: \(detail) }))")
             }
+        case "buddyEnabled":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let on = body["on"] as? Bool else { return }
+            onBuddyEnabled?(on)
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil

@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { applyTheme, connect, useLive } from "./lib/live";
 import { folderPicked } from "./lib/native";
 import { router } from "./routes";
+import { Buddy } from "./screens/Buddy";
 
 applyTheme(useLive.getState().theme);
 // Resolve the preferred landing page once. Explicit links keep their destination.
@@ -34,8 +35,9 @@ window.shuacrew = {
 };
 void connect();
 
+// The Mac app's desktop buddy panel loads /buddy: just Spark, no workspace chrome.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    {location.pathname === "/buddy" ? <Buddy /> : <RouterProvider router={router} />}
   </StrictMode>,
 );

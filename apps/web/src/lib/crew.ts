@@ -19,7 +19,7 @@ export function isTopLevelWork(run: RunView, runs: Record<string, RunView>): boo
   // and archiving a session hides its whole thread.
   void runs;
   // Learning sessions (coach, courses, drills, resume) live in Learning, not in your work views.
-  return !run.parent && !run.labels?.includes("learning");
+  return !run.parent && !run.labels?.includes("learning") && !run.labels?.includes("buddy");
 }
 
 export function inScope(repo: string | undefined, scope: string | null): boolean {

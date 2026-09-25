@@ -54,6 +54,27 @@ export function ThemeShareSettings() {
 }
 
 /** Top bar: live weather (Open-Meteo) from your Mac's location or a city you type. */
+const BUDDY_KEY = "shuacrew.buddy.desktop";
+const readBuddy = () => { try { return localStorage.getItem(BUDDY_KEY) !== "0"; } catch { return true; } };
+const inMac = () => !!(window as unknown as { webkit?: { messageHandlers?: { shuacrew?: unknown } } }).webkit?.messageHandlers?.shuacrew;
+
+/** Spark on the Mac desktop: a floating buddy the Mac app keeps over every app. */
+export function DesktopBuddySettings() {
+  const [on, setOn] = useState(readBuddy);
+  const set = (next: boolean) => {
+    setOn(next); try { localStorage.setItem(BUDDY_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+    (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew?.postMessage({ type: "buddyEnabled", on: next });
+  };
+  return <div className="settings-card">
+    <SettingRow name="Spark on your desktop" detail={inMac() ? "Floats over every app and Space, even with this window closed. Click Spark or press ⌃⌥Space to ask; drag to move." : "Available in the ShuaCrew Mac app."} modified={!on}>
+      <Switch label="Desktop buddy" on={on} onChange={set} />
+    </SettingRow>
+    <SettingRow name="Looking at your screen" detail="Only when you ask with the eye on: one screenshot of the display Spark is on (Spark itself left out), attached to that question and nothing else. macOS asks for Screen Recording once." />
+    <SettingRow name="Pointing" detail="When it helps, Spark rings the exact button or field it means, right on your screen, for a few seconds. Click-through; it never clicks for you." />
+    <SettingRow name="Hand to the crew" detail="⤢ in the card opens the conversation as a full session here, where your crew can take it further." />
+  </div>;
+}
+
 export function TopBarSettings() {
   const w = useWeatherPrefs();
   const [city, setCity] = useState(w.city);
