@@ -340,7 +340,10 @@ export class Supervisor {
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
     const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
+    // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
+    const lean = spec.labels.includes("buddy");
     const run: RunSpec = {
+      lean,
       id: runId,
       // A fork's first turn carries the conversation it branched from; a moved run gets a recap.
       ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : spec.forkOf && turn === 1 ? `${spec.ask}\n\n---\n\n${ask}` : ask,
@@ -348,12 +351,12 @@ export class Supervisor {
       model,
       effort: spec.effort,
       resume,
-      agents: spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
-      disableNativeAgents: spec.labels.includes("crew-room"),
+      agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
+      disableNativeAgents: lean || spec.labels.includes("crew-room"),
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
-      mcpServers: this.options.mcpServers?.(runtime.id, runId),
-      plugins: this.options.plugins?.(runtime.id),
+      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
+      mcpServers: lean ? undefined : this.options.mcpServers?.(runtime.id, runId),
+      plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
     this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort: spec.effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
 

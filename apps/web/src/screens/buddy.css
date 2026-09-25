@@ -156,3 +156,12 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 /* Your words, live, as you say them. */
 .spk .buddy-msg.is-you.is-hearing { color: var(--text-2); font-style: normal; background: color-mix(in srgb, var(--spark-color) 9%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 40%, transparent); }
 .spk-live-caret { display: inline-block; width: 2px; height: 14px; margin-left: 3px; vertical-align: -2px; border-radius: 1px; background: var(--spark-color); animation: spk-caret 1s steps(2) infinite; }
+/* Live: a clear, honest indicator whenever Spark is watching. */
+.spk-head > .spk-live { display: inline-flex; align-items: center; gap: 6px; width: auto; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 650; color: var(--text-3); box-shadow: inset 0 0 0 1px var(--line); }
+.spk-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.spk-head > .spk-live.is-on { color: #fecaca; background: color-mix(in srgb, #ef4444 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #ef4444 45%, transparent); }
+.spk-live.is-on i { background: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, .6); animation: spk-rec 1.6s ease-out infinite; }
+@keyframes spk-rec { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .55); } 70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+@media (prefers-reduced-motion: reduce) { .spk-live.is-on i { animation: none; } }
+.buddy-task.is-run { flex-wrap: wrap; } .buddy-task.is-run code { font-size: 11.5px; padding: 1px 6px; border-radius: 5px; background: var(--sunken); color: var(--text); word-break: break-all; }
+.buddy-task.is-run small { color: var(--text-3); }

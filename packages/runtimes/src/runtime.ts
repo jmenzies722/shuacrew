@@ -25,6 +25,11 @@ export interface RunSpec {
   mcpServers?: Record<string, unknown> | unknown[];
   /** Claude Code plugins to load (ShuaCrew's skills live in one). Other runtimes ignore this. */
   plugins?: Array<{ type: "local"; path: string; skipMcpDiscovery?: boolean }>;
+  /**
+   * A conversational turn (Spark): no coding-agent system prompt, no MCP servers, plugins or subagents, and only the
+   * tool it needs to look at an attached screenshot. Starts answering in a fraction of the time.
+   */
+  lean?: boolean;
 }
 
 export interface ApprovalAnswer {

@@ -80,3 +80,17 @@ it("carries what it knows about you into every conversation", () => {
   expect(p).toContain("- The user deploys on Fridays.");
   expect(buddyPrompt("hi", null, { name: "Spark", tone: "chill", length: "brief" })).not.toContain("WHAT YOU KNOW ABOUT THEM");
 });
+it("knows the real controls on screen and runs blocks as soon as they close", async () => {
+  const { elementsText, completedBlocks } = await import("./buddy");
+  const t = elementsText({ app: "Mail", window: "New Message", elements: [{ name: "Send", role: "button", x: 0.66, y: 0.18 }] });
+  expect(t).toContain("IN FRONT: Mail — “New Message”");
+  expect(t).toContain("Send [button] @0.660,0.180");
+  const streaming = 'Opening it.\n```do [{"type":"open_app","name":"Notes"}]```\nNow I will point ```point {"x":0.1';
+  expect(completedBlocks(streaming).map((b) => b.kind)).toEqual(["do"]); // the unfinished point waits
+  expect(buddyPrompt("send it", { width: 10, height: 10, context: { app: "Mail", elements: [{ name: "Send", role: "button", x: 0.5, y: 0.5 }] } })).toContain("Send [button]");
+});
+it("reads run commands and keeps music off the mouse", () => {
+  expect(parseActions('```do [{"type":"run","command":"df -h ~"}]```')).toEqual([{ type: "run", command: "df -h ~" }]);
+  expect(parseActions('```do [{"type":"run","command":""}]```')).toEqual([]);
+  expect(buddyPrompt("play music", null)).toContain("never click a play button");
+});

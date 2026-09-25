@@ -31,7 +31,8 @@ export type Action =
   | { type: "learn"; topic?: string; drill?: boolean }
   | { type: "venture"; name: string; pitch?: string; validate?: boolean }
   | { type: "playbook"; playbook: string; idea?: string; venture?: string }
-  | { type: "remember"; text: string };
+  | { type: "remember"; text: string }
+  | { type: "run"; command: string };
 /** The playbooks Spark can start by id (the built-in library). */
 export const PLAYBOOKS = ["validate-idea", "landing-page", "mvp", "launch", "growth-review"] as const;
 
@@ -136,6 +137,21 @@ export function isDesign(question: string) {
   return /\b(system design|design (a|an|the|me)|architect(ure)?|how would you (build|design|scale)|scal(e|ing|able)|high[- ]level design|hld|lld|distributed|microservices?|data (model|pipeline)|infra(structure)?|diagram|draw (a|an|me|the))\b/i.test(question);
 }
 
+/** The frontmost app's real controls, from macOS accessibility: exact names and positions. */
+export interface ScreenContext { app?: string; window?: string; elements?: Array<{ name: string; role: string; x: number; y: number }> }
+export function elementsText(ctx: ScreenContext | undefined, max = 120) {
+  if (!ctx?.app && !ctx?.elements?.length) return "";
+  const rows = (ctx.elements ?? []).slice(0, max).map((e) => `${e.name} [${e.role}] @${e.x.toFixed(3)},${e.y.toFixed(3)}`);
+  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility ("name [role] @x,y" centres as fractions from the top-left). To use one, act press {label: name} (most reliable) or point/guide at its @x,y:\n${rows.join("\n")}` : ""}`;
+}
+
+/** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
+export function completedBlocks(text: string): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw"; raw: string }> {
+  const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw"; raw: string }> = [];
+  for (const m of text.matchAll(/```(do|act|point|guide|draw)\s*([\s\S]*?)```/gi)) out.push({ key: `${m.index}:${m[1]!.toLowerCase()}`, kind: m[1]!.toLowerCase() as "do", raw: m[0] });
+  return out;
+}
+
 /** OCR lines as a compact, exact block for the model (reading order, with centres). */
 export function screenText(lines: ScreenLine[] | undefined, max = 9000) {
   if (!lines?.length) return "";
@@ -170,6 +186,7 @@ function toAction(v: unknown): Action | null {
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
+    case "run": { const command = str(o.command, 2000); return command && !/[\u0000-\u0008]/.test(command) ? { type: "run", command } : null; }
     default: return null;
   }
 }
@@ -197,6 +214,7 @@ export function describeAction(a: Action): string {
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
+    case "run": return `Run ${a.command.length > 48 ? `${a.command.slice(0, 48)}…` : a.command}`;
   }
 }
 
@@ -230,8 +248,8 @@ export function describeAct(a: Act): string {
 }
 
 /** What goes back after Spark does a step: what happened, a fresh look, and the ask for the next step. */
-export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[] }, step: number, max: number) {
-  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}`;
+export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }, step: number, max: number) {
+  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}`;
 }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
@@ -273,10 +291,10 @@ const DESIGN = [
   "Use real technologies where they fit (Postgres, Redis, Kafka, S3, CDN, etc.) and say why. No filler.",
 ].join("\n");
 
-export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[] } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "") {
+export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "") {
   const design = isDesign(question);
   return [
-    `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read the attached screenshot or to search their ShuaCrew library and crew.`,
+    `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read an attached screenshot.`,
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
     '```do [{"type":"open_app","name":"Safari"}]```',
     'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
@@ -287,8 +305,10 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Build, code, research, anything multi-step: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```',
+      'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
+      'Music: ALWAYS use media (play, pause, next, play_query), never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
-      "Use the ShuaCrew tools (search_library, read_library, list_crew) to look up what they have already made or know. After acting, say in one line what is happening and what comes next.",
+      "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
     ].join("\n"),
     'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
     "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
@@ -307,6 +327,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
         `To show one thing, add: \`\`\`point {"x": 0.0-1.0, "y": 0.0-1.0, "label": "2–5 words"}\`\`\` (x,y = its CENTER as fractions of the image width/height).`,
         `To SKETCH on their screen (circle a problem, box a region, arrow from cause to effect, a short note), add \`\`\`draw [{"shape":"box","x":0.5,"y":0.4,"w":0.2,"h":0.1,"label":"this total is wrong"},{"shape":"arrow","from":[0.3,0.6],"to":[0.45,0.42],"label":"comes from here"},{"shape":"circle","x":0.7,"y":0.2,"r":0.03},{"shape":"text","x":0.5,"y":0.9,"text":"note"}]\`\`\` (centres/sizes as fractions; up to 12 shapes). It draws itself in live and fades after ~15s.`,
         screen.text?.length ? screenText(screen.text) : "",
+        elementsText(screen.context),
         `GUIDE MODE — when they want to be shown how to do something on screen ("how do I…", "show me", "walk me through"), guide ONE step at a time: say just that step in a sentence, then add \`\`\`guide {"x": centre 0-1, "y": centre 0-1, "w": width 0-1, "h": height 0-1, "label": "Click Share", "step": 1}\`\`\` boxing exactly the control to use. Their Mac spotlights it; when they click it you'll get a fresh screenshot to plan the next step from what is really there now. If the thing isn't visible yet, guide them to what reveals it (a menu, a tab, scrolling). When the task is complete, say so and add \`\`\`guide {"done": true}\`\`\`.`,
       ].join("\n")
       : "No screenshot this time; answer from the question alone. If they want to be shown something on screen, ask them to turn on the eye so you can see.",
@@ -317,6 +338,6 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
 }
 
 /** What goes back after they do a guided step: a fresh look, and the ask for what's next. */
-export function guideFollowUp(label: string, screen: { width: number; height: number; text?: ScreenLine[] }) {
-  return `[guide] Done — I did “${label}”. A fresh screenshot is attached (${screen.width}×${screen.height}). What's the next step? Use one guide block, or guide {"done": true} if we're finished.${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}`;
+export function guideFollowUp(label: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }) {
+  return `[guide] Done — I did “${label}”. A fresh screenshot is attached (${screen.width}×${screen.height}). What's the next step? Use one guide block, or guide {"done": true} if we're finished.${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}`;
 }

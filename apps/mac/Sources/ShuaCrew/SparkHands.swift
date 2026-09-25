@@ -268,3 +268,37 @@ enum SparkPress {
         return CGPoint(x: p.x + s.width / 2, y: p.y + s.height / 2)
     }
 }
+
+// MARK: running a command
+
+/// A terminal command Spark runs for you, after ShuaCrew's policy has allowed it (and you have, when it asks).
+/// Runs in your login shell from your home folder, 60 seconds at most; the output comes back so Spark can read it to you.
+enum SparkShell {
+    static func run(_ command: String, completion: @escaping @Sendable (Int32, String) -> Void) {
+        let p = Process(), out = Pipe()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-lc", command]
+        p.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        p.standardOutput = out; p.standardError = out
+        let reader = out.fileHandleForReading
+        let collected = LockedData()
+        reader.readabilityHandler = { h in collected.append(h.availableData) }
+        let timer = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        p.terminationHandler = { proc in
+            timer.cancel()
+            reader.readabilityHandler = nil
+            collected.append(reader.readDataToEndOfFile())
+            let text = String(decoding: collected.data.prefix(64_000), as: UTF8.self)
+            completion(proc.terminationStatus, text)
+        }
+        do { try p.run(); DispatchQueue.global().asyncAfter(deadline: .now() + 60, execute: timer) }
+        catch { completion(-1, "Couldn't start the shell: \(error.localizedDescription)") }
+    }
+}
+
+final class LockedData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = Data()
+    func append(_ d: Data) { lock.lock(); buffer.append(d); lock.unlock() }
+    var data: Data { lock.lock(); defer { lock.unlock() }; return buffer }
+}

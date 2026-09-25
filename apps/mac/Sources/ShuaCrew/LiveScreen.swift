@@ -1,0 +1,125 @@
+import AppKit
+import ApplicationServices
+import CoreImage
+import ScreenCaptureKit
+
+/// Spark watching live: a ScreenCaptureKit stream of the display at one frame a second, kept only in memory — the
+/// newest frame replaces the last, nothing is written to disk. macOS shows its recording indicator while it runs.
+@MainActor
+final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
+    private var stream: SCStream?
+    private let queue = DispatchQueue(label: "shuacrew.live-screen")
+    private let context = CIContext()
+    private(set) var latest: CGImage?
+    private(set) var latestAt = Date.distantPast
+    private(set) var screen: NSScreen?
+    var running: Bool { stream != nil }
+    var onStop: ((String?) -> Void)?
+
+    func start(on screen: NSScreen, excluding windowNumbers: [Int]) async throws {
+        stop()
+        let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else { throw LiveError.noDisplay }
+        let mine = content.windows.filter { w in windowNumbers.contains(Int(w.windowID)) }
+        let config = SCStreamConfiguration()
+        config.width = Int(Double(display.width) * screen.backingScaleFactor)
+        config.height = Int(Double(display.height) * screen.backingScaleFactor)
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 1) // one frame a second is plenty to follow along
+        config.showsCursor = true
+        config.queueDepth = 3
+        let stream = SCStream(filter: SCContentFilter(display: display, excludingWindows: mine), configuration: config, delegate: self)
+        try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+        try await stream.startCapture()
+        self.stream = stream
+        self.screen = screen
+    }
+
+    func stop() {
+        guard let stream else { return }
+        self.stream = nil
+        latest = nil
+        Task { try? await stream.stopCapture() }
+    }
+
+    /// The newest frame, if it's fresh enough to trust.
+    func frame(maxAge: TimeInterval = 3) -> CGImage? {
+        guard let latest, Date().timeIntervalSince(latestAt) <= maxAge else { return nil }
+        return latest
+    }
+
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, buffer.isValid, let pixels = buffer.imageBuffer else { return }
+        // Only complete frames: ScreenCaptureKit also sends "idle" buffers when nothing changed.
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+           let raw = attachments.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete { return }
+        let image = CIImage(cvPixelBuffer: pixels)
+        Task { @MainActor in
+            guard let cg = self.context.createCGImage(image, from: image.extent) else { return }
+            self.latest = cg
+            self.latestAt = Date()
+        }
+    }
+
+    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        Task { @MainActor in
+            self.stream = nil
+            self.latest = nil
+            self.onStop?(error.localizedDescription)
+        }
+    }
+
+    enum LiveError: LocalizedError { case noDisplay; var errorDescription: String? { "No display to watch." } }
+}
+
+/// What's actually on screen, from macOS itself: the frontmost app, its window, and every named control in it with its
+/// exact position. Accurate where pixels are ambiguous — Spark can point at or press these by name.
+@MainActor
+enum ScreenElements {
+    private static let interesting: Set<String> = [kAXButtonRole, kAXMenuItemRole, kAXMenuBarItemRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole,
+        "AXLink", "AXTab", kAXTextFieldRole, kAXTextAreaRole, "AXSearchField", kAXComboBoxRole, kAXSliderRole, kAXDisclosureTriangleRole]
+
+    /// Up to 150 controls, positions as fractions of `screen` (from the top-left), plus the app and window names.
+    static func read(on screen: NSScreen) -> [String: Any] {
+        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return [:] }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var windowValue: CFTypeRef?
+        AXUIElementCopyAttributeValue(root, kAXFocusedWindowAttribute as CFString, &windowValue)
+        let window = windowValue.map { $0 as! AXUIElement }
+        let title = window.flatMap { string($0, kAXTitleAttribute) } ?? ""
+        let mainHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let f = screen.frame
+        var out: [[String: Any]] = [], queue: [AXUIElement] = [window ?? root], seen = 0
+        while !queue.isEmpty, seen < 4000, out.count < 150 {
+            let el = queue.removeFirst(); seen += 1
+            let role = string(el, kAXRoleAttribute) ?? ""
+            if interesting.contains(role), let c = frame(el) {
+                let name = [kAXTitleAttribute, kAXDescriptionAttribute, "AXPlaceholderValue", kAXValueAttribute].lazy.compactMap { string(el, $0)?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty && $0.count < 80 } ?? ""
+                // Global top-left points → this screen's fractions from its top-left.
+                let appKitY = mainHeight - c.midY
+                let x = (c.midX - f.minX) / f.width, y = (f.maxY - appKitY) / f.height
+                if !name.isEmpty, (0...1).contains(x), (0...1).contains(y) {
+                    out.append(["name": name, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(), "x": (x * 1000).rounded() / 1000, "y": (y * 1000).rounded() / 1000])
+                }
+            }
+            var children: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &children) == .success, let list = children as? [AXUIElement] { queue.append(contentsOf: list) }
+        }
+        return ["app": app.localizedName ?? "", "window": title, "elements": out]
+    }
+
+    private static func string(_ el: AXUIElement, _ key: String) -> String? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, key as CFString, &v) == .success else { return nil }
+        return v as? String
+    }
+    private static func frame(_ el: AXUIElement) -> CGRect? {
+        var pos: CFTypeRef?, size: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &pos) == .success,
+              AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &size) == .success else { return nil }
+        var p = CGPoint.zero, s = CGSize.zero
+        AXValueGetValue(pos as! AXValue, .cgPoint, &p); AXValueGetValue(size as! AXValue, .cgSize, &s)
+        guard s.width > 1, s.height > 1 else { return nil }
+        return CGRect(origin: p, size: s)
+    }
+}

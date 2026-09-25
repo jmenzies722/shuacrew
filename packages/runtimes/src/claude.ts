@@ -163,6 +163,8 @@ export class ClaudeRuntime implements Runtime {
     { id: "claude-haiku-4-5", label: "Haiku 4.5", tier: "fast" as const },
   ];
   private executable?: string;
+  /** Spark's conversations stay warm: one live agent process per conversation, fed each new turn. */
+  private warm = new Map<string, WarmSession>();
 
   constructor(options: ClaudeOptions = {}) {
     this.authMode = options.authMode ?? "subscription";
@@ -192,6 +194,7 @@ export class ClaudeRuntime implements Runtime {
   }
 
   async *start(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent> {
+    if (run.lean) { yield* this.startWarm(run, ctx); return; }
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
     const abort = new AbortController();
     ctx.signal.addEventListener("abort", () => abort.abort(), { once: true });
@@ -230,12 +233,14 @@ export class ClaudeRuntime implements Runtime {
         abortController: abort,
         permissionMode: "default",
         includePartialMessages: true,
-        enableFileCheckpointing: true,
+        enableFileCheckpointing: !run.lean,
         pathToClaudeCodeExecutable: this.executable,
-        // Claude Code's own system prompt, with ShuaCrew's lessons and context appended.
-        systemPrompt: { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
+        // Claude Code's own system prompt, with ShuaCrew's lessons and context appended — or, for a lean
+        // conversational turn, a short one of its own (the ask carries the persona and context).
+        systemPrompt: run.lean ? "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Only use the Read tool to look at attached images." : { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
+        ...(run.lean ? { allowedTools: ["Read"], disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"] } : {}),
         agents: run.agents,
-        disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined,
+        ...(run.lean ? {} : { disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined }),
         mcpServers: run.mcpServers,
         ...(run.plugins?.length ? { plugins: run.plugins } : {}),
         canUseTool: async (tool: string, input: Record<string, unknown>, options: { agentID?: string }) => {
@@ -297,6 +302,105 @@ export class ClaudeRuntime implements Runtime {
       abort.abort();
     }
   }
+
+  /**
+   * A lean conversational turn on a warm session. The first turn starts the agent; every later turn is just a message
+   * into it, so there's no process to launch and it starts answering almost at once. Quiet for 10 minutes: it closes.
+   */
+  private async *startWarm(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent> {
+    let w = this.warm.get(run.id);
+    if (!w || w.dead || w.model !== run.model) {
+      w?.close();
+      w = await this.openWarm(run, ctx);
+      this.warm.set(run.id, w);
+    }
+    const session = w;
+    clearTimeout(session.idle);
+    session.ctx = ctx;
+    const onAbort = () => { void session.interrupt().catch(() => {}); };
+    ctx.signal.addEventListener("abort", onAbort, { once: true });
+    session.push(run.ask);
+    try {
+      for (;;) {
+        const next = await session.iterator.next();
+        if (next.done) { session.dead = true; this.warm.delete(run.id); return; }
+        for (const event of session.translator.translate(next.value)) {
+          yield event;
+          if (event.type === "done") return;
+          if (event.type === "error" || event.type === "limited") { session.close(); this.warm.delete(run.id); return; }
+        }
+      }
+    } catch (error) {
+      session.close(); this.warm.delete(run.id);
+      yield { type: "error", message: (error as Error).message } as RuntimeEvent;
+    } finally {
+      ctx.signal.removeEventListener("abort", onAbort);
+      if (!session.dead) session.idle = setTimeout(() => { session.close(); this.warm.delete(run.id); }, 10 * 60_000);
+    }
+  }
+
+  private async openWarm(run: RunSpec, first: RunContext): Promise<WarmSession> {
+    const { query } = await import("@anthropic-ai/claude-agent-sdk");
+    const abort = new AbortController();
+    const queue: string[] = [];
+    let wake: (() => void) | undefined, closed = false;
+    async function* input() {
+      while (!closed) {
+        if (queue.length) { yield { type: "user" as const, message: { role: "user" as const, content: queue.shift()! }, parent_tool_use_id: null, session_id: "" }; continue; }
+        await new Promise<void>((resolve) => (wake = resolve));
+      }
+    }
+    const session: WarmSession = {
+      push: (text) => { queue.push(text); wake?.(); },
+      iterator: undefined as unknown as AsyncIterator<Json>,
+      translator: new ClaudeTranslator(),
+      ctx: first,
+      model: run.model,
+      dead: false,
+      close: () => { if (session.dead) return; session.dead = true; closed = true; wake?.(); abort.abort(); },
+      interrupt: async () => { await (conversation as unknown as { interrupt?: () => Promise<void> }).interrupt?.(); },
+    };
+    const conversation = query({
+      prompt: input() as never,
+      options: {
+        cwd: run.cwd,
+        model: run.model,
+        effort: run.effort as never,
+        resume: run.resume,
+        env: { ...first.env, CLAUDE_AGENT_SDK_CLIENT_APP: "shuacrew/0.1.0" },
+        abortController: abort,
+        permissionMode: "default",
+        includePartialMessages: true,
+        enableFileCheckpointing: false,
+        pathToClaudeCodeExecutable: this.executable,
+        systemPrompt: "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Only use the Read tool to look at attached images.",
+        allowedTools: ["Read"],
+        disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"],
+        // Approvals go to whichever turn is running now.
+        canUseTool: async (tool: string, input: Record<string, unknown>) => {
+          const answer = await session.ctx.approve(tool, input, {});
+          return answer.allow
+            ? { behavior: "allow" as const, updatedInput: (answer.input as Record<string, unknown>) ?? input }
+            : { behavior: "deny" as const, message: `ShuaCrew policy refused this: ${answer.reason}.` };
+        },
+      } as never,
+    });
+    session.iterator = (conversation as AsyncIterable<Json>)[Symbol.asyncIterator]();
+    return session;
+  }
+}
+
+/** A live conversational session: its input stays open, so each turn is a message into a running agent. */
+interface WarmSession {
+  push(text: string): void;
+  iterator: AsyncIterator<Json>;
+  translator: ClaudeTranslator;
+  ctx: RunContext;
+  model?: string;
+  idle?: NodeJS.Timeout;
+  close(): void;
+  interrupt(): Promise<void>;
+  dead: boolean;
 }
 
 export function findBinary(name: string): string | undefined {

@@ -26,6 +26,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let web: WKWebView
     private let grip = BuddyGrip()
     private let pointer = PointerOverlay()
+    /// Live mode: a real screen stream while you choose, so every question sees what's there right now.
+    private let live = LiveScreen()
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
     private var loaded = false
@@ -172,6 +174,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     let r = SparkHands.act(action, screen: screen)
                     self.did(["id": id, "ok": r.ok, "message": r.message], to: sender)
                 }
+            case "run":
+                // The page has already checked this command against ShuaCrew's policy (and asked you if needed).
+                guard let command = action["command"] as? String, !command.isEmpty, command.count <= 2000 else { did(["id": id, "ok": false, "message": "No command."], to: sender); break }
+                SparkShell.run(command) { [weak self] status, output in
+                    Task { @MainActor in
+                        let tail = output.count > 4000 ? "…" + output.suffix(4000) : output
+                        self?.did(["id": id, "ok": status == 0, "message": status == 0 ? "Ran it" : "Exited \(status)", "output": tail], to: sender)
+                    }
+                }
             case "press":
                 // Find it by name, fly the cursor there, then press it as the cursor lands.
                 guard SparkHands.trusted else { SparkHands.askForAccess(); did(["id": id, "ok": false, "message": "Spark needs Accessibility access: System Settings → Privacy & Security → Accessibility → ShuaCrew."], to: sender); break }
@@ -207,6 +218,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":
             stopWatch.map(NSEvent.removeMonitor); stopWatch = nil
+        case "buddyLive":
+            let on = body["on"] as? Bool ?? false
+            if !on { live.stop(); send("shuacrew:live", ["on": false], to: sender); break }
+            guard ScreenAccess.granted() || ScreenAccess.request() else {
+                send("shuacrew:live", ["on": false, "error": "Turn on ShuaCrew in System Settings → Privacy & Security → Screen & System Audio Recording, then try Live again."], to: sender); break
+            }
+            let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+            live.onStop = { [weak self] error in self?.send("shuacrew:live", ["on": false, "error": error ?? ""], to: sender) }
+            Task {
+                do { try await live.start(on: screen, excluding: [panel.windowNumber]); send("shuacrew:live", ["on": true], to: sender) }
+                catch { send("shuacrew:live", ["on": false, "error": "Couldn't start watching: \(error.localizedDescription)"], to: sender) }
+            }
         case "buddyCapture":
             Task { await capture(to: sender) }
         case "buddyScreenAccess":
@@ -324,7 +347,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             config.width = Int(Double(display.width) * screen.backingScaleFactor)
             config.height = Int(Double(display.height) * screen.backingScaleFactor)
             config.showsCursor = true
-            let full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            // Live: the stream's newest frame is already here — no capture wait.
+            let full: CGImage
+            if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
+            let context = ScreenElements.read(on: screen)
             // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
             async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
             guard let small = ScreenText.scaled(full, longest: 1568),
@@ -332,7 +358,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
             shotScreen = screen
-            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text], to: target)
+            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running], to: target)
         } catch {
             reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
         }
