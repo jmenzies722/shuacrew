@@ -98,7 +98,7 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 export function Panel({ children, className = "", as: Tag = "section", ...rest }: { children: ReactNode; className?: string; as?: "section" | "div" | "aside" } & Record<string, unknown>) {
   return (
-    <Tag className={`rounded-[var(--radius-l)] border border-[var(--line)] bg-[var(--panel)] ${className}`} style={{ boxShadow: "var(--shadow)" }} {...rest}>
+    <Tag className={`ui-panel rounded-[var(--radius-l)] border border-[var(--line)] bg-[var(--panel)] ${className}`} style={{ boxShadow: "var(--shadow)" }} {...rest}>
       {children}
     </Tag>
   );
@@ -152,7 +152,7 @@ export function Button({
     danger: "border border-[color-mix(in_srgb,var(--bad)_40%,transparent)] text-[var(--bad)] hover:bg-[color-mix(in_srgb,var(--bad)_10%,transparent)]",
   };
   return (
-    <button type={type} onClick={onClick} disabled={disabled} title={title} className={`${base} ${sizes} ${variants[variant]} ${className}`}>
+    <button type={type} onClick={onClick} disabled={disabled} title={title} data-variant={variant} className={`ui-btn ${base} ${sizes} ${variants[variant]} ${className}`}>
       {children}
     </button>
   );

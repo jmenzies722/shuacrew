@@ -98,6 +98,7 @@ export function HubSidebar() {
   const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const runs = useLive((s) => s.crew.runs);
+  const connection = useLive((s) => s.connection);
   const prefs = useCompanion(), sparkOpen = useSparkPanel();
   useRemember(path);
   const go = (hub: Hub) => void navigate({ to: hub.id === here ? hub.tabs[0]!.to : hubEntry(hub, readLast()) });
@@ -116,6 +117,11 @@ export function HubSidebar() {
   const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
   const name = prefs.nickname || "Spark";
   return <nav className="side" aria-label="Sidebar">
+    <div className="side-brand">
+      <span className="side-logo" aria-hidden><i /><i /><i /></span>
+      <span className="side-brand-text"><b>ShuaCrew</b><small className={`is-${connection}`}><i />{connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting" : "Gateway offline"}</small></span>
+      <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
+    </div>
     <button type="button" className={`side-spark ${sparkOpen ? "is-on" : ""}`} style={sparkVars(prefs.color)} onClick={toggleSparkPanel} title={`${name}  ⌘J`}>
       <span className="side-spark-av"><SparkCharacter preferences={prefs} size={24} /></span>
       <span className="side-spark-text"><b>Ask {name}</b><small>anything, anywhere</small></span><kbd>⌘J</kbd>
@@ -125,7 +131,8 @@ export function HubSidebar() {
       {HUBS.map((hub, i) => { const Icon = ICON[hub.id], on = here === hub.id, n = count(hub.id);
         return <div key={hub.id} className={`side-hub ${on ? "is-on" : ""}`}>
           <button type="button" className="side-row" onClick={() => go(hub)} title={`${hub.label} — ${hub.hint}  ⌘${i + 1}`} aria-current={on ? "page" : undefined}>
-            <Icon size={16} strokeWidth={1.8} /><span>{hub.label}</span>{n > 0 && <em className={hub.id === "home" ? "is-wait" : "is-live"}>{n}</em>}
+            {on && <motion.span layoutId="side-hub-on" className="side-hub-on" transition={{ type: "spring", stiffness: 480, damping: 38 }} />}
+            <i className="side-ico" data-hub={hub.id}><Icon size={14} strokeWidth={2} /></i><span>{hub.label}</span>{n > 0 && <em className={hub.id === "home" ? "is-wait" : "is-live"}>{n}</em>}
           </button>
           <AnimatePresence initial={false}>{on && <motion.div key="tabs" className="side-tabs" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
             {hub.tabs.map((tab) => { const sel = at?.tab === tab; return <Link key={tab.to} to={tab.to} className={`side-tab ${sel ? "is-on" : ""}`} aria-current={sel ? "page" : undefined}>
@@ -142,8 +149,7 @@ export function HubSidebar() {
     </div>}
     <span className="side-spacer" />
     <div className="side-foot">
-      <button type="button" className={`side-row ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })}><Settings size={16} strokeWidth={1.8} /><span>Settings</span><kbd>⌘,</kbd></button>
-      <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
+      <button type="button" className={`side-row ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })}><i className="side-ico" data-hub="settings"><Settings size={14} strokeWidth={2} /></i><span>Settings</span><kbd>⌘,</kbd></button>
     </div>
   </nav>;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, Fragment } from "react";
 import { Link } from "@tanstack/react-router";
 import { AudioLines, Bell, LayoutGrid, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap, Lock, Timer } from "lucide-react";
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
@@ -23,20 +23,20 @@ import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../componen
 import "./settings.css";
 
 const SECTIONS = [
-  { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette },
-  { id: "workspace", title: "Workspace", description: "Shape the way you move through your day.", icon: Monitor },
-  { id: "widgets", title: "Widgets", description: "Live views of your Mac, your crew and your day — in the top bar and in Spark.", icon: LayoutGrid },
-  { id: "chat", title: "Chat", description: "Your pace, your shortcuts, your conversations.", icon: MessageSquare },
-  { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles },
-  { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap },
-  { id: "automation", title: "Automation", description: "What runs on its own — and when it waits.", icon: Timer },
-  { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock },
-  { id: "play", title: "Spark", description: "Your desktop buddy: its character, voice, personality, and how it shows you things.", icon: Sparkles },
-  { id: "voice", title: "Shua voice", description: "Find a voice that feels right. Hear it before you choose.", icon: AudioLines },
-  { id: "notifications", title: "Notifications", description: "Let the right things interrupt you.", icon: Bell },
-  { id: "mobile", title: "Mobile", description: "Your crew, within reach. Your Mac stays in control.", icon: Smartphone },
-  { id: "data", title: "Data & service", description: "Keep your workspace available and backed up.", icon: ShieldCheck },
-  { id: "developer", title: "Developer", description: "Inspect the real system behind your crew.", icon: SlidersHorizontal },
+  { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette, group: "You" },
+  { id: "workspace", title: "Workspace", description: "Shape the way you move through your day.", icon: Monitor, group: "You" },
+  { id: "widgets", title: "Widgets", description: "Live views of your Mac, your crew and your day — in the top bar and in Spark.", icon: LayoutGrid, group: "You" },
+  { id: "play", title: "Spark", description: "Your desktop buddy: its character, voice, personality, and how it shows you things.", icon: Sparkles, group: "Companion" },
+  { id: "voice", title: "Shua voice", description: "Find a voice that feels right. Hear it before you choose.", icon: AudioLines, group: "Companion" },
+  { id: "chat", title: "Chat", description: "Your pace, your shortcuts, your conversations.", icon: MessageSquare, group: "Companion" },
+  { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles, group: "Crew" },
+  { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap, group: "Crew" },
+  { id: "automation", title: "Automation", description: "What runs on its own — and when it waits.", icon: Timer, group: "Crew" },
+  { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock, group: "System" },
+  { id: "notifications", title: "Notifications", description: "Let the right things interrupt you.", icon: Bell, group: "System" },
+  { id: "mobile", title: "Mobile", description: "Your crew, within reach. Your Mac stays in control.", icon: Smartphone, group: "System" },
+  { id: "data", title: "Data & service", description: "Keep your workspace available and backed up.", icon: ShieldCheck, group: "System" },
+  { id: "developer", title: "Developer", description: "Inspect the real system behind your crew.", icon: SlidersHorizontal, group: "System" },
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
@@ -154,9 +154,12 @@ export function Settings() {
     <div className="settings-layout"><aside className="settings-sidebar">
       <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
       {!overview && <button type="button" className="settings-overview-link" onClick={() => { setOverview(true); history.replaceState(null, "", "/settings"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Workspace overview</button>}
-      <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, icon: Icon }) => <button key={id} aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); setOverview(false); }}><Icon size={17} /><span>{title}</span></button>)}</nav>
+      <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, group, icon: Icon }, i) => <Fragment key={id}>
+        {SECTIONS[i - 1]?.group !== group && <span className="settings-nav-label">{group}</span>}
+        <button aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); setOverview(false); }}><i className="settings-ico" data-group={group}><Icon size={14} strokeWidth={2} /></i><span>{title}</span></button>
+      </Fragment>)}</nav>
       <div className="settings-sidebar-note"><span className="settings-kicker">BUILT AROUND YOU</span><p>One workspace.<br />Your entire crew.</p><Link to="/crew">Meet your agents ↗</Link></div>
-    </aside><div className="settings-content"><div className="settings-section-heading"><div><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && ["appearance", "workspace", "chat"].includes(section) && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
+    </aside><div className="settings-content"><div className="settings-section-heading">{!words.length && <i className="settings-ico settings-ico-lg" data-group={selected.group}><selected.icon size={20} strokeWidth={1.9} /></i>}<div className="settings-heading-text"><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && ["appearance", "workspace", "chat"].includes(section) && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
       {notice && <p role="status" className="settings-notice">{notice}</p>}
       {!visible.length && <div className="settings-empty"><Search size={28} /><h3>No settings found</h3><p>Try “motion”, “model”, “navigation”, or “backup”.</p></div>}
       {visible.map((g) => <section key={g.id} aria-label={g.title} className="settings-group"><h3>{words.length > 0 && <span>{SECTIONS.find((s) => s.id === g.section)!.title} / </span>}{g.title}</h3>{g.body}</section>)}
