@@ -25,6 +25,9 @@ export function devRoutes(app: FastifyInstance, store: EventStore) {
     return { head, events: matches.reverse() };
   });
 
+  // Activity over a window: events per bucket by group, tool usage, run outcomes. Read-only, from the log.
+  app.get<{ Querystring: { minutes?: string } }>("/api/dev/metrics", async (req) => devMetrics(store, Math.max(5, Math.min(Number(req.query.minutes) || 60, 1440))));
+
   // Last lines of the gateway log (tail read, never the whole file).
   app.get<{ Querystring: { lines?: string } }>("/api/dev/log", async () => {
     const file = path.join(home, "gateway.log");
@@ -53,4 +56,36 @@ export function devRoutes(app: FastifyInstance, store: EventStore) {
     ];
     return { home, events: store.head, areas: areas.map(([label, parts]) => ({ label, bytes: parts.reduce((s, p) => s + du(path.join(home, p)), 0) })) };
   });
+}
+
+const GROUPS = ["agent", "run", "tool", "turn", "room", "approval", "policy", "mcp", "gateway", "other"] as const;
+const SCAN = 60_000;
+/** Buckets the last `minutes` of events. Scans at most the newest 60k events and says so if the window reaches past them. */
+export function devMetrics(store: EventStore, minutes: number, now = Date.now()) {
+  const since = now - minutes * 60_000, bucketMs = Math.max(60_000, Math.ceil((minutes * 60_000) / 60 / 60_000) * 60_000);
+  const count = Math.ceil((now - since) / bucketMs);
+  const buckets = Array.from({ length: count }, (_, i) => ({ at: since + i * bucketMs, ...Object.fromEntries(GROUPS.map((g) => [g, 0])) })) as Array<{ at: number } & Record<(typeof GROUPS)[number], number>>;
+  const tools = new Map<string, { calls: number; failed: number }>(), callName = new Map<string, string>();
+  const outcomes: Record<string, number> = { done: 0, failed: 0, cancelled: 0, merged: 0 };
+  const start = Math.max(0, store.head - SCAN);
+  let first: number | undefined, total = 0;
+  for (const e of store.read(start)) {
+    first ??= e.at;
+    if (e.at < since || e.at > now) continue;
+    total++;
+    const head = e.kind.split(".")[0]!, group = (GROUPS as readonly string[]).includes(head) ? head as (typeof GROUPS)[number] : "other";
+    const b = buckets[Math.min(count - 1, Math.floor((e.at - since) / bucketMs))];
+    if (b) b[group]++;
+    if (e.kind === "tool.called") { const name = e.body.tool; callName.set(e.body.id, name); const t = tools.get(name) ?? { calls: 0, failed: 0 }; t.calls++; tools.set(name, t); }
+    // A result only carries its call id; failures count against the tool that call used.
+    if (e.kind === "tool.returned" && !e.body.ok) { const name = callName.get(e.body.id); const t = name ? tools.get(name) : undefined; if (t) t.failed++; }
+    if (e.kind === "run.status") { const st = String((e.body as { status?: unknown }).status); if (st in outcomes) outcomes[st]!++; }
+  }
+  return {
+    minutes, bucketMs, total, groups: GROUPS, buckets,
+    tools: [...tools.entries()].map(([name, t]) => ({ name, ...t })).sort((a, b) => b.calls - a.calls).slice(0, 12),
+    outcomes,
+    // Honest coverage: if we started scanning mid-window, earlier activity isn't counted.
+    partial: start > 0 && first !== undefined && first > since,
+  };
 }

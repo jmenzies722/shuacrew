@@ -21,3 +21,20 @@ it("tails events newest-first, filters by kind prefix and never returns secrets"
   const older = (await app.inject("/api/dev/events?before=2")).json();
   expect(older.events.map((e: { seq: number }) => e.seq)).toEqual([1]);
 });
+
+it("buckets real activity, ranks tools with their failures, and counts outcomes", async () => {
+  const { devMetrics } = await import("./dev-routes.js");
+  const store = new EventStore(":memory:"); close.push(() => store.close());
+  store.append("tool.called", { id: "c1", tool: "Bash", input: {} }, { run: "r_1" });
+  store.append("tool.returned", { id: "c1", ok: false, output: "" }, { run: "r_1" });
+  store.append("tool.called", { id: "c2", tool: "Bash", input: {} }, { run: "r_1" });
+  store.append("tool.called", { id: "c3", tool: "Read", input: {} }, { run: "r_1" });
+  store.append("run.status", { status: "done" }, { run: "r_1" });
+  const m = devMetrics(store, 60);
+  expect(m.total).toBe(5);
+  expect(m.tools[0]).toEqual({ name: "Bash", calls: 2, failed: 1 });
+  expect(m.outcomes.done).toBe(1);
+  expect(m.buckets.reduce((s, b) => s + b.tool, 0)).toBe(4);
+  expect(m.buckets.reduce((s, b) => s + b.run, 0)).toBe(1);
+  expect(m.partial).toBe(false);
+});
