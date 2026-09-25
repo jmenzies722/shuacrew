@@ -1,3 +1,4 @@
+import { validFinish } from "./spark-color";
 import { useSyncExternalStore } from "react";
 export interface CompanionPreferences {
   version: 1; enabled: boolean; kind: "spark" | "crew"; nickname: string;
@@ -23,7 +24,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     face: choice("face", ["calm", "curious", "bright"], "calm"), accessory: choice("accessory", ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"], "none"),
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
-    character: choice("character", SPARK_CHARACTERS, "spark"), color: typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color.toLowerCase() : "#8b7cf6",
+    character: choice("character", SPARK_CHARACTERS, "spark"), color: validFinish(v.color) ? v.color.toLowerCase() : "#8b7cf6",
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false };

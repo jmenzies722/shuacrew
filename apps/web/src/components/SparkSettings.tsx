@@ -1,12 +1,14 @@
+import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { api } from "../lib/api";
 import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
-import { parseCompanion, saveCompanion, SPARK_CHARACTERS, SPARK_COLORS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
+import { parseCompanion, saveCompanion, SPARK_CHARACTERS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
 import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
 import { resetWelcome } from "./Welcome";
+const swatchBg = (f: string) => { const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
 type Native = { postMessage(m: unknown): void };
 const native = () => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;
@@ -42,7 +44,7 @@ export function SparkSettings() {
 
   return <div className="spark-settings">
     <section className="settings-card spark-hero">
-      <div className="spark-stage" style={{ "--spark-color": prefs.color } as React.CSSProperties}>
+      <div className="spark-stage" style={sparkVars(prefs.color)}>
         <SparkCharacter preferences={prefs} mood={mood} size={prefs.size === "s" ? 96 : prefs.size === "l" ? 150 : 120} />
         <div className="spark-moods" role="group" aria-label="Try a mood">{(["idle", "thinking", "speaking", "happy"] as Mood[]).map((m) => <button key={m} type="button" aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div>
       </div>
@@ -55,12 +57,12 @@ export function SparkSettings() {
 
     <section className="settings-card batch-pad">
       <h4 className="spark-h">Character</h4>
-      <div className="spark-gallery">{SPARK_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })} style={{ "--spark-color": prefs.color } as React.CSSProperties}>
+      <div className="spark-gallery">{SPARK_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })} style={sparkVars(prefs.color)}>
         <SparkCharacter preferences={{ ...prefs, character: id }} size={64} /><strong>{CHARACTER_INFO[id].name}</strong><small>{CHARACTER_INFO[id].blurb}</small>{prefs.character === id && <i><Check size={11} /></i>}
       </button>)}</div>
-      <SettingRow name="Colour" detail="Tints the character, the card and the ring, spotlight and comet when it shows you something.">
-        <div className="spark-swatches">{SPARK_COLORS.map((c) => <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={prefs.color === c} style={{ background: c }} onClick={() => set({ color: c })} />)}
-          <label className="spark-custom" title="Any colour"><input type="color" value={prefs.color} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
+      <SettingRow name="Finish" detail="A colour, true black, or a gradient. Tints the character, its chat, and the cursor and spotlight when it shows you something.">
+        <div className="spark-swatches">{SPARK_FINISHES.map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}
+          <label className="spark-custom" title="Any colour"><input type="color" value={stops(prefs.color).from} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
       </SettingRow>
       <SettingRow name="Size on the desktop" modified={prefs.size !== "m"}><Segmented label="Size" value={prefs.size} onChange={(size) => set({ size })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} /></SettingRow>
       {prefs.character === "spark" && <>

@@ -1,3 +1,4 @@
+import { luminance, mix, stops } from "../lib/spark-color";
 import { createContext, useContext, useId, type CSSProperties } from "react";
 import type { CompanionPreferences, SparkCharacterId } from "../lib/companion";
 import { SparkArt } from "./Companion";
@@ -77,8 +78,12 @@ function Blob() {
 /** Whoever you picked, in your colour and mood. `size` is in CSS pixels. */
 export function SparkCharacter({ preferences, mood = "idle", size }: { preferences: CompanionPreferences; mood?: Mood; size?: number }) {
   const id = useId().replace(/:/g, "");
-  const palette: Palette = { base: preferences.color, light: shade(preferences.color, 255, 0.45), deep: shade(preferences.color, 0, 0.35), id };
-  const style = { "--ch": palette.base, "--ch-light": palette.light, "--ch-deep": palette.deep, width: size, height: size } as CSSProperties;
+  // A finish is a solid or a gradient; either way the body shades from light to deep. Dark bodies get light eyes.
+  const { from, to, gradient } = stops(preferences.color);
+  const base = gradient ? mix(from, to, 0.5) : from;
+  const palette: Palette = gradient ? { base, light: shade(from, 255, 0.2), deep: to, id } : { base, light: shade(base, 255, luminance(base) < 0.02 ? 0.22 : 0.45), deep: shade(base, 0, 0.35), id };
+  const dark = luminance(base) < 0.06;
+  const style = { "--ch": palette.base, "--ch-light": palette.light, "--ch-deep": palette.deep, "--ch-face": dark ? "#f4f4f5" : "#15151a", "--ch-glint": dark ? "#0b0b0d" : "#ffffff", width: size, height: size } as CSSProperties;
   const art = preferences.character === "orb" ? <Orb /> : preferences.character === "byte" ? <Byte /> : preferences.character === "kit" ? <Kit /> : preferences.character === "blob" ? <Blob /> : <SparkArt preferences={preferences} />;
   return <Pal.Provider value={palette}><span className={`spark-character ch-${preferences.character} mood-${mood}`} style={style} aria-hidden="true">{art}</span></Pal.Provider>;
 }

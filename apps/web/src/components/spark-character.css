@@ -1,10 +1,10 @@
 .spark-character { position: relative; display: inline-grid; place-items: center; width: 84px; height: 84px; }
 .spark-character > svg, .spark-character > .spark-art { width: 100%; height: 100%; overflow: visible; }
-.ch-face .ch-eyes ellipse { fill: #15151a; transform-box: fill-box; transform-origin: center; animation: ch-blink 4.2s infinite; }
+.ch-face .ch-eyes ellipse { fill: var(--ch-face, #15151a); transform-box: fill-box; transform-origin: center; animation: ch-blink 4.2s infinite; }
 .ch-spark .ch-face { display: none; }
-.ch-glint { fill: #fff; }
-.ch-smile { fill: none; stroke: #15151a; stroke-width: 2.4; stroke-linecap: round; }
-.ch-mouth { fill: #15151a; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.ch-glint { fill: var(--ch-glint, #fff); }
+.ch-smile { fill: none; stroke: var(--ch-face, #15151a); stroke-width: 2.4; stroke-linecap: round; }
+.ch-mouth { fill: var(--ch-face, #15151a); opacity: 0; transform-box: fill-box; transform-origin: center; }
 .ch-aura { fill: var(--ch); opacity: .18; filter: blur(6px); animation: ch-aura 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .ch-orbit { fill: none; stroke: var(--ch-light); stroke-width: 1.4; opacity: .55; }
 .ch-moon { fill: var(--ch-light); animation: ch-orbit 5s linear infinite; transform-origin: 50px 52px; }

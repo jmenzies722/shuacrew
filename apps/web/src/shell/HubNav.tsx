@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { motion } from "motion/react";
-import { BookOpen, Cpu, Hammer, House, Settings, Users } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { BookOpen, Cpu, Hammer, House, PanelLeftClose, PanelLeftOpen, Plus, Settings, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
+import { isTopLevelWork } from "../lib/crew";
+import { plain } from "../lib/plain";
+import { useCompanion } from "../lib/companion";
+import { sparkVars } from "../lib/spark-color";
+import { toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
+import { SparkCharacter } from "../components/SparkCharacter";
 import "./hub-nav.css";
 
 const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, system: Cpu } as const;
@@ -56,10 +62,10 @@ export function HubRail() {
 /** The hub's tabs, across the top of the page. The pill slides to the tab you pick. */
 export function HubTabs() {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const at = locate(path);
+  const at = locate(path), sidebarWide = useSidebarWide();
   const strip = useRef<HTMLDivElement>(null), [ready, setReady] = useState(false);
   useEffect(() => { setReady(true); }, []);
-  if (!at) return null;
+  if (!at || sidebarWide) return null;
   return <div className="hub-tabs" role="tablist" aria-label={at.hub.label} ref={strip}>
     <span className="hub-title">{at.hub.label}</span>
     <span className="hub-sep" aria-hidden="true" />
@@ -71,4 +77,78 @@ export function HubTabs() {
       </Link>;
     })}
   </div>;
+}
+
+// ── The sidebar: the whole platform in one column ─────────────────────────────────────────────
+const WIDE = "shuacrew.sidebar";
+let wide = (() => { try { return localStorage.getItem(WIDE) !== "0"; } catch { return true; } })();
+const wideListeners = new Set<() => void>();
+export function setSidebarWide(next: boolean) { wide = next; try { localStorage.setItem(WIDE, next ? "1" : "0"); } catch { /* ignore */ } wideListeners.forEach((l) => l()); }
+export function useSidebarWide() { const [, force] = useState(0); useEffect(() => { const l = () => force((n) => n + 1); wideListeners.add(l); return () => { wideListeners.delete(l); }; }, []); return wide; }
+
+const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
+
+/**
+ * Linear-style sidebar: Ask Spark and New session up top, the five hubs with the active one unfolded into its pages,
+ * your recent sessions live, Settings at the bottom. ⌘\ folds it back to the slim rail.
+ */
+export function HubSidebar() {
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+  const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
+  const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
+  const runs = useLive((s) => s.crew.runs);
+  const prefs = useCompanion(), sparkOpen = useSparkPanel();
+  useRemember(path);
+  const go = (hub: Hub) => void navigate({ to: hub.id === here ? hub.tabs[0]!.to : hubEntry(hub, readLast()) });
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null; if (t?.closest("input,textarea,[contenteditable=true],.xterm")) return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const n = Number(e.key); if (!(n >= 1 && n <= HUBS.length)) return;
+      e.preventDefault(); go(HUBS[n - 1]!);
+    };
+    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
+  });
+  const all = Object.values(runs);
+  const working = all.filter((r) => r.status === "running" || r.status === "planning").length;
+  const recent = all.filter((r) => isTopLevelWork(r, runs)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6);
+  const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
+  const name = prefs.nickname || "Spark";
+  return <nav className="side" aria-label="Sidebar">
+    <button type="button" className={`side-spark ${sparkOpen ? "is-on" : ""}`} style={sparkVars(prefs.color)} onClick={toggleSparkPanel} title={`${name}  ⌘J`}>
+      <span className="side-spark-av"><SparkCharacter preferences={prefs} size={24} /></span>
+      <span className="side-spark-text"><b>Ask {name}</b><small>anything, anywhere</small></span><kbd>⌘J</kbd>
+    </button>
+    <button type="button" className="side-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}><Plus size={15} /> New session<kbd>⌘N</kbd></button>
+    <div className="side-group">
+      {HUBS.map((hub, i) => { const Icon = ICON[hub.id], on = here === hub.id, n = count(hub.id);
+        return <div key={hub.id} className={`side-hub ${on ? "is-on" : ""}`}>
+          <button type="button" className="side-row" onClick={() => go(hub)} title={`${hub.label} — ${hub.hint}  ⌘${i + 1}`} aria-current={on ? "page" : undefined}>
+            <Icon size={16} strokeWidth={1.8} /><span>{hub.label}</span>{n > 0 && <em className={hub.id === "home" ? "is-wait" : "is-live"}>{n}</em>}
+          </button>
+          <AnimatePresence initial={false}>{on && <motion.div key="tabs" className="side-tabs" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
+            {hub.tabs.map((tab) => { const sel = at?.tab === tab; return <Link key={tab.to} to={tab.to} className={`side-tab ${sel ? "is-on" : ""}`} aria-current={sel ? "page" : undefined}>
+              {sel && <motion.span layoutId="side-tab-on" className="side-tab-on" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}<span className="side-tab-label">{tab.label}</span>
+            </Link>; })}
+          </motion.div>}</AnimatePresence>
+        </div>; })}
+    </div>
+    {recent.length > 0 && <div className="side-group side-recent">
+      <div className="side-label">Recent</div>
+      {recent.map((r) => { const on = path === `/sessions/${r.id}`; return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
+        <i className={`side-dot is-${LIVE.has(r.status) ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span>
+      </Link>; })}
+    </div>}
+    <span className="side-spacer" />
+    <div className="side-foot">
+      <button type="button" className={`side-row ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })}><Settings size={16} strokeWidth={1.8} /><span>Settings</span><kbd>⌘,</kbd></button>
+      <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
+    </div>
+  </nav>;
+}
+
+/** The slim rail, with a way back to the full sidebar. */
+export function CompactRail() {
+  return <div className="rail-wrap"><HubRail /><button type="button" className="rail-unfold" onClick={() => setSidebarWide(true)} title="Expand sidebar  ⌘\\" aria-label="Expand sidebar"><PanelLeftOpen size={15} /></button></div>;
 }

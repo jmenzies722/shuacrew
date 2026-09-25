@@ -25,7 +25,8 @@ import { SoundsHost } from "../components/Sounds";
 import { StatusIsland } from "../components/TopBarWidgets";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { useCompanion } from "../lib/companion";
-import { HubRail, HubTabs } from "./HubNav";
+import { sparkVars } from "../lib/spark-color";
+import { CompactRail, HubSidebar, HubTabs, setSidebarWide, useSidebarWide } from "./HubNav";
 import { Welcome, welcomed } from "../components/Welcome";
 import { Buddy } from "../screens/Buddy";
 import { setSparkPanel, toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
@@ -73,11 +74,11 @@ export function Shell() {
   const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
-    <div className="workspace-frame grid h-full grid-cols-[76px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
+    <div className="workspace-frame grid h-full grid-cols-[auto_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
       <div className="living-bg" aria-hidden="true"><i /><i /><i /></div>
       {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
-      <HubRail />
+      <Sidebar />
       <main className="min-h-0 min-w-0 overflow-hidden flex" id="main">
         <div className="min-h-0 min-w-0 flex flex-1 flex-col">
         {/* WebKit may suspend animations while the native window is occluded. Core content
@@ -283,8 +284,9 @@ function TokensToday({ tokens }: { tokens: number }) {
 }
 
 function SparkButton() {
-  const open = useSparkPanel(), prefs = useCompanion();
-  return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={{ "--spark-color": prefs.color } as React.CSSProperties}>
+  const open = useSparkPanel(), prefs = useCompanion(), sidebarWide = useSidebarWide();
+  if (sidebarWide) return null; // the sidebar's "Ask" row is the way in
+  return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={sparkVars(prefs.color)}>
     <SparkCharacter preferences={prefs} size={20} /><span>{prefs.nickname || "Spark"}</span>
   </button>;
 }
@@ -294,4 +296,14 @@ function FirstRun() {
   const [show, setShow] = useState(() => !welcomed());
   useEffect(() => { const on = () => setShow(true); window.addEventListener("shuacrew:welcome", on); return () => window.removeEventListener("shuacrew:welcome", on); }, []);
   return show ? <Welcome onDone={() => setShow(false)} /> : null;
+}
+
+/** The full sidebar or the slim rail; ⌘\\ switches between them. */
+function Sidebar() {
+  const wide = useSidebarWide();
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSidebarWide(!wide); } };
+    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
+  }, [wide]);
+  return wide ? <HubSidebar /> : <CompactRail />;
 }

@@ -148,3 +148,7 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .spk-head .spk-status { justify-content: flex-start; }
 .buddy-card.spk .spk-head span { flex: none; }
 .buddy-card.spk .spk-head .spk-who { flex: 1; }
+/* Finishes: gradients and black fill the big surfaces; text and rings use the solid accent. */
+.spk .buddy-send, .spk .buddy-talk.is-on { background: var(--spark-fill, var(--spark-color)); color: var(--spark-on, #fff); }
+.spk-avatar, .spk-mini { background: color-mix(in srgb, var(--spark-color) 10%, var(--raised)); }
+.spk .buddy-msg.is-you { background: color-mix(in srgb, var(--spark-color) 14%, var(--raised)); }

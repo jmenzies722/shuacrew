@@ -1,3 +1,4 @@
+import { accentOf, sparkVars } from "../lib/spark-color";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, AudioLines, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
@@ -182,11 +183,11 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     const key = `${convo?.run}:${messages.length}`;
     const rest = nextSentences(last.text, streamId.current === key ? spokenUpto.current : 0, true);
     rest.chunks.forEach((c) => speech.current.say(c)); streamId.current = ""; spokenUpto.current = 0;
-    const p = parsePoint(last.text); if (p) post({ type: "buddyPoint", ...p, color: prefs.color });
-    const shapes = parseDraw(last.text); if (shapes.length) post({ type: "buddyDraw", shapes, color: prefs.color });
+    const p = parsePoint(last.text); if (p) post({ type: "buddyPoint", ...p, color: accentOf(prefs.color) });
+    const shapes = parseDraw(last.text); if (shapes.length) post({ type: "buddyDraw", shapes, color: accentOf(prefs.color) });
     const g = parseGuide(last.text);
     if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
-    else if (g) { setGuide(g); post({ type: "buddyGuide", ...g, color: prefs.color, wait: prefs.guide === "click" }); }
+    else if (g) { setGuide(g); post({ type: "buddyGuide", ...g, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
     const act = parseAct(last.text);
     if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
     else if (act && prefs.control !== "off") {
@@ -242,7 +243,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     if (!convo) return;
     setPending(null); setBusy(describeAct(a) + "…");
     try {
-      const r = await perform({ ...a, color: prefs.color });
+      const r = await perform({ ...a, color: accentOf(prefs.color) });
       setDone((d) => { const k = handled.current ?? 0; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
       await new Promise((ok) => setTimeout(ok, 800)); // let the app react before looking
       if (!taskRef.current) return;
@@ -334,10 +335,10 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
           <AnimatePresence initial={false}>
           {messages.map((m, i) => { const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null, did = m.id ? done[m.id] : undefined;
             const body = m.who === "spark" ? <>{splitDiagrams(speakable(m.text)).map((part, k) => part.kind === "diagram"
-              ? (m.live ? <p key={k} className="buddy-typing">Drawing the diagram…</p> : <Diagram key={k} code={part.value} color={prefs.color} expanded={wide} onExpand={(v) => setWide(v)} onSave={(name, svg) => post({ type: "saveFile", name, text: svg })} />)
+              ? (m.live ? <p key={k} className="buddy-typing">Drawing the diagram…</p> : <Diagram key={k} code={part.value} color={accentOf(prefs.color)} expanded={wide} onExpand={(v) => setWide(v)} onSave={(name, svg) => post({ type: "saveFile", name, text: svg })} />)
               : <Markdown key={k} text={part.value.replace(/^\s*-{3,}\s*$/m, "")} streaming={m.live} />)}
               {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
-              {p && <button type="button" className="buddy-point" onClick={() => post({ type: "buddyPoint", ...p, color: prefs.color })}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
+              {p && <button type="button" className="buddy-point" onClick={() => post({ type: "buddyPoint", ...p, color: accentOf(prefs.color) })}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
             return <motion.div key={`${i}-${m.who}`} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 380, damping: 30 }}
               className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
               {m.who === "spark" && <span className="spk-mini"><SparkCharacter preferences={prefs} mood={m.live ? "speaking" : "idle"} size={22} /></span>}
@@ -363,8 +364,8 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       </form>
       {note && tab === "chat" && <p className="buddy-note" title={note}><StickyNote size={11} /> {note.split("\n")[0]}</p>}
     </section>;
-  if (embedded) return <div className="buddy is-open is-embedded" style={{ "--spark-color": prefs.color } as CSSProperties}>{card}</div>;
-  return <div className={`buddy ${open ? "is-open" : ""}`} style={{ "--spark-color": prefs.color } as CSSProperties}>
+  if (embedded) return <div className="buddy is-open is-embedded" style={sparkVars(prefs.color)}>{card}</div>;
+  return <div className={`buddy ${open ? "is-open" : ""}`} style={sparkVars(prefs.color)}>
     <AnimatePresence>{open && <motion.div key="card" className="spk-pop" initial={{ opacity: 0, y: 14, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>{card}</motion.div>}</AnimatePresence>
     {!open && guide && <div className="buddy-bubble is-guide"><span><Compass size={12} /> Step {guide.step}: {guide.label}</span>
       <div><button type="button" onClick={() => void advance()}>Done <ChevronRight size={11} /></button><button type="button" onClick={stopGuide}>Stop</button></div></div>}

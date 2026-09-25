@@ -1,11 +1,13 @@
+import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, Keyboard, Mic, MonitorUp, MousePointerClick } from "lucide-react";
 import { api } from "../lib/api";
-import { saveCompanion, SPARK_CHARACTERS, SPARK_COLORS, useCompanion, type CompanionPreferences } from "../lib/companion";
+import { saveCompanion, SPARK_CHARACTERS, useCompanion, type CompanionPreferences } from "../lib/companion";
 import { CHARACTER_INFO, SparkCharacter } from "./SparkCharacter";
 import { setSparkPanel } from "../lib/spark-panel";
 import "./welcome.css";
+const swatchBg = (f: string) => { const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
 /** Seen once: after this, ShuaCrew opens straight to work. Bumping the version shows the tour again after a big release. */
 const KEY = "shuacrew.welcome";
@@ -50,13 +52,13 @@ export function Welcome({ onDone }: { onDone: () => void }) {
       <AnimatePresence mode="wait">
         <motion.section key={step} className="wel-body" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
           {step === 0 && <>
-            <div className="wel-hero" style={{ "--spark-color": prefs.color } as React.CSSProperties}><SparkCharacter preferences={prefs} mood="happy" size={112} /></div>
+            <div className="wel-hero" style={sparkVars(prefs.color)}><SparkCharacter preferences={prefs} mood="happy" size={112} /></div>
             <h1>Welcome to ShuaCrew.</h1>
             <p>Your crew of AI engineers, and one assistant who's always with you: on your desktop, in the app, and in your ear. Make it yours.</p>
             <div className="wel-chars">{SPARK_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })}><SparkCharacter preferences={{ ...prefs, character: id }} size={46} /><span>{CHARACTER_INFO[id].name}</span></button>)}</div>
             <div className="wel-row">
               <label className="wel-name"><span>Name</span><input value={prefs.nickname} maxLength={24} placeholder="Spark" onChange={(e) => set({ nickname: e.target.value })} /></label>
-              <div className="wel-colors">{SPARK_COLORS.slice(0, 7).map((c) => <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={prefs.color === c} style={{ background: c }} onClick={() => set({ color: c })} />)}</div>
+              <div className="wel-colors">{SPARK_FINISHES.filter((f) => ["#8b7cf6", "#111114", "#f5b544", "#60a5fa", "grad:#a78bfa:#60a5fa", "grad:#f472b6:#f59e0b", "grad:#18181b:#7c3aed", "grad:#050506:#52525b"].includes(f.id)).map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}</div>
             </div>
           </>}
           {step === 1 && <>

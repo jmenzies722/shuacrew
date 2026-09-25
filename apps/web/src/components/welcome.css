@@ -37,3 +37,4 @@
 .wel-next:hover { filter: brightness(1.08); } .wel-next:active { transform: scale(.97); }
 @keyframes wel-in { from { opacity: 0; } }
 @media (max-width: 640px) { .wel-chars { grid-template-columns: repeat(3, 1fr); } .wel-tries { grid-template-columns: 1fr; } .wel-body { padding: 22px 20px 8px; } }
+.wel-colors button { background-size: cover; }

@@ -6,7 +6,9 @@ it("keeps the rail fixed and labelled: no hover expansion, every hub named", () 
   const nav = readFileSync(new URL("../shell/HubNav.tsx", import.meta.url), "utf8");
   expect(shell).not.toContain("onMouseEnter={() => hover(true)}");
   expect(shell).not.toContain("open || labeled");
-  expect(shell).toContain("<HubRail />");
-  expect(nav).toContain('className="hub-label"');
+  expect(shell).toContain("<Sidebar />");
+  expect(shell).toMatch(/wide \? <HubSidebar \/> : <CompactRail \/>/);
+  expect(nav).toContain('className="hub-label"');            // the rail is labelled
+  expect(nav).toMatch(/<span>\{hub\.label\}<\/span>/);      // so is every sidebar hub
   expect(nav).not.toMatch(/onMouseEnter/);
 });
