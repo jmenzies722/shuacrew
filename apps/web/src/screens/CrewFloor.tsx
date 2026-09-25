@@ -12,6 +12,8 @@ import { describe } from "../shell/CommandPalette";
 import { Glyph } from "../lib/glyphs";
 import { CrewWorkspace } from "../components/CrewWorkspace";
 import { selectRooms } from "../lib/room-view";
+import { FloorStage } from "../components/FloorStage";
+import { isTopLevelWork } from "../lib/crew";
 import { PaneHeader } from "../components/Pane";
 
 /**
@@ -122,9 +124,8 @@ export function CrewFloor() {
       <div className="floor-body">
         <section className="floor-pods" aria-label="Agents">
           {!!Object.keys(rooms).length && <div className="mb-5"><label className="text-[12px] text-fg-3">Room workspace <select className="ml-2 rounded-lg border border-line bg-panel px-3 py-2" value={roomId} onChange={e => setRoomId(e.target.value)}><option value="">All activity below</option>{Object.values(rooms).filter(room => !scope || room.repo === scope).map(room => <option key={room.id} value={room.id}>{room.title}</option>)}</select></label>{rooms[roomId] && <div className="mt-3 max-h-[520px] overflow-auto rounded-2xl border border-line"><CrewWorkspace room={rooms[roomId]} /></div>}</div>}
-          {onFloor.length === 0 ? (
-            <Quiet />
-          ) : (
+          <FloorStage runs={runs} activity={activity} approvals={approvals} now={now} />
+          {onFloor.length === 0 ? null : (
             <div className="pods-grid">
               <AnimatePresence initial={false}>
                 {onFloor.map((run) => (
@@ -152,23 +153,6 @@ function Stat({ value, label, live, tone }: { value: string | number; label: str
   );
 }
 
-function Quiet() {
-  const navigate = useNavigate();
-  return (
-    <div className="floor-quiet">
-      <div className="quiet-orbit" aria-hidden>
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="text-[15px] font-semibold text-fg">The floor is quiet</div>
-      <div className="max-w-[360px] text-center text-[12.5px] text-fg-3">Start a session and watch it work here — every step, every subagent, anything waiting on you, as it happens.</div>
-      <Button variant="primary" size="s" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}>
-        Start a session
-      </Button>
-    </div>
-  );
-}
 
 // ── a pod: one agent at work ────────────────────────────────────────────────────────────────
 
@@ -425,6 +409,8 @@ function Feed({ activity, runs }: { activity: AnyEvent[]; runs: Record<string, R
         .reverse()
         .flatMap((e) => {
           const run = e.run ? runs[e.run] : undefined;
+          // A delegated step isn't a "new session" of yours (same rule as Board and Today).
+          if (run && e.kind === "run.created" && !isTopLevelWork(run, runs)) return [];
           const line = feedLine(e);
           return line && run ? [{ e, run, ...line }] : [];
         })
