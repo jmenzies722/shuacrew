@@ -51,3 +51,13 @@ import Testing
     let none = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"briefing":null}"#
     #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(none.utf8)).briefing == nil)
 }
+
+@Test func menuBarModesPickTheBadge() throws {
+    func status(_ json: String) throws -> CrewStatus { try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8)) }
+    let base = #""running":2,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"tokensToday":386300"#
+    #expect(try status("{\(base)}").badge == "2")                                   // older gateways: attention
+    #expect(try status(#"{"menuBar":"tokens","# + base + "}").badge == "386k")
+    #expect(try status(#"{"menuBar":"off","# + base + "}").badge == nil)
+    #expect(try status(#"{"menuBar":"running","# + base + "}").badge == "2")
+    #expect(CrewStatus.compact(1_300_000) == "1.3M")
+}

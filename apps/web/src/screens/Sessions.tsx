@@ -345,7 +345,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       {!replay && !run.labels.includes("crew-room") && <MessageQueue key={run.id} run={run.id} events={events ?? []} />}
       {replay ? (
         <div className="shrink-0 px-4 pb-3 pt-1">
-          <div className="mx-auto max-w-[820px]">
+          <div className="mx-auto max-w-[var(--chat-width,820px)]">
             <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} />
           </div>
         </div>
@@ -436,7 +436,7 @@ function ReviewBar({ run }: { run: RunView }) {
     }
   };
   return (
-    <div className="mx-auto w-full max-w-[820px] px-4">
+    <div className="mx-auto w-full max-w-[var(--chat-width,820px)] px-4">
       <div className={`review-bar ${landed ? "is-landed" : review?.failed ? "is-failed" : ""}`}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="review-dot" />
@@ -817,7 +817,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
 
   return (
     <div className={hero ? "mt-7" : "shrink-0 px-4 pb-3 pt-1"}>
-      <div className={`relative mx-auto ${hero ? "" : "max-w-[820px]"}`}>
+      <div className={`relative mx-auto ${hero ? "" : "max-w-[var(--chat-width,820px)]"}`}>
         {slash.length > 0 && (
           <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-[12px] border border-line-strong bg-raised shadow-[0_18px_50px_rgba(0,0,0,.35)]" role="listbox" aria-label="Commands">
             {slash.map((c, i) => (

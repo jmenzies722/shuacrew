@@ -13,6 +13,7 @@ import { RoomComposer } from "../components/RoomComposer";
 import { RoomResults } from "../components/RoomResults";
 import { Markdown } from "../components/Markdown";
 import "./rooms.css";
+import { useFlag } from "../components/BatchSettings";
 
 const LIVE = ["running", "planning", "awaiting_approval", "queued"];
 const STARTERS = [
@@ -40,7 +41,8 @@ export function Rooms() {
   // Who is actually working right now, from recorded run status — never simulated.
   const working = useMemo(() => new Set(runIds.map(r => runs[r]).filter(r => r && LIVE.includes(r.status)).map(r => r!.member ?? "")), [runIds.join(), runs]);
   const thread = useRef<HTMLDivElement>(null);
-  useEffect(() => { thread.current?.scrollTo({ top: thread.current.scrollHeight, behavior: "smooth" }); }, [room?.messages.length, working.size, pending.length]);
+  const replyTiming = useFlag("room-reply-timing"), noAutoscroll = useFlag("rooms-no-autoscroll");
+  useEffect(() => { if (!noAutoscroll) thread.current?.scrollTo({ top: thread.current.scrollHeight, behavior: "smooth" }); }, [room?.messages.length, working.size, pending.length, noAutoscroll]);
   async function action(fn: () => Promise<unknown>) { setBusy(true); setError(""); try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   async function create() {
     const result = await api<RoomView>("/api/rooms", { body: { title, coordinator, members: [...new Set([coordinator, ...selected])], repo: repo.trim() || undefined, concurrency } });
@@ -108,7 +110,7 @@ export function Rooms() {
               return <article key={m.id} className={`rx-msg ${mine ? "is-you" : ""}`}>
                 {!mine && <span className="rx-avatar is-lg" style={{ "--c": who?.color } as React.CSSProperties}>{face(m.author, 15)}</span>}
                 <div className="rx-msg-body">
-                  {!mine && <div className="rx-msg-meta"><strong style={{ color: who?.color }}>{who?.name ?? m.author}</strong>{who?.role && <span>{who.role}</span>}{m.assignmentId && <span className="rx-chip">Result</span>}<time>{new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></div>}
+                  {!mine && <div className="rx-msg-meta"><strong style={{ color: who?.color }}>{who?.name ?? m.author}</strong>{who?.role && <span>{who.role}</span>}{m.assignmentId && <span className="rx-chip">Result</span>}{replyTiming && (() => { const asked = room.messages.slice(0, room.messages.indexOf(m)).reverse().find(x => x.author === "you"); return asked ? <span className="rx-chip">replied in {Math.max(1, Math.round((m.at - asked.at) / 1000))}s</span> : null; })()}<time>{new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></div>}
                   {reply && <div className="rx-quote"><CornerUpLeft size={11} />{reply.author === "you" ? "You" : members[reply.author]?.name ?? reply.author}: {reply.text.slice(0, 110)}</div>}
                   {m.recipient && <span className="rx-chip">To @{members[m.recipient]?.name ?? m.recipient}</span>}
                   <div className="rx-msg-text">{mine ? <p>{m.text}</p> : <Markdown text={m.text} />}</div>

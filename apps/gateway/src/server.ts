@@ -8,6 +8,8 @@
  */
 import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
+import { settingsRoutes } from "./settings-routes.js";
+import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +51,8 @@ import { observabilityRoutes } from "./observability.js";
 import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 
 export interface ServerOptions {
+  settings?: GatewaySettings;
+  builtinProtected?: string[];
   store: EventStore;
   supervisor: Supervisor;
   runtimes: Map<string, Runtime>;
@@ -145,6 +149,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   speechRoutes(app, options.speech);
   roomRoutes(app, options.rooms);
   devRoutes(app, options.store);
+  if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
   mobileRoutes(app, options.mobile);
 
@@ -924,6 +929,9 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         .map((r) => ({ id: r.id, title: r.title, status: r.status, reason: r.statusReason ?? "", files: r.files.length, at: r.updatedAt })),
       // Today's briefing, so the menu bar can announce it once.
       briefing: state.briefing ? { id: state.briefing.id, day: state.briefing.day, headline: state.briefing.headline } : null,
+      // Settings → Menu bar: what the Mac shows beside its icon, and today's recorded tokens for "tokens".
+      menuBar: options.settings?.get().menuBar ?? "attention",
+      tokensToday: state.today.day === new Date().toISOString().slice(0, 10) ? state.today.tokens : 0,
       // Playbook phases waiting at a gate for you (and plays that stopped), for the menu bar and notifications.
       reviews: Object.values(state.plays).flatMap((play) =>
         play.phases.flatMap((phase, index) => {

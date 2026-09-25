@@ -31,6 +31,7 @@ import {
 import type { ApprovalAnswer, Runtime, RunSpec } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
+import { failoverCandidates, inQuietHours, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
 import { inputDigest } from "./mobile/digest.js";
@@ -68,6 +69,8 @@ interface Waiting {
 }
 
 export interface SupervisorOptions {
+  /** Gateway-enforced settings (~/.shuacrew/settings.json). */
+  settings?: () => GatewaySettingsValue;
   canStart?: (run: string) => boolean;
   runHint?: (run: string) => string | undefined;
   workspace: string; // where runs with no repo work
@@ -104,6 +107,9 @@ export class Supervisor {
     private runtimes: Map<string, Runtime>,
     private options: SupervisorOptions,
   ) {
+    // Quiet hours end on the clock, not on an event: look at the queue once a minute.
+    if (options.settings) setInterval(() => this.pump(), 60_000).unref();
+    if (options.settings) this.worktrees.config = () => options.settings!().git;
     for (const event of this.store.ofKinds("run.permission")) {
       if (event.kind === "run.permission" && event.run) {
         if (event.body.mode === "auto") this.approveAll.add(event.run);
@@ -243,6 +249,9 @@ export class Supervisor {
     for (const run of queued) {
       if (this.active.has(run.id)) continue;
       if (this.options.canStart && !this.options.canStart(run.id)) continue;
+      // Quiet hours: automation waits in the queue and starts when they end (nothing is dropped).
+      const quiet = this.options.settings?.().quietHours;
+      if (quiet && run.labels.some((l) => l === "schedule" || l === "webhook" || l === "heartbeat") && inQuietHours(quiet)) continue;
       const agent = this.currentRuntime(run.id, run.runtime);
       if (this.limitedUntil(agent) > Date.now() || this.allModelsLimited(agent)) continue;
       const cap = this.options.concurrency?.[run.runtime] ?? (run.runtime === "mock" ? 8 : 2);
@@ -332,7 +341,7 @@ export class Supervisor {
       agents: spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
       disableNativeAgents: spec.labels.includes("crew-room"),
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
+      system: resume ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
       mcpServers: this.options.mcpServers?.(runtime.id, runId),
       plugins: this.options.plugins?.(runtime.id),
     };
@@ -511,7 +520,7 @@ export class Supervisor {
     }
     const other =
       this.options.failover && moves < 3
-        ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
+        ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock"), runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
     if (other) {
       this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${why} — moved to ${other}` }, { run });
@@ -594,9 +603,12 @@ export class Supervisor {
   // ── approvals ───────────────────────────────────────────────────────────────────────
 
   private policyFor(run: string, workspace: string): { ctx: PolicyContext; layers: () => Layer[] } {
+    const settings = this.options.settings?.();
+    // Your protected folders are added to the built-in ones; they can never remove them.
     const ctx = defaultContext(workspace, {
       roots: this.options.roots ?? ["~/Developer"],
-      protected: this.options.protectedFolders ?? [],
+      protected: [...(this.options.protectedFolders ?? []), ...(settings?.protectedPaths ?? [])],
+      ...(settings ? { protectedBranches: [...new Set(["main", "master", ...settings.git.protectedBranches])] } : {}),
     });
     return {
       ctx,
@@ -814,8 +826,8 @@ export class Supervisor {
   }
 
   /** Runs the supervisor may execute — never a held run (a task's parent; its steps do the work). */
-  private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; priority: number; seq: number }> {
-    const runs = new Map<string, { id: string; status: RunStatus; runtime: string; priority: number; seq: number }>();
+  private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; priority: number; seq: number; labels: string[] }> {
+    const runs = new Map<string, { id: string; status: RunStatus; runtime: string; priority: number; seq: number; labels: string[] }>();
     const held = new Set<string>();
     const visit = (e: AnyEvent) => {
       if (!e.run || held.has(e.run)) return;
@@ -823,7 +835,7 @@ export class Supervisor {
         held.add(e.run);
         return;
       }
-      if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, priority: 0, seq: e.seq });
+      if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, priority: 0, seq: e.seq, labels: e.body.labels });
       const r = runs.get(e.run);
       if (!r) return;
       if (e.kind === "run.status") r.status = e.body.status;

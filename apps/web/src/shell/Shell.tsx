@@ -20,6 +20,8 @@ import { DevHud } from "../components/DevHud";
 import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
 import { getPower, savePower, usePower } from "../lib/power";
 import { WinsHost } from "../components/Wins";
+import { SoundsHost } from "../components/Sounds";
+import "../lib/look";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
@@ -76,6 +78,7 @@ export function Shell() {
       <KeymapOverlay />
       <VoiceConversationHost />
       <WinsHost />
+      <SoundsHost />
       <DevHud />
     </div>
     </MotionConfig>

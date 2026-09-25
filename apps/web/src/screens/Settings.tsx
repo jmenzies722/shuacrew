@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap } from "lucide-react";
+import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap, Lock } from "lucide-react";
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { AlwaysOn, Appearance, BackupsPanel, RuntimeSettings } from "./Pages";
@@ -12,11 +12,13 @@ import { CompanionSettings } from "../components/CompanionSettings";
 import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
+import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, InstructionsSettings, LookSettings, MenuBarSettings, QuietHoursSettings, SafetySettings, SoundSettings, SpeechStorageSettings } from "../components/BatchSettings";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
 import "./settings.css";
 
 const SECTIONS = [
+  { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock },
   { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap },
   { id: "play", title: "Personality & Play", description: "A little character. Your kind of workspace.", icon: Sparkles },
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette },
@@ -31,7 +33,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "workspace", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -62,6 +64,17 @@ export function Settings() {
   const keymap = useLive((s) => s.setKeymap);
   const [notice, setNotice] = useState("");
   const groups: Array<{ id: string; section: Section; title: string; terms: string; body: ReactNode }> = [
+    { id: "failover", section: "agents", title: "When an agent hits its limit", terms: "failover fallback order limit usage window claude codex backup chain", body: <FailoverSettings /> },
+    { id: "instructions", section: "agents", title: "Your instructions", terms: "custom instructions system prompt rules always every agent project global preview", body: <InstructionsSettings /> },
+    { id: "protected", section: "safety", title: "Protected folders & branches", terms: "protected folders paths never touch deny branches main push safety security", body: <SafetySettings /> },
+    { id: "git", section: "safety", title: "Git", terms: "git branch prefix commit author squash merge identity", body: <GitSettings /> },
+    { id: "quiet", section: "workspace", title: "Quiet hours for automation", terms: "quiet hours night schedule cron webhook heartbeat pause wait", body: <QuietHoursSettings /> },
+    { id: "menubar", section: "notifications", title: "Menu bar", terms: "menu bar status icon badge tokens running", body: <MenuBarSettings /> },
+    { id: "sounds", section: "notifications", title: "Sounds", terms: "sounds audio chime approval done failed volume", body: <SoundSettings /> },
+    { id: "look", section: "appearance", title: "Fonts & conversation", terms: "font fonts typeface serif mono code ligatures bubbles document width timestamps chat layout", body: <LookSettings /> },
+    { id: "speech-storage", section: "voice", title: "Speech models on this Mac", terms: "speech models storage disk delete whisper qwen voice space gb", body: <SpeechStorageSettings /> },
+    { id: "flags", section: "developer", title: "Experimental features", terms: "feature flags experimental beta labs", body: <FlagSettings /> },
+    { id: "diagnostics-report", section: "developer", title: "Debug report", terms: "diagnostics debug report bundle export support logs", body: <DiagnosticsSettings /> },
     { id: "snippets", section: "power", title: "Snippets · your own /commands", terms: "snippets slash commands templates prompts shortcuts macros text expansion", body: <SnippetSettings /> },
     { id: "presets", section: "power", title: "Launch presets", terms: "presets launch one click modes effort autopilot task quick ship research templates", body: <PresetSettings /> },
     { id: "flow", section: "power", title: "Flow & wins", terms: "flow focus zen distraction free fullscreen celebrate confetti wins sound chime fun party", body: <FlowAndWins /> },

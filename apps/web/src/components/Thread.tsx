@@ -131,7 +131,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
       }}
     >
       {items.length === 0 && empty}
-      <div ref={list} className="relative mx-auto w-full max-w-[820px]" style={{ height: virtualizer.getTotalSize() + 16 }}>
+      <div ref={list} className="relative mx-auto w-full max-w-[var(--chat-width,820px)]" style={{ height: virtualizer.getTotalSize() + 16 }}>
         {virtualizer.getVirtualItems().map((row) => {
           const block = blocks[row.index]!;
           return (
@@ -142,7 +142,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
         })}
       </div>
       {waiting && (
-        <div className="mx-auto flex max-w-[820px] items-center gap-2.5 px-6 pb-6 text-[13px]" role="status">
+        <div className="mx-auto flex max-w-[var(--chat-width,820px)] items-center gap-2.5 px-6 pb-6 text-[13px]" role="status">
           <span className="thinking-dots" aria-hidden>
             <span />
             <span />
@@ -162,7 +162,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
 function FollowUps({ options, run }: { options: string[]; run: RunView }) {
   const [sent, setSent] = useState<string | null>(null);
   return (
-    <div className="mx-auto flex max-w-[820px] flex-wrap gap-2 px-6 pb-6">
+    <div className="mx-auto flex max-w-[var(--chat-width,820px)] flex-wrap gap-2 px-6 pb-6">
       {options.map((o) => (
         <button
           key={o}

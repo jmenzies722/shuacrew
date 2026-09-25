@@ -27,6 +27,7 @@ import { RoomCoordinator } from "./rooms.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
 import { nativeBridgeSource } from "./mobile/native-config.js";
+import { GatewaySettings } from "./settings.js";
 
 export const VERSION = "0.1.0";
 
@@ -111,9 +112,12 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   };
   const terminals = new Terminals(zshIntegration(home));
   let rooms: RoomCoordinator;
+  const settings = new GatewaySettings(path.join(home, "settings.json"));
+  const builtinProtected = [path.join(os.homedir(), "Nectar-Work"), path.join(os.homedir(), "Developer/work")];
   const supervisor = new Supervisor(store, runtimes, {
+    settings: () => settings.get(),
     roots: [path.join(os.homedir(), "Developer/projects"), path.join(os.homedir(), "Developer/learn")],
-    protectedFolders: [path.join(os.homedir(), "Nectar-Work"), path.join(os.homedir(), "Developer/work")],
+    protectedFolders: builtinProtected,
     canStart: id => rooms?.canStart(id) ?? false,
     runHint: id => rooms?.hint(id),
     workspace,
@@ -163,6 +167,8 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
     speech: new SpeechService({ home: path.join(home, "speech") }),
+    settings,
+    builtinProtected,
   });
   live = state;
   store.append("gateway.started", { pid: process.pid, version: VERSION });

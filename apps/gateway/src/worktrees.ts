@@ -26,13 +26,24 @@ export interface Worktree {
 }
 
 export class Worktrees {
+  /** Branch prefix, commit identity and squash-on-land, from Settings → Git. */
+  config: () => { branchPrefix: string; author: "shuacrew" | "me"; squash: boolean } = () => ({ branchPrefix: "shua/", author: "shuacrew", squash: false });
   constructor(private root = path.join(process.env.SHUACREW_HOME ?? path.join(os.homedir(), ".shuacrew"), "worktrees")) {}
+
+  /** `commit` as ShuaCrew, or as your own git identity (falling back to ShuaCrew if you have none set). */
+  private async commit(cwd: string, ...args: string[]) {
+    if (this.config().author === "me") {
+      const who = await git(cwd, "config", "user.email").catch(() => "");
+      if (who) return git(cwd, "commit", ...args);
+    }
+    return git(cwd, "-c", "user.name=ShuaCrew", "-c", "user.email=shuacrew@localhost", "commit", ...args);
+  }
 
   /** A new branch for the run, from the repo's current branch — or from `from` (a fork's checkpoint). */
   async create(repo: string, runId: string, from?: string): Promise<Worktree> {
     const top = await git(repo, "rev-parse", "--show-toplevel");
     const base = await git(top, "rev-parse", "--abbrev-ref", "HEAD");
-    const branch = `shua/${runId}`;
+    const branch = `${this.config().branchPrefix}${runId}`;
     const where = path.join(this.root, path.basename(top), runId);
     mkdirSync(path.dirname(where), { recursive: true });
     await git(top, "worktree", "add", "-b", branch, where, from ?? (base === "HEAD" ? "HEAD" : base));
@@ -59,7 +70,7 @@ export class Worktrees {
   /** Commit everything the agent changed as one checkpoint. Empty checkpoints still mark the turn. */
   async checkpoint(worktree: string, message: string): Promise<string> {
     await git(worktree, "add", "-A");
-    await git(worktree, "-c", "user.name=ShuaCrew", "-c", "user.email=shuacrew@localhost", "commit", "--allow-empty", "-q", "-m", message);
+    await this.commit(worktree, "--allow-empty", "-q", "-m", message);
     return git(worktree, "rev-parse", "HEAD");
   }
 
@@ -104,12 +115,17 @@ export class Worktrees {
    * Land a run's branch on its base: rebase onto the latest base, run the checks, fast-forward.
    * The merge queue calls this one run at a time.
    */
-  async land(repo: string, tree: Worktree, check?: string): Promise<{ ok: true; commit: string } | { ok: false; reason: string }> {
+  async land(repo: string, tree: Worktree, check?: string, title?: string): Promise<{ ok: true; commit: string } | { ok: false; reason: string }> {
     const top = await git(repo, "rev-parse", "--show-toplevel");
     try {
       await git(tree.path, "add", "-A");
-      await git(tree.path, "-c", "user.name=ShuaCrew", "-c", "user.email=shuacrew@localhost", "commit", "-q", "--allow-empty", "-m", "final changes");
+      await this.commit(tree.path, "-q", "--allow-empty", "-m", "final changes");
       await git(tree.path, "rebase", tree.base);
+      // Squash: every checkpoint becomes one commit named after the session.
+      if (this.config().squash) {
+        await git(tree.path, "reset", "--soft", tree.base);
+        await this.commit(tree.path, "-q", "--allow-empty", "-m", (title ?? "ShuaCrew changes").slice(0, 200));
+      }
     } catch (error) {
       await git(tree.path, "rebase", "--abort").catch(() => undefined);
       return { ok: false, reason: `rebase onto ${tree.base} failed: ${(error as Error).message.split("\n")[0]}` };
