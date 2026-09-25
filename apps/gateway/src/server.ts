@@ -9,6 +9,7 @@
 import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
 import { settingsRoutes } from "./settings-routes.js";
+import { createCrewMember } from "./crew-create.js";
 import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -503,6 +504,11 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.get<{ Params: { id: string } }>("/api/voice/runs/:id/idle", async request => ({ idle: !supervisor.isActive(request.params.id) }));
     app.get("/api/crew", async () => crew.list());
     app.post("/api/crew/starter", async () => crew.starter());
+    // Create-only (chat /agent): refuses an existing name instead of replacing that member.
+    app.post<{ Body: { name?: string; role?: string; persona?: string; runtime?: string } }>("/api/crew/new", async (request, reply) => {
+      try { return createCrewMember(crew, { name: request.body?.name ?? "", role: request.body?.role, persona: request.body?.persona, runtime: request.body?.runtime }, [...options.runtimes.keys()].filter((id) => id !== "mock")); }
+      catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    });
     app.post<{ Body: Partial<MemberInput> }>("/api/crew", async (request, reply) => {
       const b = request.body ?? {};
       try {

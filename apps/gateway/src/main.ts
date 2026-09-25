@@ -132,6 +132,8 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   });
   rooms = new RoomCoordinator(store, supervisor, crew, runtimes);
   tools.rooms = rooms;
+  tools.crew = crew;
+  tools.runtimeIds = () => [...runtimes.keys()].filter((id) => id !== "mock");
   const plays = new Plays(store, supervisor);
   ventures.startPlay = (input) => plays.start(input);
   const autonomy = {

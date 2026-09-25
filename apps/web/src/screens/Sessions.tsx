@@ -46,8 +46,9 @@ import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
 import { LogoMark } from "../lib/motion";
-import { DEFAULT_WORKSPACE, getWorkspace } from "../lib/workspace-prefs";
-import { usePower, type Preset } from "../lib/power";
+import { DEFAULT_WORKSPACE, getWorkspace, saveWorkspace } from "../lib/workspace-prefs";
+import { getPower, savePower, usePower, type Preset } from "../lib/power";
+import { parseChatAction } from "../lib/chat-actions";
 
 interface RuntimeInfo {
   id: string;
@@ -568,6 +569,12 @@ function NewSession() {
 // ── composer ────────────────────────────────────────────────────────────────────────────────
 
 const COMMANDS = [
+  { name: "agent", hint: "/agent Nova as Security reviewer: how they work — add a crew member", icon: Users },
+  { name: "agents", hint: "List your crew", icon: Users },
+  { name: "room", hint: "/room Launch week with @rhea @eli — open a crew room", icon: Users },
+  { name: "effort", hint: "/effort high — how hard this session thinks", icon: Zap },
+  { name: "budget", hint: "/budget 500k — daily token budget (off to clear)", icon: Zap },
+  { name: "flow", hint: "Toggle Flow mode (⌘⇧F)", icon: Zap },
   { name: "task", hint: "Plan it into steps, check each one, retry what fails", icon: ListChecks },
   { name: "learn", hint: "Teach a lesson every future run is told", icon: Sparkles },
   { name: "schedule", hint: "/schedule weekdays 9am: triage new issues", icon: Zap },
@@ -774,6 +781,27 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     setBusy(true);
     setError("");
     try {
+      // Instant commands: done right here, no AI call.
+      const action = parseChatAction(message);
+      if (action) {
+        if (action.kind === "error") { setError(action.message); return; }
+        if (action.kind === "agent") {
+          const m = await api<{ id: string; name: string; role: string }>("/api/crew/new", { body: action });
+          setText(""); setError(`Added ${m.name} · ${m.role}. Talk to them with @${m.id}; turn on delegation in Crew to use them in rooms.`); return;
+        }
+        if (action.kind === "agents") {
+          const list = Object.values(members);
+          setError(list.length ? list.map((m) => `@${m.id} ${m.name} · ${m.role}${m.delegatable ? " · rooms" : ""}`).join("   ") : "No crew yet — try /agent Nova as Researcher");
+          setText(""); return;
+        }
+        if (action.kind === "room") {
+          const r = await api<{ id: string }>("/api/rooms", { body: { title: action.title, coordinator: action.members[0], members: action.members } });
+          setText(""); void navigate({ to: "/rooms/$id", params: { id: r.id } }); return;
+        }
+        if (action.kind === "effort") { setEffort(action.value); setText(""); setError(`Effort for this session: ${action.value || "auto"}.`); return; }
+        if (action.kind === "budget") { saveWorkspace({ dailyTokenBudget: action.tokens }); setText(""); setError(action.tokens ? `Daily budget set to ${action.tokens.toLocaleString()} tokens.` : "Daily budget off."); return; }
+        if (action.kind === "flow") { savePower({ flow: !getPower().flow }); setText(""); return; }
+      }
       if (message.startsWith("/learn ")) {
         await api("/api/memory/lessons", { body: { text: message.slice(7), project: run?.repo ?? (repo || undefined) } });
         setText("");
