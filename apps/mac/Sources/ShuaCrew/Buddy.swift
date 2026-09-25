@@ -172,6 +172,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     let r = SparkHands.act(action, screen: screen)
                     self.did(["id": id, "ok": r.ok, "message": r.message], to: sender)
                 }
+            case "press":
+                // Find it by name, fly the cursor there, then press it as the cursor lands.
+                guard SparkHands.trusted else { SparkHands.askForAccess(); did(["id": id, "ok": false, "message": "Spark needs Accessibility access: System Settings → Privacy & Security → Accessibility → ShuaCrew."], to: sender); break }
+                let label = action["label"] as? String ?? ""
+                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in the app in front."], to: sender); break }
+                let main = NSScreen.screens.first ?? screen
+                let target = NSScreen.screens.first { s in
+                    let f = s.frame, y = main.frame.height - found.center.y
+                    return f.contains(CGPoint(x: found.center.x, y: y))
+                } ?? main
+                let f = target.frame, appKitY = main.frame.height - found.center.y
+                let lead = pointer.show(on: target, x: (found.center.x - f.minX) / f.width, y: (f.maxY - appKitY) / f.height, label: found.name, color: action["color"] as? String, from: sparkCenter) + 0.12
+                watchForStop()
+                DispatchQueue.main.asyncAfter(deadline: .now() + lead) { [weak self] in
+                    let ok = SparkPress.press(found)
+                    self?.did(["id": id, "ok": ok, "message": ok ? "Pressed “\(found.name)”" : "Couldn't press “\(found.name)”"], to: sender)
+                }
             case "media":
                 let r = SparkHands.media(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "system":

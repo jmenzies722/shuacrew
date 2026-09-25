@@ -64,6 +64,7 @@ export function parseChanges(v: unknown): SparkChanges | null {
 
 /** One step of Spark using the mouse and keyboard, or the end of the task. Coordinates are screenshot fractions. */
 export type Act =
+  | { type: "press"; label: string }
   | { type: "click"; x: number; y: number; label: string; double?: boolean; button?: "right" }
   | { type: "type"; text: string; label: string }
   | { type: "key"; keys: string; label: string }
@@ -207,6 +208,7 @@ export function parseAct(text: string): Act | null {
     const o = JSON.parse(m[1]!.trim()) as Record<string, unknown>;
     const label = typeof o.label === "string" ? o.label.trim().slice(0, 60) : "";
     switch (o.type) {
+      case "press": return label ? { type: "press", label } : null;
       case "click": return unit(o.x) && unit(o.y) ? { type: "click", x: o.x as number, y: o.y as number, label, ...(o.double === true ? { double: true } : {}), ...(o.button === "right" ? { button: "right" as const } : {}) } : null;
       case "type": return typeof o.text === "string" && o.text.length > 0 && o.text.length <= 2000 ? { type: "type", text: o.text, label } : null;
       case "key": return typeof o.keys === "string" && /^[a-z0-9⌘⇧⌥⌃+ ,./\-=\[\]]{1,40}$/i.test(o.keys) ? { type: "key", keys: o.keys, label } : null;
@@ -218,6 +220,7 @@ export function parseAct(text: string): Act | null {
 }
 export function describeAct(a: Act): string {
   switch (a.type) {
+    case "press": return `Press “${a.label}”`;
     case "click": return `${a.double ? "Double-click" : a.button === "right" ? "Right-click" : "Click"} ${a.label ? `“${a.label}”` : "there"}`;
     case "type": return `Type “${a.text.length > 40 ? `${a.text.slice(0, 40)}…` : a.text}”`;
     case "key": return `Press ${a.keys}`;
@@ -254,7 +257,7 @@ export function nextSentences(text: string, from: number, final = false): { chun
   return { chunks, upto: from + cut };
 }
 
-export interface Persona { name: string; tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed"; control?: "off" | "ask" | "auto"; shortcuts?: string[]; voice?: boolean; voices?: string[] }
+export interface Persona { name: string; tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed"; control?: "off" | "ask" | "auto"; shortcuts?: string[]; voice?: boolean; voices?: string[]; memory?: string[]; goal?: string }
 const TONES: Record<Persona["tone"], string> = {
   cheerful: "warm, upbeat and encouraging",
   chill: "relaxed and easygoing, a calm friend",
@@ -289,9 +292,14 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     ].join("\n"),
     'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
     "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
+    persona.goal || persona.memory?.length ? [
+      "WHAT YOU KNOW ABOUT THEM (their memory in ShuaCrew — use it naturally, never recite it):",
+      persona.goal ? `- Career goal: ${persona.goal}` : "",
+      ...(persona.memory ?? []).slice(0, 25).map((m) => `- ${m}`),
+    ].filter(Boolean).join("\n") : "",
     persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
     persona.control && persona.control !== "off" && screen
-      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something), do it ONE step per reply: a short sentence, then \`\`\`act {"type":"click","x":0-1,"y":0-1,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
+      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something), do it ONE step per reply: a short sentence, then one act block. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. Otherwise by position: \`\`\`act {"type":"click","x":0-1,"y":0-1,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
       : persona.control && persona.control !== "off" ? "You can also use their mouse and keyboard, but only with the eye on (you need to see the screen) — ask them to turn it on for tasks inside an app." : "You can't click or type inside other apps: SHOW them instead (point, guide, draw).",
     screen
       ? [

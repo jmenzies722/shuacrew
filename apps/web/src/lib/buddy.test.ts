@@ -74,3 +74,9 @@ it("lets you customize Spark by chatting, safely", () => {
   expect(parseActions('```do {"type":"settings","changes":{"character":"dragon","color":"url(x)"}}```')).toEqual([]);
   expect(buddyPrompt("talk faster", null, { name: "Spark", tone: "chill", length: "brief", voices: ["aiden", "ryan"] })).toContain("aiden|ryan");
 });
+it("carries what it knows about you into every conversation", () => {
+  const p = buddyPrompt("what should I do today", null, { name: "Spark", tone: "chill", length: "brief", memory: ["The user deploys on Fridays."], goal: "AI Platform Engineer" });
+  expect(p).toContain("Career goal: AI Platform Engineer");
+  expect(p).toContain("- The user deploys on Fridays.");
+  expect(buddyPrompt("hi", null, { name: "Spark", tone: "chill", length: "brief" })).not.toContain("WHAT YOU KNOW ABOUT THEM");
+});

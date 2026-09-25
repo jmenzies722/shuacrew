@@ -7,6 +7,7 @@ import { parseCompanion, saveCompanion, SPARK_CHARACTERS, SPARK_HOTKEYS, useComp
 import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
+import { summary, useSparkLog } from "../lib/spark-log";
 import { resetWelcome } from "./Welcome";
 const swatchBg = (f: string) => { const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
@@ -106,7 +107,17 @@ export function SparkSettings() {
           : <button type="button" className="tb-btn" onClick={() => native()?.postMessage({ type: "buddyScreenAccess" })}>Check</button>)}
       </SettingRow>
       <SettingRow name="Doing things" detail="Opens apps, websites, and files or folders in your home folder; starts focus timers; adds to your note; hands big jobs to the crew. The Mac app checks every action. It never clicks or types for you: it shows you." />
+      <TrackRecord name={name} />
       <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => { resetWelcome(); window.dispatchEvent(new Event("shuacrew:welcome")); }}>Replay welcome</button><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
     </section>
+  </div>;
+}
+
+/** How Spark has actually done for you: every action it took, and whether it worked. */
+function TrackRecord({ name }: { name: string }) {
+  const log = useSparkLog(), s = summary(log);
+  return <div className="spark-record">
+    <div className="spark-record-head"><b>Track record</b><span>{s.total ? `${s.ok} of ${s.total} actions worked this week${s.rate !== null ? ` · ${s.rate}%` : ""}` : `Nothing yet — actions ${name} takes show up here with how they went.`}</span></div>
+    {log.slice(-8).reverse().map((e) => <div key={e.at + e.label} className={`spark-record-row ${e.ok ? "is-ok" : "is-bad"}`}><i />{e.label}<small>{e.ok ? e.message : e.message || "didn't work"}</small><time>{new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></div>)}
   </div>;
 }

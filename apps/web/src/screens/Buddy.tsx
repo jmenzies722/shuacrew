@@ -1,3 +1,5 @@
+import { logAction } from "../lib/spark-log";
+import { morningBrief, shouldBrief } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -63,8 +65,13 @@ function applyChanges(c: SparkChanges) {
   if (c.hotkey) post({ type: "buddyHotkey", combo: c.hotkey });
 }
 
-/** Mac actions go to the app (which checks them again); the rest happen right here. */
+/** Every action, logged with whether it worked. */
 function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
+  const isAct = ["press", "click", "type", "key", "scroll", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
+  return performNow(a).then((r) => { logAction({ label: isAct ? describeAct(a as Act) : describeAction(a as Action), ok: r.ok, message: r.message }); return r; });
+}
+/** Mac actions go to the app (which checks them again); the rest happen right here. */
+function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
   if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
     .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
@@ -75,7 +82,7 @@ function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean;
   }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "playbook") return api<{ id: string }>("/api/plays", { body: { playbook: a.playbook, inputs: a.idea ? { idea: a.idea } : {}, ...(a.venture ? { venture: a.venture } : {}) } })
     .then((p) => { post({ type: "buddyOpen", path: `/plays/${p.id}` }); return { ok: true, message: `${a.playbook.replace(/-/g, " ")} started` }; }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => ({ ok: true, message: "Every agent will know that" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
   if (a.type === "note") { const n = localStorage.getItem("shuacrew.widgets.note") ?? ""; saveNote(n ? `${n}\n${a.text}` : a.text); return Promise.resolve({ ok: true, message: "Added to your note" }); }
   if (a.type === "crew") return launchRun({ ask: a.ask }).then((r) => ({ ok: true, message: "The crew is on it", run: r.id }), (e: Error) => ({ ok: false, message: e.message }));
@@ -107,6 +114,8 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [speaking, setSpeaking] = useState(false);
   const [done, setDone] = useState<Record<number, Done[]>>({});
   const [bubble, setBubble] = useState<{ text: string; path: string } | null>(null);
+  // Once a day: "your day in 20 seconds", spoken on tap.
+  const [morning, setMorning] = useState(false);
   // Guide mode: the step Spark is spotlighting right now, waiting for you to do it.
   const [guide, setGuide] = useState<GuideStep | null>(null), [cheer, setCheer] = useState(false);
   // A diagram on the big canvas: the panel grows so a system design has room.
@@ -115,6 +124,13 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [hands, setHands] = useState<{ trusted: boolean; shortcuts: string[] }>({ trusted: false, shortcuts: [] });
   const [task, setTask] = useState<{ step: number } | null>(null), [pending, setPending] = useState<Act | null>(null), [autoTask, setAutoTask] = useState(false);
   const [voices, setVoices] = useState<string[]>([]);
+  // What Spark knows about you: your lasting lessons and your career goal, read at the start of every conversation.
+  const [memory, setMemory] = useState<{ facts: string[]; goal: string }>({ facts: [], goal: "" });
+  const loadMemory = () => Promise.all([
+    api<{ lessons?: Array<{ text: string; retired?: string | null }> }>("/api/memory").then((m) => (m.lessons ?? []).filter((l) => !l.retired).map((l) => l.text)).catch(() => [] as string[]),
+    api<{ profile?: { goal?: string } }>("/api/learning").then((l) => l.profile?.goal?.trim() ?? "").catch(() => ""),
+  ]).then(([facts, goal]) => setMemory({ facts, goal }));
+  useEffect(() => { void loadMemory(); const on = () => void loadMemory(); window.addEventListener("shuacrew:memory", on); return () => window.removeEventListener("shuacrew:memory", on); }, []);
   // Open-mic conversation.
   const [phase, setPhase] = useState<Phase>("off"), [level, setLevel] = useState(0);
   // Inside the app, the mic is only live while the app window is in front (the desktop panel covers the rest).
@@ -139,7 +155,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   }, []);
   useEffect(() => { if (convo) void loadRun(convo.run); }, [convo, loadRun]);
   // The native panel sizes itself to what's showing, so the clear rest never blocks your clicks.
-  useEffect(() => { if (!embedded) post({ type: "buddyExpand", open, wide: open && wide, peek: !open && (!!bubble || !!guide), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size, wide, embedded]);
+  useEffect(() => { if (!embedded) post({ type: "buddyExpand", open, wide: open && wide, peek: !open && (!!bubble || !!guide || morning), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size, wide, embedded, morning]);
   // One conversation in two places: the desktop panel and the app's side panel follow each other.
   useEffect(() => {
     const on = (e: StorageEvent) => { if (e.key !== KEY) return; try { const next = JSON.parse(e.newValue ?? "null"); handled.current = null; setConvo(next); } catch { /* ignore */ } };
@@ -219,6 +235,24 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     }
   }, [crew.runs, crew.members]);
   useEffect(() => { if (!bubble) return; const t = setTimeout(() => setBubble(null), 9000); return () => clearTimeout(t); }, [bubble]);
+  useEffect(() => {
+    if (embedded) return;
+    const check = () => { let last: string | null = null; try { last = localStorage.getItem("shuacrew.morning"); } catch { /* ignore */ } if (shouldBrief(last, new Date())) setMorning(true); };
+    check(); const t = setInterval(check, 10 * 60_000); return () => clearInterval(t);
+  }, [embedded]);
+  const playMorning = async () => {
+    setMorning(false); try { localStorage.setItem("shuacrew.morning", new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+    speech.current.unlock(); setOpen(true); setTab("chat");
+    const [brief$, learn] = await Promise.all([
+      api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing").catch(() => ({ sections: [] as Array<{ title: string; items: Array<{ text: string }> }> })),
+      api<{ due?: number; profile?: { goal?: string } }>("/api/learning").catch(() => ({ due: 0, profile: {} as { goal?: string } })),
+    ]);
+    const finished = (brief$.sections ?? []).find((x) => /finish/i.test(x.title))?.items.map((x) => x.text) ?? [];
+    const runsNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs));
+    const text = morningBrief({ now: new Date(), goal: learn.profile?.goal?.trim(), finished, waiting: Object.keys(crew.approvals).length, due: learn.due ?? 0,
+      ventures: Object.values(crew.ventures).map((v) => ({ name: v.name, stage: v.stage })), running: runsNow.filter((r) => ["running", "planning"].includes(r.status)).length });
+    setBrief({ q: "Morning briefing", a: text }); speech.current.say(text);
+  };
 
   const working = status === "running" || status === "planning" || status === "queued";
   /** You did the step: look again and ask Spark for the next one, from what's really on screen now. */
@@ -280,7 +314,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         await followUp(convo.run, withAttachments(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide or draw if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q, atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation }, now), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
@@ -369,8 +403,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     <AnimatePresence>{open && <motion.div key="card" className="spk-pop" initial={{ opacity: 0, y: 14, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 32 }}>{card}</motion.div>}</AnimatePresence>
     {!open && guide && <div className="buddy-bubble is-guide"><span><Compass size={12} /> Step {guide.step}: {guide.label}</span>
       <div><button type="button" onClick={() => void advance()}>Done <ChevronRight size={11} /></button><button type="button" onClick={stopGuide}>Stop</button></div></div>}
+    {!open && !guide && !bubble && morning && <button type="button" className="buddy-bubble is-morning" onClick={() => void playMorning()}>Your day in 20 seconds<small>Tap to hear it</small></button>}
     {!open && !guide && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
-    {!open && !guide && !bubble && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
+    {!open && !guide && !bubble && !morning && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
     <div className={`buddy-spark size-${prefs.size} ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
       {timer && <svg className="buddy-focus" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" /><circle cx="50" cy="50" r="46" className="fill" style={{ strokeDashoffset: `${289 * (1 - focusPct)}` }} /></svg>}
       <SparkCharacter preferences={prefs} mood={mood} /><i className="buddy-shadow" />

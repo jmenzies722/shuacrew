@@ -152,3 +152,4 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .spk .buddy-send, .spk .buddy-talk.is-on { background: var(--spark-fill, var(--spark-color)); color: var(--spark-on, #fff); }
 .spk-avatar, .spk-mini { background: color-mix(in srgb, var(--spark-color) 10%, var(--raised)); }
 .spk .buddy-msg.is-you { background: color-mix(in srgb, var(--spark-color) 14%, var(--raised)); }
+.buddy-bubble.is-morning { background: linear-gradient(135deg, color-mix(in srgb, var(--spark-color) 22%, var(--float-hi)), var(--float-hi)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 45%, transparent), 0 14px 34px rgba(0,0,0,.45); font-weight: 600; }

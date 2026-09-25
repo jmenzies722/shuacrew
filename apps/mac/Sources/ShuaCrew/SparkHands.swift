@@ -211,3 +211,60 @@ enum SparkHands {
         return error == nil ? (result?.stringValue ?? "") : nil
     }
 }
+
+// MARK: pressing things by name
+
+/// Finds a control by what it's called in the frontmost app's accessibility tree ("Send", "Share", "New Tab") and presses it.
+/// Far more reliable than coordinates: it keeps working when the window moves or the layout shifts.
+@MainActor
+enum SparkPress {
+    struct Found { let element: AXUIElement; let center: CGPoint /* global, top-left origin */; let name: String }
+    private static let pressable: Set<String> = [kAXButtonRole, kAXMenuItemRole, kAXMenuBarItemRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole, "AXLink", "AXTab", kAXCellRole, kAXStaticTextRole, kAXImageRole, kAXDisclosureTriangleRole]
+
+    static func find(_ label: String) -> Found? {
+        guard let app = NSWorkspace.shared.frontmostApplication, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        let want = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !want.isEmpty else { return nil }
+        var queue: [AXUIElement] = [root], seen = 0
+        var partial: Found?
+        while !queue.isEmpty, seen < 5000 {
+            let el = queue.removeFirst(); seen += 1
+            let role = string(el, kAXRoleAttribute) ?? ""
+            if pressable.contains(role) {
+                for key in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, "AXHelp"] {
+                    guard let name = string(el, key)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name.count < 120 else { continue }
+                    let n = name.lowercased()
+                    if n == want, let c = center(el) { return Found(element: el, center: c, name: name) }
+                    if partial == nil, n.contains(want) || (want.count > 3 && want.contains(n) && n.count > 2), let c = center(el) { partial = Found(element: el, center: c, name: name) }
+                }
+            }
+            var children: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &children) == .success, let list = children as? [AXUIElement] { queue.append(contentsOf: list) }
+        }
+        return partial
+    }
+
+    static func press(_ found: Found) -> Bool {
+        if AXUIElementPerformAction(found.element, kAXPressAction as CFString) == .success { return true }
+        // Some controls only answer to a real click.
+        let p = found.center
+        for type in [CGEventType.leftMouseDown, .leftMouseUp] { CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap); usleep(18_000) }
+        return true
+    }
+
+    private static func string(_ el: AXUIElement, _ key: String) -> String? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, key as CFString, &v) == .success else { return nil }
+        return v as? String
+    }
+    private static func center(_ el: AXUIElement) -> CGPoint? {
+        var pos: CFTypeRef?, size: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &pos) == .success,
+              AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &size) == .success else { return nil }
+        var p = CGPoint.zero, s = CGSize.zero
+        AXValueGetValue(pos as! AXValue, .cgPoint, &p); AXValueGetValue(size as! AXValue, .cgSize, &s)
+        guard s.width > 0, s.height > 0 else { return nil }
+        return CGPoint(x: p.x + s.width / 2, y: p.y + s.height / 2)
+    }
+}
