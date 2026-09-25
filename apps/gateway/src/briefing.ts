@@ -47,7 +47,7 @@ export function compose(state: CrewState, now: number, since: number): Omit<Brie
 
   // What got done.
   const finished = Object.values(state.runs)
-    .filter((r) => !r.parent && r.updatedAt >= since && ["done", "reviewing", "merged", "failed"].includes(r.status) && !r.labels.includes("held"))
+    .filter((r) => !r.parent && r.updatedAt >= since && ["done", "reviewing", "merged", "failed"].includes(r.status) && !r.labels.includes("held") && !r.labels.includes("buddy") && !r.labels.includes("learning")) // Spark chats and study sessions aren't crew work
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const done: Item[] = finished.map((r) => ({
     text: r.status === "failed" ? `${r.title} — failed${r.statusReason ? `: ${r.statusReason.slice(0, 80)}` : ""}` : r.status === "merged" ? `${r.title} — merged` : r.title,
