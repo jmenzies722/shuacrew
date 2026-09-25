@@ -8,7 +8,6 @@ import { NotificationSettings } from "../components/NotificationSettings";
 import { VoiceSettings } from "../components/VoiceSettings";
 import { DeveloperSettings } from "../components/DeveloperSettings";
 import { openMobileSettings } from "../lib/native";
-import { CompanionSettings } from "../components/CompanionSettings";
 import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
@@ -16,7 +15,8 @@ import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, Instr
 import { SettingsCommand } from "../components/SettingsCommand";
 import { ShortcutSettings } from "../components/ShortcutSettings";
 import { WidgetSettings } from "../components/WidgetSettings";
-import { DesktopBuddySettings, ScheduleSettings, ThemeShareSettings, TopBarSettings } from "../components/MoreSettings";
+import { SparkSettings } from "../components/SparkSettings";
+import { ScheduleSettings, ThemeShareSettings, TopBarSettings } from "../components/MoreSettings";
 import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, SoundscapeSettings } from "../components/BatchSettings2";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
@@ -31,7 +31,7 @@ const SECTIONS = [
   { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap },
   { id: "automation", title: "Automation", description: "What runs on its own — and when it waits.", icon: Timer },
   { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock },
-  { id: "play", title: "Personality & Play", description: "A little character. Your kind of workspace.", icon: Sparkles },
+  { id: "play", title: "Spark", description: "Your desktop buddy: its character, voice, personality, and how it shows you things.", icon: Sparkles },
   { id: "voice", title: "Shua voice", description: "Find a voice that feels right. Hear it before you choose.", icon: AudioLines },
   { id: "notifications", title: "Notifications", description: "Let the right things interrupt you.", icon: Bell },
   { id: "mobile", title: "Mobile", description: "Your crew, within reach. Your Mac stays in control.", icon: Smartphone },
@@ -40,7 +40,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { topbar: "widgets", "widget-board": "widgets", shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "desktop-buddy": "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { topbar: "widgets", "widget-board": "widgets", shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "desktop-buddy": "play", spark: "play", "tool-cards": "chat", "shua-voice": "voice" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -102,8 +102,7 @@ export function Settings() {
     { id: "hud", section: "developer", title: "Live HUD", terms: "hud overlay fps events per second stream lag connection debug floating", body: <HudToggle /> },
     { id: "gateway-log", section: "developer", title: "Gateway log", terms: "log logs gateway errors crash stderr tail search", body: <GatewayLog /> },
     { id: "storage", section: "developer", title: "Storage", terms: "disk storage size space database library models snapshots usage bytes", body: <StorageUsage /> },
-    { id: "desktop-buddy", section: "play", title: "Spark on your desktop", terms: "desktop buddy spark floating clicky screen screenshot point pointer hotkey control option space ask anywhere", body: <DesktopBuddySettings /> },
-    { id: "companion", section: "play", title: "Spark & Mini Crew", terms: "companion pet spark mini crew robot nickname accessory fun personality play focus timer", body: <CompanionSettings /> },
+    { id: "spark", section: "play", title: "Make it yours", terms: "spark desktop buddy companion character orb byte kit blob robot name nickname colour color size personality tone voice talk speak hotkey shortcut guide show me steps spotlight clicky screen screenshot point open apps actions", body: <SparkSettings /> },
     { id: "tool-cards", section: "chat", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
     { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">
       <p>Choose which crew rooms leave this Mac, compare pairing fingerprints, and revoke devices in the native setup window. Mobile sync is off by default.</p>

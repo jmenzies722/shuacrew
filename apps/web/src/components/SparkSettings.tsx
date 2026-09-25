@@ -1,0 +1,81 @@
+import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
+import { api } from "../lib/api";
+import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
+import { parseCompanion, saveCompanion, SPARK_CHARACTERS, SPARK_COLORS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
+import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
+import { Segmented, SettingRow, Switch } from "./SettingControls";
+import "./spark-settings.css";
+
+type Native = { postMessage(m: unknown): void };
+const native = () => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;
+const DESKTOP = "shuacrew.buddy.desktop";
+const readDesktop = () => { try { return localStorage.getItem(DESKTOP) !== "0"; } catch { return true; } };
+
+/** Spark, made yours: who it is, how it looks, how it sounds and talks, how you call it, how it shows you things. */
+export function SparkSettings() {
+  const prefs = useCompanion(), voice = useBuddyVoice();
+  const set = (patch: Partial<CompanionPreferences>) => saveCompanion({ ...prefs, ...patch });
+  const [mood, setMood] = useState<Mood>("idle"), [desktop, setDesktop] = useState(readDesktop);
+  const [voices, setVoices] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  useEffect(() => { void api<{ voices?: Array<{ id: string; name: string; description?: string }> }>("/api/speech/status").then((s) => setVoices(s.voices ?? [])).catch(() => {}); }, []);
+  const toggleDesktop = (on: boolean) => { setDesktop(on); try { localStorage.setItem(DESKTOP, on ? "1" : "0"); } catch { /* ignore */ } native()?.postMessage({ type: "buddyEnabled", on }); };
+  const hotkey = (combo: SparkHotkey) => { set({ hotkey: combo }); native()?.postMessage({ type: "buddyHotkey", combo }); };
+  const name = prefs.nickname || "Spark";
+
+  return <div className="spark-settings">
+    <section className="settings-card spark-hero">
+      <div className="spark-stage" style={{ "--spark-color": prefs.color } as React.CSSProperties}>
+        <SparkCharacter preferences={prefs} mood={mood} size={prefs.size === "s" ? 96 : prefs.size === "l" ? 150 : 120} />
+        <div className="spark-moods" role="group" aria-label="Try a mood">{(["idle", "thinking", "speaking", "happy"] as Mood[]).map((m) => <button key={m} type="button" aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div>
+      </div>
+      <div className="spark-identity">
+        <label className="spark-name"><small>Name</small><input value={prefs.nickname} maxLength={24} onChange={(e) => set({ nickname: e.target.value })} aria-label="Your buddy's name" placeholder="Spark" /></label>
+        <p>{name} lives on your desktop, over every app. {native() ? "Click it or press " : "In the Mac app, press "}<kbd>{SPARK_HOTKEYS[prefs.hotkey]}</kbd> to ask, and drag it anywhere.</p>
+        <div className="spark-toggle"><span>On your desktop</span><Switch label="Show on the desktop" on={desktop} onChange={toggleDesktop} /></div>
+      </div>
+    </section>
+
+    <section className="settings-card batch-pad">
+      <h4 className="spark-h">Character</h4>
+      <div className="spark-gallery">{SPARK_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })} style={{ "--spark-color": prefs.color } as React.CSSProperties}>
+        <SparkCharacter preferences={{ ...prefs, character: id }} size={64} /><strong>{CHARACTER_INFO[id].name}</strong><small>{CHARACTER_INFO[id].blurb}</small>{prefs.character === id && <i><Check size={11} /></i>}
+      </button>)}</div>
+      <SettingRow name="Colour" detail="Tints the character, the card and the ring, spotlight and comet when it shows you something.">
+        <div className="spark-swatches">{SPARK_COLORS.map((c) => <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={prefs.color === c} style={{ background: c }} onClick={() => set({ color: c })} />)}
+          <label className="spark-custom" title="Any colour"><input type="color" value={prefs.color} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
+      </SettingRow>
+      <SettingRow name="Size on the desktop" modified={prefs.size !== "m"}><Segmented label="Size" value={prefs.size} onChange={(size) => set({ size })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} /></SettingRow>
+      {prefs.character === "spark" && <>
+        <SettingRow name="Expression"><Segmented label="Expression" value={prefs.face} onChange={(face) => set({ face })} options={[["calm", "Calm"], ["curious", "Curious"], ["bright", "Bright"]]} /></SettingRow>
+        <SettingRow name="Accessory"><select className="setting-input" value={prefs.accessory} onChange={(e) => set({ accessory: e.target.value as CompanionPreferences["accessory"] })} aria-label="Accessory">{["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"].map((a) => <option key={a} value={a}>{a[0]!.toUpperCase() + a.slice(1)}</option>)}</select></SettingRow>
+      </>}
+    </section>
+
+    <section className="settings-card batch-pad">
+      <h4 className="spark-h">Personality &amp; voice</h4>
+      <SettingRow name="Personality" detail="How it talks to you. Your instructions to the crew are unchanged." modified={prefs.tone !== "cheerful"}>
+        <Segmented label="Personality" value={prefs.tone} onChange={(tone) => set({ tone })} options={[["cheerful", "Cheerful"], ["chill", "Chill"], ["direct", "Direct"], ["coach", "Coach"]]} />
+      </SettingRow>
+      <SettingRow name="Answers" modified={prefs.length !== "brief"}><Segmented label="Answer length" value={prefs.length} onChange={(length) => set({ length })} options={[["brief", "Brief"], ["detailed", "Detailed"]]} /></SettingRow>
+      <SettingRow name={`${name} talks`} detail="Spoken as the answer streams in, with a local neural voice. Nothing leaves this Mac." modified={!voice.on}><Switch label="Talks" on={voice.on} onChange={(on) => saveBuddyVoice({ on })} /></SettingRow>
+      {voice.on && <SettingRow name="Voice" detail={voices.length ? undefined : "Install local speech in Settings → Shua voice."}>
+        <select className="setting-input" value={voice.id} onChange={(e) => saveBuddyVoice({ id: e.target.value })} aria-label="Voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+        <Segmented label="Speed" value={String(voice.speed) as "0.9" | "1" | "1.15"} onChange={(v) => saveBuddyVoice({ speed: Number(v) })} options={[["0.9", "Calm"], ["1", "Normal"], ["1.15", "Quick"]]} />
+      </SettingRow>}
+    </section>
+
+    <section className="settings-card batch-pad">
+      <h4 className="spark-h">Showing you &amp; doing things</h4>
+      <SettingRow name="Shortcut" detail="Works from any app. Changes take effect immediately." modified={prefs.hotkey !== "ctrl-opt-space"}>
+        <Segmented label="Shortcut" value={prefs.hotkey} onChange={hotkey} options={Object.entries(SPARK_HOTKEYS) as Array<[SparkHotkey, string]>} />
+      </SettingRow>
+      <SettingRow name="Guided steps" detail={`Ask “show me how to…” and ${name} spotlights one step at a time. With “When I click it”, doing the step is enough: it looks again and plans the next one from what's really on screen.`} modified={prefs.guide !== "click"}>
+        <Segmented label="Advance guided steps" value={prefs.guide} onChange={(guide) => set({ guide })} options={[["click", "When I click it"], ["manual", "When I say done"]]} />
+      </SettingRow>
+      <SettingRow name="Looking at your screen" detail="Only when you ask with the eye on: one screenshot of the display it's on (itself left out), attached to that question. Never recorded, never in the background." />
+      <SettingRow name="Doing things" detail="Opens apps, websites, and files or folders in your home folder; starts focus timers; adds to your note; hands big jobs to the crew. The Mac app checks every action. It never clicks or types for you: it shows you." />
+      <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
+    </section>
+  </div>;
+}

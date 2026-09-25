@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.window.navigate(path)
         }
         window.onBuddyEnabled = { [weak self] on in self?.buddy.setEnabled(on) }
+        window.onBuddyHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
         NSApp.mainMenu = mainMenu()
         if quiet {
             NSApp.setActivationPolicy(.accessory)
@@ -38,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ⌥Space, anywhere: ShuaCrew comes forward with the message box ready; again, it hides.
             hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
             // ⌃⌥Space, anywhere: Spark, your desktop buddy, ready for a question about whatever you're looking at.
-            buddyKey = HotKey(modifiers: UInt32(controlKey | optionKey)) { [weak self] in Task { @MainActor in self?.buddy.summon() } }
+            bindBuddyKey(UserDefaults.standard.string(forKey: "buddyHotkey") ?? "ctrl-opt-space")
         }
         window.start()
         tray?.start()
@@ -62,6 +63,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quickAsk() { summon() }
+
+    /// Spark's shortcut, chosen in Settings → Spark. Rebinding replaces the old one at once.
+    private func bindBuddyKey(_ combo: String) {
+        let combos: [String: (UInt32, Int)] = [
+            "ctrl-opt-space": (UInt32(kVK_Space), controlKey | optionKey), "ctrl-shift-space": (UInt32(kVK_Space), controlKey | shiftKey),
+            "opt-shift-space": (UInt32(kVK_Space), optionKey | shiftKey), "ctrl-opt-s": (UInt32(kVK_ANSI_S), controlKey | optionKey),
+        ]
+        guard !quiet, let (key, mods) = combos[combo] else { return }
+        UserDefaults.standard.set(combo, forKey: "buddyHotkey")
+        buddyKey = nil
+        buddyKey = HotKey(keyCode: key, modifiers: UInt32(mods)) { [weak self] in Task { @MainActor in self?.buddy.summon() } }
+    }
 
     /// Bring the app forward, ready to type — or, if it's already in front, put it away.
     private func summon() {
@@ -140,9 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
         windowMenu.addItem(item("ShuaCrew", "0", #selector(showMain)))
-        let spark = item("Ask Spark", " ", #selector(askSpark))
-        spark.keyEquivalentModifierMask = [.control, .option]
-        windowMenu.addItem(spark)
+        windowMenu.addItem(item("Ask Spark", "", #selector(askSpark)))
         windowMenu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         NSApp.windowsMenu = windowMenu
 

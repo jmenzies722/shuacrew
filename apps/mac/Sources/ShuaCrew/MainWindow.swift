@@ -19,6 +19,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     var onNotificationSettings: (([String: Any]) -> Void)?
     var onMobileSettings: (() -> Void)?
     var onBuddyEnabled: ((Bool) -> Void)?
+    var onBuddyHotkey: ((String) -> Void)?
 
     init(gateway: Gateway) {
         self.gateway = gateway
@@ -203,6 +204,11 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
                   let on = body["on"] as? Bool else { return }
             onBuddyEnabled?(on)
+        case "buddyHotkey":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let combo = body["combo"] as? String else { return }
+            onBuddyHotkey?(combo)
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil

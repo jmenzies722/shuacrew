@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-import { api } from "../lib/api";
-import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
+import { useState } from "react";
 import { Copy, Moon, PiggyBank, Plus, Target, Trash2, Wand2 } from "lucide-react";
 import { saveSchedule, useSchedule, type Mode, type ModeRule } from "../lib/modes";
 import { encodeTheme, decodeTheme } from "../lib/theme-code";
@@ -56,37 +54,6 @@ export function ThemeShareSettings() {
 }
 
 /** Top bar: live weather (Open-Meteo) from your Mac's location or a city you type. */
-const BUDDY_KEY = "shuacrew.buddy.desktop";
-const readBuddy = () => { try { return localStorage.getItem(BUDDY_KEY) !== "0"; } catch { return true; } };
-const inMac = () => !!(window as unknown as { webkit?: { messageHandlers?: { shuacrew?: unknown } } }).webkit?.messageHandlers?.shuacrew;
-
-/** Spark on the Mac desktop: a floating buddy the Mac app keeps over every app. */
-export function DesktopBuddySettings() {
-  const [on, setOn] = useState(readBuddy), voice = useBuddyVoice();
-  const [voices, setVoices] = useState<Array<{ id: string; name: string; description?: string }>>([]);
-  useEffect(() => { void api<{ voices?: Array<{ id: string; name: string; description?: string }> }>("/api/speech/status").then((s) => setVoices(s.voices ?? [])).catch(() => {}); }, []);
-  const set = (next: boolean) => {
-    setOn(next); try { localStorage.setItem(BUDDY_KEY, next ? "1" : "0"); } catch { /* ignore */ }
-    (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew?.postMessage({ type: "buddyEnabled", on: next });
-  };
-  return <div className="settings-card">
-    <SettingRow name="Spark on your desktop" detail={inMac() ? "Floats over every app and Space, even with this window closed. Click Spark or press ⌃⌥Space to ask; drag to move." : "Available in the ShuaCrew Mac app."} modified={!on}>
-      <Switch label="Desktop buddy" on={on} onChange={set} />
-    </SettingRow>
-    <SettingRow name="Spark talks" detail="Answers are spoken as they stream in, with a local neural voice (nothing leaves this Mac). Crew news too: “Aria finished…”." modified={!voice.on}>
-      <Switch label="Spark talks" on={voice.on} onChange={(on) => saveBuddyVoice({ on })} />
-    </SettingRow>
-    {voice.on && <SettingRow name="Spark's voice" detail={voices.length ? "Local voices from Shua voice." : "Install local speech in Settings → Shua voice."}>
-      <select className="setting-input" value={voice.id} onChange={(e) => saveBuddyVoice({ id: e.target.value })} aria-label="Spark's voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}{"description" in v ? ` — ${(v as { description: string }).description}` : ""}</option>)}</select>
-      <Segmented label="Speed" value={String(voice.speed) as "0.9" | "1" | "1.15"} onChange={(v) => saveBuddyVoice({ speed: Number(v) })} options={[["0.9", "Calm"], ["1", "Normal"], ["1.15", "Quick"]]} />
-    </SettingRow>}
-    <SettingRow name="Does things on your Mac" detail="Ask “open Xcode”, “open my projects folder”, “search the web for…”, “start a 25 minute focus”, or “have the crew fix the failing test”. Apps, web links and files in your home folder only; the Mac app checks every action." />
-    <SettingRow name="Looking at your screen" detail="Only when you ask with the eye on: one screenshot of the display Spark is on (Spark itself left out), attached to that question and nothing else. macOS asks for Screen Recording once." />
-    <SettingRow name="Pointing" detail="When it helps, Spark rings the exact button or field it means, right on your screen, for a few seconds. Click-through; it never clicks for you." />
-    <SettingRow name="Hand to the crew" detail="⤢ in the card opens the conversation as a full session here, where your crew can take it further." />
-  </div>;
-}
-
 export function TopBarSettings() {
   const w = useWeatherPrefs();
   const [city, setCity] = useState(w.city);

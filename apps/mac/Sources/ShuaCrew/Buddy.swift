@@ -8,7 +8,12 @@ import WebKit
 final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
     static let enabledKey = "buddyEnabled"
     private static let cornerKey = "buddyCorner"
-    private static let closed = NSSize(width: 104, height: 108)
+    /// Spark's own size on the desktop (S/M/L in Settings); the panel hugs it when the card is closed.
+    private var closed = NSSize(width: 104, height: 108)
+    private static let sizes: [String: NSSize] = ["s": NSSize(width: 88, height: 92), "m": NSSize(width: 104, height: 108), "l": NSSize(width: 132, height: 136)]
+    private var gripWidth: NSLayoutConstraint!
+    private var gripHeight: NSLayoutConstraint!
+    private var isOpen = false
     private static let open = NSSize(width: 380, height: 560)
     /// Room for a speech bubble beside Spark ("Aria finished…") without the whole card.
     private static let peek = NSSize(width: 320, height: 190)
@@ -37,7 +42,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         config.mediaTypesRequiringUserActionForPlayback = [] // Spark talks back as the answer streams in
         web = WKWebView(frame: .zero, configuration: config)
         web.setValue(false, forKey: "drawsBackground")
-        panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: Self.closed), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: closed), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
         panel.isFloatingPanel = true
         panel.level = .floating
@@ -57,14 +62,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             web.topAnchor.constraint(equalTo: root.topAnchor), web.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             // The character sits in the bottom-right corner of the page; the grip covers exactly it.
             grip.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8), grip.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
-            grip.widthAnchor.constraint(equalToConstant: 88), grip.heightAnchor.constraint(equalToConstant: 92),
         ])
+        gripWidth = grip.widthAnchor.constraint(equalToConstant: 88)
+        gripHeight = grip.heightAnchor.constraint(equalToConstant: 92)
+        NSLayoutConstraint.activate([gripWidth, gripHeight])
         grip.onClick = { [weak self] in self?.toggle() }
+        pointer.onGuideClick = { [weak self] in
+            self?.web.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:guideClick'))")
+        }
         grip.onMoved = { [weak self] in self?.rememberCorner() }
         web.uiDelegate = self
         web.navigationDelegate = self
         config.userContentController.add(WeakHandler(self), name: "shuacrew")
-        place(size: Self.closed)
+        place(size: closed)
     }
 
     // MARK: showing
@@ -131,7 +141,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         switch type {
         case "buddyExpand":
             let open = body["open"] as? Bool ?? false, peek = body["peek"] as? Bool ?? false
-            place(size: open ? Self.open : peek ? Self.peek : Self.closed)
+            if let key = body["size"] as? String, let size = Self.sizes[key] {
+                closed = size
+                gripWidth.constant = size.width - 16
+                gripHeight.constant = size.height - 16
+            }
+            isOpen = open
+            place(size: open ? Self.open : peek ? Self.peek : closed)
             if !open { panel.resignKey() }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
@@ -142,10 +158,20 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
                   let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
-            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)))
+            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: sparkCenter)
+        case "buddyGuide":
+            guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
+                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+            pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
+                          color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true)
+        case "buddyGuideStop":
+            pointer.hide()
         case "buddyOpen":
             if let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil { onOpen?("/sessions/\(run)") }
             else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }
+        case "buddySelfTest":
+            let line = "SPARK SELFTEST ok=\(body["ok"] as? Bool ?? false) message=\(body["message"] as? String ?? "")\n"
+            try? line.write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
         case "notify":
             guard let title = body["title"] as? String else { return }
             NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
@@ -162,6 +188,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             break
         }
     }
+
+    /// Where the character is on screen: the comet starts here.
+    private var sparkCenter: NSPoint { NSPoint(x: panel.frame.maxX - closed.width / 2, y: panel.frame.minY + closed.height / 2) }
 
     private func did(_ detail: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
@@ -224,6 +253,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         decisionHandler(.cancel)
     }
 
+    /// SHUACREW_SPARK_SELFTEST="open_app:Activity Monitor" at launch runs one action through the real page → app → page path and logs the result.
+    /// Only whoever launches the app can set it; web pages can't.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"], let colon = spec.firstIndex(of: ":") else { return }
+        let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
+        guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("guide:") { // draw one guide step, to check the spotlight
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyGuide', x: 0.5, y: 0.45, w: 0.16, h: 0.06, label: \(String(reflecting: String(spec.dropFirst(6)))), step: 2, color: '#a78bfa', wait: true })")
+            }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.web.evaluateJavaScript("window.buddy.perform(\(json)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
+        }
+    }
+
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { retryLoad() }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { retryLoad() }
     /// The gateway may still be starting (or restarting); try again shortly.
@@ -263,17 +309,30 @@ final class BuddyGrip: NSView {
     }
 }
 
-/// Spark pointing at something on your screen: a pulsing ring and a label, click-through, gone in a few seconds.
+/// Spark showing you something on screen. Two ways:
+/// - point: a pulsing ring and a label, gone in a few seconds;
+/// - guide: one step of a walkthrough — the screen dims around a spotlight on exactly what to use,
+///   a numbered instruction beside it, and it waits for you to click there (then Spark plans the next step).
+/// Either way a little comet flies from Spark to the spot first, and nothing here ever takes a click from you.
 @MainActor
 final class PointerOverlay {
     private var panel: NSPanel?
     private var hideWork: DispatchWorkItem?
+    private var monitors: [Any] = []
+    /// The spotlighted area in global screen coordinates, while a guide step waits for your click.
+    private var target: NSRect?
+    var onGuideClick: (() -> Void)?
 
-    func show(on screen: NSScreen, x: Double, y: Double, label: String) {
-        hide()
-        let frame = screen.frame
+    static func color(_ hex: String?) -> NSColor {
+        guard let hex, hex.count == 7, hex.hasPrefix("#"), let v = UInt32(hex.dropFirst(), radix: 16) else { return NSColor(srgbRed: 0.96, green: 0.71, blue: 0.27, alpha: 1) }
+        return NSColor(srgbRed: CGFloat(v >> 16 & 0xff) / 255, green: CGFloat(v >> 8 & 0xff) / 255, blue: CGFloat(v & 0xff) / 255, alpha: 1)
+    }
+
+    private func makePanel(_ frame: NSRect) -> (NSPanel, NSView) {
         let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .popUpMenu
+        // Panels hide when their app isn't frontmost — and ShuaCrew almost never is while Spark shows you something.
+        panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -283,77 +342,184 @@ final class PointerOverlay {
         let root = NSView(frame: NSRect(origin: .zero, size: frame.size))
         root.wantsLayer = true
         panel.contentView = root
+        return (panel, root)
+    }
+
+    /// A glowing comet from Spark (`from`, local coordinates) to the spot, on a gentle arc.
+    private func comet(in root: NSView, from: CGPoint?, to: CGPoint, color: NSColor) -> CFTimeInterval {
+        guard let from, hypot(from.x - to.x, from.y - to.y) > 40 else { return 0 }
+        let path = CGMutablePath()
+        path.move(to: from)
+        let mid = CGPoint(x: (from.x + to.x) / 2, y: max(from.y, to.y) + min(220, abs(from.x - to.x) * 0.35 + 60))
+        path.addQuadCurve(to: to, control: mid)
+        let duration = 0.55
+        for (i, size) in [14.0, 10, 7, 5].enumerated() {
+            let dot = CALayer()
+            dot.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+            dot.cornerRadius = size / 2
+            dot.backgroundColor = (i == 0 ? NSColor.white.blended(withFraction: 0.35, of: color) ?? color : color).cgColor
+            dot.opacity = 0
+            dot.shadowColor = color.cgColor; dot.shadowRadius = 10; dot.shadowOpacity = 1; dot.shadowOffset = .zero
+            root.layer?.addSublayer(dot)
+            let move = CAKeyframeAnimation(keyPath: "position")
+            move.path = path
+            move.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 0, 0.2, 1)
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = [0, 1 - Double(i) * 0.2, 1 - Double(i) * 0.2, 0]
+            fade.keyTimes = [0, 0.1, 0.85, 1]
+            let group = CAAnimationGroup()
+            group.animations = [move, fade]
+            group.duration = duration
+            group.beginTime = CACurrentMediaTime() + Double(i) * 0.035
+            group.isRemovedOnCompletion = true
+            dot.add(group, forKey: "fly")
+        }
+        return duration
+    }
+
+    private func pill(_ text: String, color: NSColor, badge: Int? = nil) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 13.5, weight: .semibold)
+        label.textColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.06, alpha: 1)
+        label.sizeToFit()
+        var x: CGFloat = 12
+        let pill = NSView()
+        pill.wantsLayer = true
+        if let badge {
+            let circle = NSTextField(labelWithString: "\(badge)")
+            circle.font = .systemFont(ofSize: 11.5, weight: .bold)
+            circle.textColor = color
+            circle.alignment = .center
+            circle.wantsLayer = true
+            circle.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.06, alpha: 0.9).cgColor
+            circle.layer?.cornerRadius = 10
+            circle.frame = NSRect(x: 6, y: 5, width: 20, height: 20)
+            pill.addSubview(circle)
+            x = 32
+        }
+        label.frame.origin = NSPoint(x: x, y: (30 - label.frame.height) / 2)
+        pill.addSubview(label)
+        pill.frame = NSRect(x: 0, y: 0, width: x + label.frame.width + 14, height: 30)
+        pill.layer?.backgroundColor = color.cgColor
+        pill.layer?.cornerRadius = 15
+        pill.layer?.shadowOpacity = 0.45; pill.layer?.shadowRadius = 12; pill.layer?.shadowOffset = CGSize(width: 0, height: -3)
+        return pill
+    }
+
+    /// Put `view` beside a spot, flipped inward near the screen's edges.
+    private func place(_ view: NSView, near rect: CGRect, in size: CGSize) {
+        var origin = NSPoint(x: rect.maxX + 14, y: rect.midY - view.frame.height / 2)
+        if origin.x + view.frame.width > size.width - 8 { origin.x = rect.minX - 14 - view.frame.width }
+        if origin.x < 8 { origin = NSPoint(x: rect.midX - view.frame.width / 2, y: rect.minY - view.frame.height - 12) }
+        origin.x = min(max(origin.x, 8), size.width - view.frame.width - 8)
+        origin.y = min(max(origin.y, 8), size.height - view.frame.height - 8)
+        view.frame.origin = origin
+    }
+
+    private func present(_ panel: NSPanel, root: NSView, delay: CFTimeInterval, pieces: [NSView], layers: [CALayer]) {
+        for p in pieces { p.alphaValue = 0; root.addSubview(p) }
+        for l in layers { l.opacity = 0; root.layer?.addSublayer(l) }
+        panel.orderFrontRegardless()
+        self.panel = panel
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.25; for p in pieces { p.animator().alphaValue = 1 } }
+            CATransaction.begin(); CATransaction.setAnimationDuration(0.25); for l in layers { l.opacity = 1 }; CATransaction.commit()
+        }
+    }
+
+    /// `from` is where Spark is, in global coordinates.
+    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil) {
+        hide()
+        let frame = screen.frame, color = Self.color(hex)
+        let (panel, root) = makePanel(frame)
         // Screenshot fractions are measured from the top-left; AppKit's origin is bottom-left.
         let point = CGPoint(x: x * frame.width, y: frame.height - y * frame.height)
-        let amber = NSColor(srgbRed: 1, green: 0.72, blue: 0.2, alpha: 1)
-
-        for delay in [0.0, 0.6] {
+        let delay = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: point, color: color)
+        var layers: [CALayer] = []
+        for (i, d) in [0.0, 0.6].enumerated() {
             let ring = CAShapeLayer()
             ring.path = CGPath(ellipseIn: CGRect(x: -22, y: -22, width: 44, height: 44), transform: nil)
             ring.position = point
             ring.fillColor = NSColor.clear.cgColor
-            ring.strokeColor = amber.cgColor
+            ring.strokeColor = color.cgColor
             ring.lineWidth = 3
-            ring.shadowColor = amber.cgColor
-            ring.shadowRadius = 8
-            ring.shadowOpacity = 0.9
-            ring.shadowOffset = .zero
-            root.layer?.addSublayer(ring)
+            ring.shadowColor = color.cgColor; ring.shadowRadius = 8; ring.shadowOpacity = 0.9; ring.shadowOffset = .zero
             let grow = CABasicAnimation(keyPath: "transform.scale")
-            grow.fromValue = 2.4; grow.toValue = 1
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0; fade.toValue = 1
-            let pulse = CAAnimationGroup()
-            pulse.animations = [grow, fade]
-            pulse.duration = 0.7
-            pulse.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.2)
-            pulse.beginTime = CACurrentMediaTime() + delay
-            pulse.fillMode = .backwards
-            if delay > 0 {
+            grow.fromValue = 2.4; grow.toValue = 1; grow.duration = 0.6
+            grow.beginTime = CACurrentMediaTime() + delay + d
+            grow.fillMode = .backwards
+            ring.add(grow, forKey: "in")
+            if i == 1 {
                 let breathe = CABasicAnimation(keyPath: "transform.scale")
-                breathe.fromValue = 1; breathe.toValue = 1.35
-                breathe.autoreverses = true; breathe.repeatCount = .infinity; breathe.duration = 0.8
-                breathe.beginTime = CACurrentMediaTime() + delay + 0.7
+                breathe.fromValue = 1; breathe.toValue = 1.35; breathe.autoreverses = true; breathe.repeatCount = .infinity; breathe.duration = 0.8
+                breathe.beginTime = CACurrentMediaTime() + delay + 1.2
                 ring.add(breathe, forKey: "breathe")
-                ring.opacity = 0.5
             }
-            ring.add(pulse, forKey: "in")
+            layers.append(ring)
         }
         let dot = CALayer()
-        dot.bounds = CGRect(x: 0, y: 0, width: 10, height: 10)
-        dot.cornerRadius = 5
-        dot.position = point
-        dot.backgroundColor = amber.cgColor
-        root.layer?.addSublayer(dot)
-
+        dot.bounds = CGRect(x: 0, y: 0, width: 10, height: 10); dot.cornerRadius = 5; dot.position = point; dot.backgroundColor = color.cgColor
+        layers.append(dot)
+        var pieces: [NSView] = []
         if !label.isEmpty {
-            let text = NSTextField(labelWithString: "✦ \(label)")
-            text.font = .systemFont(ofSize: 13, weight: .semibold)
-            text.textColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.06, alpha: 1)
-            text.sizeToFit()
-            let pill = NSView(frame: NSRect(x: 0, y: 0, width: text.frame.width + 22, height: 28))
-            pill.wantsLayer = true
-            pill.layer?.backgroundColor = amber.cgColor
-            pill.layer?.cornerRadius = 14
-            pill.layer?.shadowOpacity = 0.4
-            pill.layer?.shadowRadius = 10
-            pill.layer?.shadowOffset = CGSize(width: 0, height: -3)
-            text.frame.origin = NSPoint(x: 11, y: (28 - text.frame.height) / 2)
-            pill.addSubview(text)
-            // Beside the ring, flipped inward near the screen's edges so it's always readable.
-            var origin = NSPoint(x: point.x + 32, y: point.y - 14)
-            if origin.x + pill.frame.width > frame.width - 8 { origin.x = point.x - 32 - pill.frame.width }
-            origin.y = min(max(origin.y, 8), frame.height - 36)
-            pill.frame.origin = origin
-            root.addSubview(pill)
+            let p = pill("✦ \(label)", color: color)
+            place(p, near: CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44), in: frame.size)
+            pieces.append(p)
         }
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { $0.duration = 0.15; panel.animator().alphaValue = 1 }
-        self.panel = panel
+        present(panel, root: root, delay: delay, pieces: pieces, layers: layers)
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
         hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 6.5, execute: work)
+    }
+
+    /// One guided step: dim everything but the box, number it, say what to do, and wait for the click.
+    func guide(on screen: NSScreen, x: Double, y: Double, w: Double, h: Double, label: String, step: Int, color hex: String? = nil, from: NSPoint? = nil, waitForClick: Bool) {
+        hide()
+        let frame = screen.frame, color = Self.color(hex)
+        let (panel, root) = makePanel(frame)
+        let pad: CGFloat = 8
+        let box = CGRect(x: (x - w / 2) * frame.width - pad, y: frame.height - (y + h / 2) * frame.height - pad, width: w * frame.width + pad * 2, height: h * frame.height + pad * 2)
+        let delay = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: CGPoint(x: box.midX, y: box.midY), color: color)
+
+        // The spotlight: a soft dim over the whole screen with the box cut out, so your eye lands on it.
+        let dim = CAShapeLayer()
+        let path = CGMutablePath()
+        path.addRect(CGRect(origin: .zero, size: frame.size))
+        path.addRoundedRect(in: box, cornerWidth: 10, cornerHeight: 10)
+        dim.path = path
+        dim.fillRule = .evenOdd
+        dim.fillColor = NSColor.black.withAlphaComponent(0.32).cgColor
+        let outline = CAShapeLayer()
+        outline.path = CGPath(roundedRect: box, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        outline.fillColor = NSColor.clear.cgColor
+        outline.strokeColor = color.cgColor
+        outline.lineWidth = 2.5
+        outline.shadowColor = color.cgColor; outline.shadowRadius = 12; outline.shadowOpacity = 1; outline.shadowOffset = .zero
+        let pulse = CABasicAnimation(keyPath: "lineWidth")
+        pulse.fromValue = 2.5; pulse.toValue = 5; pulse.autoreverses = true; pulse.repeatCount = .infinity; pulse.duration = 0.9
+        outline.add(pulse, forKey: "pulse")
+        let p = pill(label.isEmpty ? "Here" : label, color: color, badge: step)
+        place(p, near: box, in: frame.size)
+        present(panel, root: root, delay: delay, pieces: [p], layers: [dim, outline])
+
+        // Your click on the box moves the guide on. Clicks pass straight through to the app underneath.
+        target = NSRect(x: frame.minX + box.minX, y: frame.minY + box.minY, width: box.width, height: box.height).insetBy(dx: -10, dy: -10)
+        if waitForClick {
+            let hit: (NSEvent) -> Void = { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, let target = self.target, target.contains(NSEvent.mouseLocation) else { return }
+                    self.target = nil
+                    self.hide()
+                    self.onGuideClick?()
+                }
+            }
+            if let global = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: hit) { monitors.append(global) }
+            if let local = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { hit($0); return $0 }) { monitors.append(local) }
+        }
+        // A step left alone quietly fades after two minutes; the guide stays open in Spark.
+        let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: work)
     }
 
     private func fadeOut() {
@@ -365,6 +531,9 @@ final class PointerOverlay {
 
     func hide() {
         hideWork?.cancel()
+        for m in monitors { NSEvent.removeMonitor(m) }
+        monitors.removeAll()
+        target = nil
         panel?.orderOut(nil)
         panel = nil
     }

@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Check, Eye, EyeOff, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Volume2, VolumeX, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { ArrowUp, Check, ChevronRight, Compass, Eye, EyeOff, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, followUp, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { upload, withAttachments } from "../lib/attachments";
-import { buddyPrompt, describeAction, nextSentences, parseActions, parsePoint, speakable, type Action } from "../lib/buddy";
+import { buddyPrompt, describeAction, guideFollowUp, nextSentences, parseActions, parseGuide, parsePoint, speakable, type Action, type GuideStep } from "../lib/buddy";
 import { saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
 import { saveNote, useNote } from "../lib/widgets";
 import { useCompanion } from "../lib/companion";
-import { SparkArt } from "../components/Companion";
+import { SparkCharacter } from "../components/SparkCharacter";
 import { Dictation } from "../components/Dictation";
 import { Markdown } from "../components/Markdown";
 import { SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
@@ -62,6 +62,8 @@ export function Buddy() {
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [speaking, setSpeaking] = useState(false);
   const [done, setDone] = useState<Record<number, Done[]>>({});
   const [bubble, setBubble] = useState<{ text: string; path: string } | null>(null);
+  // Guide mode: the step Spark is spotlighting right now, waiting for you to do it.
+  const [guide, setGuide] = useState<GuideStep | null>(null), [cheer, setCheer] = useState(false);
   const [convo, setConvo] = useState<{ run: string; first: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
   const input = useRef<HTMLTextAreaElement>(null), thread = useRef<HTMLDivElement>(null);
   const speech = useRef<SpeechQueue>(null as unknown as SpeechQueue); speech.current ??= new SpeechQueue();
@@ -74,9 +76,9 @@ export function Buddy() {
   useEffect(() => { speech.current.onSpeaking = setSpeaking; }, []);
   useEffect(() => { if (convo) void loadRun(convo.run); }, [convo, loadRun]);
   // The native panel sizes itself to what's showing, so the clear rest never blocks your clicks.
-  useEffect(() => { post({ type: "buddyExpand", open, peek: !open && !!bubble }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble]);
+  useEffect(() => { post({ type: "buddyExpand", open, peek: !open && (!!bubble || !!guide), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size]);
   useEffect(() => {
-    (window as unknown as { buddy: unknown }).buddy = { toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTab("chat"); setTimeout(() => input.current?.focus(), 80); } };
+    (window as unknown as { buddy: unknown }).buddy = { perform, toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTab("chat"); setTimeout(() => input.current?.focus(), 80); } };
   }, []);
 
   const messages = useMemo(() => {
@@ -111,7 +113,10 @@ export function Buddy() {
     const key = `${convo?.run}:${messages.length}`;
     const rest = nextSentences(last.text, streamId.current === key ? spokenUpto.current : 0, true);
     rest.chunks.forEach((c) => speech.current.say(c)); streamId.current = ""; spokenUpto.current = 0;
-    const p = parsePoint(last.text); if (p) post({ type: "buddyPoint", ...p });
+    const p = parsePoint(last.text); if (p) post({ type: "buddyPoint", ...p, color: prefs.color });
+    const g = parseGuide(last.text);
+    if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
+    else if (g) { setGuide(g); post({ type: "buddyGuide", ...g, color: prefs.color, wait: prefs.guide === "click" }); }
     const actions = parseActions(last.text), id = last.id;
     if (actions.length) void (async () => {
       const results: Done[] = [];
@@ -138,6 +143,19 @@ export function Buddy() {
   useEffect(() => { if (!bubble) return; const t = setTimeout(() => setBubble(null), 9000); return () => clearTimeout(t); }, [bubble]);
 
   const working = status === "running" || status === "planning" || status === "queued";
+  /** You did the step: look again and ask Spark for the next one, from what's really on screen now. */
+  const advance = async () => {
+    const step = guide; if (!step || !convo) return;
+    setGuide(null); post({ type: "buddyGuideStop" }); setBusy("Looking at what changed…"); setError("");
+    try {
+      await new Promise((r) => setTimeout(r, 700)); // let the app you clicked finish drawing
+      const shot = await capture(), att = await upload(shot.file);
+      await followUp(convo.run, withAttachments(guideFollowUp(step.label, { width: shot.width, height: shot.height }), [att]));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+  };
+  const advanceRef = useRef(advance); advanceRef.current = advance;
+  useEffect(() => { const on = () => void advanceRef.current(); window.addEventListener("shuacrew:guideClick", on); return () => window.removeEventListener("shuacrew:guideClick", on); }, []);
+  const stopGuide = () => { setGuide(null); post({ type: "buddyGuideStop" }); speech.current.stop(); };
   const ask = async (text = draft) => {
     const q = text.trim(); if (!q) return;
     speech.current.unlock(); speech.current.stop();
@@ -148,17 +166,17 @@ export function Buddy() {
       if (convo && status && !["failed", "cancelled"].includes(status)) {
         await followUp(convo.run, withAttachments(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point with a \`\`\`point block if it helps.` : q, atts));
       } else {
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen), atts), title: `Spark · ${q.slice(0, 60)}`, runtime: "claude", model: screen ? "claude-sonnet-5" : "claude-haiku-4-5", effort: "low", labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length }), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen ? "claude-sonnet-5" : "claude-haiku-4-5", effort: "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
     } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); }
   };
-  const reset = () => { speech.current.stop(); setConvo(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
+  const reset = () => { stopGuide(); setConvo(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
   const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
   const focusPct = timer ? 1 - remainingFocusMs(timer, now) / timer.durationMs : 0;
 
-  return <div className={`buddy ${open ? "is-open" : ""}`}>
+  return <div className={`buddy ${open ? "is-open" : ""}`} style={{ "--spark-color": prefs.color } as CSSProperties}>
     {open && <section className="buddy-card" aria-label="Ask Spark">
       <header>
         <strong>{prefs.nickname || "Spark"}</strong><span>{speaking ? "speaking…" : working ? "thinking…" : "on your Mac"}</span>
@@ -175,7 +193,7 @@ export function Buddy() {
         <div className="buddy-thread" ref={thread}>
           {!messages.length && <div className="buddy-hint">
             <p>Ask me anything, or tell me to do something. I can see your screen, point at things, and talk you through it.</p>
-            <div className="buddy-starters">{["Open VS Code and my projects folder", "What am I looking at?", "Start a 25 minute focus", "Search the web for SwiftUI Charts"].map((s) => <button key={s} type="button" onClick={() => void ask(s)}>{s}</button>)}</div>
+            <div className="buddy-starters">{["Show me how to do this", "What am I looking at?", "Open Activity Monitor", "Open VS Code and my projects folder", "Start a 25 minute focus"].map((s) => <button key={s} type="button" onClick={() => void ask(s)}>{s}</button>)}</div>
             <p><kbd>⌃⌥Space</kbd> brings me up from any app.</p>
           </div>}
           {messages.map((m, i) => { const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null, did = m.id ? done[m.id] : undefined; return <div key={i} className={`buddy-msg is-${m.who}`}>
@@ -188,6 +206,8 @@ export function Buddy() {
         </div>
         {error && <p className="buddy-error">{error}</p>}
       </>}
+      {guide && <div className="buddy-guide"><Compass size={14} /><span><b>Step {guide.step}</b> {guide.label}</span>
+        <button type="button" title={prefs.guide === "click" ? "Or just click the highlighted spot" : "Tell me when you've done it"} onClick={() => void advance()}>Done <ChevronRight size={12} /></button><button type="button" aria-label="Stop guiding" onClick={stopGuide}><X size={12} /></button></div>}
       <form className="buddy-input" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
         <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => !v)}>{see ? <Eye size={14} /> : <EyeOff size={14} />}</button>
         <textarea ref={input} rows={1} value={draft} placeholder={see ? "Ask, or tell me to do something…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
@@ -197,10 +217,12 @@ export function Buddy() {
       </form>
       {note && tab === "chat" && <p className="buddy-note" title={note}>📝 {note.split("\n")[0]}</p>}
     </section>}
-    {!open && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
-    <div className={`buddy-spark ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
+    {!open && guide && <div className="buddy-bubble is-guide"><span><Compass size={12} /> Step {guide.step}: {guide.label}</span>
+      <div><button type="button" onClick={() => void advance()}>Done <ChevronRight size={11} /></button><button type="button" onClick={stopGuide}>Stop</button></div></div>}
+    {!open && !guide && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
+    <div className={`buddy-spark size-${prefs.size} ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
       {timer && <svg className="buddy-focus" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" /><circle cx="50" cy="50" r="46" className="fill" style={{ strokeDashoffset: `${289 * (1 - focusPct)}` }} /></svg>}
-      <SparkArt preferences={prefs} /><i className="buddy-shadow" />
+      <SparkCharacter preferences={prefs} mood={cheer ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : "idle"} /><i className="buddy-shadow" />
       {approvals > 0 && <em className="buddy-badge">{approvals}</em>}
     </div>
   </div>;

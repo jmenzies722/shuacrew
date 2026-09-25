@@ -1,0 +1,28 @@
+.spark-character { position: relative; display: inline-grid; place-items: center; width: 84px; height: 84px; }
+.spark-character > svg, .spark-character > .spark-art { width: 100%; height: 100%; overflow: visible; }
+.ch-face .ch-eyes ellipse { fill: #15151a; transform-box: fill-box; transform-origin: center; animation: ch-blink 4.2s infinite; }
+.ch-spark .ch-face { display: none; }
+.ch-glint { fill: #fff; }
+.ch-smile { fill: none; stroke: #15151a; stroke-width: 2.4; stroke-linecap: round; }
+.ch-mouth { fill: #15151a; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.ch-aura { fill: var(--ch); opacity: .18; filter: blur(6px); animation: ch-aura 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.ch-orbit { fill: none; stroke: var(--ch-light); stroke-width: 1.4; opacity: .55; }
+.ch-moon { fill: var(--ch-light); animation: ch-orbit 5s linear infinite; transform-origin: 50px 52px; }
+.ch-ear { transform-box: fill-box; transform-origin: bottom center; animation: ch-ear 5s ease-in-out infinite; } .ch-ear.r { animation-delay: .4s; }
+.ch-jelly { transform-box: fill-box; transform-origin: bottom center; animation: ch-squish 2.6s ease-in-out infinite; }
+.ch-byte svg { animation: ch-float 3.2s ease-in-out infinite; }
+/* Moods */
+.mood-speaking .ch-smile { opacity: 0; } .mood-speaking .ch-mouth { opacity: 1; animation: ch-talk .26s ease-in-out infinite alternate; }
+.mood-thinking .ch-eyes { transform: translate(3px, -3px); transition: transform .3s; }
+.mood-thinking .ch-aura { animation-duration: 1s; }
+.mood-happy .ch-eyes ellipse { transform: scaleY(.35); animation: none; }
+.mood-happy svg, .mood-happy > .spark-art { animation: ch-hop .5s ease-in-out 2; }
+@keyframes ch-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+@keyframes ch-talk { from { transform: scaleY(.35); } to { transform: scaleY(1.1); } }
+@keyframes ch-aura { 50% { transform: scale(1.12); opacity: .3; } }
+@keyframes ch-orbit { to { transform: rotate(360deg); } }
+@keyframes ch-ear { 0%, 88%, 100% { transform: rotate(0); } 92% { transform: rotate(-9deg); } 96% { transform: rotate(4deg); } }
+@keyframes ch-squish { 50% { transform: scale(1.04, .95); } }
+@keyframes ch-float { 50% { transform: translateY(-4px); } }
+@keyframes ch-hop { 50% { transform: translateY(-10px); } }
+@media (prefers-reduced-motion: reduce) { .spark-character *, .spark-character svg { animation: none !important; } }

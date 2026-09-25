@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { buddyPrompt, nextSentences, parseActions, parsePoint, speakable, spoken } from "./buddy";
+import { buddyPrompt, guideFollowUp, nextSentences, parseActions, parseGuide, parsePoint, speakable, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
   const reply = 'Click Save.\n```point {"x": 0.82, "y": 0.07, "label": "Save button"}```';
@@ -28,4 +28,14 @@ it("speaks whole sentences as they stream, never code", () => {
   expect(b.chunks).toEqual(["Then I'll search it."]);
   expect(nextSentences("Done", 0, true).chunks).toEqual(["Done"]);
   expect(buddyPrompt("open safari", null)).toContain("open_app");
+});
+it("reads guide steps, clamps boxes, and knows when it's done", () => {
+  const r = 'Click Share at the top right.\n```guide {"x":0.9,"y":0.05,"w":0.05,"h":0.03,"label":"Click Share","step":2}```';
+  expect(parseGuide(r)).toEqual({ x: 0.9, y: 0.05, w: 0.05, h: 0.03, label: "Click Share", step: 2, done: false });
+  expect(parseGuide('```guide {"done": true}```')).toEqual({ done: true });
+  expect(parseGuide('```guide {"x":2,"y":0}```')).toBeNull();
+  expect(parseGuide('```guide {"x":0.5,"y":0.5,"w":3}```')).toMatchObject({ w: 0.04, h: 0.04, step: 1 });
+  expect(speakable(r)).toBe("Click Share at the top right.");
+  expect(buddyPrompt("how do I share", { width: 100, height: 50 }, { name: "Kit", tone: "coach", length: "brief" })).toContain("You are Kit");
+  expect(guideFollowUp("Click Share", { width: 10, height: 5 })).toContain("fresh screenshot");
 });

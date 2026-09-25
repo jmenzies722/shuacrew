@@ -53,7 +53,10 @@ fi
 INSTALL_STAGE=$(mktemp -d /Applications/.shuacrew-install.XXXXXX)
 ditto "$STAGE" "$INSTALL_STAGE/ShuaCrew.app"
 codesign --verify --strict "$INSTALL_STAGE/ShuaCrew.app"
-BACKUP="/Applications/ShuaCrew.backup-$(date +%Y%m%d-%H%M%S).app"
+# Backups live outside /Applications: copies there share the bundle id, and macOS may launch a stale one.
+BACKUPS="$HOME/.shuacrew/app-backups"
+mkdir -p "$BACKUPS"
+BACKUP="$BACKUPS/ShuaCrew-$(date +%Y%m%d-%H%M%S).app"
 if [ -e "$BACKUP" ]; then echo "Backup destination already exists: $BACKUP" >&2; exit 1; fi
 if [ -d /Applications/ShuaCrew.app ]; then
   mv /Applications/ShuaCrew.app "$BACKUP"
@@ -64,5 +67,10 @@ if ! mv "$INSTALL_STAGE/ShuaCrew.app" /Applications/ShuaCrew.app; then
   exit 1
 fi
 rmdir "$INSTALL_STAGE"
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+# Only the installed app answers to dev.shuacrew.mac; keep the two newest backups, unregistered.
+for old in "$BACKUPS"/ShuaCrew-*.app; do [ -d "$old" ] && "$LSREGISTER" -u "$old" 2>/dev/null || true; done
+ls -dt "$BACKUPS"/ShuaCrew-*.app 2>/dev/null | tail -n +3 | while read -r old; do rm -rf "$old"; done
+"$LSREGISTER" -f /Applications/ShuaCrew.app 2>/dev/null || true
 echo "installed /Applications/ShuaCrew.app"
 codesign --verify --strict /Applications/ShuaCrew.app
