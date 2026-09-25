@@ -90,11 +90,13 @@ function TopBar() {
   const bar = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const connection = useLive((s) => s.connection);
-  const crew = useLive((s) => s.crew);
+  // Narrow selectors: a streamed token must not re-render the top bar.
+  const crewApprovals = useLive((s) => s.crew.approvals), crewLimited = useLive((s) => s.crew.limited), crewToday = useLive((s) => s.crew.today);
+  const runningCount = useLive((s) => selectLiveRuns(s.crew).filter((r) => r.status === "running" || r.status === "planning").length);
   const setPalette = useLive((s) => s.setPalette);
-  const approvals = Object.values(crew.approvals).sort((a, b) => a.seq - b.seq);
-  const running = selectLiveRuns(crew).filter((r) => r.status === "running" || r.status === "planning").length;
-  const limited = Object.entries(crew.limited).filter(([, l]) => !l.credits); // "needs credits" isn't a window; the model picker says it
+  const approvals = Object.values(crewApprovals).sort((a, b) => a.seq - b.seq);
+  const running = runningCount;
+  const limited = Object.entries(crewLimited).filter(([, l]) => !l.credits); // "needs credits" isn't a window; the model picker says it
   useEffect(() => (bar.current ? watchTitleBar(bar.current) : undefined), []);
 
   return (
@@ -135,7 +137,7 @@ function TopBar() {
           <StatusGlyph tone={running ? "live" : "idle"} size={7} />
           <span className="tabular-nums text-fg-2">{running}</span> running
         </span>
-        <TokensToday tokens={crew.today.day === new Date().toISOString().slice(0, 10) ? crew.today.tokens : 0} />
+        <TokensToday tokens={crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0} />
       </span>
       <span
         className={`h-2 w-2 rounded-full ${connection === "live" ? "bg-ok" : connection === "connecting" ? "bg-amber" : "bg-bad"}`}
