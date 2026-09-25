@@ -135,6 +135,8 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [phase, setPhase] = useState<Phase>("off"), [level, setLevel] = useState(0);
   // Inside the app, the mic is only live while the app window is in front (the desktop panel covers the rest).
   const [focused, setFocused] = useState(() => typeof document !== "undefined" && document.hasFocus());
+  // A live mic never starts just because the app opened: inside the app it waits until you engage the panel this session.
+  const [armed, setArmed] = useState(!embedded);
   useEffect(() => { const f = () => setFocused(true), b = () => setFocused(false); window.addEventListener("focus", f); window.addEventListener("blur", b); return () => { window.removeEventListener("focus", f); window.removeEventListener("blur", b); }; }, []);
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
   const [convo, setConvo] = useState<{ run: string; first: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
@@ -328,11 +330,11 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     m.onLevel = setLevel;
     m.onTurn = (t) => void askRef.current(t);
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.stop(); };
-    if (prefs.conversation && open && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, open, embedded, focused]);
+    if (prefs.conversation && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
+  }, [prefs.conversation, open, embedded, focused, armed]);
   useEffect(() => () => mic.current.stop(), []);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
-  const toggleTalk = () => { speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
+  const toggleTalk = () => { setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
   const reset = () => { stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
   const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
   const focusPct = timer ? 1 - remainingFocusMs(timer, now) / timer.durationMs : 0;
@@ -340,7 +342,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const status$ = speaking ? "speaking" : phase === "hearing" ? "hearing you" : phase === "transcribing" ? "got it" : working || busy ? "thinking" : prefs.conversation && phase === "listening" ? "listening" : embedded ? "here with you" : "on your Mac";
   const close = () => { speech.current.stop(); if (embedded) onClose?.(); else setOpen(false); };
   const mood = cheer ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : "idle";
-  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""}`} aria-label={`Ask ${prefs.nickname || "Spark"}`}>
+  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""}`} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)}>
       <header className="spk-head">
         <span className="spk-avatar"><SparkCharacter preferences={prefs} mood={mood} size={30} /></span>
         <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span className={`spk-status is-${status$.split(" ")[0]}`}><VoiceBars level={speaking ? 0.6 : level} active={speaking || phase === "hearing" || (prefs.conversation && phase === "listening")} />{status$}</span></div>
