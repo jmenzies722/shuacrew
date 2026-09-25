@@ -166,7 +166,7 @@ function flush(): void {
     crew: {
       ...crew,
       runs,
-      rooms: Object.fromEntries(Object.entries(crew.rooms ?? {}).map(([id, room]) => [id, { ...room }])),
+      rooms: Object.fromEntries(Object.entries(crew.rooms ?? {}).filter(([, room]) => !room.archived).map(([id, room]) => [id, { ...room }])),
       approvals: approvalsChanged ? { ...crew.approvals } : crew.approvals,
       limited: { ...crew.limited },
       members: { ...crew.members },

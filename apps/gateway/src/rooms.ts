@@ -172,6 +172,14 @@ export class RoomCoordinator {
     for (const run of [...room.turns.map(t => t.runId), ...Object.values(room.assignments).map(a => a.runId)]) if (this.state.runs[run]) this.supervisor.cancel(run, "Room stopped by you");
     for (const a of Object.values(room.assignments)) if (["queued", "running"].includes(a.status)) this.store.append("room.assignment.failed", { room: roomId, id: a.id, reason: "Stopped by you; completed side effects are not undone" });
   }
+  /** Only a room with no live work can be archived, so nothing running disappears from view. */
+  archive(roomId: string) {
+    const room = this.require(roomId);
+    if (room.archived) return;
+    const live = [...room.turns.map(t => t.runId), ...Object.values(room.assignments).map(a => a.runId)].some(run => this.supervisor.isActive(run));
+    if (live || Object.values(room.assignments).some(a => ["queued", "running"].includes(a.status)) || Object.values(room.queue ?? {}).some(q => q.state === "pending")) throw new Error("Stop the room's work before archiving it");
+    this.store.append("room.archived", { room: roomId });
+  }
   retry(roomId: string, assignmentId: string, requestId: string) {
     const room = this.require(roomId), old = room.assignments[assignmentId];
     if (!old || old.status !== "failed") throw new Error("Only failed assignments can be retried");
@@ -210,8 +218,12 @@ export class RoomCoordinator {
           }
           continue;
         }
-        this.supervisor.launch({ ask: "Room request interrupted before launch. No automatic retry.", member: current.memberId, labels: ["crew-room", `room:${room.id}`], hold: true }, current.runId);
-        this.store.append("run.status", { status: "failed", reason: "Interrupted before launch; submit a new request" }, { run: current.runId });
+        // Recovery must be idempotent: a run already in the log is never re-created (that used to crash-loop boot).
+        if (this.store.forRun(current.runId).some(e => e.kind === "run.created")) continue;
+        try {
+          this.supervisor.launch({ ask: "Room request interrupted before launch. No automatic retry.", member: current.memberId, labels: ["crew-room", `room:${room.id}`], hold: true }, current.runId);
+          this.store.append("run.status", { status: "failed", reason: "Interrupted before launch; submit a new request" }, { run: current.runId });
+        } catch { this.store.append("room.paused", { room: room.id, paused: true }); }
         continue;
       }
       for (const a of Object.values(room.assignments)) {

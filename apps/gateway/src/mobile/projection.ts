@@ -24,7 +24,7 @@ export function projectMobile(store: EventStore, options: { installationId: stri
     if (b.costUsd !== undefined) { cost += b.costUsd; costRecords++; }
   }
   if (usage.records > 0 && costRecords === usage.records) usage.costUsd = cost;
-  const allRooms = Object.values(state.rooms).filter(r => selected.has(r.id));
+  const allRooms = Object.values(state.rooms).filter(r => selected.has(r.id) && !r.archived);
   const rooms: MobileSnapshot["rooms"] = allRooms.slice(0, 50).map(r => ({ id: r.id, title: clipped(r.title, 256) || "Untitled", paused: r.paused, messages: [], truncated: false }));
   const offers = options.offers.filter(o => ids.has(o.runId)).slice(0, 50);
   const snapshot: MobileSnapshot = { version: 1, installationId: options.installationId, deviceId: options.deviceId, sequence: store.head, observedAt: options.now, rooms, runs, offers, usage, truncated: visible.length > 100 || allRooms.length > 50 || offers.length !== options.offers.length };

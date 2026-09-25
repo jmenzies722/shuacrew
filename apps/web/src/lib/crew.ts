@@ -14,8 +14,9 @@ export function runRepo(run: RunView, runs: Record<string, RunView>): string | u
  * `runs` is the full, unscoped run map so a child's parent can be looked up even when it's out of scope or archived.
  */
 export function isTopLevelWork(run: RunView, runs: Record<string, RunView>): boolean {
-  // TODO(human): decide how a child run (delegation/subagent) whose parent is archived or missing should appear.
-  // Placeholder keeps today's Board behaviour: every child is hidden.
+  // A child (delegation/subagent) belongs to its parent's thread. In the full run map a parent is always created
+  // before its children, and the projection deletes archived runs — so a missing parent means it was archived,
+  // and archiving a session hides its whole thread.
   void runs;
   return !run.parent;
 }

@@ -360,3 +360,25 @@ it("recovery never replays interrupted room turns and reconciles reserved work o
   expect(() => recovered.delegate(root.runId, { requestId: randomUUID(), memberId: "eli", task: "Again" })).toThrow();
   expect(w.store.forRun(root.runId).filter(e => e.kind === "run.followup")).toHaveLength(0);
 });
+it("archives a room only once its work has settled, and keeps it archived after restart", async () => {
+  const w = world(), root = w.rooms.send(w.room.id, randomUUID(), "Public archive check");
+  await tick();
+  expect(() => w.rooms.archive(w.room.id)).toThrow(/Stop the room's work/);
+  w.captured.get(root.runId)!.finish(); await tick();
+  w.rooms.archive(w.room.id); w.rooms.archive(w.room.id);
+  expect([...w.store.read(0)].filter(e => e.kind === "room.archived")).toHaveLength(1);
+  expect(w.rooms.get(w.room.id)).toMatchObject({ archived: true, stopped: true, paused: true });
+  w.rooms.close();
+  const restored = new RoomCoordinator(w.store, w.supervisor, w.crew, w.runtimes);
+  cleanup.push(() => restored.close());
+  expect(() => restored.recover()).not.toThrow();
+  expect(restored.get(w.room.id)?.archived).toBe(true);
+});
+it("recovery never re-creates a run the log already has (used to crash-loop boot)", async () => {
+  const w = world(), root = w.rooms.send(w.room.id, randomUUID(), "Public recovery check");
+  await tick(); w.captured.get(root.runId)!.finish(); await tick();
+  // The coordinator's view lost the run, but the log still has run.created for it.
+  delete (w.rooms as unknown as { state: { runs: Record<string, unknown> } }).state.runs[root.runId];
+  expect(() => w.rooms.recover()).not.toThrow();
+  expect(w.store.forRun(root.runId).filter(e => e.kind === "run.created")).toHaveLength(1);
+});

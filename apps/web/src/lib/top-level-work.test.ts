@@ -14,3 +14,10 @@ describe("isTopLevelWork", () => {
     expect(isTopLevelWork(runs.c, runs)).toBe(false);
   });
 });
+
+describe("isTopLevelWork with an archived parent", () => {
+  it("hides the children of an archived session (the projection drops archived runs)", () => {
+    const runs = { c: run("c", { parent: "archived-parent" }) };
+    expect(isTopLevelWork(runs.c, runs)).toBe(false);
+  });
+});

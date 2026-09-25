@@ -22,6 +22,8 @@ export const roomBodies = {
   "room.message": message,
   "room.paused": z.object({ room: id, paused: z.boolean() }),
   "room.stopped": z.object({ room: id }),
+  /** Hidden from every view; history stays in the audit log. Archiving also stops the room. */
+  "room.archived": z.object({ room: id }),
   "room.assignment.requested": assignment,
   "room.assignment.started": z.object({ room: id, id }),
   "room.assignment.completed": z.object({ room: id, id, output: z.string().max(16000), artifacts: z.array(id).max(100) }),
@@ -34,7 +36,7 @@ export interface RoomAssignment extends z.infer<typeof assignment> {
 }
 export interface RoomView extends z.infer<typeof RoomInputSchema> {
   base?: string;
-  id: string; paused: boolean; stopped: boolean; createdAt: number; updatedAt: number;
+  id: string; paused: boolean; stopped: boolean; archived?: boolean; createdAt: number; updatedAt: number;
   turns: Array<z.infer<typeof turn> & { summaryRequested?: boolean }>;
   messages: Array<z.infer<typeof message> & { seq: number; at: number }>;
   assignments: Record<string, RoomAssignment>;
@@ -59,6 +61,7 @@ export function applyRoomEvent(rooms: Record<string, RoomView>, e: AnyEvent): vo
       break;
     case "room.paused": room.paused = e.body.paused; break;
     case "room.stopped": room.stopped = true; room.paused = true; break;
+    case "room.archived": room.archived = true; room.stopped = true; room.paused = true; break;
     case "room.summary-requested": {
       const t = room.turns.find(t => t.requestId === e.body.requestId && t.runId === e.body.runId); if (t) t.summaryRequested = true; break;
     }
