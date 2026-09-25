@@ -1,3 +1,4 @@
+import { noEmoji } from "./no-emoji";
 /** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
 export interface Point { x: number; y: number; label: string }
 
@@ -26,7 +27,13 @@ export type Action =
   | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "volume" | "volume_up" | "volume_down" | "mute"; query?: string; app?: string; level?: number }
   | { type: "system"; what: "dark_mode" | "sleep_display"; on?: boolean }
   | { type: "shortcut"; name: string }
-  | { type: "settings"; changes: SparkChanges };
+  | { type: "settings"; changes: SparkChanges }
+  | { type: "learn"; topic?: string; drill?: boolean }
+  | { type: "venture"; name: string; pitch?: string; validate?: boolean }
+  | { type: "playbook"; playbook: string; idea?: string; venture?: string }
+  | { type: "remember"; text: string };
+/** The playbooks Spark can start by id (the built-in library). */
+export const PLAYBOOKS = ["validate-idea", "landing-page", "mvp", "launch", "growth-review"] as const;
 
 /** What you can change about Spark just by asking it ("talk faster", "be the fox", "call yourself Nova"). */
 export interface SparkChanges {
@@ -158,6 +165,10 @@ function toAction(v: unknown): Action | null {
     case "system": return o.what === "dark_mode" || o.what === "sleep_display" ? { type: "system", what: o.what, ...(typeof o.on === "boolean" ? { on: o.on } : {}) } : null;
     case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
     case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
+    case "learn": { const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
+    case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
+    case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
+    case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
     default: return null;
   }
 }
@@ -181,6 +192,10 @@ export function describeAction(a: Action): string {
     case "system": return a.what === "dark_mode" ? "Dark mode" : "Sleep display";
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
+    case "learn": return a.drill ? "Quiz drill" : `Course: ${a.topic}`;
+    case "venture": return `Venture: ${a.name}`;
+    case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
+    case "remember": return "Taught the crew";
   }
 }
 
@@ -217,7 +232,7 @@ export function actFollowUp(did: string, ok: boolean, screen: { width: number; h
 }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return text.replace(/```(point|do|guide|draw|act)[\s\S]*?(```|$)/gi, "").trim(); }
+export function speakable(text: string) { return noEmoji(text).replace(/```(point|do|guide|draw|act)[\s\S]*?(```|$)/gi, "").trim(); }
 
 /** Plain words for the voice: no markdown, no code, no link targets. */
 export function spoken(text: string) {
@@ -258,13 +273,22 @@ const DESIGN = [
 export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[] } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "") {
   const design = isDesign(question);
   return [
-    `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Do not use tools except to read the attached screenshot.`,
+    `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read the attached screenshot or to search their ShuaCrew library and crew.`,
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
     '```do [{"type":"open_app","name":"Safari"}]```',
     'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
     'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
+    [
+      "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, learning, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
+      'Learn anything: ```do [{"type":"learn","topic":"Kubernetes"}]``` · quiz what is due: ```do [{"type":"learn","drill":true}]```',
+      'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
+      'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
+      'Build, code, research, anything multi-step: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```',
+      '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
+      "Use the ShuaCrew tools (search_library, read_library, list_crew) to look up what they have already made or know. After acting, say in one line what is happening and what comes next.",
+    ].join("\n"),
     'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
-    "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac.",
+    "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
     persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
     persona.control && persona.control !== "off" && screen
       ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something), do it ONE step per reply: a short sentence, then \`\`\`act {"type":"click","x":0-1,"y":0-1,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`

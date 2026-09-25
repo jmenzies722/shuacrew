@@ -58,14 +58,40 @@ function run(file: string, args: string[], timeoutMs = 300_000, signal?: AbortSi
 }
 
 /** Speech → text. `timestamps` keeps "[00:01.2 → 00:04.0]" markers (for video). */
-export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number } = {}, t = tools()): Promise<string> {
+/** Whisper's vocabulary hint: the names and terms you say, so it spells them right. Short and comma-separated works best. */
+export function vocabulary(words: string[]): string {
+  const base = ["ShuaCrew", "Spark", "Shua", "Claude", "Codex", "crew", "session", "playbook", "venture", "Kubernetes", "TypeScript", "Swift", "GitHub", "deploy", "pull request", "API"];
+  const seen = new Set<string>(), out: string[] = [];
+  for (const w of [...words, ...base]) { const k = w.trim(); if (k && k.length <= 40 && !seen.has(k.toLowerCase())) { seen.add(k.toLowerCase()); out.push(k); } }
+  return out.slice(0, 60).join(", ");
+}
+
+/** A rough sound-alike key: case, h's, doubled letters and vowel colour don't matter ("Ria" ~ "Rhea", "Shuaa" ~ "Shua"). */
+const soundKey = (w: string) => w.toLowerCase().replace(/[^a-z]/g, "").replace(/h/g, "").replace(/(.)\1+/g, "$1").replace(/[aeiouy]+/g, "a");
+
+/**
+ * Snap names Whisper almost got right to their exact spelling. Only capitalized words mid-sentence (a name,
+ * not the first word of a sentence) are touched, so everyday words are never "corrected".
+ */
+export function fixNames(text: string, names: string[]): string {
+  const byKey = new Map<string, string>();
+  for (const n of names) { const k = soundKey(n); if (k.length >= 2 && !/\s/.test(n)) byKey.set(k, n); }
+  return text.replace(/(^|[.!?]\s+|\s)([A-Z][A-Za-z']+)/g, (all, lead: string, word: string, offset: number) => {
+    const sentenceStart = offset === 0 || /[.!?]\s+$/.test(lead);
+    if (sentenceStart) return all;
+    const exact = byKey.get(soundKey(word));
+    return exact && exact !== word ? lead + exact : all;
+  });
+}
+
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string } = {}, t = tools()): Promise<string> {
   options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);
   try {
     await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], options.timeoutMs ?? 120_000, options.signal);
     const threads = String(Math.max(2, Math.min(8, os.cpus().length - 2)));
-    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
+    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", "en", "-bs", "5", ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
     return out
       .split("\n")
       .map((l) => l.replace(/^\[(\d\d:\d\d:\d\d)\.\d+ --> (\d\d:\d\d:\d\d)\.\d+\]\s*/, (_, a: string, b: string) => `[${a.replace(/^00:/, "")}–${b.replace(/^00:/, "")}] `).trim())

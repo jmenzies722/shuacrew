@@ -593,7 +593,7 @@ final class PointerOverlay {
         layers.append(dot)
         var pieces: [NSView] = []
         if !label.isEmpty {
-            let p = pill("✦ \(label)", color: color)
+            let p = pill(label, color: color)
             place(p, near: CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44), in: frame.size)
             pieces.append(p)
         }

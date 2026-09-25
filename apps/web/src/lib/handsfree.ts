@@ -37,17 +37,33 @@ export function meaningful(text: string) {
   return !/^(you|thank you|thanks|thanks for watching|bye|okay|ok|um+|uh+|hmm+|\[.*\]|\(.*\))$/.test(t);
 }
 
+/** 16 kHz mono 16-bit WAV from float samples at `rate`: what Whisper is trained on, and small to upload. */
+export function toWav(chunks: Float32Array[], rate: number, target = 16000): Blob {
+  const total = chunks.reduce((n, c) => n + c.length, 0), ratio = rate / target, out = new Int16Array(Math.floor(total / ratio));
+  let i = 0, carry = 0, acc = 0, count = 0;
+  for (const c of chunks) for (const v of c) {
+    acc += v; count++; carry++;
+    if (carry >= ratio) { const x = Math.max(-1, Math.min(1, acc / count)); if (i < out.length) out[i++] = x < 0 ? x * 0x8000 : x * 0x7fff; carry -= ratio; acc = 0; count = 0; }
+  }
+  const buf = new ArrayBuffer(44 + i * 2), d = new DataView(buf);
+  const w = (o: number, t: string) => { for (let k = 0; k < t.length; k++) d.setUint8(o + k, t.charCodeAt(k)); };
+  w(0, "RIFF"); d.setUint32(4, 36 + i * 2, true); w(8, "WAVE"); w(12, "fmt "); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+  d.setUint32(24, target, true); d.setUint32(28, target * 2, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, "data"); d.setUint32(40, i * 2, true);
+  new Int16Array(buf, 44, i).set(out.subarray(0, i));
+  return new Blob([buf], { type: "audio/wav" });
+}
+
 export type Phase = "off" | "starting" | "listening" | "hearing" | "transcribing" | "error";
 
 export class HandsFree {
   private stream?: MediaStream;
   private ctx?: AudioContext;
-  private rec?: MediaRecorder;
-  private chunks: Blob[] = [];
-  private raf = 0;
+  private node?: ScriptProcessorNode;
   private state = vadStart();
-  private last = 0;
   private paused = false;
+  /** The last ~0.4 s before speech starts, so the first word is never clipped. */
+  private preroll: Float32Array[] = [];
+  private turn: Float32Array[] | null = null;
   /** Spark is talking: listen harder (echo), and a real interruption stops it. */
   speaking = false;
   onPhase?: (p: Phase, detail?: string) => void;
@@ -61,67 +77,49 @@ export class HandsFree {
     if (this.stream) return;
     this.onPhase?.("starting");
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    } catch (e) { this.onPhase?.("error", (e as Error).message.includes("denied") || (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone."); return; }
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    } catch (e) { this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone."); return; }
     this.ctx = new AudioContext();
-    const analyser = this.ctx.createAnalyser();
-    analyser.fftSize = 1024;
-    this.ctx.createMediaStreamSource(this.stream).connect(analyser);
-    const buf = new Float32Array(analyser.fftSize);
-    this.state = vadStart(); this.last = performance.now();
-    const tick = () => {
-      analyser.getFloatTimeDomainData(buf);
-      let sum = 0; for (const v of buf) sum += v * v;
-      const rms = Math.sqrt(sum / buf.length), now = performance.now(), dt = now - this.last; this.last = now;
+    const source = this.ctx.createMediaStreamSource(this.stream);
+    this.node = this.ctx.createScriptProcessor(2048, 1, 1);
+    const frameMs = (2048 / this.ctx.sampleRate) * 1000, keep = Math.ceil(400 / frameMs);
+    this.state = vadStart(); this.preroll = []; this.turn = null;
+    this.node.onaudioprocess = (e) => {
+      const data = new Float32Array(e.inputBuffer.getChannelData(0));
+      let sum = 0; for (const v of data) sum += v * v;
+      const rms = Math.sqrt(sum / data.length);
       this.onLevel?.(Math.min(1, rms * 12));
-      if (!this.paused) {
-        const r = vadStep(this.state, rms, dt, VAD, this.speaking);
-        this.state = r.state;
-        if (r.event === "start") this.begin();
-        else if (r.event === "end") this.finish(true);
-        else if (r.event === "discard") this.finish(false);
-      }
-      this.raf = requestAnimationFrame(tick);
+      if (this.paused) return;
+      if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > keep) this.preroll.shift(); }
+      const r = vadStep(this.state, rms, frameMs, VAD, this.speaking);
+      this.state = r.state;
+      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.turn = [...this.preroll]; this.preroll = []; this.onPhase?.("hearing"); }
+      else if (r.event === "end") void this.finish(true);
+      else if (r.event === "discard") void this.finish(false);
     };
-    tick();
+    source.connect(this.node);
+    this.node.connect(this.ctx.destination); // required for onaudioprocess to run; the node outputs silence
     this.onPhase?.("listening");
   }
 
-  private begin() {
-    if (!this.stream) return;
-    if (this.speaking) this.onBargeIn?.();
-    const mime = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
-    this.rec = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
-    this.chunks = [];
-    this.rec.ondataavailable = (e) => { if (e.data.size) this.chunks.push(e.data); };
-    this.rec.start();
-    this.onPhase?.("hearing");
-  }
-
-  private finish(keep: boolean) {
-    const rec = this.rec; this.rec = undefined;
-    if (!rec || rec.state === "inactive") { this.onPhase?.("listening"); return; }
-    rec.onstop = async () => {
-      if (!keep || !this.chunks.length) { this.onPhase?.("listening"); return; }
-      this.paused = true; this.onPhase?.("transcribing");
-      try {
-        const blob = new Blob(this.chunks, { type: rec.mimeType || "audio/webm" });
-        const r = await fetch(`/api/transcribe?voice=1&name=turn.${rec.mimeType.includes("mp4") ? "m4a" : "webm"}`, { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: blob });
-        const { text = "", error } = await r.json() as { text?: string; error?: string };
-        if (error) this.onPhase?.("error", error);
-        else if (meaningful(text)) this.onTurn?.(text.trim());
-      } catch { this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
-      finally { this.paused = false; if (this.stream) this.onPhase?.("listening"); }
-    };
-    rec.stop();
+  private async finish(keep: boolean) {
+    const turn = this.turn; this.turn = null;
+    if (!keep || !turn?.length || !this.ctx) { this.onPhase?.("listening"); return; }
+    this.paused = true; this.onPhase?.("transcribing");
+    try {
+      const r = await fetch("/api/transcribe?voice=1&name=turn.wav", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, this.ctx.sampleRate) });
+      const { text = "", error } = await r.json() as { text?: string; error?: string };
+      if (error) this.onPhase?.("error", error);
+      else if (meaningful(text)) this.onTurn?.(text.trim());
+    } catch { this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
+    finally { this.paused = false; if (this.stream) this.onPhase?.("listening"); }
   }
 
   stop() {
-    cancelAnimationFrame(this.raf);
-    if (this.rec && this.rec.state !== "inactive") { this.rec.onstop = null; this.rec.stop(); }
+    if (this.node) { this.node.onaudioprocess = null; this.node.disconnect(); }
     this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close().catch(() => {});
-    this.stream = undefined; this.ctx = undefined; this.rec = undefined;
+    this.stream = undefined; this.ctx = undefined; this.node = undefined; this.turn = null; this.preroll = [];
     this.onPhase?.("off");
   }
 }

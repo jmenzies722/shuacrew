@@ -28,7 +28,7 @@ import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
 import type { Terminals } from "./terminals.js";
 import { MAX_UPLOAD, type Uploads } from "./uploads.js";
-import { status as mediaStatus, transcribe } from "./media.js";
+import { fixNames, status as mediaStatus, transcribe, vocabulary } from "./media.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import { Specs } from "./specs.js";
@@ -185,7 +185,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       const deadline = request.query.voice === "1" ? setTimeout(cancel, 45_000) : undefined;
       writeFileSync(file, request.body, { mode: 0o600 });
       try {
-        return { text: await transcribe(file, { signal: abort.signal, timeoutMs: request.query.voice === "1" ? 45_000 : undefined }) };
+        // Your crew's and ventures' names spell right when Whisper knows to expect them.
+        const names = [...Object.values(state.members).map((m) => m.name), ...Object.values(state.ventures).map((v) => v.name)];
+        const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.voice === "1" ? 45_000 : undefined, prompt: vocabulary(names) });
+        return { text: fixNames(heard, [...names, "ShuaCrew", "Shua", "Codex", "Claude"]) };
       } catch (error) {
         return reply.code(422).send({ error: (error as Error).message });
       } finally {

@@ -29,3 +29,13 @@ it("drops whisper's silence hallucinations", () => {
   expect(meaningful("[BLANK_AUDIO]")).toBe(false);
   expect(meaningful("open my projects folder")).toBe(true);
 });
+
+it("encodes a 16 kHz mono WAV from 48 kHz audio", async () => {
+  const { toWav } = await import("./handsfree");
+  const second = new Float32Array(48000).map((_, i) => Math.sin(i / 10) * 0.5);
+  const wav = toWav([second], 48000);
+  const head = new DataView(await wav.arrayBuffer());
+  expect(head.getUint32(24, true)).toBe(16000);          // sample rate
+  expect(head.getUint16(22, true)).toBe(1);              // mono
+  expect(head.getUint32(40, true)).toBe(16000 * 2);      // one second of 16-bit samples
+});

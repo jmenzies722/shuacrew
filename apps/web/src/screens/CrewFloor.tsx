@@ -276,7 +276,7 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
         <span className="mono">{formatTokens([run, ...kids].reduce((n, r) => n + r.usage.inputTokens + r.usage.outputTokens, 0))} tok</span>
         <span>{[run, ...kids].reduce((n, r) => n + r.toolCalls, 0)} steps</span>
         {run.files.length > 0 && <span className="text-amber">{run.files.length} files</span>}
-        {lastCheck && <span className={lastCheck.passed ? "text-ok" : "text-bad"}>{lastCheck.passed ? "✓ checks" : "✗ checks"}</span>}
+        {lastCheck && <span className={lastCheck.passed ? "text-ok" : "text-bad"}>{lastCheck.passed ? "checks passed" : "checks failed"}</span>}
         {run.usage.contextUsed && run.usage.contextLimit ? <ContextBar used={run.usage.contextUsed} limit={run.usage.contextLimit} /> : null}
       </div>
     </article>

@@ -1,3 +1,4 @@
+import { Check, X } from "lucide-react";
 import type { RunView } from "@shuacrew/core/projections";
 import { Chip, Gauge, StatusPill, formatTokens, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
@@ -60,7 +61,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
           {subagents > 0 && <Chip mono>{subagents} subagents</Chip>}
           {run.checks.length > 0 && (
             <Chip tone={run.checks[run.checks.length - 1]?.passed ? "ok" : "bad"} mono>
-              {run.checks[run.checks.length - 1]?.passed ? "✓" : "✗"} checks
+              {run.checks[run.checks.length - 1]?.passed ? <Check size={11} className="inline" /> : <X size={11} className="inline" />} checks
             </Chip>
           )}
           {run.files.length > 0 && <Chip mono>{run.files.length} files</Chip>}

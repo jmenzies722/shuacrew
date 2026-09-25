@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowUp, AudioLines, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, AudioLines, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, followUp, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -13,7 +13,6 @@ import { saveNote, useNote } from "../lib/widgets";
 import { parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
-import { Dictation } from "../components/Dictation";
 import { Markdown } from "../components/Markdown";
 import { SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
 import { useNowPlaying } from "../components/NowPlaying";
@@ -60,6 +59,16 @@ function applyChanges(c: SparkChanges) {
 /** Mac actions go to the app (which checks them again); the rest happen right here. */
 function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
+  if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
+    .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {
+    if (a.validate) await api("/api/plays", { body: { playbook: "validate-idea", inputs: { idea: a.pitch || a.name }, venture: v.id } });
+    post({ type: "buddyOpen", path: `/ventures/${v.id}` });
+    return { ok: true, message: a.validate ? `${a.name}: validating now` : `${a.name} created` };
+  }, (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "playbook") return api<{ id: string }>("/api/plays", { body: { playbook: a.playbook, inputs: a.idea ? { idea: a.idea } : {}, ...(a.venture ? { venture: a.venture } : {}) } })
+    .then((p) => { post({ type: "buddyOpen", path: `/plays/${p.id}` }); return { ok: true, message: `${a.playbook.replace(/-/g, " ")} started` }; }, (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => ({ ok: true, message: "Every agent will know that" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
   if (a.type === "note") { const n = localStorage.getItem("shuacrew.widgets.note") ?? ""; saveNote(n ? `${n}\n${a.text}` : a.text); return Promise.resolve({ ok: true, message: "Added to your note" }); }
   if (a.type === "crew") return launchRun({ ask: a.ask }).then((r) => ({ ok: true, message: "The crew is on it", run: r.id }), (e: Error) => ({ ok: false, message: e.message }));
@@ -283,9 +292,9 @@ export function Buddy() {
       {tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={ctx} /></div> : <>
         <div className="buddy-thread" ref={thread}>
           {!messages.length && !brief && <div className="buddy-hint">
-            <p>Ask me anything, or tell me to do something. I can see your screen, point at things, and talk you through it.</p>
-            <div className="buddy-starters">{["What's going on?", "Put on rain", "Start a 25", "Show me how to do this", "What am I looking at?", "Open Activity Monitor"].map((s) => <button key={s} type="button" onClick={() => void ask(s)}>{s}</button>)}</div>
-            <p><kbd>⌃⌥Space</kbd> brings me up from any app.</p>
+            <p>Your assistant for everything: I can see your screen and use your Mac, teach you anything, turn ideas into ventures, and hand real work to your crew.</p>
+            <div className="buddy-starters">{["What's going on?", "Teach me Kubernetes", "Help me make money with an idea", "Show me how to do this", "Open Activity Monitor", "Put on rain"].map((s) => <button key={s} type="button" onClick={() => void ask(s)}>{s}</button>)}</div>
+            <p className="buddy-tip"><AudioLines size={12} /> Tap the waveform and just talk. <kbd>⌃⌥Space</kbd> from any app.</p>
           </div>}
           {brief && !messages.length && <>
             <div className="buddy-msg is-you">{brief.q}</div>
@@ -313,10 +322,9 @@ export function Buddy() {
         <textarea ref={input} rows={1} value={draft} placeholder={see ? "Ask, or tell me to do something…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") { speech.current.stop(); setOpen(false); } }} aria-label="Ask Spark" />
         <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={14} /></button>
-        {!prefs.conversation && <Dictation available onText={(t) => void ask(t)} />}
         <button className="buddy-send" disabled={!!busy || !draft.trim()} aria-label="Ask"><ArrowUp size={15} /></button>
       </form>
-      {note && tab === "chat" && <p className="buddy-note" title={note}>📝 {note.split("\n")[0]}</p>}
+      {note && tab === "chat" && <p className="buddy-note" title={note}><StickyNote size={11} /> {note.split("\n")[0]}</p>}
     </section>}
     {!open && guide && <div className="buddy-bubble is-guide"><span><Compass size={12} /> Step {guide.step}: {guide.label}</span>
       <div><button type="button" onClick={() => void advance()}>Done <ChevronRight size={11} /></button><button type="button" onClick={stopGuide}>Stop</button></div></div>}

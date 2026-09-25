@@ -61,7 +61,7 @@ export function PlayingTile({ ctx }: { ctx: WidgetCtx }) {
         : <i className={`np-disc mood-${track.mood} is-lg`} />}
     </button>
     <div className="np-meta">
-      <small>{track.label}{age ? ` · ${age}` : ""}{cost ? ` · ${cost}` : ""}{track.waiting ? ` · ${track.waiting} waiting` : ""}</small>
+      <small>{track.id ? track.label : "Now playing"}{age ? ` · ${age}` : ""}{cost ? ` · ${cost}` : ""}{track.waiting ? ` · ${track.waiting} waiting` : ""}</small>
       <strong>{track.title}</strong>
       <span>{track.who || (track.id ? "the crew" : "nothing on")}{next ? ` · next ${next.title || "up"}` : ""}</span>
     </div>
