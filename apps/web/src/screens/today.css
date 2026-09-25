@@ -1,0 +1,20 @@
+.today-approval { padding: 12px 14px; }
+.today-approval-actions { display: flex; gap: 6px; margin-top: 9px; }
+.today-approval-actions > * { padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--text-2); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, color .15s; }
+.today-approval-actions > *:hover { color: var(--text); }
+.today-approval-actions .is-allow { color: var(--on-accent, #111); background: var(--amber); box-shadow: none; }
+.today-approval-actions > *:disabled { opacity: .45; }
+.today-lanes { margin-top: 26px; }
+.today-lanes-box { padding: 14px 16px 10px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.today-lane { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 12px; height: 26px; }
+.today-lane-who { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-lane-track { position: relative; height: 12px; border-radius: 999px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.today-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; background: var(--ok, #34d399); opacity: .85; transition: opacity .15s, transform .15s; }
+.today-bar:hover { opacity: 1; transform: scaleY(1.35); }
+.today-bar.is-live { background: var(--amber); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent); animation: today-live 1.6s ease-in-out infinite; }
+.today-bar.is-failed, .today-bar.is-cancelled { background: var(--bad); }
+.today-bar.is-reviewing { background: #60a5fa; }
+.today-axis { position: relative; height: 18px; margin: 6px 0 0 108px; font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.today-axis span { position: absolute; transform: translateX(-50%); } .today-axis .is-now { right: 0; transform: none; color: var(--amber); }
+@keyframes today-live { 50% { opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .today-bar.is-live { animation: none; } }

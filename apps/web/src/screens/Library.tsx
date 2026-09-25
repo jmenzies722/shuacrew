@@ -1,3 +1,4 @@
+import "./library-extra.css";
 import type { ArtifactView, KnowledgeView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
@@ -106,7 +107,7 @@ export function Library() {
                 </div>
               )}
             </div>
-            {tab === "made" && crate.length > 0 && !query && (
+            {tab === "made" && crate.length > 0 && !query && shown.length > 9 && (
               <div className="lib-crate" aria-label="Recently played">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-[.14em] text-amber">Recently played</div>
                 <div className="sd-crate">
@@ -158,7 +159,9 @@ function ArtifactCard({ artifact: a, onOpen }: { artifact: ArtifactView; onOpen:
   return (
     <button onClick={onOpen} className="art-card" style={{ "--kind": K.tone } as React.CSSProperties}>
       <div className="art-thumb">
-        {a.kind === "image" ? <img src={`/api/library/artifacts/${a.id}/raw`} alt="" loading="lazy" /> : <K.icon size={26} strokeWidth={1.6} />}
+        {a.kind === "image" ? <img src={`/api/library/artifacts/${a.id}/raw`} alt="" loading="lazy" />
+          : a.summary ? <div className="art-paper" aria-hidden="true"><b>{a.title}</b><p>{a.summary}</p></div>
+          : <K.icon size={26} strokeWidth={1.6} />}
         <span className="art-kind">{K.label}</span>
         {a.version > 1 && <span className="art-version">v{a.version}</span>}
       </div>
