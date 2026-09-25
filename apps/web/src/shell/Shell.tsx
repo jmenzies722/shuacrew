@@ -19,8 +19,10 @@ import { CompanionHost } from "../components/Companion";
 import { DevHud } from "../components/DevHud";
 import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
 import { getPower, savePower, usePower } from "../lib/power";
+import { navKey } from "../lib/keys";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
+import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../lib/look";
 
@@ -82,6 +84,7 @@ export function Shell() {
       <VoiceConversationHost />
       <WinsHost />
       <SoundsHost />
+      <AutomationsHost />
       <DevHud />
     </div>
     </MotionConfig>
@@ -294,7 +297,7 @@ function useGlobalKeys() {
         return;
       }
       if (Date.now() - pendingG < 1200) {
-        const item = NAV.find((n) => n.key === event.key);
+        const item = NAV.find((n) => navKey(n) === event.key);
         if (item) navigate({ to: item.to });
         pendingG = 0;
       }

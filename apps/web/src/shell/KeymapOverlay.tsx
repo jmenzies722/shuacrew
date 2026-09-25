@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
+import { navKey, useNavKeys } from "../lib/keys";
 
 const KEYS: Array<[string, string[]]> = [
   ["Command palette — everything", ["⌘", "K"]],
@@ -16,6 +17,7 @@ const KEYS: Array<[string, string[]]> = [
 ];
 
 export function KeymapOverlay() {
+  useNavKeys();
   const open = useLive((s) => s.keymapOpen);
   const setOpen = useLive((s) => s.setKeymap);
   const close = useRef<HTMLButtonElement>(null);
@@ -60,7 +62,7 @@ export function KeymapOverlay() {
             ))}
             <h3 className="col-span-2 mt-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-fg-3">Go to</h3>
             {NAV.map((n) => (
-              <Row key={n.to} label={n.label} keys={["g", n.key]} />
+              <Row key={n.to} label={n.label} keys={["g", navKey(n)]} />
             ))}
           </motion.div>
         </motion.div>

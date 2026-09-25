@@ -14,6 +14,8 @@ import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
 import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, InstructionsSettings, LookSettings, MenuBarSettings, QuietHoursSettings, SafetySettings, SoundSettings, SpeechStorageSettings } from "../components/BatchSettings";
 import { SettingsCommand } from "../components/SettingsCommand";
+import { ShortcutSettings } from "../components/ShortcutSettings";
+import { ScheduleSettings, ThemeShareSettings } from "../components/MoreSettings";
 import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, SoundscapeSettings } from "../components/BatchSettings2";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
@@ -36,7 +38,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -83,6 +85,9 @@ export function Settings() {
     { id: "speech-storage", section: "voice", title: "Speech models on this Mac", terms: "speech models storage disk delete whisper qwen voice space gb", body: <SpeechStorageSettings /> },
     { id: "flags", section: "developer", title: "Experimental features", terms: "feature flags experimental beta labs", body: <FlagSettings /> },
     { id: "diagnostics-report", section: "developer", title: "Debug report", terms: "diagnostics debug report bundle export support logs", body: <DiagnosticsSettings /> },
+    { id: "shortcuts", section: "workspace", title: "Keyboard shortcuts", terms: "keyboard shortcuts keys rebind hotkeys g navigation custom", body: <ShortcutSettings /> },
+    { id: "schedule", section: "power", title: "Scheduled modes", terms: "schedule modes automatic deep work cost saver wind down time days", body: <ScheduleSettings /> },
+    { id: "share-look", section: "appearance", title: "Share your look", terms: "theme code share export import look copy paste", body: <ThemeShareSettings /> },
     { id: "snippets", section: "power", title: "Snippets · your own /commands", terms: "snippets slash commands templates prompts shortcuts macros text expansion", body: <SnippetSettings /> },
     { id: "presets", section: "power", title: "Launch presets", terms: "presets launch one click modes effort autopilot task quick ship research templates", body: <PresetSettings /> },
     { id: "flow", section: "power", title: "Flow & wins", terms: "flow focus zen distraction free fullscreen celebrate confetti wins sound chime fun party", body: <FlowAndWins /> },

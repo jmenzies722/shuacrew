@@ -25,8 +25,11 @@ export function useGatewaySettings() {
   const [error, setError] = useState("");
   useEffect(() => {
     listeners.add(setValue);
-    if (!cache) void api<GatewaySettingsView>("/api/settings").then((s) => { cache = s; listeners.forEach((l) => l(s)); }).catch((e: Error) => setError(e.message));
-    return () => { listeners.delete(setValue); };
+    const fetchNow = () => void api<GatewaySettingsView>("/api/settings").then((s) => { cache = s; listeners.forEach((l) => l(s)); }).catch((e: Error) => setError(e.message));
+    if (!cache) fetchNow();
+    // Modes and other features change gateway settings too; stay in step.
+    window.addEventListener("shuacrew:settings", fetchNow);
+    return () => { listeners.delete(setValue); window.removeEventListener("shuacrew:settings", fetchNow); };
   }, []);
   const save = useCallback(async (patch: Partial<Omit<GatewaySettingsView, "builtinProtected">> | Record<string, unknown>) => {
     setError("");

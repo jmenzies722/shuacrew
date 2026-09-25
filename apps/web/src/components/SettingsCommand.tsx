@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, History, Moon, PiggyBank, RotateCcw, Sparkles, Target, Zap } from "lucide-react";
 import { api } from "../lib/api";
-import { getWorkspace, saveWorkspace, useWorkspace } from "../lib/workspace-prefs";
-import { getPower, savePower } from "../lib/power";
-import { getLook, saveLook } from "../lib/look";
-import { playScape, stopScape } from "../lib/soundscape";
+import { useWorkspace } from "../lib/workspace-prefs";
+import { enterMode, leaveMode, useActiveMode, type Mode } from "../lib/modes";
+import { focusMinutes } from "../lib/focus-stats";
+import { useLive } from "../lib/live";
 import { useGatewaySettings } from "./BatchSettings";
 import "./settings-command.css";
 
@@ -31,45 +31,25 @@ function useChecks() {
   ];
 }
 
-type Mode = "deep" | "saver" | "wind";
 const MODES: Array<{ id: Mode; icon: typeof Zap; name: string; blurb: string }> = [
   { id: "deep", icon: Target, name: "Deep work", blurb: "Flow mode, brown noise, only approval sounds." },
   { id: "saver", icon: PiggyBank, name: "Cost saver", blurb: "Haiku at low effort by default, 250k session cap, 500k daily budget." },
   { id: "wind", icon: Moon, name: "Wind down", blurb: "Quiet hours for automation, no sounds or celebrations." },
 ];
-const KEY = "shuacrew.mode";
-interface Saved { mode: Mode; before: { workspace: unknown; power: unknown; look: unknown; gateway: Record<string, unknown> } }
-function loadMode(): Saved | null { try { return JSON.parse(localStorage.getItem(KEY) ?? "null") as Saved | null; } catch { return null; } }
 
 export function SettingsCommand({ go }: { go: (hash: string) => void }) {
   const checks = useChecks();
-  const { value, save } = useGatewaySettings();
-  const [active, setActive] = useState<Saved | null>(loadMode);
+  const active = useActiveMode();
+  const runs = useLive((st) => st.crew.runs);
+  const finishedToday = useMemo(() => { const start = new Date(); start.setHours(0, 0, 0, 0); return Object.values(runs).filter((r) => !r.parent && !r.labels.includes("learning") && ["done", "merged"].includes(r.status) && r.updatedAt >= start.getTime()).length; }, [runs]);
+  const focus = focusMinutes(7), today = focus.at(-1)!.minutes, maxFocus = Math.max(30, ...focus.map((f) => f.minutes));
   const [history, setHistory] = useState<Array<{ at: number; changed: string[] }> | null>(null);
   const [notice, setNotice] = useState("");
   const score = checks ? Math.round((checks.filter((c) => c.done).length / checks.length) * 100) : 0;
   const next = checks?.find((c) => !c.done);
 
-  const enter = async (mode: Mode) => {
-    if (!value) return;
-    const g = value as unknown as Record<string, unknown>;
-    // Remember exactly what we change, so leaving the mode puts it all back.
-    const before: Saved["before"] = { workspace: getWorkspace(), power: getPower(), look: getLook(), gateway: { caps: g.caps, quietHours: g.quietHours } };
-    if (active) await leave(false);
-    if (mode === "deep") { savePower({ flow: true, wins: "off" }); saveLook({ sounds: { ...getLook().sounds, approval: true, done: false, failed: false } }); playScape("brown", 0.45); }
-    if (mode === "saver") { saveWorkspace({ runtime: "claude", model: "claude-haiku-4-5", effort: "low", dailyTokenBudget: 500_000 }); await save({ caps: { maxTokens: 250_000 } }); }
-    if (mode === "wind") { savePower({ wins: "off" }); saveLook({ sounds: { ...getLook().sounds, approval: false, done: false, failed: false } }); await save({ quietHours: { enabled: true, start: 22 * 60, end: 7 * 60 } }); stopScape(); }
-    const saved = { mode, before }; setActive(saved);
-    try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch { /* this session only */ }
-    setNotice(`${MODES.find((m) => m.id === mode)!.name} on. Everything it changed comes back when you turn it off.`);
-  };
-  const leave = async (announce = true) => {
-    const s = active ?? loadMode(); if (!s) return;
-    saveWorkspace(s.before.workspace as never); savePower(s.before.power as never); saveLook(s.before.look as never);
-    await save(s.before.gateway); stopScape();
-    setActive(null); try { localStorage.removeItem(KEY); } catch { /* ignore */ }
-    if (announce) setNotice("Back to your usual settings.");
-  };
+  const enter = async (mode: Mode) => { await enterMode(mode); setNotice(`${MODES.find((m) => m.id === mode)!.name} on. Everything it changed comes back when you turn it off.`); };
+  const leave = async () => { await leaveMode(); setNotice("Back to your usual settings."); };
   const restore = async (at: number) => {
     await api("/api/settings/restore", { body: { at } });
     setNotice("Restored that version. Your previous settings are in the history too, if you change your mind.");
@@ -89,7 +69,7 @@ export function SettingsCommand({ go }: { go: (hash: string) => void }) {
     <div className="cmd-modes">
       <h3>Modes</h3>
       <div className="cmd-mode-grid">{MODES.map((m) => { const on = active?.mode === m.id; return <button key={m.id} type="button" className={`cmd-mode ${on ? "is-on" : ""}`} aria-pressed={on} onClick={() => void (on ? leave() : enter(m.id))}>
-        <m.icon size={16} /><strong>{m.name}</strong><small>{m.blurb}</small><span className="cmd-mode-state">{on ? "On · tap to restore" : "Turn on"}</span>
+        <m.icon size={16} /><strong>{m.name}</strong><small>{m.blurb}</small><span className="cmd-mode-state">{on ? (active?.auto ? "On schedule · tap to stop" : "On · tap to restore") : "Turn on"}</span>
       </button>; })}</div>
       <div className="cmd-history">
         <button type="button" className="settings-reset" onClick={async () => setHistory(history ? null : await api("/api/settings/history"))}><History size={13} /> {history ? "Hide" : "Time machine"}</button>
@@ -97,6 +77,11 @@ export function SettingsCommand({ go }: { go: (hash: string) => void }) {
           <button type="button" onClick={() => void restore(h.at)}><RotateCcw size={11} /> Restore</button></li>) : <li className="cmd-muted">No changes yet — every save of gateway settings lands here.</li>}</ol>}
       </div>
       {notice && <p role="status" className="cmd-notice">{notice}</p>}
+    </div>
+    <div className="cmd-today">
+      <h3>Today</h3>
+      <div className="cmd-today-stats"><div><strong>{today}<small>min</small></strong><span>in Flow</span></div><div><strong>{finishedToday}</strong><span>sessions shipped</span></div>{active && <div><strong className="cmd-mode-name">{MODES.find((m) => m.id === active.mode)?.name}</strong><span>{active.auto ? "on schedule" : "mode on"}</span></div>}</div>
+      <div className="cmd-focus-bars" aria-label="Minutes in Flow, last 7 days">{focus.map((f) => <i key={f.day} title={`${f.day}: ${f.minutes} min`} style={{ height: `${Math.max(4, (f.minutes / maxFocus) * 100)}%` }} className={f.minutes ? "is-on" : ""} />)}</div>
     </div>
   </section>;
 }
