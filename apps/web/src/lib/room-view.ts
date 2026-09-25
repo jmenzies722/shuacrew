@@ -1,7 +1,16 @@
 import type { RoomView } from "@shuacrew/core/rooms";
 import type { RunView } from "@shuacrew/core/projections";
 const NO_ROOMS: Record<string, RoomView> = {};
-export function selectRooms(state: { rooms?: Record<string, RoomView> }) { return state.rooms ?? NO_ROOMS; }
+let memo: { source: Record<string, RoomView>; key: string; visible: Record<string, RoomView> } | null = null;
+/** Rooms you can see: archived rooms are hidden everywhere. Stable reference while nothing relevant changes (safe as a store selector). */
+export function selectRooms(state: { rooms?: Record<string, RoomView> }) {
+  const source = state.rooms ?? NO_ROOMS, all = Object.values(source);
+  const key = all.map(r => `${r.id}:${r.archived ? 1 : 0}`).join(",");
+  if (memo?.source === source && memo.key === key) return memo.visible;
+  const visible = all.some(r => r.archived) ? Object.fromEntries(all.filter(r => !r.archived).map(r => [r.id, r])) : source;
+  memo = { source, key, visible };
+  return visible;
+}
 export function roomResults(room: RoomView, runs: Record<string, RunView>) {
   // Coordinator-owned result IDs distinguish terminal output from crew_message progress.
   return room.messages.filter(message => message.author !== "you" && message.sourceRun && message.id.startsWith(`result_${message.sourceRun}_`)).map(message => {

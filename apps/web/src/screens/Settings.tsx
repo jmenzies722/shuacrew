@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles } from "lucide-react";
+import { AudioLines, Bell, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap } from "lucide-react";
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { AlwaysOn, Appearance, BackupsPanel, RuntimeSettings } from "./Pages";
@@ -12,10 +12,12 @@ import { CompanionSettings } from "../components/CompanionSettings";
 import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
+import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
 import "./settings.css";
 
 const SECTIONS = [
+  { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap },
   { id: "play", title: "Personality & Play", description: "A little character. Your kind of workspace.", icon: Sparkles },
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette },
   { id: "workspace", title: "Workspace", description: "Shape the way you move through your day.", icon: Monitor },
@@ -29,7 +31,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -53,12 +55,16 @@ function Choice<K extends keyof Preferences>({ name, detail, field, options }: {
 
 export function Settings() {
   const [section, setSection] = useState<Section>(() => sectionFromHash(window.location.hash));
+  useEffect(() => { const on = () => setSection(sectionFromHash(window.location.hash)); window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
   const [query, setQuery] = useState("");
   const saved = useLive((s) => s.preferenceSaved);
   const set = useLive((s) => s.setAppearance);
   const keymap = useLive((s) => s.setKeymap);
   const [notice, setNotice] = useState("");
   const groups: Array<{ id: string; section: Section; title: string; terms: string; body: ReactNode }> = [
+    { id: "snippets", section: "power", title: "Snippets · your own /commands", terms: "snippets slash commands templates prompts shortcuts macros text expansion", body: <SnippetSettings /> },
+    { id: "presets", section: "power", title: "Launch presets", terms: "presets launch one click modes effort autopilot task quick ship research templates", body: <PresetSettings /> },
+    { id: "flow", section: "power", title: "Flow & wins", terms: "flow focus zen distraction free fullscreen celebrate confetti wins sound chime fun party", body: <FlowAndWins /> },
     { id: "session-defaults", section: "agents", title: "New session defaults", terms: "default agent model effort autopilot supervised permission task plan runtime claude codex start new session", body: <SessionDefaults /> },
     { id: "budget", section: "workspace", title: "Daily budget", terms: "budget tokens limit spend cost usage warning quota daily", body: <BudgetSettings /> },
     { id: "transfer", section: "data", title: "Export & import settings", terms: "export import backup move sync settings preferences json file another mac", body: <PreferencesTransfer /> },

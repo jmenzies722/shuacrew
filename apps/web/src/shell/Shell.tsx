@@ -18,6 +18,8 @@ import { VoiceConversationHost } from "../components/VoiceConversation";
 import { CompanionHost } from "../components/Companion";
 import { DevHud } from "../components/DevHud";
 import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
+import { getPower, savePower, usePower } from "../lib/power";
+import { WinsHost } from "../components/Wins";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
@@ -48,13 +50,15 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 
 export function Shell() {
   const motionPreference = useLive((s) => s.appearance.motion);
+  const { flow } = usePower();
   useGlobalKeys();
   useSpotlight();
   // One section, one entrance: switching sessions inside the chat doesn't re-animate the page.
   const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
-    <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>
+    <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
+      {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
       <IconRail />
       <main className="min-h-0 min-w-0 overflow-hidden flex flex-col" id="main">
@@ -71,6 +75,7 @@ export function Shell() {
       <ApprovalToasts />
       <KeymapOverlay />
       <VoiceConversationHost />
+      <WinsHost />
       <DevHud />
     </div>
     </MotionConfig>
@@ -256,6 +261,11 @@ function useGlobalKeys() {
       const target = event.target as HTMLElement | null;
       const typing = target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       const s = useLive.getState();
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === "KeyF") {
+        event.preventDefault();
+        savePower({ flow: !getPower().flow });
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         s.setPalette(!s.paletteOpen);

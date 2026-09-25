@@ -47,6 +47,7 @@ import { size as fileSize, upload, withAttachments, type Attachment } from "../l
 import { Glyph } from "../lib/glyphs";
 import { LogoMark } from "../lib/motion";
 import { DEFAULT_WORKSPACE, getWorkspace } from "../lib/workspace-prefs";
+import { usePower, type Preset } from "../lib/power";
 
 interface RuntimeInfo {
   id: string;
@@ -580,6 +581,8 @@ const RECENT = "shuacrew.recentRepos";
 let runtimeCache: Promise<RuntimeInfo[]> | null = null;
 const loadRuntimes = () => (runtimeCache ??= api<RuntimeInfo[]>("/api/runtimes").catch(() => ((runtimeCache = null), [])));
 
+const presetTitle = (p: Preset) => [p.runtime || "Auto agent", p.model || "auto model", p.effort || "auto effort", p.autopilot ? "Autopilot" : "Supervised", p.task ? "Task" : ""].filter(Boolean).join(" · ");
+
 function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n: number }; hero?: boolean }) {
   const navigate = useNavigate();
   const sendShortcut = useLive((s) => s.appearance.sendShortcut);
@@ -605,6 +608,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const [member, setMember] = useState("");
   const [suggested, setSuggested] = useState("");
   const members = useLive((s) => s.crew.members);
+  const power = usePower();
   const picker = useRef<HTMLInputElement>(null);
   const uploading = files.some((f) => !f.done && !f.failed);
 
@@ -712,7 +716,10 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
         .filter((m) => m.name.toLowerCase().startsWith(mention[1]!.toLowerCase()) || m.role.toLowerCase().startsWith(mention[1]!.toLowerCase()))
         .map((m) => ({ kind: "member" as const, name: m.id, label: `@${m.name}`, hint: m.role, icon: Users }))
     : slashPrefix && !text.includes(" ")
-    ? COMMANDS.filter((c) => c.name.startsWith(slashPrefix[1]!)).map((c) => ({ kind: "cmd" as const, name: c.name, hint: c.hint, icon: c.icon }))
+    ? [
+        ...COMMANDS.filter((c) => c.name.startsWith(slashPrefix[1]!)).map((c) => ({ kind: "cmd" as const, name: c.name, hint: c.hint, icon: c.icon })),
+        ...power.snippets.filter((sn) => sn.name.startsWith(slashPrefix[1]!)).map((sn) => ({ kind: "snippet" as const, name: sn.name, hint: sn.text, icon: Zap })),
+      ]
     : named?.[1] === "skill"
       ? skills.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "skill" as const, name: s.name, hint: "Use this skill on the next message", icon: BookOpen }))
       : named?.[1] === "mcp"
@@ -727,8 +734,16 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     }
   }, []);
 
-  const pick = (name: string, kind: "cmd" | "skill" | "mcp" | "member" = "cmd") => {
-    if (kind === "member") {
+  /** A preset sets the whole launch at once; the prompt you already typed is kept after its prefix. */
+  const applyPreset = (p: Preset) => {
+    setRuntime(p.runtime && runtimes.some((r) => r.id === p.runtime) ? p.runtime : "");
+    setModel(p.model); setEffort(p.effort); setAutopilot(p.autopilot); setTask(p.task);
+    if (p.prefix) setText((t) => (t.startsWith(p.prefix) ? t : p.prefix + t));
+    field.current?.focus();
+  };
+  const pick = (name: string, kind: "cmd" | "skill" | "mcp" | "member" | "snippet" = "cmd") => {
+    if (kind === "snippet") setText(power.snippets.find((sn) => sn.name === name)?.text ?? "");
+    else if (kind === "member") {
       setMember(name);
       setText("");
     } else if (kind === "skill") setText(`/skill ${name} `);
@@ -815,7 +830,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                 className={`flex w-full items-center gap-3 px-3.5 py-2 text-left text-[13px] ${i === slashIndex ? "bg-ink" : ""}`}
               >
                 <c.icon size={14} className="text-amber" />
-                <span className="mono text-fg">{"label" in c ? c.label : c.kind === "cmd" ? `/${c.name}` : c.name}</span>
+                <span className="mono text-fg">{"label" in c ? c.label : c.kind === "cmd" || c.kind === "snippet" ? `/${c.name}` : c.name}</span>
                 <span className="truncate text-[12px] text-fg-3">{c.hint}</span>
               </button>
             ))}
@@ -825,6 +840,11 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
           <div className="drop-overlay" aria-hidden>
             <Paperclip size={22} />
             Drop to attach — the agent gets the file
+          </div>
+        )}
+        {!run && power.presets.length > 0 && (
+          <div className="preset-row" role="group" aria-label="Launch presets">
+            {power.presets.map((p) => <button key={p.id} type="button" className="preset-chip" title={presetTitle(p)} onClick={() => applyPreset(p)}><Zap size={11} />{p.label}</button>)}
           </div>
         )}
         <div className={`composer-box ${hero ? "is-hero" : ""}`}>

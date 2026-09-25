@@ -38,3 +38,10 @@ it("shows actual parent-child states, approvals and disconnected status without 
   expect(workspaceView(room, state.runs, "live", requestId).edges).toEqual([{ from: "root", to: "child" }]);
   expect(workspaceView(room, state.runs, "live", "unknown").agents[0]?.runId).toBe("next");
 });
+
+it("hides archived rooms and keeps a stable reference", () => {
+  const rooms = { a: { id: "a", archived: true }, b: { id: "b" } } as never;
+  const first = selectRooms({ rooms }), second = selectRooms({ rooms });
+  expect(Object.keys(first)).toEqual(["b"]);
+  expect(second).toBe(first);
+});

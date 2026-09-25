@@ -8,6 +8,9 @@ import { ACCENTS, PALETTES } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
 import { Glyph } from "../lib/glyphs";
+import { savePower, usePower } from "../lib/power";
+import { getWorkspace, saveWorkspace } from "../lib/workspace-prefs";
+import { isTopLevelWork } from "../lib/crew";
 
 /**
  * ⌘K does everything: launch, jump anywhere, answer approvals, switch theme. Fuzzy, instant,
@@ -23,6 +26,7 @@ export function CommandPalette() {
   const openLaunch = useLive((s) => s.openLaunch);
   const setAppearance = useLive((s) => s.setAppearance);
   const navigate = useNavigate();
+  const power = usePower();
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<Array<{ name: string; status: string }>>([]);
   const [servers, setServers] = useState<Array<{ name: string }>>([]);
@@ -32,7 +36,7 @@ export function CommandPalette() {
     void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
   }, [open]);
 
-  const recent = useMemo(() => Object.values(runs).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30), [runs]);
+  const recent = useMemo(() => Object.values(runs).filter((r) => isTopLevelWork(r, runs)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30), [runs]);
   const close = () => {
     setOpen(false);
     setQuery("");
@@ -146,6 +150,21 @@ export function CommandPalette() {
                   <Item value="launch new run" onSelect={() => openLaunch(query)}>
                     Launch a run <span className="ml-auto"><Kbd>⌘N</Kbd></span>
                   </Item>
+                  <Item value="flow mode focus zen toggle" onSelect={() => (savePower({ flow: !power.flow }), close())}>
+                    {power.flow ? "Leave" : "Enter"} Flow mode <span className="ml-auto"><Kbd>⌘⇧F</Kbd></span>
+                  </Item>
+                  <Item value="hud developer live overlay toggle" onSelect={() => (saveWorkspace({ hud: !getWorkspace().hud }), close())}>
+                    {getWorkspace().hud ? "Hide" : "Show"} live HUD <span className="ml-auto"><Kbd>⌥⇧H</Kbd></span>
+                  </Item>
+                  <Item value="new crew room" onSelect={() => go("/rooms")}>New crew room</Item>
+                  {([["events", "Open event inspector"], ["gateway-log", "Open gateway log"], ["storage", "Show storage use"], ["snippets", "Edit snippets"], ["presets", "Edit launch presets"], ["budget", "Set daily token budget"], ["session-defaults", "Set new session defaults"], ["transfer", "Export or import settings"]] as const).map(([hash, label]) => (
+                    <Item key={hash} value={`settings ${label} ${hash}`} onSelect={() => (void navigate({ to: "/settings", hash }), close())}>{label}</Item>
+                  ))}
+                  {power.snippets.map((sn) => (
+                    <Item key={sn.name} value={`snippet /${sn.name} ${sn.text}`} onSelect={() => intoChat(sn.text)}>
+                      <span className="mono text-amber">/{sn.name}</span><span className="ml-2 truncate text-fg-3">{sn.text}</span>
+                    </Item>
+                  ))}
                   {PALETTES.map((p) => (
                     <Item key={p.id} value={`theme ${p.name} ${p.mode}`} onSelect={() => (setAppearance({ palette: p.id }), close())}>
                       Theme: {p.name}

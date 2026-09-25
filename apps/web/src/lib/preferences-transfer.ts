@@ -3,12 +3,14 @@ import { parseCompanion } from "./companion";
 import { parseToolPreferences } from "./tool-preferences";
 import { normalizeVoicePreferences } from "./voice-preferences";
 import { parseWorkspace } from "./workspace-prefs";
+import { parsePower } from "./power";
 
 /** Each exportable group: its storage key, and the validator every imported value must pass through. */
 const GROUPS: Record<string, { key: string; clean: (value: unknown) => unknown }> = {
   appearance: { key: "shuacrew.appearance", clean: normalizeAppearance },
   companion: { key: "shuacrew.companion", clean: parseCompanion },
   workspace: { key: "shuacrew.workspace", clean: parseWorkspace },
+  power: { key: "shuacrew.power", clean: parsePower },
   toolCards: { key: "shuacrew.toolCards", clean: parseToolPreferences },
   voice: { key: "shuacrew.voiceConversation", clean: (v) => ({ ...normalizeVoicePreferences(v), version: 1 }) },
   diffSplit: { key: "shuacrew.diffSplit", clean: (v) => (v === "1" || v === "0" ? v : undefined) },
