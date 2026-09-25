@@ -16,6 +16,8 @@ import { KeymapOverlay } from "./KeymapOverlay";
 import { LaunchSheet } from "./LaunchSheet";
 import { VoiceConversationHost } from "../components/VoiceConversation";
 import { CompanionHost } from "../components/Companion";
+import { DevHud } from "../components/DevHud";
+import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
@@ -69,6 +71,7 @@ export function Shell() {
       <ApprovalToasts />
       <KeymapOverlay />
       <VoiceConversationHost />
+      <DevHud />
     </div>
     </MotionConfig>
   );
@@ -124,9 +127,7 @@ function TopBar() {
           <StatusGlyph tone={running ? "live" : "idle"} size={7} />
           <span className="tabular-nums text-fg-2">{running}</span> running
         </span>
-        <span className="mono tabular-nums" title="Recorded input and output tokens today (UTC); excludes demo usage. Not remaining subscription quota.">
-          {formatTokens(crew.today.day === new Date().toISOString().slice(0, 10) ? crew.today.tokens : 0)} today
-        </span>
+        <TokensToday tokens={crew.today.day === new Date().toISOString().slice(0, 10) ? crew.today.tokens : 0} />
       </span>
       <span
         className={`h-2 w-2 rounded-full ${connection === "live" ? "bg-ok" : connection === "connecting" ? "bg-amber" : "bg-bad"}`}
@@ -283,4 +284,14 @@ function useGlobalKeys() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
+}
+
+/** Today's recorded tokens; turns amber past your daily budget and red at twice it (Settings → Workspace). */
+function TokensToday({ tokens }: { tokens: number }) {
+  const { dailyTokenBudget } = useWorkspace();
+  const used = budgetUse(tokens, dailyTokenBudget);
+  const tone = used >= 2 ? "text-bad" : used >= 1 ? "text-amber" : "";
+  return <Link to="/settings" hash="budget" className={`mono tabular-nums ${tone}`} title={`Recorded input and output tokens today (UTC); excludes demo usage. Not remaining subscription quota.${dailyTokenBudget ? ` Budget: ${formatTokens(dailyTokenBudget)} (${Math.round(used * 100)}%).` : ""}`}>
+    {formatTokens(tokens)}{dailyTokenBudget ? ` / ${formatTokens(dailyTokenBudget)}` : ""} today
+  </Link>;
 }

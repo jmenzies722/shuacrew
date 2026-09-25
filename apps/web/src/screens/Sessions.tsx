@@ -46,6 +46,7 @@ import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
 import { LogoMark } from "../lib/motion";
+import { DEFAULT_WORKSPACE, getWorkspace } from "../lib/workspace-prefs";
 
 interface RuntimeInfo {
   id: string;
@@ -586,12 +587,14 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [task, setTask] = useState(false);
-  const [autopilot, setAutopilot] = useState(false);
+  // A new session starts from Settings → Session defaults; a follow-up inside a run never does.
+  const defaults = run ? DEFAULT_WORKSPACE : getWorkspace();
+  const [task, setTask] = useState(defaults.task);
+  const [autopilot, setAutopilot] = useState(defaults.autopilot);
   const [repo, setRepo] = useState("");
-  const [runtime, setRuntime] = useState("");
-  const [model, setModel] = useState("");
-  const [effort, setEffort] = useState("");
+  const [runtime, setRuntime] = useState(defaults.runtime);
+  const [model, setModel] = useState(defaults.model);
+  const [effort, setEffort] = useState<string>(defaults.effort);
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
   const [skills, setSkills] = useState<Array<{ name: string; status: string }>>([]);
@@ -646,7 +649,12 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const working = run ? WORKING.has(run.status) : false;
 
   useEffect(() => {
-    void loadRuntimes().then(setRuntimes);
+    void loadRuntimes().then((list) => {
+      setRuntimes(list);
+      // A saved default agent/model that isn't available any more falls back to Auto rather than failing the send.
+      setRuntime((r) => (r && !list.some((x) => x.id === r) ? "" : r));
+      setModel((m) => (m && !list.some((x) => x.models.some((mm) => mm.id === m && !mm.unavailable)) ? "" : m));
+    });
     void api<{ skills: Array<{ name: string; status: string }> }>("/api/memory").then((m) => setSkills(m.skills.filter((s) => s.status === "accepted"))).catch(() => undefined);
     void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
     void api<{ voice: boolean; video: boolean; missing: string[] }>("/api/media").then(setMedia).catch(() => undefined);

@@ -7,6 +7,7 @@
  * the CSRF defence. The dashboard is served with a strict CSP (no inline script, no remote origins).
  */
 import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
+import { devRoutes } from "./dev-routes.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -143,6 +144,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
   speechRoutes(app, options.speech);
   roomRoutes(app, options.rooms);
+  devRoutes(app, options.store);
   observabilityRoutes(app, store);
   mobileRoutes(app, options.mobile);
 

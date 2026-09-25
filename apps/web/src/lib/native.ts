@@ -2,7 +2,7 @@
  * The Mac app's side of the bridge. In a browser none of this exists and every call is a no-op,
  * so the page works the same in both.
  */
-type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string } | { type: "notificationSettings"; requestId: string; preferences?: NativeNotificationPreferences } | { type: "voiceSettings"; requestId: string; action: "read" | "save" | "preview" | "stop"; preferences?: NativeVoicePreferences };
+type Message = { type: "saveFile"; name: string; text: string } | { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string } | { type: "notificationSettings"; requestId: string; preferences?: NativeNotificationPreferences } | { type: "voiceSettings"; requestId: string; action: "read" | "save" | "preview" | "stop"; preferences?: NativeVoicePreferences };
 
 export interface NativeVoicePreferences { voiceID: string; speed: number }
 export interface NativeVoiceSnapshot {
@@ -117,4 +117,12 @@ export function composeEmail(subject: string, body: string, to = "") {
   const native = handler();
   if (native) return native.postMessage({ type: "composeEmail", subject, body, to });
   window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0, 1800))}`;
+}
+
+/** Save text to a file the user chooses. The Mac app shows its Save panel; a browser downloads it. */
+export function saveTextFile(name: string, text: string, type = "application/json") {
+  const native = handler();
+  if (native) { native.postMessage({ type: "saveFile", name, text }); return; }
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  a.click(); URL.revokeObjectURL(a.href);
 }

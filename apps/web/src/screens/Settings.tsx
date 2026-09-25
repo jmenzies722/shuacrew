@@ -10,6 +10,9 @@ import { DeveloperSettings } from "../components/DeveloperSettings";
 import { openMobileSettings } from "../lib/native";
 import { CompanionSettings } from "../components/CompanionSettings";
 import { ToolCardSettings } from "../components/ToolCardSettings";
+import { Segmented, SettingRow } from "../components/SettingControls";
+import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
+import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
 import "./settings.css";
 
 const SECTIONS = [
@@ -25,27 +28,44 @@ const SECTIONS = [
   { id: "developer", title: "Developer", description: "Inspect the real system behind your crew.", icon: SlidersHorizontal },
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
+/** `#developer` opens a section; `#budget` opens the section holding that group. */
+const GROUP_SECTION: Record<string, Section> = { "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "tool-cards": "chat", "shua-voice": "voice" };
+function sectionFromHash(hash: string): Section {
+  const id = hash.replace(/^#/, "");
+  return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
+}
 
 function Choice<K extends keyof Preferences>({ name, detail, field, options }: {
   name: string; detail: string; field: K; options: Array<[Preferences[K], string]>;
 }) {
   const value = useLive((s) => s.appearance[field]);
   const set = useLive((s) => s.setAppearance);
-  return <label className="preference-row"><span><strong>{name}</strong><small>{detail}</small></span>
-    <select aria-label={name} value={value} onChange={(e) => set({ [field]: e.target.value })}>
-      {options.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
-    </select>
-  </label>;
+  const modified = value !== DEFAULT_APPEARANCE[field];
+  // Few options read best side by side; long lists stay a menu.
+  return <SettingRow name={name} detail={detail} modified={modified}>
+    {options.length <= 4
+      ? <Segmented label={name} value={value as string} options={options as Array<[string, string]>} onChange={(v) => set({ [field]: v })} />
+      : <select className="setting-input" style={{ width: 160 }} aria-label={name} value={value} onChange={(e) => set({ [field]: e.target.value })}>
+          {options.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+        </select>}
+  </SettingRow>;
 }
 
 export function Settings() {
-  const [section, setSection] = useState<Section>(() => window.location.hash === "#developer" ? "developer" : "appearance");
+  const [section, setSection] = useState<Section>(() => sectionFromHash(window.location.hash));
   const [query, setQuery] = useState("");
   const saved = useLive((s) => s.preferenceSaved);
   const set = useLive((s) => s.setAppearance);
   const keymap = useLive((s) => s.setKeymap);
   const [notice, setNotice] = useState("");
   const groups: Array<{ id: string; section: Section; title: string; terms: string; body: ReactNode }> = [
+    { id: "session-defaults", section: "agents", title: "New session defaults", terms: "default agent model effort autopilot supervised permission task plan runtime claude codex start new session", body: <SessionDefaults /> },
+    { id: "budget", section: "workspace", title: "Daily budget", terms: "budget tokens limit spend cost usage warning quota daily", body: <BudgetSettings /> },
+    { id: "transfer", section: "data", title: "Export & import settings", terms: "export import backup move sync settings preferences json file another mac", body: <PreferencesTransfer /> },
+    { id: "events", section: "developer", title: "Event inspector", terms: "event log events stream inspector debug audit seq kind run json tail live", body: <EventInspector /> },
+    { id: "hud", section: "developer", title: "Live HUD", terms: "hud overlay fps events per second stream lag connection debug floating", body: <HudToggle /> },
+    { id: "gateway-log", section: "developer", title: "Gateway log", terms: "log logs gateway errors crash stderr tail search", body: <GatewayLog /> },
+    { id: "storage", section: "developer", title: "Storage", terms: "disk storage size space database library models snapshots usage bytes", body: <StorageUsage /> },
     { id: "companion", section: "play", title: "Spark & Mini Crew", terms: "companion pet spark mini crew robot nickname accessory fun personality play focus timer", body: <CompanionSettings /> },
     { id: "tool-cards", section: "chat", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
     { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">

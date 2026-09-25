@@ -163,6 +163,21 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
             onNotificationSettings?(body)
+        case "saveFile":
+            // A page-initiated save always goes through the user's own Save panel; the page never picks the path.
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.protocol == gateway.base.scheme,
+                  origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let text = body["text"] as? String, text.utf8.count <= 5_000_000 else { return }
+            let name = ((body["name"] as? String) ?? "shuacrew.json").replacingOccurrences(of: "/", with: "-").prefix(120)
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = String(name)
+            panel.canCreateDirectories = true
+            guard let window else { return }
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                try? text.write(to: url, atomically: true, encoding: .utf8)
+            }
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
@@ -204,6 +219,16 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     }
 
     // MARK: navigation
+
+    /// <input type="file"> (composer Attach, settings Import): WebKit asks the app to show the Open panel.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.canChooseFiles = true
+        guard let window else { completionHandler(nil); return }
+        panel.beginSheetModal(for: window) { response in completionHandler(response == .OK ? panel.urls : nil) }
+    }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         voiceSettings.stop()
