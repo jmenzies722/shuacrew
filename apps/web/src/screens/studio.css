@@ -1,0 +1,9 @@
+.studio-desk { display: flex; flex-direction: column; gap: 22px; }
+.studio-now { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-radius: 22px;
+  background: radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 50%), color-mix(in srgb, var(--panel) 80%, var(--ink));
+  box-shadow: inset 0 0 0 1px var(--line), 0 24px 60px -36px rgba(0,0,0,.7); }
+.studio-cols { display: grid; grid-template-columns: 1.1fr .9fr; gap: 16px; }
+.studio-panel { padding: 16px 16px 14px; border-radius: 18px; background: color-mix(in srgb, var(--panel) 75%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.studio-crate { padding: 16px; border-radius: 18px; background: color-mix(in srgb, var(--panel) 55%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.studio-crate .sd-cover img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+@media (max-width: 980px) { .studio-cols { grid-template-columns: 1fr; } }

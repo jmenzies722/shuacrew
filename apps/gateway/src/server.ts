@@ -946,6 +946,18 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       // Settings → Menu bar: what the Mac shows beside its icon, and today's recorded tokens for "tokens".
       menuBar: options.settings?.get().menuBar ?? "attention",
       tokensToday: state.today.day === new Date().toISOString().slice(0, 10) ? state.today.tokens : 0,
+      now: (() => {
+        const live = ["awaiting_approval", "running", "planning", "queued", "paused"];
+        const rank: Record<string, number> = { awaiting_approval: 0, running: 1, planning: 2, queued: 3, paused: 4 };
+        const pinned = Object.values(state.approvals).sort((a, b) => a.seq - b.seq).find((a) => a.run && state.runs[a.run]);
+        const run = (pinned?.run ? state.runs[pinned.run] : undefined)
+          ?? Object.values(state.runs)
+            .filter((r) => !r.parent && !r.labels.includes("buddy") && !r.labels.includes("learning") && live.includes(r.status))
+            .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || b.updatedAt - a.updatedAt)[0];
+        if (!run) return { id: null, title: "All quiet", who: "", status: "idle", updatedAt: 0 };
+        const who = run.member ? state.members[run.member]?.name ?? "" : run.runtime;
+        return { id: run.id, title: run.title, who, status: run.status, updatedAt: run.updatedAt };
+      })(),
       // Playbook phases waiting at a gate for you (and plays that stopped), for the menu bar and notifications.
       reviews: Object.values(state.plays).flatMap((play) =>
         play.phases.flatMap((phase, index) => {

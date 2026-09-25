@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { buddyPrompt, guideFollowUp, nextSentences, parseActions, parseGuide, parsePoint, speakable, spoken } from "./buddy";
+import { actFollowUp, buddyPrompt, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
   const reply = 'Click Save.\n```point {"x": 0.82, "y": 0.07, "label": "Save button"}```';
@@ -38,4 +38,39 @@ it("reads guide steps, clamps boxes, and knows when it's done", () => {
   expect(speakable(r)).toBe("Click Share at the top right.");
   expect(buddyPrompt("how do I share", { width: 100, height: 50 }, { name: "Kit", tone: "coach", length: "brief" })).toContain("You are Kit");
   expect(guideFollowUp("Click Share", { width: 10, height: 5 })).toContain("fresh screenshot");
+});
+it("reads sketches, diagrams, OCR and design questions", () => {
+  const r = 'Look here.\n```draw [{"shape":"box","x":0.5,"y":0.4,"w":0.2,"h":0.1,"label":"wrong total"},{"shape":"arrow","from":[0.1,0.1],"to":[2,0]},{"shape":"text","x":0.5,"y":0.9,"text":"note"}]```';
+  expect(parseDraw(r)).toEqual([{ shape: "box", x: 0.5, y: 0.4, w: 0.2, h: 0.1, label: "wrong total" }, { shape: "text", x: 0.5, y: 0.9, text: "note" }]);
+  expect(speakable(r)).toBe("Look here.");
+  const parts = splitDiagrams("Intro\n```mermaid\nflowchart LR\n  A-->B\n```\nAfter");
+  expect(parts.map((p) => p.kind)).toEqual(["text", "diagram", "text"]);
+  expect(parts[1]!.value).toBe("flowchart LR\n  A-->B");
+  expect(isDesign("design a url shortener")).toBe(true);
+  expect(isDesign("how would you scale a chat app")).toBe(true);
+  expect(isDesign("open notes")).toBe(false);
+  const ocr = screenText([{ t: "Total $1,204.50", x: 0.6, y: 0.3, w: 0.1, h: 0.02 }, { t: "Revenue", x: 0.2, y: 0.3, w: 0.1, h: 0.02 }]);
+  expect(ocr).toContain("Revenue @0.200,0.300\nTotal $1,204.50 @0.600,0.300");
+  expect(buddyPrompt("design a url shortener", { width: 10, height: 10 })).toContain("```mermaid");
+  expect(buddyPrompt("what's going on", null, undefined, "CREW NOW — live")).toContain("CREW NOW");
+  expect(nextSentences("Short summary here.\n---\n## Requirements\nlots", 0, true).chunks).toEqual(["Short summary here."]);
+});
+it("reads music/system/shortcut actions and act steps safely", () => {
+  expect(parseActions('```do [{"type":"media","command":"play_query","query":"Daft Punk","app":"Spotify"},{"type":"media","command":"volume","level":140},{"type":"system","what":"dark_mode","on":true},{"type":"shortcut","name":"Morning"},{"type":"media","command":"rm"}]```'))
+    .toEqual([{ type: "media", command: "play_query", query: "Daft Punk", app: "Spotify" }, { type: "media", command: "volume", level: 100 }, { type: "system", what: "dark_mode", on: true }, { type: "shortcut", name: "Morning" }]);
+  expect(parseAct('Clicking send.\n```act {"type":"click","x":0.8,"y":0.9,"label":"Send"}```')).toEqual({ type: "click", x: 0.8, y: 0.9, label: "Send" });
+  expect(parseAct('```act {"type":"click","x":1.5,"y":0.9}```')).toBeNull();
+  expect(parseAct('```act {"type":"key","keys":"cmd+l"}```')).toMatchObject({ type: "key", keys: "cmd+l" });
+  expect(parseAct('```act {"type":"key","keys":"cmd+l; rm -rf"}```')).toBeNull();
+  expect(parseAct('```act {"type":"done","summary":"Sent it"}```')).toEqual({ type: "done", summary: "Sent it" });
+  expect(speakable('Clicking.\n```act {"type":"click","x":0.1,"y":0.1}```')).toBe("Clicking.");
+  expect(buddyPrompt("send the email", { width: 10, height: 10 }, { name: "Spark", tone: "direct", length: "brief", control: "auto" })).toContain("COMPUTER CONTROL");
+  expect(buddyPrompt("send the email", null, { name: "Spark", tone: "direct", length: "brief", control: "off" })).not.toContain("COMPUTER CONTROL");
+  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("Next single step");
+});
+it("lets you customize Spark by chatting, safely", () => {
+  expect(parseActions('```do {"type":"settings","changes":{"name":"Nova","character":"kit","color":"purple","speed":1.2,"tone":"direct","talks":true,"control":"auto","bogus":1}}```'))
+    .toEqual([{ type: "settings", changes: { name: "Nova", character: "kit", color: "#a78bfa", speed: 1.15, tone: "direct", talks: true, control: "auto" } }]);
+  expect(parseActions('```do {"type":"settings","changes":{"character":"dragon","color":"url(x)"}}```')).toEqual([]);
+  expect(buddyPrompt("talk faster", null, { name: "Spark", tone: "chill", length: "brief", voices: ["aiden", "ryan"] })).toContain("aiden|ryan");
 });

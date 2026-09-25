@@ -24,6 +24,8 @@
 .spark-custom { position: relative; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
 .spark-custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .spark-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+.spark-screen-ok { font-size: 12px; font-weight: 600; color: var(--ok, #34d399); }
 @keyframes spark-bob { 50% { transform: translateY(-6px); } }
 @media (max-width: 760px) { .spark-hero { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .spark-stage .spark-character { animation: none; } }
+.spark-link { margin-left: 4px; font-weight: 600; color: var(--amber); } .spark-link:hover { text-decoration: underline; }

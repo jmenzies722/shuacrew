@@ -7,6 +7,8 @@ import { api, decideApproval, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { daysUntil, placed, saveNote, saveWidgets, streak, useNote, useWidgets, WIDGET_INFO, type WidgetId } from "../lib/widgets";
+import { PlayingChip, PlayingTile, useNowPlaying } from "./NowPlaying";
+import { MixChip, MixDesk, Setlist, SetlistChip } from "./StudioDesk";
 import { playSound } from "./Sounds";
 import { useLook } from "../lib/look";
 import "./topbar-widgets.css";
@@ -98,6 +100,9 @@ function LearningChipBody() { const learn = learning.use(); return <><Graduation
 function CountdownChipBody() { const c = useWidgets().countdown; return c ? <><CalendarClock size={13} /><span className="tabular-nums">{Math.max(0, daysUntil(c.date))}d</span><span className="tb-dim wg-trunc">{c.label}</span></> : <CalendarClock size={14} />; }
 function Chip({ id }: { id: WidgetId }) {
   switch (id) {
+    case "playing": return <PlayingChip />;
+    case "mix": return <MixChip />;
+    case "setlist": return <SetlistChip />;
     case "weather": return <WeatherChipBody />;
     case "focus": return <FocusChipBody />;
     case "crew": return <CrewChipBody />;
@@ -113,6 +118,9 @@ function Chip({ id }: { id: WidgetId }) {
 // ── tiles (popover bodies and Spark) ─────────────────────────────────────────────────────────
 export function WidgetTile({ id, ctx, close }: { id: WidgetId; ctx: WidgetCtx; close?: () => void }) {
   switch (id) {
+    case "playing": return <PlayingTile ctx={ctx} />;
+    case "mix": return <MixDesk ctx={ctx} compact />;
+    case "setlist": return <Setlist ctx={ctx} compact />;
     case "weather": return <WeatherTile />;
     case "focus": return <FocusTile close={close} />;
     case "crew": return <CrewTile ctx={ctx} />;
@@ -268,8 +276,8 @@ function CountdownTile() {
 // ── placements ───────────────────────────────────────────────────────────────────────────────
 /** The top bar's widgets, in your order. */
 export function TopBarWidgets({ ctx }: { ctx: WidgetCtx }) {
-  const prefs = useWidgets(), crew = useCrew(), timer = useFocusTimer();
-  return <>{placed(prefs, "topbar").map((id) => <Pop key={id} label={WIDGET_INFO[id].name} active={id === "focus" && !!timer || id === "crew" && crew.approvals.length > 0} chip={<Chip id={id} />}>
+  const prefs = useWidgets(), crew = useCrew(), timer = useFocusTimer(), track = useNowPlaying();
+  return <>{placed(prefs, "topbar").map((id) => <Pop key={id} label={WIDGET_INFO[id].name} active={id === "playing" && track.mood !== "quiet" || id === "mix" && crew.runs.length > 0 || id === "setlist" && (track.mood !== "quiet" || crew.approvals.length > 0) || id === "focus" && !!timer || id === "crew" && crew.approvals.length > 0} chip={<Chip id={id} />}>
     {(close) => <WidgetTile id={id} ctx={ctx} close={close} />}
   </Pop>)}</>;
 }
@@ -279,4 +287,39 @@ export function SparkWidgets({ ctx }: { ctx: WidgetCtx }) {
   const prefs = useWidgets(), list = placed(prefs, "spark");
   if (!list.length) return <p className="buddy-hint">No widgets here yet. Pick some in ShuaCrew → Settings → Widgets.</p>;
   return <div className="wg-board">{list.map((id) => <section key={id} className="wg-tile" aria-label={WIDGET_INFO[id].name}><WidgetTile id={id} ctx={ctx} /></section>)}</div>;
+}
+
+/**
+ * The top bar's one status island: at a glance, just what's live (crew working, the weather, a running focus
+ * block, tokens today, gateway health). Click it for everything else as tiles, like Control Center.
+ */
+export interface IslandLimit { key: string; label: string; until: string; message: string; retry(): void }
+export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: { ctx: WidgetCtx; running: number; tokens: string; connection: "live" | "connecting" | "offline" | string; limits?: IslandLimit[] }) {
+  const prefs = useWidgets(), tiles = placed(prefs, "topbar"), timer = useFocusTimer(), crew = useCrew();
+  const [open, setOpen] = useState(false), root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const go: WidgetCtx = { go: (p) => { setOpen(false); ctx.go(p); } };
+  const health = connection === "live" ? "ok" : connection === "connecting" ? "wait" : "bad";
+  return <div className="island" ref={root} data-no-drag>
+    <button type="button" className={`island-pill ${open ? "is-open" : ""}`} aria-expanded={open} aria-label="Status and widgets" onClick={() => setOpen((o) => !o)}>
+      <span className="island-seg"><i className={`island-dot is-${health} ${running ? "is-live" : ""}`} /><b className="tabular-nums">{running}</b><span className="island-dim">working</span></span>
+      {limits[0] && <span className="island-seg island-limit" title={limits[0].message}><Timer size={12} />{limits[0].label} paused</span>}
+      {crew.approvals.length > 0 && <span className="island-seg island-wait"><ShieldQuestion size={12} /><b className="tabular-nums">{crew.approvals.length}</b></span>}
+      {tiles.includes("weather") && <span className="island-seg"><WeatherChipBody /></span>}
+      {timer && <span className="island-seg island-focus"><FocusChipBody /></span>}
+      <span className="island-seg island-dim tabular-nums">{tokens}</span>
+    </button>
+    {open && <div className="island-panel" role="dialog" aria-label="Status and widgets">
+      <header><strong>Now</strong><span>{connection === "live" ? "Gateway online" : connection === "connecting" ? "Connecting…" : "Reconnecting…"} · {tokens} tokens today</span></header>
+      {limits.map((l) => <p key={l.key} className="island-notice"><Timer size={14} /><span><b>{l.label}</b> hit its usage window. Back {l.until}.</span><button type="button" onClick={l.retry}>Try now</button></p>)}
+      <div className="island-grid">{tiles.map((id) => <section key={id} className={`island-tile tile-${id}`} aria-label={WIDGET_INFO[id].name}><WidgetTile id={id} ctx={go} /></section>)}</div>
+      <footer><button type="button" onClick={() => go.go("/settings#widgets")}>Customize widgets</button></footer>
+    </div>}
+  </div>;
 }

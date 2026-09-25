@@ -39,6 +39,35 @@ final class LocationOnce: NSObject, CLLocationManagerDelegate {
     private func finish(_ result: Result<CLLocationCoordinate2D, Error>) { reply?(result); reply = nil }
 }
 
+/// Screen Recording is process-wide. Settings lives in the main window; capture lives in Spark.
+/// One asked-this-launch flag so those two cannot each pop the system sheet.
+enum ScreenAccess {
+    private static var askedThisLaunch = false
+
+    static func granted() -> Bool { CGPreflightScreenCaptureAccess() }
+
+    @discardableResult
+    static func request() -> Bool {
+        if granted() { return true }
+        guard !askedThisLaunch else { return false }
+        askedThisLaunch = true
+        _ = CGRequestScreenCaptureAccess()
+        return granted()
+    }
+
+    static func openSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    static func handle(_ body: [String: Any]) -> Bool {
+        if body["request"] as? Bool == true { _ = request() }
+        if body["openSettings"] as? Bool == true { openSettings() }
+        return granted()
+    }
+}
+
 /// A native banner for things the page decides are worth one (e.g. the focus timer finishing).
 enum NativeBanner {
     static func post(title: String, body: String) {
@@ -51,8 +80,7 @@ enum NativeBanner {
             }
             switch settings.authorizationStatus {
             case .authorized, .provisional: send()
-            case .notDetermined: center.requestAuthorization(options: [.alert, .sound]) { ok, _ in if ok { send() } }
-            default: NSSound.beep() // notifications are off: at least make a sound
+            default: NSSound.beep() // never prompt here — only Settings → Desktop alerts may ask macOS
             }
         }
     }

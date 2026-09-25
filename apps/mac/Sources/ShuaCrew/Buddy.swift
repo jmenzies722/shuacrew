@@ -1,5 +1,6 @@
 import AppKit
 import ScreenCaptureKit
+import Vision
 import WebKit
 
 /// Spark on your desktop, over every app and Space — even with the ShuaCrew window closed.
@@ -15,6 +16,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var gripHeight: NSLayoutConstraint!
     private var isOpen = false
     private static let open = NSSize(width: 380, height: 560)
+    /// A canvas for diagrams: system designs need room.
+    private static let wide = NSSize(width: 940, height: 720)
     /// Room for a speech bubble beside Spark ("Aria finished…") without the whole card.
     private static let peek = NSSize(width: 320, height: 190)
 
@@ -29,6 +32,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let location = LocationOnce()
     /// Opens a path in the main window (a session, Learning, Usage…).
     var onOpen: ((String) -> Void)?
+    /// "Change your shortcut to ⌃⇧Space", said to Spark.
+    var onHotkey: ((String) -> Void)?
 
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
@@ -147,14 +152,45 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 gripHeight.constant = size.height - 16
             }
             isOpen = open
-            place(size: open ? Self.open : peek ? Self.peek : closed)
+            place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : peek ? Self.peek : closed)
             if !open { panel.resignKey() }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
-            let result = MacActions.perform(action)
-            did(["id": id, "ok": result.ok, "message": result.message])
+            let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+            switch action["type"] as? String {
+            case "click", "type", "key", "scroll":
+                // You see where Spark is about to click before it does: a ring at the spot, then the click.
+                if action["type"] as? String == "click", let x = action["x"] as? Double, let y = action["y"] as? Double {
+                    pointer.show(on: screen, x: x, y: y, label: action["label"] as? String ?? "", color: action["color"] as? String, from: sparkCenter)
+                }
+                watchForStop()
+                DispatchQueue.main.asyncAfter(deadline: .now() + (action["type"] as? String == "click" ? 0.6 : 0.1)) { [weak self] in
+                    guard let self else { return }
+                    let r = SparkHands.act(action, screen: screen)
+                    self.did(["id": id, "ok": r.ok, "message": r.message])
+                }
+            case "media":
+                let r = SparkHands.media(action); did(["id": id, "ok": r.ok, "message": r.message])
+            case "system":
+                let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message])
+            case "shortcut":
+                Task { let r = await SparkHands.shortcut(action); did(["id": id, "ok": r.ok, "message": r.message]) }
+            default:
+                let result = MacActions.perform(action)
+                did(["id": id, "ok": result.ok, "message": result.message])
+            }
+        case "buddyHands":
+            // What Spark is allowed to do right now, for the page to show (and to ask for access when you choose to).
+            if body["ask"] as? Bool == true { SparkHands.askForAccess() }
+            send("shuacrew:hands", ["trusted": SparkHands.trusted, "shortcuts": SparkHands.shortcutNames()])
+        case "buddyHotkey":
+            if let combo = body["combo"] as? String { onHotkey?(combo) }
+        case "buddyStopWatch":
+            stopWatch.map(NSEvent.removeMonitor); stopWatch = nil
         case "buddyCapture":
             Task { await capture() }
+        case "buddyScreenAccess":
+            send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)])
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
                   let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
@@ -164,6 +200,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                   [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
                           color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true)
+        case "saveFile":
+            // Diagrams you export: always through your own Save panel; the page never picks the path.
+            guard let text = body["text"] as? String, text.utf8.count <= 5_000_000 else { return }
+            let save = NSSavePanel()
+            save.nameFieldStringValue = String(((body["name"] as? String) ?? "diagram.svg").replacingOccurrences(of: "/", with: "-").prefix(120))
+            save.canCreateDirectories = true
+            save.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            NSApp.activate()
+            save.begin { response in
+                guard response == .OK, let url = save.url else { return }
+                try? text.write(to: url, atomically: true, encoding: .utf8)
+            }
+        case "buddyDraw":
+            guard let shapes = body["shapes"] as? [[String: Any]], let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+            pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: sparkCenter)
         case "buddyGuideStop":
             pointer.hide()
         case "buddyOpen":
@@ -192,6 +243,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// Where the character is on screen: the comet starts here.
     private var sparkCenter: NSPoint { NSPoint(x: panel.frame.maxX - closed.width / 2, y: panel.frame.minY + closed.height / 2) }
 
+    /// Esc, from any app, stops Spark mid-task. Armed while it's using your mouse and keyboard.
+    private var stopWatch: Any?
+    private func watchForStop() {
+        guard stopWatch == nil else { return }
+        stopWatch = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard e.keyCode == 53 else { return }
+            Task { @MainActor in
+                self?.web.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:actStop'))")
+                self?.stopWatch.map(NSEvent.removeMonitor); self?.stopWatch = nil
+            }
+        }
+    }
+
     private func did(_ detail: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
         web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:did', { detail: \(json) }))")
@@ -204,12 +268,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     // MARK: looking at the screen
 
+    func reportScreenAccess() {
+        send("shuacrew:screenAccess", ["granted": ScreenAccess.granted()])
+    }
+
+    private func send(_ name: String, _ detail: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: detail), let json = String(data: data, encoding: .utf8) else { return }
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(name)', { detail: \(json) }))")
+    }
+
     /// One screenshot of the display Spark is on, only when you ask, with Spark itself left out.
     private func capture() async {
-        guard CGPreflightScreenCaptureAccess() else {
-            CGRequestScreenCaptureAccess()
-            reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then ask again. (Or tap the eye to ask without the screen.)"])
-            return
+        if !ScreenAccess.granted() {
+            guard ScreenAccess.request() else {
+                reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true])
+                return
+            }
         }
         do {
             let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
@@ -220,18 +294,20 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             let mine = content.windows.filter { $0.windowID == CGWindowID(panel.windowNumber) }
             let filter = SCContentFilter(display: display, excludingWindows: mine)
-            // Big enough to read UI text, small enough to be quick and cheap for the model.
-            let longest = 1568.0, scale = min(1, longest / Double(max(display.width, display.height)))
+            // Full Retina resolution for reading text exactly; the model's copy is scaled down afterwards.
             let config = SCStreamConfiguration()
-            config.width = Int(Double(display.width) * scale)
-            config.height = Int(Double(display.height) * scale)
+            config.width = Int(Double(display.width) * screen.backingScaleFactor)
+            config.height = Int(Double(display.height) * screen.backingScaleFactor)
             config.showsCursor = true
-            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            guard let jpeg = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.72]) else {
+            let full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
+            async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
+            guard let small = ScreenText.scaled(full, longest: 1568),
+                  let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
                 reply(["error": "Couldn't encode the screenshot."]); return
             }
             shotScreen = screen
-            reply(["data": jpeg.base64EncodedString(), "width": image.width, "height": image.height])
+            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text])
         } catch {
             reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"])
         }
@@ -256,9 +332,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// SHUACREW_SPARK_SELFTEST="open_app:Activity Monitor" at launch runs one action through the real page → app → page path and logs the result.
     /// Only whoever launches the app can set it; web pages can't.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"], let colon = spec.firstIndex(of: ":") else { return }
+        guard let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] else { return }
+        if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
+            }
+            return
+        }
+        guard let colon = spec.firstIndex(of: ":") else { return }
         let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
         guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("draw:") { // sketch a sample annotation, to check on-screen drawing
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDraw', color: '#34d399', shapes: [{ shape: 'box', x: 0.5, y: 0.35, w: 0.3, h: 0.12, label: 'this total looks off' }, { shape: 'arrow', from: [0.25, 0.7], to: [0.38, 0.42], label: 'it comes from here' }, { shape: 'circle', x: 0.75, y: 0.62, r: 0.04 }, { shape: 'text', x: 0.5, y: 0.86, text: \(String(reflecting: String(spec.dropFirst(5)))) }] })")
+            }
+            return
+        }
         if spec.hasPrefix("guide:") { // draw one guide step, to check the spotlight
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyGuide', x: 0.5, y: 0.45, w: 0.16, h: 0.06, label: \(String(reflecting: String(spec.dropFirst(6)))), step: 2, color: '#a78bfa', wait: true })")
@@ -278,6 +367,48 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             guard let self, Self.enabled else { return }
             self.web.load(URLRequest(url: URL(string: "/buddy", relativeTo: self.gateway.base)!))
         }
+    }
+}
+
+/// Lets exactly one of several racing callbacks through.
+final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+}
+
+/// On-device text recognition (Apple Vision) over the full-resolution screenshot: exact words and numbers with
+/// where they are, so Spark reads tables, code and dashboards precisely instead of squinting at a scaled image.
+enum ScreenText {
+    static func read(_ image: CGImage, timeout: Double = 5) async -> [[String: Any]] {
+        await withCheckedContinuation { done in
+            // Whichever comes first: the text, or the deadline (then Spark still gets the screenshot).
+            let once = Once()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if once.claim() { done.resume(returning: []) } }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let request = VNRecognizeTextRequest()
+                request.recognitionLevel = .accurate
+                request.usesLanguageCorrection = false // code, numbers and identifiers stay exactly as shown
+                try? VNImageRequestHandler(cgImage: image).perform([request])
+                let lines: [[String: Any]] = (request.results ?? []).prefix(600).compactMap { o in
+                    guard let t = o.topCandidates(1).first, t.confidence > 0.3 else { return nil }
+                    let b = o.boundingBox // normalised, origin bottom-left
+                    let r = { (v: CGFloat) in (Double(v) * 1000).rounded() / 1000 }
+                    return ["t": t.string, "x": r(b.midX), "y": r(1 - b.midY), "w": r(b.width), "h": r(b.height)]
+                }
+                if once.claim() { done.resume(returning: lines) }
+            }
+        }
+    }
+
+    static func scaled(_ image: CGImage, longest: Int) -> CGImage? {
+        let scale = min(1, Double(longest) / Double(max(image.width, image.height)))
+        if scale >= 1 { return image }
+        let w = Int(Double(image.width) * scale), h = Int(Double(image.height) * scale)
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
     }
 }
 
@@ -520,6 +651,81 @@ final class PointerOverlay {
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: work)
+    }
+
+    /// Spark sketching on your screen: boxes, circles, arrows and notes that draw themselves in, one after another.
+    /// Shapes use fractions of the screenshot (0–1, from the top-left), like everything else Spark shows you.
+    func draw(on screen: NSScreen, shapes: [[String: Any]], color hex: String?, from: NSPoint?) {
+        hide()
+        let frame = screen.frame, color = Self.color(hex), W = frame.width, H = frame.height
+        let (panel, root) = makePanel(frame)
+        let pt = { (x: Double, y: Double) in CGPoint(x: x * W, y: H - y * H) }
+        let num = { (d: [String: Any], k: String) -> Double? in (d[k] as? Double).flatMap { (0...1).contains($0) ? $0 : nil } }
+        var layers: [CALayer] = [], labels: [(NSView, CGRect)] = [], firstSpot: CGPoint?
+        for shape in shapes.prefix(12) {
+            let path = CGMutablePath()
+            var anchor = CGRect.zero
+            switch shape["shape"] as? String {
+            case "box":
+                guard let x = num(shape, "x"), let y = num(shape, "y"), let w = num(shape, "w"), let h = num(shape, "h") else { continue }
+                anchor = CGRect(x: (x - w / 2) * W, y: H - (y + h / 2) * H, width: w * W, height: h * H)
+                path.addRoundedRect(in: anchor, cornerWidth: 8, cornerHeight: 8)
+            case "circle":
+                guard let x = num(shape, "x"), let y = num(shape, "y"), let r = num(shape, "r") else { continue }
+                let c = pt(x, y), rr = r * W
+                anchor = CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2)
+                path.addEllipse(in: anchor.insetBy(dx: -2, dy: 3)) // a slightly hand-drawn oval
+            case "arrow":
+                guard let f = shape["from"] as? [Double], let t = shape["to"] as? [Double], f.count == 2, t.count == 2, (f + t).allSatisfy({ (0...1).contains($0) }) else { continue }
+                let a = pt(f[0], f[1]), b = pt(t[0], t[1])
+                let bend = CGPoint(x: (a.x + b.x) / 2 - (b.y - a.y) * 0.12, y: (a.y + b.y) / 2 + (b.x - a.x) * 0.12)
+                path.move(to: a); path.addQuadCurve(to: b, control: bend)
+                let angle = atan2(b.y - bend.y, b.x - bend.x), len: CGFloat = 16
+                path.move(to: CGPoint(x: b.x - len * cos(angle - 0.45), y: b.y - len * sin(angle - 0.45))); path.addLine(to: b)
+                path.addLine(to: CGPoint(x: b.x - len * cos(angle + 0.45), y: b.y - len * sin(angle + 0.45)))
+                anchor = CGRect(x: a.x - 4, y: a.y - 4, width: 8, height: 8)
+            case "text":
+                guard let x = num(shape, "x"), let y = num(shape, "y") else { continue }
+                anchor = CGRect(origin: pt(x, y), size: .zero)
+            default: continue
+            }
+            firstSpot = firstSpot ?? CGPoint(x: anchor.midX, y: anchor.midY)
+            if !path.isEmpty {
+                let line = CAShapeLayer()
+                line.path = path
+                line.fillColor = NSColor.clear.cgColor
+                line.strokeColor = color.cgColor
+                line.lineWidth = 3.5
+                line.lineCap = .round; line.lineJoin = .round
+                line.shadowColor = color.cgColor; line.shadowRadius = 6; line.shadowOpacity = 0.8; line.shadowOffset = .zero
+                let sketch = CABasicAnimation(keyPath: "strokeEnd")
+                sketch.fromValue = 0; sketch.toValue = 1; sketch.duration = 0.55
+                sketch.beginTime = CACurrentMediaTime() + 0.5 + Double(layers.count) * 0.35
+                sketch.fillMode = .backwards
+                sketch.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                line.add(sketch, forKey: "sketch")
+                layers.append(line)
+            }
+            if let text = (shape["label"] as? String ?? shape["text"] as? String).map({ String($0.prefix(60)) }), !text.isEmpty {
+                labels.append((pill(text, color: color), anchor))
+            }
+        }
+        if let spot = firstSpot { _ = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: spot, color: color) }
+        for l in layers { root.layer?.addSublayer(l) }
+        for (view, anchor) in labels {
+            if anchor.size == .zero { view.frame.origin = NSPoint(x: min(max(anchor.minX - view.frame.width / 2, 8), W - view.frame.width - 8), y: min(max(anchor.minY - 15, 8), H - 38)) }
+            else { place(view, near: anchor, in: frame.size) }
+            view.alphaValue = 0
+            root.addSubview(view)
+        }
+        panel.orderFrontRegardless()
+        self.panel = panel
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) {
+            NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.3; for (v, _) in labels { v.animator().alphaValue = 1 } }
+        }
+        let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 16, execute: work)
     }
 
     private func fadeOut() {

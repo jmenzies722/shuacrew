@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { playScape, scapePlaying, setScapeVolume, stopScape, type Scape } from "../lib/soundscape";
+import { radioFollows, setRadioFollows } from "./NowPlaying";
 import { usePower } from "../lib/power";
 import { useGatewaySettings } from "./BatchSettings";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
@@ -76,6 +77,7 @@ export function HooksSettings() {
 export function SoundscapeSettings() {
   const [scape, setScape] = useState<Scape>(scapePlaying());
   const [volume, setVolume] = useState(0.5);
+  const [follow, setFollow] = useState(radioFollows);
   const { flow } = usePower();
   useEffect(() => () => { /* keep playing across navigation; stop explicitly */ }, []);
   return <div className="settings-card">
@@ -85,6 +87,9 @@ export function SoundscapeSettings() {
     <SettingRow name="Soundscape volume">
       <input type="range" min={0} max={1} step={0.05} value={volume} aria-label="Soundscape volume" onChange={(e) => { const v = Number(e.target.value); setVolume(v); setScapeVolume(v); }} />
       {scape !== "off" && <Switch label="Stop soundscape" on onChange={() => { stopScape(); setScape("off"); }} />}
+    </SettingRow>
+    <SettingRow name="Follow the crew" detail="When a soundscape is already on, it thins for a decision, opens up while someone is working, and hushes on a failure. It never starts itself.">
+      <Switch label="Soundscape follows the crew" on={follow} onChange={(on) => { setRadioFollows(on); setFollow(on); }} />
     </SettingRow>
   </div>;
 }

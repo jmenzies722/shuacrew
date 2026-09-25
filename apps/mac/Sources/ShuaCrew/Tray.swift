@@ -132,6 +132,18 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
                 menu.addItem(entry)
             }
         }
+        if let track = status.now {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: track.live ? "Now playing" : "Now playing · quiet", action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            let line = NSMenuItem(title: String(track.line.prefix(70)), action: track.id == nil ? nil : #selector(openNow), keyEquivalent: "")
+            line.target = track.id == nil ? nil : self
+            line.isEnabled = track.id != nil
+            line.representedObject = track.id
+            menu.addItem(line)
+            if let id = track.id, track.stoppable { menu.addItem(action("Stop", #selector(stopNow), id)) }
+        }
         menu.addItem(.separator())
         menu.addItem(action("Open ShuaCrew", #selector(open), nil))
         menu.addItem(action("New Session…", #selector(newRun), nil))
@@ -160,6 +172,15 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         window.navigate("/plays/\(play)")
     }
     @objc private func approvePhase(_ sender: NSMenuItem) { approve(sender.representedObject as? String) }
+    @objc private func openNow(_ sender: NSMenuItem) {
+        guard let run = sender.representedObject as? String else { return }
+        NSApp.activate()
+        window.navigate("/sessions/\(run)")
+    }
+    @objc private func stopNow(_ sender: NSMenuItem) {
+        guard let run = sender.representedObject as? String else { return }
+        Task { try? await gateway.cancel(run); await poll() }
+    }
     @objc private func openHome() {
         NSApp.activate()
         window.showWindow(nil)

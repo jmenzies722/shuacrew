@@ -7,6 +7,7 @@ import { Glyph } from "../lib/glyphs";
 import { useLive } from "../lib/live";
 import { selectRooms } from "../lib/room-view";
 import { buildStage, type StageNode } from "../lib/floor-graph";
+import { useNowPlaying } from "./NowPlaying";
 import "./floor-stage.css";
 
 const W = 1000, H = 480, CX = W / 2, CY = H / 2 + 24, RX = 380, RY = 150;
@@ -38,6 +39,7 @@ const curve = (a: { x: number; y: number }, b: { x: number; y: number }) => {
 
 export function FloorStage({ runs, activity, approvals, now }: { runs: Record<string, RunView>; activity: AnyEvent[]; approvals: Record<string, { run?: string | null }>; now: number }) {
   const members = useLive((s) => s.crew.members), rooms = useLive((s) => selectRooms(s.crew));
+  const track = useNowPlaying();
   const navigate = useNavigate();
   const [hover, setHover] = useState<string | null>(null);
   const { nodes, edges } = useMemo(() => buildStage({ members, runs, rooms, approvals, activity, now }), [members, runs, rooms, approvals, activity, Math.floor(now / 1000)]);
@@ -57,6 +59,7 @@ export function FloorStage({ runs, activity, approvals, now }: { runs: Record<st
         <span className={`stage-chip ${handoffs ? "is-violet" : ""}`}>{handoffs} live handoff{handoffs === 1 ? "" : "s"}</span>
         <span className={`stage-chip ${waiting ? "is-wait" : ""}`}>{waiting} waiting on you</span>
         <span className="stage-chip">{perMin} tools / min</span>
+        {track.memberId && <span className="stage-chip is-ok">on stage · {track.who || track.title}</span>}
       </div>
       <ul className="stage-legend"><li><i className="is-session" />your session</li><li><i className="is-delegation" />handoff</li></ul>
     </header>
@@ -82,7 +85,7 @@ export function FloorStage({ runs, activity, approvals, now }: { runs: Record<st
       </svg>
       {nodes.map((n, i) => {
         const p = pos.get(n.id)!, scale = n.kind === "you" ? 1 : 0.84 + p.depth * 0.26;
-        return <button key={n.id} type="button" className={`stage-node is-${n.kind} is-${n.state}`}
+        return <button key={n.id} type="button" className={`stage-node is-${n.kind} is-${n.state}${track.memberId === n.id ? " is-on-stage" : ""}`}
           style={{ left: `${(p.x / W) * 100}%`, top: `${(p.y / H) * 100}%`, zIndex: 10 + Math.round(p.depth * 10), "--c": n.color, "--s": scale, "--d": `${i * 70}ms` } as React.CSSProperties}
           onClick={() => open(n)} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover((h) => (h === n.id ? null : h))} onFocus={() => setHover(n.id)} onBlur={() => setHover(null)}
           disabled={n.kind === "you"} aria-label={n.kind === "you" ? "You" : `${n.label}, ${n.sub}, ${n.state}`}>

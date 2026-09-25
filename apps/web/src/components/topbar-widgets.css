@@ -5,7 +5,7 @@
 .tb-dim { color:var(--text-3); }
 .tb-wx-icon { color:#fbbf24; }
 .tb-panel { position:absolute; right:0; top:calc(100% + 8px); z-index:70; min-width:260px; padding:14px; border-radius:16px;
-  background:color-mix(in srgb, var(--raised) 94%, var(--ink)); backdrop-filter:blur(28px) saturate(1.6); -webkit-backdrop-filter:blur(28px) saturate(1.6);
+  background:linear-gradient(180deg, var(--float-hi), var(--float) 90px); backdrop-filter:blur(28px) saturate(1.6); -webkit-backdrop-filter:blur(28px) saturate(1.6);
   box-shadow:inset 0 0 0 1px var(--line-strong), inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent), 0 22px 60px rgba(0,0,0,.5); animation:tb-in .18s cubic-bezier(.2,.9,.3,1.2); transform-origin:top right; }
 @keyframes tb-in { from { opacity:0; transform:translateY(-4px) scale(.97); } }
 .tb-weather header { display:flex; align-items:center; gap:12px; } .tb-weather header div { flex:1; display:flex; flex-direction:column; }
@@ -66,3 +66,34 @@
 .wg-tile { padding:12px; border-radius:16px; background:var(--panel); box-shadow:inset 0 0 0 1px var(--line); } .wg-tile > * { min-width:0 !important; }
 .wg-tile .tb-presets button { padding:7px 0; font-size:14px; } .wg-tile .tb-big-ring { width:110px; height:110px; }
 @media (prefers-reduced-motion: reduce) { .wg-live, .wg-run i { animation:none; } }
+/* ── The status island: one quiet capsule instead of a row of chips ─────────────────────────── */
+.island { position: relative; }
+.island-pill { display: flex; align-items: center; height: 30px; padding: 0 4px; border-radius: 999px; font-size: 12px; color: var(--text-2);
+  background: color-mix(in srgb, var(--text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: background .18s, box-shadow .18s; }
+.island-pill:hover, .island-pill.is-open { background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.island-seg { display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; height: 18px; }
+.island-seg + .island-seg { border-left: 1px solid var(--line); }
+.island-seg b { font-weight: 600; color: var(--text); }
+.island-dim { color: var(--text-3); }
+.island-wait { color: var(--amber); } .island-wait b { color: var(--amber); }
+.island-focus { color: var(--amber); } .island-focus .tb-ring { width: 13px; height: 13px; }
+.island-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.island-dot.is-ok { background: var(--ok, #34d399); } .island-dot.is-wait { background: var(--amber); } .island-dot.is-bad { background: var(--bad); }
+.island-dot.is-live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #34d399) 22%, transparent); animation: wg-pulse 1.6s ease-in-out infinite; }
+.island-panel { position: absolute; right: 0; top: calc(100% + 10px); z-index: 70; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 90px); overflow: auto; padding: 14px; border-radius: 20px;
+  background: linear-gradient(180deg, var(--float-hi), var(--float) 120px); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent), 0 28px 70px rgba(0,0,0,.55); animation: tb-in .2s cubic-bezier(.2,.9,.3,1.2); transform-origin: top right; }
+.island-panel > header { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px 12px; } .island-panel > header strong { font-size: 15px; } .island-panel > header span { font-size: 11.5px; color: var(--text-3); }
+.island-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.island-tile { min-width: 0; padding: 12px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.island-tile > * { min-width: 0 !important; }
+.island-tile.tile-playing, .island-tile.tile-mix, .island-tile.tile-setlist, .island-tile.tile-crew { grid-column: span 2; }
+.island-tile .tb-presets { grid-template-columns: repeat(4, 1fr); } .island-tile .tb-presets button { padding: 7px 0; font-size: 14px; }
+.island-tile .tb-big-ring { width: 104px; height: 104px; }
+.island-panel > footer { display: flex; justify-content: flex-end; padding-top: 10px; }
+.island-panel > footer button { font-size: 11.5px; color: var(--text-3); } .island-panel > footer button:hover { color: var(--amber); }
+@media (max-width: 720px) { .island-grid { grid-template-columns: 1fr; } .island-tile { grid-column: auto !important; } }
+@media (prefers-reduced-motion: reduce) { .island-dot.is-live, .island-panel { animation: none; } }
+.island-limit { color: var(--amber); } .island-limit button { margin-left: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; color: var(--text); background: color-mix(in srgb, var(--amber) 22%, transparent); }
+.island-notice { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; font-size: 12px; color: var(--text-2); background: var(--amber-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent); }
+.island-notice b { color: var(--amber); } .island-notice span { flex: 1; } .island-notice button { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #0b0b0c; background: var(--amber); }

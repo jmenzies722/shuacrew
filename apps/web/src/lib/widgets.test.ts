@@ -7,7 +7,8 @@ describe("widgets", () => {
     const p = parseWidgets({ order: ["note", "bogus", "note"], topbar: ["clock", 3], zones: ["Europe/London", "Mars/Base", 1], countdown: { label: " Launch ", date: "2026-12-01" } });
     expect(p.order[0]).toBe("note");
     expect(p.order).toHaveLength(WIDGETS.length); // unknown dropped, the rest appended
-    expect(p.topbar).toEqual(["clock"]);
+    expect(p.topbar).toEqual(["playing", "clock"]);
+    expect(parseWidgets({ version: 2, order: ["playing", "crew"], spark: ["playing", "crew"] }).spark).toEqual(["playing", "crew", "mix", "setlist"]);
     expect(p.zones).toEqual(["Europe/London"]);
     expect(p.countdown).toEqual({ label: "Launch", date: "2026-12-01" });
     expect(parseWidgets({ countdown: { label: "x", date: "soon" } }).countdown).toBeNull();

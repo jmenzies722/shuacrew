@@ -8,6 +8,8 @@ export interface CompanionPreferences {
   character: SparkCharacterId; color: string; size: "s" | "m" | "l";
   tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
   hotkey: SparkHotkey; guide: "click" | "manual";
+  /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
+  control: "off" | "ask" | "auto"; conversation: boolean; interrupt: boolean;
 }
 export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const;
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
@@ -23,7 +25,8 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
     character: choice("character", SPARK_CHARACTERS, "spark"), color: typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color) ? v.color.toLowerCase() : "#f5b544",
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
-    hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click") };
+    hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
+    control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

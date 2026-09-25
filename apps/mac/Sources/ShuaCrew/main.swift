@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         window.onBuddyEnabled = { [weak self] on in self?.buddy.setEnabled(on) }
         window.onBuddyHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
+        buddy.onHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
         NSApp.mainMenu = mainMenu()
         if quiet {
             NSApp.setActivationPolicy(.accessory)
@@ -56,6 +57,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { window.showWindow(nil) }
         return true
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        window.reportScreenAccess()
+        buddy.reportScreenAccess()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

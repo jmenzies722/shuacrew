@@ -11,10 +11,12 @@ import { KIND } from "../lib/kinds";
 import { PublishButton } from "../components/Publish";
 import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
+import { recentlyPlayed } from "../lib/studio";
 import { isMac, pickFolder } from "../lib/native";
 import { Glyph } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
+import "../components/studio-desk.css";
 
 type Kind = ArtifactView["kind"];
 interface Hit {
@@ -47,6 +49,7 @@ export function Library() {
   const [adding, setAdding] = useState(false);
 
   const made = useMemo(() => Object.values(artifacts).sort((a, b) => b.updatedAt - a.updatedAt), [artifacts]);
+  const crate = useMemo(() => recentlyPlayed(made, Date.now(), 8), [made]);
   const known = useMemo(() => Object.values(knowledge).sort((a, b) => b.addedAt - a.addedAt), [knowledge]);
   const shown = kind === "all" ? made : made.filter((a) => a.kind === kind);
 
@@ -103,6 +106,20 @@ export function Library() {
                 </div>
               )}
             </div>
+            {tab === "made" && crate.length > 0 && !query && (
+              <div className="lib-crate" aria-label="Recently played">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[.14em] text-amber">Recently played</div>
+                <div className="sd-crate">
+                  {crate.map((a) => {
+                    const K = KIND[a.kind];
+                    return <button key={a.id} type="button" className="sd-sleeve-card" onClick={() => setOpen({ type: "artifact", id: a.id })}>
+                      <span className="sd-cover" style={{ "--c": K.tone } as React.CSSProperties}>{a.kind === "image" ? <img src={`/api/library/artifacts/${a.id}/raw`} alt="" /> : <K.icon size={26} strokeWidth={1.6} />}</span>
+                      <b>{a.title}</b>
+                    </button>;
+                  })}
+                </div>
+              </div>
+            )}
             {tab === "made" ? (
               shown.length ? (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3.5">

@@ -1,7 +1,8 @@
 import type { AnyEvent } from "@shuacrew/core/events";
-import { ChevronLeft, ChevronRight, Pause, Play, Radio, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Pause, Play, Radio, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { cinemaCuts, runRecap, skipToFight } from "../lib/studio";
 
 const SPEEDS = [1, 4, 12];
 
@@ -47,9 +48,11 @@ function caption(e?: AnyEvent): string {
  * Time travel through a session: the thread above shows it as it was at the step you're on.
  * ←/→ step, space plays, Esc returns to live. Nothing about the session changes.
  */
-export function ReplayBar({ events, at, onChange, onClose }: { events: AnyEvent[]; at: number | null; onChange: (seq: number | null) => void; onClose: () => void }) {
+export function ReplayBar({ events, at, onChange, onClose, title = "" }: { events: AnyEvent[]; at: number | null; onChange: (seq: number | null) => void; onClose: () => void; title?: string }) {
   const seqs = useMemo(() => events.map((e) => e.seq), [events]);
   const turns = useMemo(() => events.flatMap((e, i) => (e.kind === "turn.started" ? [i] : [])), [events]);
+  const cuts = useMemo(() => cinemaCuts(events), [events]);
+  const fight = useMemo(() => skipToFight(events), [events]);
   const index = at === null ? seqs.length - 1 : Math.max(0, seqs.indexOf(at));
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(4);
@@ -110,6 +113,11 @@ export function ReplayBar({ events, at, onChange, onClose }: { events: AnyEvent[
           {turns.map((i) => (
             <span key={i} className="replay-tick" style={{ left: `${seqs.length > 1 ? (i / (seqs.length - 1)) * 100 : 0}%` }} />
           ))}
+          {cuts.map((c) => {
+            const i = seqs.indexOf(c.seq);
+            if (i < 0) return null;
+            return <i key={c.seq} className={`replay-cut is-${c.kind}`} title={c.label} style={{ left: `${seqs.length > 1 ? (i / (seqs.length - 1)) * 100 : 0}%` }} />;
+          })}
           <input type="range" min={0} max={Math.max(0, seqs.length - 1)} value={index} onChange={(e) => (setPlaying(false), go(Number(e.target.value)))} aria-label="Scrub through this session" />
         </div>
         <span className="mono w-[74px] shrink-0 text-right text-[11px] tabular-nums text-fg-3">
@@ -128,6 +136,8 @@ export function ReplayBar({ events, at, onChange, onClose }: { events: AnyEvent[
           <span className="mono text-[11px] text-fg-3">{event ? new Date(event.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : ""}</span>
         )}
         <span className="min-w-0 flex-1 truncate text-fg-2">{caption(event)}</span>
+        {fight != null && <button className="replay-fight" type="button" onClick={() => (setPlaying(false), onChange(fight))} title="Skip to the first failure or deny">Skip to the fight</button>}
+        <RecapButton events={events} title={title} />
         {!live && (
           <button className="text-[12px] font-medium text-fg hover:underline" onClick={() => (setPlaying(false), onChange(null))}>
             Back to live
@@ -136,4 +146,11 @@ export function ReplayBar({ events, at, onChange, onClose }: { events: AnyEvent[
       </div>
     </motion.div>
   );
+}
+
+function RecapButton({ events, title }: { events: AnyEvent[]; title: string }) {
+  const [copied, setCopied] = useState(false);
+  return <button className="replay-fight" type="button" title="Copy a 30-second recap" onClick={() => {
+    void navigator.clipboard.writeText(runRecap(events, title)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); });
+  }}><Copy size={11} /> {copied ? "Copied" : "Recap"}</button>;
 }

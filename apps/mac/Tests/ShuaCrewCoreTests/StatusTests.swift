@@ -52,6 +52,16 @@ import Testing
     #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(none.utf8)).briefing == nil)
 }
 
+@Test func nowPlayingDecodesAndOlderGatewaysStayQuiet() throws {
+    let json = #"{"running":1,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"now":{"id":"r1","title":"Ship it","who":"Eli","status":"running","updatedAt":1}}"#
+    let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+    #expect(status.now?.line == "Ship it — Eli")
+    #expect(status.now?.live == true)
+    #expect(status.now?.stoppable == true)
+    let old = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[]}"#
+    #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(old.utf8)).now == nil)
+}
+
 @Test func menuBarModesPickTheBadge() throws {
     func status(_ json: String) throws -> CrewStatus { try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8)) }
     let base = #""running":2,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"tokensToday":386300"#

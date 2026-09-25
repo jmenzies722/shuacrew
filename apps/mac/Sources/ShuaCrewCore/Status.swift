@@ -83,8 +83,24 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
     /// Settings → Menu bar: "attention" (default), "running", "tokens" or "off".
     public var menuBar: String = "attention"
     public var tokensToday: Int = 0
+    /// The session on right now — menu bar Now Playing. Absent on older gateways.
+    public var now: Now?
 
-    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing, menuBar, tokensToday }
+    public struct Now: Decodable, Equatable, Sendable {
+        public let id: String?
+        public let title: String
+        public let who: String
+        public let status: String
+        public let updatedAt: Int
+        public init(id: String?, title: String, who: String, status: String, updatedAt: Int) {
+            self.id = id; self.title = title; self.who = who; self.status = status; self.updatedAt = updatedAt
+        }
+        public var live: Bool { id != nil && ["running", "planning", "queued", "awaiting_approval", "paused"].contains(status) }
+        public var stoppable: Bool { ["running", "planning", "queued"].contains(status) }
+        public var line: String { who.isEmpty ? title : "\(title) — \(who)" }
+    }
+
+    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing, menuBar, tokensToday, now }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -98,6 +114,7 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         briefing = try c.decodeIfPresent(Briefing.self, forKey: .briefing)
         menuBar = try c.decodeIfPresent(String.self, forKey: .menuBar) ?? "attention"
         tokensToday = try c.decodeIfPresent(Int.self, forKey: .tokensToday) ?? 0
+        now = try c.decodeIfPresent(Now.self, forKey: .now)
     }
 
     public init(running: Int, awaiting: Int, reviewing: Int, approvals: [Approval], limited: [String], recent: [Finished] = [], reviews: [Review] = []) {

@@ -18,7 +18,23 @@ export function SparkSettings() {
   const set = (patch: Partial<CompanionPreferences>) => saveCompanion({ ...prefs, ...patch });
   const [mood, setMood] = useState<Mood>("idle"), [desktop, setDesktop] = useState(readDesktop);
   const [voices, setVoices] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const [screen, setScreen] = useState<boolean | null>(null);
   useEffect(() => { void api<{ voices?: Array<{ id: string; name: string; description?: string }> }>("/api/speech/status").then((s) => setVoices(s.voices ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    const on = (e: Event) => setScreen((e as CustomEvent<{ granted?: boolean }>).detail.granted === true);
+    const poll = () => native()?.postMessage({ type: "buddyScreenAccess" });
+    window.addEventListener("shuacrew:screenAccess", on);
+    window.addEventListener("focus", poll);
+    poll();
+    return () => { window.removeEventListener("shuacrew:screenAccess", on); window.removeEventListener("focus", poll); };
+  }, []);
+  const [trusted, setTrusted] = useState<boolean | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setTrusted((e as CustomEvent<{ trusted?: boolean }>).detail.trusted === true);
+    const poll = () => native()?.postMessage({ type: "buddyHands" });
+    window.addEventListener("shuacrew:hands", on); window.addEventListener("focus", poll); poll();
+    return () => { window.removeEventListener("shuacrew:hands", on); window.removeEventListener("focus", poll); };
+  }, []);
   const toggleDesktop = (on: boolean) => { setDesktop(on); try { localStorage.setItem(DESKTOP, on ? "1" : "0"); } catch { /* ignore */ } native()?.postMessage({ type: "buddyEnabled", on }); };
   const hotkey = (combo: SparkHotkey) => { set({ hotkey: combo }); native()?.postMessage({ type: "buddyHotkey", combo }); };
   const name = prefs.nickname || "Spark";
@@ -59,6 +75,11 @@ export function SparkSettings() {
       </SettingRow>
       <SettingRow name="Answers" modified={prefs.length !== "brief"}><Segmented label="Answer length" value={prefs.length} onChange={(length) => set({ length })} options={[["brief", "Brief"], ["detailed", "Detailed"]]} /></SettingRow>
       <SettingRow name={`${name} talks`} detail="Spoken as the answer streams in, with a local neural voice. Nothing leaves this Mac." modified={!voice.on}><Switch label="Talks" on={voice.on} onChange={(on) => saveBuddyVoice({ on })} /></SettingRow>
+      <SettingRow name="Conversation" detail={`Open mic while ${name}'s card is open: just talk, no buttons. It hears when you stop, answers out loud, and listens again. Transcribed on this Mac.`} modified={prefs.conversation}>
+        <Switch label="Conversation" on={prefs.conversation} onChange={(conversation) => set({ conversation })} />
+      </SettingRow>
+      {prefs.conversation && <SettingRow name="Talk over to interrupt" detail={`Start speaking while ${name} talks and it stops to listen.`} modified={!prefs.interrupt}><Switch label="Interrupt" on={prefs.interrupt} onChange={(interrupt) => set({ interrupt })} /></SettingRow>}
+      <SettingRow name="Change me by asking" detail={`Say “talk faster”, “use Ryan's voice”, “be more direct”, “call yourself Nova”, “be the fox”, “make yourself purple”, “stop clicking things”: ${name} updates these settings itself.`} />
       {voice.on && <SettingRow name="Voice" detail={voices.length ? undefined : "Install local speech in Settings → Shua voice."}>
         <select className="setting-input" value={voice.id} onChange={(e) => saveBuddyVoice({ id: e.target.value })} aria-label="Voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
         <Segmented label="Speed" value={String(voice.speed) as "0.9" | "1" | "1.15"} onChange={(v) => saveBuddyVoice({ speed: Number(v) })} options={[["0.9", "Calm"], ["1", "Normal"], ["1.15", "Quick"]]} />
@@ -70,10 +91,17 @@ export function SparkSettings() {
       <SettingRow name="Shortcut" detail="Works from any app. Changes take effect immediately." modified={prefs.hotkey !== "ctrl-opt-space"}>
         <Segmented label="Shortcut" value={prefs.hotkey} onChange={hotkey} options={Object.entries(SPARK_HOTKEYS) as Array<[SparkHotkey, string]>} />
       </SettingRow>
+      <SettingRow name="Mouse & keyboard" detail={<>{`${name} can click, type, press shortcuts and scroll to do a task for you, one step at a time, looking again after each. Never in password managers or password fields; `}<kbd>Esc</kbd> stops it anywhere.{trusted === false && native() && <> <button type="button" className="spark-link" onClick={() => native()?.postMessage({ type: "buddyHands", ask: true })}>Allow Accessibility…</button></>}{trusted && " Accessibility: allowed."}</>} modified={prefs.control !== "ask"}>
+        <Segmented label="Mouse and keyboard" value={prefs.control} onChange={(control) => set({ control })} options={[["off", "Off"], ["ask", "Ask each step"], ["auto", "Autopilot"]]} />
+      </SettingRow>
       <SettingRow name="Guided steps" detail={`Ask “show me how to…” and ${name} spotlights one step at a time. With “When I click it”, doing the step is enough: it looks again and plans the next one from what's really on screen.`} modified={prefs.guide !== "click"}>
         <Segmented label="Advance guided steps" value={prefs.guide} onChange={(guide) => set({ guide })} options={[["click", "When I click it"], ["manual", "When I say done"]]} />
       </SettingRow>
-      <SettingRow name="Looking at your screen" detail="Only when you ask with the eye on: one screenshot of the display it's on (itself left out), attached to that question. Never recorded, never in the background." />
+      <SettingRow name="Looking at your screen" detail={screen === false ? "Settings can show this on while the grant is ignored — usually an unsigned build. Allow ShuaCrew once, then quit the app once. After that it stays on." : "Only when you ask with the eye on: one screenshot of the display it's on (itself left out), attached to that question. Never recorded, never in the background."}>
+        {native() && (screen === true ? <span className="spark-screen-ok">On</span> : screen === false
+          ? <button type="button" className="tb-btn" onClick={() => native()?.postMessage({ type: "buddyScreenAccess", request: true, openSettings: true })}>Allow in System Settings</button>
+          : <button type="button" className="tb-btn" onClick={() => native()?.postMessage({ type: "buddyScreenAccess" })}>Check</button>)}
+      </SettingRow>
       <SettingRow name="Doing things" detail="Opens apps, websites, and files or folders in your home folder; starts focus timers; adds to your note; hands big jobs to the crew. The Mac app checks every action. It never clicks or types for you: it shows you." />
       <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
     </section>

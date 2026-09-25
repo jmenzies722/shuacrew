@@ -41,6 +41,16 @@ final class Gateway: @unchecked Sendable {
         let (_, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw GatewayError.refused("The gateway didn't accept that decision.") }
     }
+
+    func cancel(_ run: String) async throws {
+        var request = URLRequest(url: base.appending(path: "api/runs/\(run)/cancel"))
+        request.httpMethod = "POST"
+        request.setValue("1", forHTTPHeaderField: "X-ShuaCrew")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        let (_, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw GatewayError.refused("Couldn't stop that session.") }
+    }
 }
 
 extension Gateway {

@@ -9,6 +9,7 @@ const Memory = lazyRouteComponent(() => import("./screens/Memory"), "Memory");
 const Schedules = lazyRouteComponent(() => import("./screens/Schedules"), "Schedules");
 const TerminalPage = lazyRouteComponent(() => import("./screens/TerminalPage"), "TerminalPage");
 const CrewFloor = lazyRouteComponent(() => import("./screens/CrewFloor"), "CrewFloor");
+const Studio = lazyRouteComponent(() => import("./screens/Studio"), "Studio");
 const CrewPage = lazyRouteComponent(() => import("./screens/CrewPage"), "CrewPage");
 const Rooms = lazyRouteComponent(() => import("./screens/Rooms"), "Rooms");
 const Observability = lazyRouteComponent(() => import("./screens/Observability"), "Observability");
@@ -35,6 +36,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/activity", component: MissionControl }),
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),
   createRoute({ getParentRoute: () => root, path: "/floor", component: CrewFloor }),
+  createRoute({ getParentRoute: () => root, path: "/studio", component: Studio }),
   createRoute({ getParentRoute: () => root, path: "/ventures", component: Ventures }),
   createRoute({ getParentRoute: () => root, path: "/ventures/$id", component: VenturePage }),
   createRoute({ getParentRoute: () => root, path: "/crew", component: CrewPage }),

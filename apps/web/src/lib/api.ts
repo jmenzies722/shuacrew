@@ -1,3 +1,5 @@
+import { getMix, routeLaunch } from "./studio";
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); this.name = "ApiError"; }
 }
@@ -17,7 +19,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 export const launchTask = (body: { markdown: string; repo?: string; runtime?: string; model?: string }) => api<{ id: string }>("/api/tasks", { body });
 
 export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; member?: string }) =>
-  api<{ id: string }>("/api/runs", { body });
+  api<{ id: string }>("/api/runs", { body: { ...body, member: routeLaunch(body.member, getMix()) } });
 
 export const decideApproval = (id: string, allow: boolean, extra: { always?: boolean; comment?: string } = {}) =>
   api<{ ok: boolean }>(`/api/approvals/${id}`, { body: { allow, ...extra } });

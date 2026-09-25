@@ -108,6 +108,10 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         }
     }
 
+    func reportScreenAccess(_ granted: Bool = ScreenAccess.granted()) {
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:screenAccess', { detail: { granted: \(granted) } }))")
+    }
+
     /// Call into the page's bridge (`window.shuacrew`).
     func page(_ script: String) {
         showWindow(nil)
@@ -204,11 +208,21 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
                   let on = body["on"] as? Bool else { return }
             onBuddyEnabled?(on)
+        case "buddyHands":
+            // Settings → Spark: is Accessibility on (mouse & keyboard)? Ask macOS when you press the button.
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            if body["ask"] as? Bool == true { SparkHands.askForAccess() }
+            web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:hands', { detail: { trusted: \(SparkHands.trusted), shortcuts: [] } }))")
         case "buddyHotkey":
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
                   let combo = body["combo"] as? String else { return }
             onBuddyHotkey?(combo)
+        case "buddyScreenAccess":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            reportScreenAccess(ScreenAccess.handle(body))
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil

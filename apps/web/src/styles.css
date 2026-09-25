@@ -186,6 +186,8 @@ body {
    tinting through. Frost Black is the one palette that is glass on purpose (frosted black over
    the window material), and full screen is always solid: there's no desktop behind it. */
 :root { --chrome: var(--ink); }
+/* Floating things (popovers, the status island, Spark's card) sit over busy content: an opaque lift of the canvas, never glass-over-text. */
+:root { --float: color-mix(in srgb, var(--text) 7%, var(--ink)); --float-hi: color-mix(in srgb, var(--text) 10%, var(--ink)); }
 [data-shell="mac"] body,
 [data-shell="mac"] [data-frame] {
   background: var(--chrome);
@@ -936,6 +938,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .replay-track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); }
 .replay-fill { position: absolute; left: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--text) 45%, transparent), var(--text)); transition: width .12s linear; }
 .replay-tick { position: absolute; top: 50%; width: 2px; height: 10px; margin: -5px 0 0 -1px; border-radius: 2px; background: color-mix(in srgb, var(--text) 35%, transparent); pointer-events: none; }
+.replay-cut { position: absolute; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; pointer-events: none; background: var(--text-3); }
+.replay-cut.is-fail { background: var(--bad); box-shadow: 0 0 8px color-mix(in srgb, var(--bad) 50%, transparent); width: 6px; height: 6px; margin: -3px 0 0 -3px; }
+.replay-cut.is-approval { background: var(--wait); }
+.replay-cut.is-file { background: var(--ok); }
+.replay-cut.is-tool { background: var(--amber); }
+.replay-fight { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 11.5px; color: var(--text-2); }
+.replay-fight:hover { color: var(--text); }
 .replay-track input { position: absolute; inset: 0; width: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .replay-track:hover .replay-fill { box-shadow: 0 0 12px color-mix(in srgb, var(--text) 30%, transparent); }
 

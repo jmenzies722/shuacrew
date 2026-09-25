@@ -1,6 +1,6 @@
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3, GraduationCap } from "lucide-react";
+import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3, GraduationCap, Disc3 } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
 import { MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +22,8 @@ import { getPower, savePower, usePower } from "../lib/power";
 import { navKey } from "../lib/keys";
 import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
-import { TopBarWidgets } from "../components/TopBarWidgets";
+import { StatusIsland } from "../components/TopBarWidgets";
+import { RadioHost } from "../components/NowPlaying";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../components/surfaces.css";
@@ -30,6 +31,7 @@ import "../lib/look";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
+  { to: "/studio", label: "Studio", hint: "Now playing, mix, tonight's set", icon: Disc3, key: "j", group: "Work" },
   { to: "/ventures", label: "Ventures", hint: "Your startups, idea → revenue", icon: Rocket, key: "v", group: "Work" },
   { to: "/crew", label: "Crew", hint: "Your standing team", icon: Users, key: "r", group: "Work" },
   { to: "/rooms", label: "Crew rooms", hint: "Shared conversation and real delegation", icon: MessagesSquare, key: "g", group: "Work" },
@@ -87,6 +89,7 @@ export function Shell() {
       <VoiceConversationHost />
       <WinsHost />
       <SoundsHost />
+      <RadioHost />
       <AutomationsHost />
       <DevHud />
     </div>
@@ -126,36 +129,12 @@ function TopBar() {
         </button>
       </div>
       <span className="flex-1" />
-      <TopBarWidgets ctx={{ go: (path) => void navigate({ to: path }) }} />
-      {limited.map(([key, info]) => {
-        const [runtime, model] = key.split(" · ");
-        const soon = info.until - Date.now() < 86_400_000;
-        const until = new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
-        return (
-          <button
-            key={key}
-            className="limit-chip hidden min-[1000px]:flex"
-            title={`${info.message}\nClick to try again now — if it's still limited, the next message will say so.`}
-            onClick={() => void api(`/api/runtimes/${runtime}/restore`, { body: { model } })}
-          >
-            <StatusGlyph tone="live" size={7} /> {model ?? runtime} out until {until}
-            <span className="limit-try">Try now</span>
-          </button>
-        );
-      })}
-      <span className="hidden items-center gap-3 text-[12px] text-fg-3 min-[900px]:flex" data-no-drag>
-        <span className="flex items-center gap-1.5" title="Agents working now">
-          <StatusGlyph tone={running ? "live" : "idle"} size={7} />
-          <span className="tabular-nums text-fg-2">{running}</span> running
-        </span>
-        <TokensToday tokens={crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0} />
-      </span>
-      <span
-        className={`h-2 w-2 rounded-full ${connection === "live" ? "bg-ok" : connection === "connecting" ? "bg-amber" : "bg-bad"}`}
-        title={connection === "live" ? "Gateway online" : connection === "connecting" ? "Connecting to the gateway" : "Reconnecting to the gateway"}
-        role="status"
-        data-no-drag
-      />
+      <StatusIsland ctx={{ go: (path) => void navigate({ to: path }) }} running={running} connection={connection}
+        limits={limited.map(([key, info]) => {
+          const [runtime, model] = key.split(" · "), soon = info.until - Date.now() < 86_400_000;
+          return { key, label: model ?? runtime ?? key, message: info.message, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
+        })}
+        tokens={formatTokens(crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0)} />
       <button
         onClick={() => approvals[0]?.run && navigate({ to: "/sessions/$id", params: { id: approvals[0].run } })}
         className="relative grid h-8 w-8 place-items-center rounded-[8px] text-fg-3 hover:bg-panel hover:text-fg"
@@ -238,7 +217,7 @@ function IconRail() {
   };
   useEffect(() => { setTooltip(null); }, [path, labeled]);
   const groups = ["Work", "Plan", "Brain", "System"] as const;
-  const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
+  const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/studio" && (awaiting > 0 || working > 0) ? { tone: awaiting ? "wait" : "live", n: awaiting || working } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
   return (
     <nav aria-label="Primary" className={`rail ${labeled ? "is-open is-pinned" : ""}`} onScroll={() => setTooltip(null)} onKeyDown={e => { if (e.key === "Escape") setTooltip(null); }}>
       {groups.map((group) => (

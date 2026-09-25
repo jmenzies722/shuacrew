@@ -64,6 +64,8 @@
 .stage-name { margin-top:8px; font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; text-shadow:0 1px 8px rgba(0,0,0,.8); }
 .stage-role { margin-top:-5px; font-size:10.5px; color:var(--text-3); white-space:nowrap; max-width:130px; overflow:hidden; text-overflow:ellipsis; }
 .stage-node.is-working .stage-role { color:var(--c); } .stage-node.is-waiting .stage-role { color:var(--wait); } .stage-node.is-recent .stage-role { color:var(--ok); }
+.stage-node.is-on-stage .stage-name { color: var(--amber); }
+.stage-node.is-on-stage .stage-orb { box-shadow: inset 0 -6px 14px rgba(0,0,0,.4), 0 0 0 2px var(--amber), 0 0 0 10px color-mix(in srgb, var(--amber) 20%, transparent), 0 0 48px color-mix(in srgb, var(--amber) 40%, transparent); }
 
 .stage-spark, .stage-need { position:absolute; bottom:calc(100% + 4px); white-space:nowrap; border-radius:999px; font-size:11px; animation:pop .4s cubic-bezier(.2,.9,.3,1.35); }
 .stage-spark { padding:4px 10px; color:var(--text); background:color-mix(in srgb, var(--panel) 70%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 50%, transparent), 0 8px 22px rgba(0,0,0,.45); }

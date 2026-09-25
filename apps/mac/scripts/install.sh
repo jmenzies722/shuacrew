@@ -39,12 +39,30 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocationUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
   <key>NSLocationWhenInUseUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
+  <key>NSAppleEventsUsageDescription</key><string>So Spark can play and pause your music, change appearance and run tasks you ask for. Only when you ask.</string>
   <key>NSMicrophoneUsageDescription</key><string>So you can talk to your crew instead of typing. Speech is transcribed on this Mac.</string>
+  <key>NSScreenCaptureUsageDescription</key><string>Spark looks at the display it's on only when you ask with the eye on. One screenshot, never recorded, never in the background.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PLIST
-codesign --force --sign "${SHUACREW_SIGN_IDENTITY:--}" "$STAGE"
+# Sign with your Apple Development identity when there is one: macOS privacy permissions (Screen Recording,
+# Microphone, Location) then belong to "ShuaCrew by you" and survive quit/rebuild. Ad-hoc signing ("-") has
+# no Team ID, so Settings can show the toggle on while the grant is ignored after every quit.
+if [ -z "${SHUACREW_SIGN_IDENTITY:-}" ]; then
+  SHUACREW_SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\) "Apple Development:.*$/\1/p' | /usr/bin/head -1)
+fi
+if [ -z "${SHUACREW_SIGN_IDENTITY:-}" ]; then
+  echo "No Apple Development identity. Refusing ad-hoc install — Screen Recording would not stick across quit. Set SHUACREW_SIGN_IDENTITY only if you mean it." >&2
+  exit 1
+fi
+echo "signing as: $SHUACREW_SIGN_IDENTITY"
+codesign --force --sign "$SHUACREW_SIGN_IDENTITY" "$STAGE"
+if [ "$SHUACREW_SIGN_IDENTITY" != "-" ]; then
+  SIGN_INFO=$(codesign -dv "$STAGE" 2>&1)
+  echo "$SIGN_INFO" | \grep -q 'Signature=adhoc' && { echo "Signing failed: still ad-hoc. Screen Recording will not persist." >&2; exit 1; }
+  echo "$SIGN_INFO" | \grep -q 'TeamIdentifier=not set' && { echo "Signing failed: no Team ID. Screen Recording will not persist." >&2; exit 1; }
+fi
 # Quit through the app before installing. Running agents belong to the gateway and continue.
 if pgrep -xq ShuaCrew; then
   echo "Quit ShuaCrew before installing. Agents keep running in the gateway." >&2

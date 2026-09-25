@@ -148,7 +148,7 @@ function SessionsPanel({ selected }: { selected?: string }) {
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const all = Object.values(runs)
-      .filter((r) => !r.parent)
+      .filter((r) => !r.parent && !r.labels?.some((l) => l === "buddy" || l === "learning")) // Spark chats and study sessions live in Spark and Learning
       .filter((r) => !q || `${r.title} ${r.ask} ${r.ticker} ${r.repo ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => b.updatedAt - a.updatedAt);
     const week = Date.now() - 7 * 86400_000;
@@ -347,7 +347,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       {replay ? (
         <div className="shrink-0 px-4 pb-3 pt-1">
           <div className="mx-auto max-w-[var(--chat-width,820px)]">
-            <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} />
+            <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} title={run.title} />
           </div>
         </div>
       ) : run.labels.includes("crew-room") ? (

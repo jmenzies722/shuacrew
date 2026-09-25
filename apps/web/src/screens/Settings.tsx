@@ -64,6 +64,8 @@ function Choice<K extends keyof Preferences>({ name, detail, field, options }: {
 
 export function Settings() {
   const [section, setSection] = useState<Section>(() => sectionFromHash(window.location.hash));
+  // The workspace dashboard greets you on plain Settings; a deep link or a section click goes straight to the settings.
+  const [overview, setOverview] = useState(() => !window.location.hash);
   useEffect(() => { const on = () => setSection(sectionFromHash(window.location.hash)); window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
   const [query, setQuery] = useState("");
   const saved = useLive((s) => s.preferenceSaved);
@@ -148,10 +150,11 @@ export function Settings() {
   };
   return <div className="settings-page">
     <header className="settings-hero"><div><span className="settings-kicker"><SlidersHorizontal size={12} /> YOUR WORKSPACE</span><h1>Make room for your best work.</h1><p>The look, the flow, the intelligence. Make ShuaCrew yours.</p></div><span className="settings-save" role="status">{saved ? <><Check size={13} /> Preferences save on this device</> : "Storage unavailable · changes last this session"}</span></header>
-    <SettingsCommand go={(hash) => { window.location.hash = hash; setSection(sectionFromHash(`#${hash}`)); setQuery(""); }} />
+    {overview && <SettingsCommand go={(hash) => { window.location.hash = hash; setSection(sectionFromHash(`#${hash}`)); setQuery(""); setOverview(false); }} />}
     <div className="settings-layout"><aside className="settings-sidebar">
       <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
-      <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, icon: Icon }) => <button key={id} aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); }}><Icon size={17} /><span>{title}</span></button>)}</nav>
+      {!overview && <button type="button" className="settings-overview-link" onClick={() => { setOverview(true); history.replaceState(null, "", "/settings"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Workspace overview</button>}
+      <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, icon: Icon }) => <button key={id} aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); setOverview(false); }}><Icon size={17} /><span>{title}</span></button>)}</nav>
       <div className="settings-sidebar-note"><span className="settings-kicker">BUILT AROUND YOU</span><p>One workspace.<br />Your entire crew.</p><Link to="/crew">Meet your agents ↗</Link></div>
     </aside><div className="settings-content"><div className="settings-section-heading"><div><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && ["appearance", "workspace", "chat"].includes(section) && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
       {notice && <p role="status" className="settings-notice">{notice}</p>}
