@@ -84,7 +84,7 @@
 .settings-hero { border-bottom: 1px solid var(--line-strong); }
 .settings-hero h1 { font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
 .settings-search { border: 0; border-radius: 10px; background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
-.settings-search:focus-within { outline: 0; box-shadow: 0 0 0 1px var(--amber), 0 0 18px -6px rgba(142, 72, 255, .45); }
+.settings-search:focus-within { outline: 0; box-shadow: 0 0 0 1px var(--amber), 0 0 18px -6px var(--accent-glow); }
 .settings-sidebar nav { gap: 2px; margin-top: 8px; }
 .settings-nav-label { padding: 14px 10px 5px; font-size: 12px; font-weight: 500; color: var(--text-3); }
 .settings-sidebar nav button { gap: 11px; padding: 8px 10px; border-radius: 10px; font-size: 13.5px; color: var(--text-2); }

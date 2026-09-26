@@ -50,9 +50,8 @@ export function applyLook(p: LookPrefs, root: HTMLElement = document.documentEle
   set("--font-mono", p.monoFont === DEFAULT_LOOK.monoFont ? null : FONT_STACK.mono[p.monoFont]);
   set("--font-reading", p.readingFont === DEFAULT_LOOK.readingFont ? null : FONT_STACK.reading[p.readingFont]);
   set("--chat-width", p.chatWidth === DEFAULT_LOOK.chatWidth ? null : WIDTH[p.chatWidth]);
-  // Custom accent: the three accent tokens, inline so they win over the preset; cleared → preset returns.
-  const hex = p.customAccent;
-  set("--amber", hex); set("--amber-soft", hex ? `${hex}26` : null); set("--on-accent", hex ? (luminance(hex) > 0.45 ? "#0b0b0c" : "#ffffff") : null);
+  // One accent, from the theme: clear any custom accent an older version left inline.
+  set("--amber", null); set("--amber-soft", null); set("--on-accent", null);
   root.dataset.living = p.livingBackground ? "on" : "off";
   root.dataset.ligatures = p.ligatures ? "on" : "off";
   root.dataset.chatStyle = p.chatStyle;

@@ -186,11 +186,11 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .spk .buddy-msg.is-you { color: var(--text) !important; background: var(--active-bg) !important; box-shadow: inset 0 0 0 1px var(--active-line) !important; }
 .spk-mini { background: var(--ink) !important; box-shadow: 0 0 0 1px var(--line-strong) !important; }
 .spk .buddy-input { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
-.spk .buddy-input:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 20px -6px rgba(142, 72, 255, .45); }
+.spk .buddy-input:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 20px -6px var(--accent-glow); }
 .spk .buddy-starters button { background: transparent; box-shadow: 0 0 0 1px var(--line-strong); }
 .spk .buddy-starters button:hover { background: var(--raised); box-shadow: 0 0 0 1px var(--active-line); }
 .buddy-spark { position: relative; }
 .buddy-spark::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 55%; height: 8px; transform: translateX(-50%); border-radius: 50%; pointer-events: none;
-  background: var(--spark-color, #8e48ff); filter: blur(9px); opacity: .45; }
+  background: var(--spark-color, var(--amber)); filter: blur(9px); opacity: .45; }
 .buddy-spark.is-speaking::after { opacity: .8; }
 @media (prefers-reduced-motion: reduce) { .spk-avatar::before { animation: none; } }

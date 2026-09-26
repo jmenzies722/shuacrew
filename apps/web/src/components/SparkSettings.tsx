@@ -9,7 +9,7 @@ import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
 import { summary, useSparkLog } from "../lib/spark-log";
 import { resetWelcome } from "./Welcome";
-const swatchBg = (f: string) => { const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
+const swatchBg = (f: string) => { if (f === "theme") return "var(--amber)"; const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
 type Native = { postMessage(m: unknown): void };
 const native = () => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;

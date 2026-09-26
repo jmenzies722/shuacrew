@@ -159,12 +159,8 @@ export function MenuBarSettings() {
 export function LookSettings() {
   const look = useLook();
   return <div className="settings-card">
-    <SettingRow name="Any accent colour" detail={look.customAccent ? `Contrast on the dark background: ${contrast(look.customAccent, "#0b0b0c").toFixed(1)}:1${contrast(look.customAccent, "#0b0b0c") < 3 ? " — low, hard to read" : ""}` : "Overrides the preset accent everywhere. Clear it to go back."} modified={look.customAccent !== null}>
-      <input type="color" className="accent-well" aria-label="Accent colour" value={look.customAccent ?? "#f5a524"} onChange={(e) => saveLook({ customAccent: e.target.value })} />
-      {look.customAccent && <button type="button" className="settings-reset" onClick={() => saveLook({ customAccent: null })}>Use preset</button>}
-    </SettingRow>
     <SettingRow name="Living background" detail="A slow aurora behind everything. GPU-only; stops for reduced motion." modified={look.livingBackground}><Switch label="Living background" on={look.livingBackground} onChange={(livingBackground) => saveLook({ livingBackground })} /></SettingRow>
-    <SettingRow name="Interface font" modified={look.uiFont !== "geist"}><Segmented label="Interface font" value={look.uiFont} onChange={(uiFont) => saveLook({ uiFont })} options={[["geist", "Geist"], ["system", "SF Pro"]]} /></SettingRow>
+    <SettingRow name="Interface font" modified={look.uiFont !== "geist"}><Segmented label="Interface font" value={look.uiFont} onChange={(uiFont) => saveLook({ uiFont })} options={[["geist", "Space Grotesk"], ["system", "SF Pro"]]} /></SettingRow>
     <SettingRow name="Reading font" detail="For agent replies and documents." modified={look.readingFont !== "sans"}><Segmented label="Reading font" value={look.readingFont} onChange={(readingFont) => saveLook({ readingFont })} options={[["sans", "Sans"], ["serif", "New York"]]} /></SettingRow>
     <SettingRow name="Code font" modified={look.monoFont !== "jetbrains"}><Segmented label="Code font" value={look.monoFont} onChange={(monoFont) => saveLook({ monoFont })} options={[["jetbrains", "JetBrains"], ["sf-mono", "SF Mono"], ["menlo", "Menlo"]]} /></SettingRow>
     <SettingRow name="Ligatures" detail="Join => and != into single glyphs in code." modified={!look.ligatures}><Switch label="Ligatures" on={look.ligatures} onChange={(ligatures) => saveLook({ ligatures })} /></SettingRow>

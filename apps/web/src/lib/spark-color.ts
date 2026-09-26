@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 /** A companion's finish: a solid colour ("#8e48ff") or a gradient ("grad:#from:#to"). */
 export const SPARK_FINISHES: Array<{ id: string; name: string }> = [
-  { id: "#8e48ff", name: "Kiro" }, { id: "#111114", name: "Onyx" }, { id: "#f5b544", name: "Amber" }, { id: "#ff7a59", name: "Coral" }, { id: "#f472b6", name: "Pink" },
+  { id: "theme", name: "Theme" }, { id: "#8e48ff", name: "Violet" }, { id: "#111114", name: "Onyx" }, { id: "#f5b544", name: "Amber" }, { id: "#ff7a59", name: "Coral" }, { id: "#f472b6", name: "Pink" },
   { id: "#60a5fa", name: "Blue" }, { id: "#34d399", name: "Mint" }, { id: "#e5e7eb", name: "Pearl" },
   { id: "grad:#a78bfa:#60a5fa", name: "Aurora" }, { id: "grad:#f472b6:#f59e0b", name: "Sunset" }, { id: "grad:#22d3ee:#6366f1", name: "Ocean" },
   { id: "grad:#34d399:#0ea5e9", name: "Lagoon" }, { id: "grad:#18181b:#7c3aed", name: "Nebula" }, { id: "grad:#050506:#52525b", name: "Obsidian" },
@@ -11,12 +11,19 @@ export const SPARK_FINISHES: Array<{ id: string; name: string }> = [
 const HEX = /^#[0-9a-f]{6}$/i;
 export function validFinish(v: unknown): v is string {
   if (typeof v !== "string") return false;
-  if (HEX.test(v)) return true;
+  if (v === "theme" || HEX.test(v)) return true;
   const m = /^grad:(#[0-9a-f]{6}):(#[0-9a-f]{6})$/i.exec(v);
   return Boolean(m);
 }
 
+/** The app's current accent as a hex, for places CSS variables can't reach (SVG gradient stops). */
+export function themeAccent(): string {
+  try { const v = getComputedStyle(document.documentElement).getPropertyValue("--amber").trim().toLowerCase(); if (HEX.test(v)) return v; } catch { /* no DOM */ }
+  return "#8e48ff";
+}
+
 export function stops(finish: string): { from: string; to: string; gradient: boolean } {
+  if (finish === "theme") { const c = themeAccent(); return { from: c, to: c, gradient: false }; }
   const m = /^grad:(#[0-9a-f]{6}):(#[0-9a-f]{6})$/i.exec(finish);
   if (m) return { from: m[1]!.toLowerCase(), to: m[2]!.toLowerCase(), gradient: true };
   const c = HEX.test(finish) ? finish.toLowerCase() : "#8e48ff";
@@ -45,6 +52,8 @@ export function accentOf(finish: string) {
 
 /** CSS variables for anything tinted by the companion: `--spark-color` (solid) and `--spark-fill` (may be a gradient). */
 export function sparkVars(finish: string): CSSProperties {
+  // "Theme" follows the app's accent live: CSS reads the token itself, so switching accents recolours the companion too.
+  if (finish === "theme") return { "--spark-color": "var(--amber)", "--spark-fill": "var(--amber)", "--spark-on": "var(--on-accent, #fff)" } as CSSProperties;
   const { from, to, gradient } = stops(finish), accent = accentOf(finish);
   const dark = luminance(mix(from, to, 0.5)) < 0.05;
   return { "--spark-color": accent, "--spark-fill": gradient ? `linear-gradient(135deg, ${from}, ${to})` : dark ? `linear-gradient(135deg, #2a2a30, #0c0c0e)` : accent, "--spark-on": luminance(accent) > 0.45 ? "#0b0b0d" : "#ffffff" } as CSSProperties;

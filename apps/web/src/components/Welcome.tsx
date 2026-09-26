@@ -7,7 +7,7 @@ import { saveCompanion, SPARK_CHARACTERS, useCompanion, type CompanionPreference
 import { CHARACTER_INFO, SparkCharacter } from "./SparkCharacter";
 import { setSparkPanel } from "../lib/spark-panel";
 import "./welcome.css";
-const swatchBg = (f: string) => { const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
+const swatchBg = (f: string) => { if (f === "theme") return "var(--amber)"; const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
 /** Seen once: after this, ShuaCrew opens straight to work. Bumping the version shows the tour again after a big release. */
 const KEY = "shuacrew.welcome";
@@ -58,7 +58,7 @@ export function Welcome({ onDone }: { onDone: () => void }) {
             <div className="wel-chars">{SPARK_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })}><SparkCharacter preferences={{ ...prefs, character: id }} size={46} /><span>{CHARACTER_INFO[id].name}</span></button>)}</div>
             <div className="wel-row">
               <label className="wel-name"><span>Name</span><input value={prefs.nickname} maxLength={24} placeholder="Spark" onChange={(e) => set({ nickname: e.target.value })} /></label>
-              <div className="wel-colors">{SPARK_FINISHES.filter((f) => ["#8e48ff", "#111114", "#f5b544", "#60a5fa", "grad:#a78bfa:#60a5fa", "grad:#f472b6:#f59e0b", "grad:#18181b:#7c3aed", "grad:#050506:#52525b"].includes(f.id)).map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}</div>
+              <div className="wel-colors">{SPARK_FINISHES.filter((f) => ["theme", "#111114", "#f5b544", "#60a5fa", "grad:#a78bfa:#60a5fa", "grad:#f472b6:#f59e0b", "grad:#18181b:#7c3aed", "grad:#050506:#52525b"].includes(f.id)).map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}</div>
             </div>
           </>}
           {step === 1 && <>

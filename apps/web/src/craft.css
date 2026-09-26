@@ -4,9 +4,11 @@
  * uses the palette tokens, so nothing drifts out of sync.
  */
 :root[data-palette="pristine"] {
-  --accent-text: #c19aff;
-  --active-bg: #352f3d;
-  --active-line: #4a464f;
+  --accent-text: color-mix(in srgb, var(--amber) 55%, #fff);
+  --active-bg: color-mix(in srgb, var(--amber) 16%, var(--panel));
+  --active-line: color-mix(in srgb, var(--amber) 32%, var(--line-strong));
+  --accent-hover: color-mix(in srgb, var(--amber) 85%, #fff);
+  --accent-glow: color-mix(in srgb, var(--amber) 45%, transparent);
   --surface: var(--panel);
   --surface-hi: var(--raised);
   --depth: 0 0 0 1px var(--line-strong), 0 4px 12px rgba(0, 0, 0, 0.35);
@@ -31,9 +33,9 @@
 
 /* Buttons: the accent is solid violet; the rest are quiet outlines. */
 [data-palette="pristine"] .ui-btn[data-variant="primary"], [data-palette="pristine"] :is(.wel-next, .buddy-send:not(:disabled)) {
-  background: var(--amber); color: #fff; box-shadow: 0 0 0 1px var(--amber), 0 4px 14px -6px var(--amber);
+  background: var(--amber); color: var(--on-accent, #fff); box-shadow: 0 0 0 1px var(--amber), 0 4px 14px -6px var(--amber);
 }
-[data-palette="pristine"] .ui-btn[data-variant="primary"]:hover { background: #9f63ff; }
+[data-palette="pristine"] .ui-btn[data-variant="primary"]:hover { background: var(--accent-hover); }
 [data-palette="pristine"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset) {
   background: transparent !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important;
 }
@@ -41,7 +43,7 @@
 
 /* The composer: Kiro's rounded field with a violet glow along its edge when you're in it. */
 [data-palette="pristine"] .composer-box { background: var(--panel) !important; border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong) !important; }
-[data-palette="pristine"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px rgba(142, 72, 255, .45) !important; }
+[data-palette="pristine"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px var(--accent-glow) !important; }
 
 /* Top bar: blends into the canvas; search is an outlined capsule. */
 [data-palette="pristine"] header[aria-label="Top bar"] { background: var(--sunken); box-shadow: none; }
@@ -49,7 +51,7 @@
 [data-palette="pristine"] .island-pill { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
 
 /* Headings. */
-[data-palette="pristine"] .pane-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--text); }
+[data-palette="pristine"] .pane-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: #ebe9ee; }
 
 /* Hub tabs: Kiro's selected state. */
 [data-palette="pristine"] .hub-tab-on { background: var(--active-bg); box-shadow: 0 0 0 1px var(--active-line); }

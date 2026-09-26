@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { BookOpen, Cpu, Hammer, House, PanelLeftClose, PanelLeftOpen, Plus, Settings, Users } from "lucide-react";
+import { Activity, BookMarked, BookOpen, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, LayoutDashboard, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
 import { isTopLevelWork } from "../lib/crew";
@@ -12,6 +12,11 @@ import { toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
 import { SparkCharacter } from "../components/SparkCharacter";
 import "./hub-nav.css";
 
+const PAGE_ICON: Record<string, typeof House> = {
+  "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": LayoutDashboard, "/studio": Clapperboard,
+  "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
+  "/library": Library, "/memory": Brain, "/learn": GraduationCap, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
+};
 const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, system: Cpu } as const;
 const LAST = "shuacrew.hubs.last";
 const readLast = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(LAST) ?? "{}"); } catch { return {}; } };
@@ -127,27 +132,22 @@ export function HubSidebar() {
       <span className="side-spark-text"><b>Ask {name}</b><small>anything, anywhere</small></span><kbd>⌘J</kbd>
     </button>
     <button type="button" className="side-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}><Plus size={15} /> New session<kbd>⌘N</kbd></button>
-    <div className="side-group">
-      {HUBS.map((hub, i) => { const Icon = ICON[hub.id], on = here === hub.id, n = count(hub.id);
-        return <div key={hub.id} className={`side-hub ${on ? "is-on" : ""}`}>
-          <button type="button" className="side-row" onClick={() => go(hub)} title={`${hub.label} — ${hub.hint}  ⌘${i + 1}`} aria-current={on ? "page" : undefined}>
-            {on && <motion.span layoutId="side-hub-on" className="side-hub-on" transition={{ type: "spring", stiffness: 480, damping: 38 }} />}
-            <i className="side-ico" data-hub={hub.id}><Icon size={14} strokeWidth={2} /></i><span>{hub.label}</span>{n > 0 && <em className={hub.id === "home" ? "is-wait" : "is-live"}>{n}</em>}
-          </button>
-          <AnimatePresence initial={false}>{on && <motion.div key="tabs" className="side-tabs" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
-            {hub.tabs.map((tab) => { const sel = at?.tab === tab; return <Link key={tab.to} to={tab.to} className={`side-tab ${sel ? "is-on" : ""}`} aria-current={sel ? "page" : undefined}>
-              {sel && <motion.span layoutId="side-tab-on" className="side-tab-on" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}<span className="side-tab-label">{tab.label}</span>
-            </Link>; })}
-          </motion.div>}</AnimatePresence>
-        </div>; })}
-    </div>
+    <div className="side-scroll">
+    {HUBS.map((hub) => <div key={hub.id} className="side-group">
+      {hub.id !== "home" && <div className="side-label">{hub.label}</div>}
+      {hub.tabs.map((tab) => { const on = at?.tab === tab, Icon = PAGE_ICON[tab.to] ?? Circle, n = tab.to === "/" ? waiting : tab.to === "/crew" ? working : 0;
+        return <Link key={tab.to} to={tab.to} className={`side-row ${on ? "is-on" : ""}`} aria-current={on ? "page" : undefined} title={`${tab.label} — ${hub.hint}`}>
+          {on && <motion.span layoutId="side-hub-on" className="side-hub-on" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
+          <i className="side-ico"><Icon size={16} strokeWidth={1.8} /></i><span>{tab.label}</span>{n > 0 && <em className={tab.to === "/" ? "is-wait" : "is-live"}>{n}</em>}
+        </Link>; })}
+    </div>)}
     {recent.length > 0 && <div className="side-group side-recent">
       <div className="side-label">Recent</div>
       {recent.map((r) => { const on = path === `/sessions/${r.id}`; return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
         <i className={`side-dot is-${LIVE.has(r.status) ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span>
       </Link>; })}
     </div>}
-    <span className="side-spacer" />
+    </div>
     <div className="side-foot">
       <button type="button" className={`side-row ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })}><i className="side-ico" data-hub="settings"><Settings size={14} strokeWidth={2} /></i><span>Settings</span><kbd>⌘,</kbd></button>
     </div>
