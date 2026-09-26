@@ -11,7 +11,7 @@ export function shouldBrief(lastDay: string | null, now: Date): boolean {
   return lastDay !== now.toISOString().slice(0, 10);
 }
 
-const greeting = (h: number) => (h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
+const greeting = (h: number) => (h < 5 ? "Up late" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
 
 /** Short enough to hear in under 30 seconds; every clause is something real, and the last is one next step. */
 export function morningBrief(i: MorningInput): string {

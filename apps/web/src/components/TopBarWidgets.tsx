@@ -17,7 +17,7 @@ import "./topbar-widgets.css";
 /** Where a widget sends you: the app navigates; Spark asks the Mac app to open the window there. */
 export interface WidgetCtx { go(path: string): void }
 
-const ICONS = { sun: Sun, moon: Moon, "cloud-sun": CloudSun, cloud: Cloud, fog: CloudFog, drizzle: CloudDrizzle, rain: CloudRain, snow: CloudSnow, storm: CloudLightning } as const;
+export const WEATHER_ICONS = { sun: Sun, moon: Moon, "cloud-sun": CloudSun, cloud: Cloud, fog: CloudFog, drizzle: CloudDrizzle, rain: CloudRain, snow: CloudSnow, storm: CloudLightning } as const;
 const ACTIVE = new Set(["queued", "planning", "running", "awaiting_approval", "reviewing", "paused"]);
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 const bytes = (n: number) => `${compact.format(n / 1e9)} GB`;
@@ -59,6 +59,9 @@ let forceWeather = false;
 const weather = source<Weather>(() => { const f = forceWeather; forceWeather = false; return loadWeather(f); }, 15 * 60_000);
 const system = source<SystemInfo>(() => api<SystemInfo>("/api/system"), 10_000);
 const learning = source<LearningInfo>(() => api<LearningInfo>("/api/learning"), 5 * 60_000);
+/** The same live feeds the widgets use, for the Today view. */
+export const useWeatherNow = () => weather.use();
+export const useLearningNow = () => learning.use();
 function useNow(everyMs: number) { const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), everyMs); return () => clearInterval(t); }, [everyMs]); return now; }
 
 function useCrew() {
@@ -91,7 +94,7 @@ function Bar({ label, value, detail }: { label: string; value: number; detail: s
 
 // ── chips (top bar) ──────────────────────────────────────────────────────────────────────────
 /** Each chip subscribes only to its own source, so widgets you haven't placed never poll. */
-function WeatherChipBody() { const w = weather.use(), d = w.value ? describe(w.value.code, w.value.day) : null, I = d ? ICONS[d.icon] : Cloud; return <><I size={14} className="tb-wx-icon" />{w.value ? <span className="tabular-nums">{w.value.temp}°</span> : <span className="tb-dim">{w.error ? "—" : "…"}</span>}</>; }
+function WeatherChipBody() { const w = weather.use(), d = w.value ? describe(w.value.code, w.value.day) : null, I = d ? WEATHER_ICONS[d.icon] : Cloud; return <><I size={14} className="tb-wx-icon" />{w.value ? <span className="tabular-nums">{w.value.temp}°</span> : <span className="tb-dim">{w.error ? "—" : "…"}</span>}</>; }
 function FocusChipBody() { const { timer, remaining } = useFocusDone(); return timer ? <><Ring value={1 - remaining / timer.durationMs} /><span className="tabular-nums">{remaining > 0 ? formatFocusRemaining(remaining) : "Done"}</span></> : <Timer size={14} />; }
 function CrewChipBody() { const crew = useCrew(); return <><Bot size={14} className={crew.runs.length ? "wg-live" : ""} /><span className="tabular-nums">{crew.runs.length}</span>{crew.approvals.length > 0 && <em className="wg-badge">{crew.approvals.length}</em>}</>; }
 function ClockChipBody() { const prefs = useWidgets(), now = useNow(15_000); return <><Clock size={13} /><span className="tabular-nums">{new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>{prefs.zones[0] && <span className="tb-dim tabular-nums">{new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: prefs.zones[0] })}</span>}</>; }
@@ -132,13 +135,13 @@ export function WidgetTile({ id, ctx, close }: { id: WidgetId; ctx: WidgetCtx; c
 
 function WeatherTile() {
   const w = weather.use(), prefs = useWeatherPrefs(), unit = prefs.unit === "f" ? "°F" : "°C";
-  const d = w.value ? describe(w.value.code, w.value.day) : null, Icon = d ? ICONS[d.icon] : Cloud;
+  const d = w.value ? describe(w.value.code, w.value.day) : null, Icon = d ? WEATHER_ICONS[d.icon] : Cloud;
   return <div className="tb-weather">
     {w.value && d ? <>
       <header><Icon size={30} className="tb-wx-icon" /><div><strong>{w.value.temp}{unit}</strong><span>{d.label} · {w.value.place}</span></div>
         <button type="button" className="tb-icon-btn" aria-label="Refresh weather" disabled={w.busy} onClick={() => { forceWeather = true; void weather.refresh(); }}><RefreshCw size={13} className={w.busy ? "tb-spin" : ""} /></button></header>
       <p className="tb-wx-meta">H {w.value.hi}° · L {w.value.lo}° · <Wind size={11} /> {w.value.wind} {prefs.unit === "f" ? "mph" : "km/h"}</p>
-      <ol className="tb-hours">{w.value.hours.map((h) => { const I = ICONS[describe(h.code).icon]; return <li key={h.time}><small>{h.time}</small><I size={15} /><b>{h.temp}°</b>{h.rain > 0 && <em>{h.rain}%</em>}</li>; })}</ol>
+      <ol className="tb-hours">{w.value.hours.map((h) => { const I = WEATHER_ICONS[describe(h.code).icon]; return <li key={h.time}><small>{h.time}</small><I size={15} /><b>{h.temp}°</b>{h.rain > 0 && <em>{h.rain}%</em>}</li>; })}</ol>
       <p className="tb-foot">Open-Meteo · updated {new Date(w.value.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
     </> : <p className="tb-dim">{w.error || "Loading the weather…"}</p>}
   </div>;

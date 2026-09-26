@@ -11,6 +11,7 @@ import { describe } from "../shell/CommandPalette";
 import { newSession } from "../shell/Shell";
 import { PaneHeader } from "../components/Pane";
 import { Radar } from "lucide-react";
+import { DayHero } from "../components/DayHero";
 
 /** Home: what's running, what needs you, what just finished, what it's costing. */
 export function MissionControl() {
@@ -40,7 +41,8 @@ export function MissionControl() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader eyebrow={new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })} icon={Radar} title="Today" description="What needs you, what's moving, and what finished — each item opens where it came from."
+        <DayHero />
+        <PaneHeader eyebrow="Live" icon={Radar} title="Right now" description="What needs you, what's moving, and what finished — each item opens where it came from."
           actions={<div className="flex items-center gap-6 pb-1 text-[12px] text-fg-2">
             <Stat label="running" value={running} tone={running ? "live" : "idle"} />
             <Stat label="awaiting you" value={approvals.length} tone={approvals.length ? "wait" : "idle"} />

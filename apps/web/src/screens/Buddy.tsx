@@ -437,6 +437,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   }, [prefs.listen, open]);
   useEffect(() => () => mic.current.stop(), []);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
+  // The desktop Spark: pinned on top only if you chose it; always comes forward when it starts talking.
+  useEffect(() => { if (!embedded) post({ type: "buddyOnTop", on: prefs.onTop }); }, [prefs.onTop, embedded]);
+  useEffect(() => { if (!embedded && speaking) post({ type: "buddyRaise" }); }, [speaking, embedded]);
   // Music steps aside while you and Spark talk (the radio and Music/Spotify), and comes back once it's quiet again.
   // "Talking" covers the whole exchange: you speaking, Spark thinking, and Spark answering — no gap in between.
   const talking = speaking || phase === "hearing" || phase === "transcribing" || !!busy || working;

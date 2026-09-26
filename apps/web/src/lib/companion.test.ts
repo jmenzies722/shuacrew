@@ -22,3 +22,9 @@ it("listens with an open mic by default and keeps push-to-talk when chosen", () 
   expect(parseCompanion({ listen: "hold" }).listen).toBe("hold");
   expect(parseCompanion({ listen: "shout" }).listen).toBe("auto");
 });
+
+it("keeps the desktop Spark off the top of your work unless you pin it", () => {
+  expect(parseCompanion(null).onTop).toBe(false);
+  expect(parseCompanion({ onTop: true }).onTop).toBe(true);
+  expect(parseCompanion({ onTop: "yes" }).onTop).toBe(false);
+});

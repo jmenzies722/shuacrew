@@ -13,6 +13,8 @@ export interface CompanionPreferences {
   control: "off" | "ask" | "auto"; conversation: boolean; interrupt: boolean;
   /** How the mic takes a turn: "auto" (open mic, just talk) or "hold" (push-to-talk: hold the talk button or Space). */
   listen: "auto" | "hold";
+  /** On the desktop: pinned above every app, or (default) a normal window that comes forward when called, talking or teaching. */
+  onTop: boolean;
 }
 export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const;
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
@@ -30,7 +32,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
-    listen: choice("listen", ["auto", "hold"], "auto") };
+    listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

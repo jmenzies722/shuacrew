@@ -52,7 +52,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: closed), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
         panel.isFloatingPanel = true
-        panel.level = .floating
+        // Not always on top by default: Spark sits on your desktop like any window and comes forward when you call it,
+        // when it talks, or when it's teaching. "Stay on top" in Spark settings pins it above everything.
+        panel.level = .normal
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -109,7 +111,37 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         web.evaluateJavaScript("window.buddy && window.buddy.focus()")
     }
 
+    private var guiding = false
+    private func raise() { panel.orderFrontRegardless() }
+
+    /// Teaching: Spark walks over to stand beside the step it's showing you, then goes home when the lesson ends.
+    private func walk(beside x: Double, _ y: Double, _ w: Double, _ h: Double, on screen: NSScreen) {
+        guard !isOpen else { return }
+        let f = screen.frame, v = screen.visibleFrame, size = panel.frame.size
+        let target = NSRect(x: f.minX + (x - w / 2) * f.width, y: f.maxY - (y + h / 2) * f.height, width: w * f.width, height: h * f.height)
+        var origin = NSPoint(x: target.maxX + 28, y: target.midY - size.height / 2)
+        if origin.x + size.width > v.maxX { origin.x = target.minX - 28 - size.width }   // no room on the right: stand on the left
+        origin.x = min(max(origin.x, v.minX), v.maxX - size.width)
+        origin.y = min(max(origin.y, v.minY), v.maxY - size.height)
+        guiding = true
+        raise()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.55; ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+            panel.animator().setFrame(NSRect(origin: origin, size: size), display: true)
+        }
+    }
+    private func walkHome() {
+        guard guiding else { return }
+        guiding = false
+        let corner = savedCorner() ?? defaultCorner(), size = panel.frame.size
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.5
+            panel.animator().setFrame(NSRect(x: corner.x - size.width, y: corner.y, width: size.width, height: size.height), display: true)
+        }
+    }
+
     private func toggle() {
+        raise()
         panel.makeKeyAndOrderFront(nil)
         web.evaluateJavaScript("window.buddy && window.buddy.toggle()")
     }
@@ -246,6 +278,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                   [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
                           color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true)
+            // The cursor flies first; then Spark walks over to stand beside the step.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.walk(beside: x, y, w, h, on: screen) }
         case "saveFile":
             // Diagrams you export: always through your own Save panel; the page never picks the path.
             guard let text = body["text"] as? String, text.utf8.count <= 5_000_000 else { return }
@@ -263,6 +297,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: sparkCenter)
         case "buddyGuideStop":
             pointer.hide()
+            walkHome()
+        case "buddyOnTop":
+            let on = body["on"] as? Bool ?? false
+            panel.level = on ? .floating : .normal
+            if on { raise() }
+        case "buddyRaise":
+            raise()
         case "buddyOpen":
             if let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil { onOpen?("/sessions/\(run)") }
             else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }
@@ -389,6 +430,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
+            }
+            return
+        }
+        if spec.hasPrefix("walk:") { // a guide step at a fixed spot: Spark should walk beside it, then go home when it ends
+            let log = { (label: String) in
+                let f = self.panel.frame, line = "\(label) x=\(Int(f.minX)) y=\(Int(f.minY)) w=\(Int(f.width)) h=\(Int(f.height)) level=\(self.panel.level.rawValue)\n"
+                if let h = FileHandle(forWritingAtPath: NSHomeDirectory() + "/.shuacrew/spark-selftest.log") { h.seekToEndOfFile(); h.write(Data(line.utf8)); h.closeFile() }
+            }
+            try? "".write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                log("before")
+                self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyGuide', x: 0.3, y: 0.3, w: 0.12, h: 0.06, label: 'Click here', step: 1, wait: false })")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    log("guiding")
+                    self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyGuideStop' })")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { log("after") }
+                }
             }
             return
         }
