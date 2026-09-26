@@ -34,6 +34,7 @@ export type Action =
   | { type: "remember"; text: string }
   | { type: "run"; command: string }
   | { type: "go"; path: string }
+  | { type: "card"; front: string; back: string }
   | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string };
 /** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
@@ -223,6 +224,7 @@ function toAction(v: unknown): Action | null {
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
+    case "card": { const front = str(o.front, 240), back = str(o.back, 800); return front && back ? { type: "card", front, back } : null; }
     case "go": { const path = str(o.path, 80); return path && SHUACREW_PAGES.some((p) => p.path === path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}#`)) ? { type: "go", path } : null; }
     case "radio": { const cmds = ["play", "pause", "resume", "next", "previous", "stop"] as const; const cmd = cmds.find((c) => c === o.cmd); const station = str(o.station, 80); return cmd ? { type: "radio", cmd, ...(station ? { station } : {}) } : null; }
     case "run": { const command = str(o.command, 2000); return command && !/[\u0000-\u0008]/.test(command) ? { type: "run", command } : null; }
@@ -253,6 +255,7 @@ export function describeAction(a: Action): string {
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
+    case "card": return "Added a quiz card";
     case "go": return `Open ${SHUACREW_PAGES.find((p) => a.path === p.path || a.path.startsWith(p.path + "/"))?.name ?? a.path}`;
     case "radio": return a.cmd === "play" ? `Radio: ${a.station ?? "on"}` : `Radio: ${a.cmd}`;
     case "run": return `Run ${a.command.length > 48 ? `${a.command.slice(0, 48)}…` : a.command}`;
@@ -348,6 +351,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Build, code, research, anything multi-step: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
       'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media (play, pause, next, play_query). Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
+      'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
     ].join("\n"),

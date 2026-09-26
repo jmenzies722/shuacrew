@@ -123,3 +123,19 @@ enum ScreenElements {
         return CGRect(origin: p, size: s)
     }
 }
+
+/// The text you've selected in the app in front, read through macOS accessibility — no keystrokes, no clipboard.
+@MainActor
+enum Selection {
+    static func read() -> (text: String, app: String)? {
+        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier,
+              !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &focused) == .success, let el = focused else { return nil }
+        var selected: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el as! AXUIElement, kAXSelectedTextAttribute as CFString, &selected) == .success,
+              let text = (selected as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return (String(text.prefix(8000)), app.localizedName ?? "")
+    }
+}

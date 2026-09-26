@@ -175,11 +175,15 @@ export type ProducerMove =
   | { kind: "scape"; scape: Scape }
   | { kind: "stop-radio" }
   | { kind: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous"; station?: string }
-  | { kind: "focus"; minutes: number };
+  | { kind: "focus"; minutes: number }
+  | { kind: "idea"; text: string }
+  | { kind: "explain" };
 
 export function producerMove(q: string): ProducerMove | null {
   const t = q.trim();
   if (isStudioAsk(t)) return { kind: "brief" };
+  if (/^(new\s+)?idea\s*[:\-–—]\s*\S/i.test(t)) return { kind: "idea", text: t };
+  if (/^(explain|break down|what does|what's|what is)\s+(this|that|the selection|what i (selected|highlighted))( (mean|do|code))?\s*[?.!]*$/i.test(t)) return { kind: "explain" };
   if (/^(stop|kill|turn off) (the )?(radio|soundscape|music|record)\b/i.test(t)) return { kind: "stop-radio" };
   // ShuaCrew Radio: your own lofi stations.
   const lofi = /^(put on|play|start|tune (in )?to)( some| the| my)? (lo-?fi)( radio)?\s*(jazz|hip[\s-]?hop)?\b/i.exec(t);

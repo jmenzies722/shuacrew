@@ -1,4 +1,5 @@
 import { listenForCommands } from "../lib/radio";
+import { startDj } from "../lib/radio-dj";
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3, GraduationCap, Disc3 } from "lucide-react";
@@ -68,7 +69,7 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 
 export function Shell() {
   const motionPreference = useLive((s) => s.appearance.motion);
-  useEffect(() => { listenForCommands(); }, []); // the app window owns the radio player
+  useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
   const { flow } = usePower();
   useGlobalKeys();
   useSpotlight();

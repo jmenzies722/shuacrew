@@ -15,6 +15,8 @@ export interface CompanionPreferences {
   listen: "auto" | "hold";
   /** On the desktop: pinned above every app, or (default) a normal window that comes forward when called, talking or teaching. */
   onTop: boolean;
+  /** Radio DJ: a short spoken intro when a new track or station starts. Off unless you turn it on. */
+  dj: boolean;
 }
 export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const;
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
@@ -32,7 +34,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
-    listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true };
+    listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {
@@ -61,4 +63,5 @@ export function saveCompanion(next: CompanionPreferences): boolean {
 }
 // Spark's desktop panel shares this storage: a change in Settings reaches it at once.
 if (typeof window !== "undefined") window.addEventListener("storage", (e) => { if (e.key === "shuacrew.companion") { preferences = load(); listeners.forEach((l) => l()); } });
+export function getCompanion() { return preferences; }
 export function useCompanion() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => preferences, () => preferences); }

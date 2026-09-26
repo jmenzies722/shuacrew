@@ -20,6 +20,12 @@ const KEY = "shuacrew.radio";
 const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "{}") as { station?: string; volume?: number }; } catch { return {}; } })();
 let state: RadioState = { loaded: false, root: "", exists: false, stations: [], station: saved.station ?? null, track: null, playing: false, volume: typeof saved.volume === "number" ? saved.volume : 0.6, position: 0, duration: 0, queue: [], history: [], error: "", youtube: [], live: null };
 const listeners = new Set<() => void>();
+/** Something new came on: a local track (with what played before it) or a live station. The DJ listens to this. */
+export type OnAir = { kind: "track"; track: RadioTrack; previous: RadioTrack | null; station: string } | { kind: "live"; station: YouTubeStation };
+const onAirListeners = new Set<(e: OnAir) => void>();
+export function onAir(l: (e: OnAir) => void) { onAirListeners.add(l); return () => { onAirListeners.delete(l); }; }
+/** Dip the music under a voice (0–1 of your volume), without pausing it. */
+export function dip(level: number) { const v = state.volume * level; if (audio) audio.volume = v; ytSend("setVolume", [Math.round(v * 100)]); }
 const set = (patch: Partial<RadioState>) => {
   state = { ...state, ...patch }; listeners.forEach((l) => l());
   try { localStorage.setItem(KEY, JSON.stringify({ station: state.station, volume: state.volume })); } catch { /* ignore */ }
@@ -81,6 +87,8 @@ function start(track: RadioTrack) {
   const a = el();
   a.src = `/api/radio/tracks/${track.id}/audio`;
   wireAnalyser();
+  const before = state.track;
+  queueMicrotask(() => onAirListeners.forEach((l) => l({ kind: "track", track, previous: before, station: state.stations.find((x) => x.id === track.station)?.name ?? "" })));
   set({ track, position: 0, duration: track.duration ?? 0, history: state.track && state.track.id !== track.id ? [...state.history.slice(-30), state.track] : state.history });
   void a.play().catch(() => set({ playing: false, error: "Press play to start — macOS needs one click before audio." }));
   if ("mediaSession" in navigator) {
@@ -122,6 +130,7 @@ function playYoutube(station: YouTubeStation) {
     ytSend("setVolume", [Math.round(state.volume * 100)]);
   });
   yt = f; document.body.appendChild(f);
+  setTimeout(() => onAirListeners.forEach((l) => l({ kind: "live", station })), 2500); // once the stream has had a moment to start
   set({ station: station.id, live: station, track: null, queue: [], position: 0, duration: 0, error: "", playing: false });
 }
 function stopYoutube() { yt?.remove(); yt = null; }

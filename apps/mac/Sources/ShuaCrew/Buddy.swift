@@ -304,6 +304,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if on { raise() }
         case "buddyRaise":
             raise()
+        case "buddySelection":
+            if let sel = Selection.read() { send("shuacrew:selection", ["text": sel.text, "app": sel.app], to: sender) }
+            else { send("shuacrew:selection", ["text": "", "app": NSWorkspace.shared.frontmostApplication?.localizedName ?? ""], to: sender) }
         case "buddyOpen":
             if let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil { onOpen?("/sessions/\(run)") }
             else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }

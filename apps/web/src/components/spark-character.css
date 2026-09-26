@@ -32,3 +32,14 @@
 @keyframes ch-float { 50% { transform: translateY(-4px); } }
 @keyframes ch-hop { 50% { transform: translateY(-10px); } }
 @media (prefers-reduced-motion: reduce) { .spark-character, .spark-character *, .spark-character svg { animation: none !important; } }
+
+/* Moods from real events: concerned when work fails, sleepy after a long quiet stretch. */
+.mood-concerned .ch-eyes ellipse { transform: scaleY(.6) translateY(1.5px); animation: none; }
+.mood-concerned svg, .mood-concerned > .spark-art { animation: ch-worry 1.6s ease-in-out 2; filter: saturate(.75); }
+.mood-sleepy .ch-eyes ellipse { transform: scaleY(.12); animation: none; }
+.mood-sleepy svg, .mood-sleepy > .spark-art { animation: ch-breathe 4.5s ease-in-out infinite; filter: saturate(.6) brightness(.9); }
+.mood-sleepy::after { content: "z"; position: absolute; top: 2%; right: 4%; font: 700 14px/1 var(--font-ui, system-ui); color: var(--text-3, #999); animation: ch-z 3s ease-in-out infinite; pointer-events: none; }
+@keyframes ch-worry { 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+@keyframes ch-breathe { 50% { transform: scale(1.03, .97) translateY(2px); } }
+@keyframes ch-z { 0% { opacity: 0; transform: translate(0, 4px) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -14px) scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { .mood-sleepy::after { animation: none; opacity: .7; } }

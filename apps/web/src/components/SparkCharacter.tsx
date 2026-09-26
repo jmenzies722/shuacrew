@@ -4,7 +4,7 @@ import type { CompanionPreferences, SparkCharacterId } from "../lib/companion";
 import { SparkArt } from "./Companion";
 import "./spark-character.css";
 
-export type Mood = "idle" | "thinking" | "speaking" | "happy";
+export type Mood = "idle" | "thinking" | "speaking" | "happy" | "concerned" | "sleepy";
 
 export const CHARACTER_INFO: Record<SparkCharacterId, { name: string; blurb: string }> = {
   spark: { name: "Spark", blurb: "The original robot. Faces and accessories." },

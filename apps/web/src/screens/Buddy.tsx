@@ -108,6 +108,7 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
     onRanOutput?.(a.command, r.ok, r.output ?? "");
     return { ok: r.ok, message: r.message };
   })();
+  if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: describeAction(a) }); }
   if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
@@ -154,6 +155,10 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [morning, setMorning] = useState(false);
   // Guide mode: the step Spark is spotlighting right now, waiting for you to do it.
   const [guide, setGuide] = useState<GuideStep | null>(null), [cheer, setCheer] = useState(false);
+  // Spark's face follows what's really happening: a finish, a failure, or a long quiet stretch.
+  const [eventMood, setEventMood] = useState<"happy" | "concerned" | null>(null), [sleepy, setSleepy] = useState(false);
+  const moodTimer = useRef<ReturnType<typeof setTimeout>>(undefined), lastStir = useRef(Date.now());
+  const feel = (m: "happy" | "concerned") => { clearTimeout(moodTimer.current); setEventMood(m); setSleepy(false); lastStir.current = Date.now(); moodTimer.current = setTimeout(() => setEventMood(null), m === "happy" ? 2600 : 6000); };
   // A diagram on the big canvas: the panel grows so a system design has room.
   const [wide, setWide] = useState(false);
   // Hands: what macOS lets Spark do, the task it's working through, and a step waiting for your OK.
@@ -304,6 +309,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     if (!prev || embedded) return; // crew news is the desktop Spark's to announce, once
     for (const r of work) {
       if (prev[r.id] === r.status || !prev[r.id]) continue;
+      if (r.status === "done" || r.status === "merged") feel("happy"); else if (r.status === "failed") feel("concerned");
       const who = r.member ? crew.members[r.member]?.name : null;
       if (r.status === "done") { setBubble({ text: `${who ?? "The crew"} finished “${r.title}”`, path: `/sessions/${r.id}` }); speech.current.say(`${who ?? "The crew"} finished ${r.title}.`); }
       else if (r.status === "failed") setBubble({ text: `“${r.title}” hit a problem`, path: `/sessions/${r.id}` });
@@ -379,6 +385,22 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       }
       if (move.kind === "scape") { playScape(move.scape, sounds.volume); const a = `Putting on ${move.scape}.`; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
       if (move.kind === "stop-radio") { stopScape(); void radioCommand({ cmd: "stop" }); const a = "Radio off."; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
+      if (move.kind === "explain") {
+        const sel = await new Promise<{ text: string; app: string }>((resolve) => {
+          const on = (e: Event) => { window.removeEventListener("shuacrew:selection", on); resolve((e as CustomEvent<{ text: string; app: string }>).detail); };
+          window.addEventListener("shuacrew:selection", on); post({ type: "buddySelection" });
+          setTimeout(() => { window.removeEventListener("shuacrew:selection", on); resolve({ text: "", app: "" }); }, 1500);
+        });
+        if (!sel.text) { const a = native() ? "Select the text or code you want explained first, then ask me again." : "Explain-this reads your selection in the ShuaCrew Mac app."; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
+        setDraft("");
+        void askRef.current(`Explain this${sel.app ? ` from ${sel.app}` : ""}\n\n[screen] The user selected this and wants it explained at their level: what it is, what it does, why it matters, and one gotcha. Keep it short and concrete. Then add ONE quiz card about the key idea with a card block.\n\n<selection>\n${sel.text}\n</selection>`);
+        return;
+      }
+      if (move.kind === "idea") {
+        const r = await api<{ venture: { name: string }; scoring: boolean }>("/api/ideas", { body: { text: move.text } }).catch((e: Error) => ({ error: e.message }));
+        const a = "error" in r ? r.error.replace(/^\d+\s*/, "") : `Saved “${r.venture.name}” to your idea inbox.${r.scoring ? " The crew will score it tonight: demand, competitors and effort, in your Library by morning." : ""}`;
+        setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
+      }
       if (move.kind === "radio") {
         const r = await radioCommand({ cmd: move.cmd, station: move.station });
         const a = r.ok ? (move.cmd === "play" ? (move.station ? `Putting on lofi ${move.station}.` : "Putting the radio on.") : move.cmd === "next" ? "Next one." : move.cmd === "previous" ? "Going back." : move.cmd === "pause" ? "Paused." : "Back on.") : r.error;
@@ -405,7 +427,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       } else {
         setBrief(null);
         const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, appNow), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
-        const next = { run: r.id, first: q }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        const next = { run: r.id, first: q.split("\n\n[screen]")[0]! }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
     } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); }
@@ -457,7 +479,13 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
 
   const status$ = speaking ? "speaking" : phase === "hearing" ? "hearing you" : phase === "transcribing" ? "got it" : working || busy ? "thinking" : prefs.conversation && phase === "listening" ? "listening" : embedded ? "here with you" : "on your Mac";
   const close = () => { speech.current.stop(); if (embedded) onClose?.(); else setOpen(false); };
-  const mood = cheer ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : "idle";
+  // Doze after 15 quiet minutes with nothing running; anything happening wakes it.
+  useEffect(() => { lastStir.current = Date.now(); setSleepy(false); }, [messages.length, speaking, busy, phase, open]);
+  useEffect(() => {
+    const t = setInterval(() => { const anyRunning = Object.values(useLive.getState().crew.runs).some((r) => r.status === "running" || r.status === "planning"); if (anyRunning) lastStir.current = Date.now(); setSleepy(Date.now() - lastStir.current > 15 * 60_000); }, 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const mood = cheer || eventMood === "happy" ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : eventMood === "concerned" ? "concerned" : sleepy ? "sleepy" : "idle";
   const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""}`} style={sparkVars(prefs.color)} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)}>
       <header className="spk-head">
         <span className={`spk-avatar is-${speaking ? "speaking" : phase === "hearing" ? "hearing" : working || busy ? "thinking" : "idle"}`}><SparkCharacter preferences={prefs} mood={mood} size={38} crop="portrait" /></span>

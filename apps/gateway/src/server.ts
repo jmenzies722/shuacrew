@@ -10,6 +10,7 @@ import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
 import { weatherRoutes } from "./weather-routes.js";
 import { radioRoutes } from "./radio.js";
+import { ideaRoutes } from "./ideas.js";
 import { systemRoutes } from "./system-routes.js";
 import { settingsRoutes } from "./settings-routes.js";
 import { createCrewMember } from "./crew-create.js";
@@ -763,6 +764,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   const auto = options.autonomy;
+  if (options.ventures) ideaRoutes(app, options.ventures, auto?.scheduler);
   if (auto) {
     const fail = (reply: { code(n: number): { send(b: unknown): unknown } }, error: unknown) =>
       reply.code((error as { status?: number }).status ?? 400).send({ error: (error as Error).message });

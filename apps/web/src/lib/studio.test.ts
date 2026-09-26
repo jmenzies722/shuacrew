@@ -95,6 +95,11 @@ describe("spark producer", () => {
     expect(producerMove("play some lo-fi hip hop")).toEqual({ kind: "radio", cmd: "play", station: "hip hop" });
     expect(producerMove("put on some music")).toEqual({ kind: "radio", cmd: "play" });
     expect(producerMove("next song")).toEqual({ kind: "radio", cmd: "next" });
+    expect(producerMove("idea: a CRM for dog walkers")).toEqual({ kind: "idea", text: "idea: a CRM for dog walkers" });
+    expect(producerMove("my idea is great")).toBeNull();
+    expect(producerMove("explain this")).toEqual({ kind: "explain" });
+    expect(producerMove("What does this mean?")).toEqual({ kind: "explain" });
+    expect(producerMove("explain this concept of kubernetes pods")).toBeNull();
     expect(producerMove("pause the music")).toEqual({ kind: "radio", cmd: "pause" });
     expect(producerMove("play the radio")).toEqual({ kind: "radio", cmd: "play" });
     expect(producerMove("open safari")).toBeNull();
