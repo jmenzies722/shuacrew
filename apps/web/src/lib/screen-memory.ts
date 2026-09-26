@@ -32,3 +32,17 @@ export async function recall(q: string): Promise<string> {
       ...results.map((m) => `- ${when(m.at)} · ${m.app}${m.window ? ` — ${m.window}` : ""}:\n${m.excerpt}`)].join("\n");
   } catch { return ""; }
 }
+
+/** "Hey Spark": the switch lives in the Mac app (it listens on-device); names are what wake it besides "Spark". */
+export function useWakeWord(names: string[]) {
+  const [state, setState] = useState<{ on: boolean; error?: string } | null>(null);
+  const key = names.join("|");
+  useEffect(() => {
+    const on = (e: Event) => setState((e as CustomEvent<{ on: boolean; error?: string }>).detail);
+    window.addEventListener("shuacrew:wakeWord", on);
+    native()?.postMessage({ type: "buddyWake", names });
+    return () => window.removeEventListener("shuacrew:wakeWord", on);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return { state, available: !!native(), set: (on: boolean) => native()?.postMessage({ type: "buddyWake", on, names }) };
+}

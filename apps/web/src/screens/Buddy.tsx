@@ -202,6 +202,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [armed, setArmed] = useState(!embedded);
   useEffect(() => { const f = () => setFocused(true), b = () => setFocused(false); window.addEventListener("focus", f); window.addEventListener("blur", b); return () => { window.removeEventListener("focus", f); window.removeEventListener("blur", b); }; }, []);
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
+  const wakeTurn = useRef(false); // "Hey Spark" opened the mic for one request
   const [convo, setConvo] = useState<{ run: string; first: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
   const input = useRef<HTMLTextAreaElement>(null), thread = useRef<HTMLDivElement>(null);
   const convoRef = useRef(convo); convoRef.current = convo;
@@ -470,11 +471,13 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     m.onPartial = setHeard;
     // Interrupting: Spark drops to a murmur the moment you start, and only stops once your words are real —
     // a cough, a door or its own voice through the speakers no longer cuts it off mid-sentence.
-    m.onTurn = (t) => { logSense("heard", "Heard you", t); if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
+    m.onTurn = (t) => {
+      if (wakeTurn.current) { wakeTurn.current = false; m.mode = prefsRef.current.listen; if (!prefsRef.current.conversation && prefsRef.current.listen !== "hold") m.stop(); }
+      logSense("heard", "Heard you", t); if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     m.onDropped = () => speech.current.duck(false);
-    m.mode = prefs.listen;
-    const wanted = prefs.listen === "hold" || prefs.conversation;
+    m.mode = wakeTurn.current ? "auto" : prefs.listen;
+    const wanted = prefs.listen === "hold" || prefs.conversation || wakeTurn.current;
     if (wanted && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
   }, [prefs.conversation, prefs.listen, open, embedded, focused, armed]);
   // Push-to-talk with the keyboard: hold Space while Spark's box is empty (or nothing is focused).
@@ -491,6 +494,18 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   // The desktop Spark: pinned on top only if you chose it; always comes forward when it starts talking.
   useEffect(() => { if (!embedded) post({ type: "buddyOnTop", on: prefs.onTop }); }, [prefs.onTop, embedded]);
   useEffect(() => { if (!embedded) post({ type: "buddyScreenMemory" }); }, [embedded]); // wakes the recorder if you turned it on
+  // "Hey Spark": the Mac app heard it — open, answer, and listen for one request (even with open mic off).
+  useEffect(() => { if (!embedded) post({ type: "buddyWake", names: prefs.nickname ? [prefs.nickname] : [] }); }, [embedded, prefs.nickname]);
+  useEffect(() => {
+    if (embedded) return;
+    const on = () => {
+      setOpen(true); setTab("chat"); setArmed(true); speech.current.unlock(); speech.current.stop();
+      speech.current.say("Yes?");
+      wakeTurn.current = true;
+      const m = mic.current; m.mode = "auto"; void m.start();
+    };
+    window.addEventListener("shuacrew:wake", on); return () => window.removeEventListener("shuacrew:wake", on);
+  }, [embedded]);
   useEffect(() => { if (!embedded && speaking) post({ type: "buddyRaise" }); }, [speaking, embedded]);
   // Music steps aside while you and Spark talk (the radio and Music/Spotify), and comes back once it's quiet again.
   // "Talking" covers the whole exchange: you speaking, Spark thinking, and Spark answering — no gap in between.
@@ -531,7 +546,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         <button type="button" role="tab" aria-selected={tab === "widgets"} onClick={() => setTab("widgets")}><LayoutGrid size={12} /> Widgets{approvals > 0 && <em>{approvals}</em>}</button>
       </nav>
       {tab === "chat" && <div className="spk-voicebar">
-        <span className="spk-voicebar-label"><AudioLines size={12} /> {phase === "hearing" ? "Hearing you…" : phase === "transcribing" ? "Got it…" : phase === "starting" ? "Opening the mic…" : phase === "error" ? "Mic unavailable" : prefs.listen === "hold" ? (phase === "listening" ? "Hold the mic or Space to talk" : "Click here, then hold to talk") : prefs.conversation && phase === "listening" ? "Listening — just talk" : prefs.conversation ? "Mic paused — click Spark to listen" : "Tap the mic to talk"}</span>
+        <span className="spk-voicebar-label"><AudioLines size={12} /> {phase === "hearing" ? "Hearing you…" : phase === "transcribing" ? "Got it…" : phase === "starting" ? "Opening the mic…" : phase === "error" ? "Mic unavailable" : wakeTurn.current && phase === "listening" ? "Listening — go ahead" : prefs.listen === "hold" ? (phase === "listening" ? "Hold the mic or Space to talk" : "Click here, then hold to talk") : prefs.conversation && phase === "listening" ? "Listening — just talk" : prefs.conversation ? "Mic paused — click Spark to listen" : "Tap the mic to talk"}</span>
         <div className="spk-listen" role="radiogroup" aria-label="How to talk">
           <button type="button" role="radio" aria-checked={prefs.listen === "auto"} className={prefs.listen === "auto" ? "is-on" : ""} onClick={() => setListen("auto")} title="Open mic: just talk">Auto</button>
           <button type="button" role="radio" aria-checked={prefs.listen === "hold"} className={prefs.listen === "hold" ? "is-on" : ""} onClick={() => setListen("hold")} title="Push-to-talk: hold the talk button or Space">Hold</button>

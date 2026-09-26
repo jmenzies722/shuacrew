@@ -22,6 +22,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private static let peek = NSSize(width: 320, height: 190)
 
     private let gateway: Gateway
+    private lazy var wake: WakeWord = {
+        let w = WakeWord()
+        w.onWake = { [weak self] in
+            guard let self else { return }
+            self.raise()
+            self.web.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:wake'))")
+        }
+        return w
+    }()
     private lazy var memory: ScreenMemoryRecorder = {
         let m = ScreenMemoryRecorder(base: gateway.base)
         m.excluding = { [weak self] in self.map { [$0.panel.windowNumber] } ?? [] }
@@ -309,6 +318,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if on { raise() }
         case "buddyRaise":
             raise()
+        case "buddyWake":
+            if let names = body["names"] as? [String] { wake.names = Array(Set(["spark"] + names.map { $0.lowercased() }.filter { !$0.isEmpty })) }
+            let reply = { [weak self] (error: String?) in
+                guard let self else { return }
+                var info: [String: Any] = ["on": self.wake.enabled && self.wake.running]
+                if let error { info["error"] = error }
+                self.send("shuacrew:wakeWord", info, to: sender)
+            }
+            if let on = body["on"] as? Bool { wake.set(on, completion: reply) }
+            else { if wake.enabled && !wake.running { reply(wake.start()) } else { reply(nil) } }
         case "buddyScreenMemory":
             if let on = body["on"] as? Bool { memory.set(on); if on { Task { await memory.tick() } } }
             send("shuacrew:screenMemory", ["on": memory.enabled, "access": ScreenAccess.granted()], to: sender)
@@ -441,6 +460,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
+            }
+            return
+        }
+        if spec.hasPrefix("wake:") { // what happens when "Hey Spark" is heard: open, answer, listen for one request
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.wake.onWake?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    guard let self else { return }
+                    self.web.evaluateJavaScript("JSON.stringify({ open: !!document.querySelector('.buddy-card'), label: document.querySelector('.spk-voicebar-label')?.innerText ?? null, said: [...document.querySelectorAll('.buddy-msg')].slice(-1).map(e => e.innerText) })") { result, _ in
+                        let line = "WAKE panelOpen=\(self.isOpen) page=\(result as? String ?? "?")\n"
+                        try? line.write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
+                    }
+                }
             }
             return
         }

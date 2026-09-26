@@ -1,4 +1,4 @@
-import { useScreenMemory } from "../lib/screen-memory";
+import { useScreenMemory, useWakeWord } from "../lib/screen-memory";
 import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
@@ -66,6 +66,7 @@ export function SparkSettings() {
         <div className="spark-swatches">{SPARK_FINISHES.map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}
           <label className="spark-custom" title="Any colour"><input type="color" value={stops(prefs.color).from} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
       </SettingRow>
+      <WakeRow name={name} nickname={prefs.nickname} />
       <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
       <SettingRow name="Stay on top" detail={`Off: ${name} sits on your desktop like any window — it won't cover your work, and comes forward when you call it, when it talks, and while it's teaching. Drag it anywhere; it stays there.`} modified={prefs.onTop}><Switch label="Stay on top" on={prefs.onTop} onChange={(onTop) => set({ onTop })} /></SettingRow>
@@ -118,6 +119,15 @@ export function SparkSettings() {
 }
 
 /** How Spark has actually done for you: every action it took, and whether it worked. */
+function WakeRow({ name, nickname }: { name: string; nickname: string }) {
+  const wake = useWakeWord(nickname ? [nickname] : []);
+  if (!wake.available) return null;
+  const on = !!wake.state?.on;
+  return <SettingRow name={`“Hey ${name}”`} detail={`Say “Hey ${name}” (or “Hey Spark”) from anywhere and it opens, ready to listen. Recognised on this Mac with Apple's on-device speech — no audio leaves it. The mic indicator stays on while this listens.${wake.state?.error ? ` ${wake.state.error}` : ""}`} modified={on}>
+    <Switch label="Wake word" on={on} onChange={(v) => wake.set(v)} />
+  </SettingRow>;
+}
+
 function ScreenMemoryRow({ name }: { name: string }) {
   const mem = useScreenMemory();
   if (!mem.available) return null;
