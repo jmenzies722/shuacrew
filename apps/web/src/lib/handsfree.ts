@@ -72,6 +72,8 @@ export class HandsFree {
   speaking = false;
   /** "auto": open mic, turns start and end on your voice. "hold": push-to-talk — a turn is exactly while you hold. */
   mode: "auto" | "hold" = "auto";
+  /** "en", or "auto" for any language (the quick caption model only knows English, so captions pause then). */
+  lang: "en" | "auto" = "en";
   private holding = false;
   onPhase?: (p: Phase, detail?: string) => void;
   onLevel?: (level: number) => void;
@@ -133,7 +135,7 @@ export class HandsFree {
 
   /** The words so far, quickly (the fast model); the accurate transcript still comes when you stop. */
   private async caption() {
-    if (!this.turn || !this.ctx) return;
+    if (!this.turn || !this.ctx || this.lang !== "en") return;
     const id = this.turnId, audio = this.turn.slice(-Math.ceil((20 * this.ctx.sampleRate) / 2048)); // the last 20 s is plenty
     this.captionBusy = true; this.captionAt = performance.now();
     try {
@@ -149,7 +151,7 @@ export class HandsFree {
     if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); this.onPhase?.("listening"); return; }
     this.paused = true; this.onPhase?.("transcribing");
     try {
-      const r = await fetch("/api/transcribe?voice=1&name=turn.wav", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, this.ctx.sampleRate) });
+      const r = await fetch(`/api/transcribe?voice=1&name=turn.wav&lang=${this.lang}`, { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, this.ctx.sampleRate) });
       const { text = "", error } = await r.json() as { text?: string; error?: string };
       if (error) this.onPhase?.("error", error);
       else if (meaningful(text)) this.onTurn?.(text.trim());

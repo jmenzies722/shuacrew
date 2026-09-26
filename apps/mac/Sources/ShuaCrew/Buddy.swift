@@ -341,6 +341,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyScreenMemory":
             if let on = body["on"] as? Bool { memory.set(on); if on { Task { await memory.tick() } } }
             send("shuacrew:screenMemory", ["on": memory.enabled, "access": ScreenAccess.granted()], to: sender)
+        case "buddyCalendar":
+            let reply = { [weak self] in self?.send("shuacrew:calendar", ["authorized": DayCalendar.authorized, "events": DayCalendar.today()], to: sender) }
+            if body["ask"] as? Bool == true && !DayCalendar.authorized { DayCalendar.request { _ in reply() } } else { reply() }
         case "buddySelection":
             if let sel = Selection.read() { send("shuacrew:selection", ["text": sel.text, "app": sel.app], to: sender) }
             else { send("shuacrew:selection", ["text": "", "app": NSWorkspace.shared.frontmostApplication?.localizedName ?? ""], to: sender) }

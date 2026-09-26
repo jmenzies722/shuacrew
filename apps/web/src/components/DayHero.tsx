@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AudioLines, Award, Briefcase, CheckCircle2, Flame, GraduationCap, Loader2, Lock, Megaphone, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
+import { AudioLines, Award, CalendarDays, Briefcase, CheckCircle2, Flame, GraduationCap, Loader2, Lock, Megaphone, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
 import { achievements, streak } from "../lib/achievements";
+import { hhmm, upcoming, useDayCalendar } from "../lib/calendar";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { api } from "../lib/api";
@@ -24,6 +25,7 @@ export function DayHero() {
   const navigate = useNavigate();
   const prefs = useCompanion();
   const w = useWeatherNow(), learn = useLearningNow();
+  const cal = useDayCalendar(), meetings = cal.state?.authorized ? upcoming(cal.state.events) : [];
   const [finished, setFinished] = useState<string[]>([]);
   const [speaking, setSpeaking] = useState(false), [starting, setStarting] = useState(false);
   const speech = useRef<SpeechQueue | null>(null);
@@ -46,9 +48,9 @@ export function DayHero() {
   const ventures = Object.values(crew.ventures ?? {});
   const venture = ventures.find((v) => v.stage !== "earning" && v.stage !== "stopped");
   const due = learn.value?.due ?? 0, goal = learn.value?.profile?.goal?.trim();
-  const brief = useMemo(() => morningBrief({ now, goal, finished, waiting: approvals.length, due, ventures: ventures.map((v) => ({ name: v.name, stage: v.stage })), running: running.length }),
+  const brief = useMemo(() => morningBrief({ now, goal, finished, waiting: approvals.length, due, ventures: ventures.map((v) => ({ name: v.name, stage: v.stage })), running: running.length, meetings: meetings.map((m) => ({ title: m.title, time: hhmm(m.start) })) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [finished, approvals.length, due, goal, running.length, ventures.length, venture?.stage]);
+    [finished, approvals.length, due, goal, running.length, ventures.length, venture?.stage, meetings.length, meetings[0]?.start]);
   const wx = w.value ? describe(w.value.code, w.value.day) : null, WxIcon = wx ? WEATHER_ICONS[wx.icon] : null;
   const rainSoon = w.value?.hours.find((h) => h.rain >= 50);
 
@@ -102,6 +104,9 @@ export function DayHero() {
       <div className="day-hero-hello">
         <span className="day-hero-date"><Sunrise size={13} /> {now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
         <h1>{greeting(now.getHours())}.</h1>
+        {cal.available && (cal.state?.authorized
+          ? <p className="day-hero-wx"><CalendarDays size={15} /> {meetings.length ? `Next: ${meetings[0]!.title} at ${hhmm(meetings[0]!.start)}${meetings.length > 1 ? ` · ${meetings.length} meetings left today` : ""}` : "No more meetings today"}</p>
+          : <button type="button" className="day-cal-connect" onClick={cal.connect}><CalendarDays size={14} /> Connect calendar to plan around meetings</button>)}
         {w.value && WxIcon && wx && <p className="day-hero-wx"><WxIcon size={16} /> {w.value.temp}° and {wx.label.toLowerCase()}{rainSoon ? ` · rain likely around ${rainSoon.time}` : ""}</p>}
       </div>
       <div className="day-hero-actions">

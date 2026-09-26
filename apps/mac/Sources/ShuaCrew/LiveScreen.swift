@@ -195,3 +195,22 @@ final class ScreenMemoryRecorder {
         return (title as? String) ?? ""
     }
 }
+
+import EventKit
+/// Today's calendar, read on this Mac with EventKit — only titles and times, only after you allow it.
+@MainActor
+enum DayCalendar {
+    private static let store = EKEventStore()
+    static var authorized: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
+    static func request(_ done: @escaping (Bool) -> Void) {
+        store.requestFullAccessToEvents { granted, _ in Task { @MainActor in done(granted) } }
+    }
+    static func today() -> [[String: Any]] {
+        guard authorized else { return [] }
+        let start = Calendar.current.startOfDay(for: Date()), end = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        let events = store.events(matching: store.predicateForEvents(withStart: start, end: end, calendars: nil))
+        return events.filter { $0.status != .canceled }.sorted { $0.startDate < $1.startDate }.prefix(30).map { e in
+            ["title": e.title ?? "Busy", "start": e.startDate.timeIntervalSince1970 * 1000, "end": e.endDate.timeIntervalSince1970 * 1000, "allDay": e.isAllDay]
+        }
+    }
+}

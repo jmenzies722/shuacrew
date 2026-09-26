@@ -183,7 +183,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       return uploads.process(uploads.save(request.query.name ?? "file", request.body));
     });
     // Dictation: speech in, text out — nothing kept.
-    app.post<{ Querystring: { name?: string; voice?: string; fast?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
+    app.post<{ Querystring: { name?: string; voice?: string; fast?: string; lang?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
       if (!Buffer.isBuffer(request.body) || !request.body.length) return reply.code(400).send({ error: "no audio" });
       const ext = (request.query.name ?? "voice.webm").split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "webm";
       if (request.query.voice === "1" && request.body.length > 8 * 1024 * 1024) return reply.code(413).send({ error: "Voice recording exceeds 8 MiB." });
@@ -197,7 +197,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         // Your crew's and ventures' names spell right when Whisper knows to expect them.
         const names = [...Object.values(state.members).map((m) => m.name), ...Object.values(state.ventures).map((v) => v.name)];
         // fast=1: a live caption while you're still talking (quick model, greedy); the final turn uses the accurate one.
-        const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.fast === "1" ? 8_000 : request.query.voice === "1" ? 45_000 : undefined, prompt: vocabulary(names), fast: request.query.fast === "1" });
+        const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.fast === "1" ? 8_000 : request.query.voice === "1" ? 45_000 : undefined, prompt: request.query.lang && request.query.lang !== "en" ? undefined : vocabulary(names), fast: request.query.fast === "1", language: request.query.lang });
         return { text: fixNames(heard, [...names, "ShuaCrew", "Shua", "Codex", "Claude"]) };
       } catch (error) {
         return reply.code(422).send({ error: (error as Error).message });

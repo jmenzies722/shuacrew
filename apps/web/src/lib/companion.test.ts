@@ -28,3 +28,9 @@ it("keeps the desktop Spark off the top of your work unless you pin it", () => {
   expect(parseCompanion({ onTop: true }).onTop).toBe(true);
   expect(parseCompanion({ onTop: "yes" }).onTop).toBe(false);
 });
+
+it("speaks English by default and switches to any language when chosen", () => {
+  expect(parseCompanion(null).language).toBe("en");
+  expect(parseCompanion({ language: "auto" }).language).toBe("auto");
+  expect(parseCompanion({ language: "klingon" }).language).toBe("en");
+});

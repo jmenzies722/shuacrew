@@ -1,5 +1,6 @@
 import { logSense } from "../lib/spark-log";
 import { asksAboutEarlier, recall } from "../lib/screen-memory";
+import { earlierToday, rememberAsk } from "../lib/spark-day";
 import { logAction } from "../lib/spark-log";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
@@ -452,7 +453,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         ventures: Object.values(crew.ventures ?? {}).map((v) => (v as { name: string }).name),
         radio: { on: rs.playing ? rs.live?.name ?? rs.track?.title ?? null : null, stations: [...rs.stations.filter((x) => x.tracks.length).map((x) => x.name), ...rs.youtube.map((x) => x.name)] },
       });
-      const appNow = remembered ? `${appNowBase}\n\n${remembered}` : appNowBase;
+      const earlier = earlierToday(); rememberAsk(q);
+      const language = prefs.language === "auto" ? "LANGUAGE: answer in the same language the user wrote or spoke (your voice can speak it)." : "";
+      const appNow = [appNowBase, remembered, earlier, language].filter(Boolean).join("\n\n");
       if (convo && status && !["failed", "cancelled"].includes(status)) {
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? t : `${t}\n\n[app]\n${appNow}`; };
@@ -480,10 +483,10 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       logSense("heard", "Heard you", t); if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     m.onDropped = () => speech.current.duck(false);
-    m.mode = wakeTurn.current ? "auto" : prefs.listen;
+    m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
     const wanted = prefs.listen === "hold" || prefs.conversation || wakeTurn.current;
     if (wanted && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, prefs.listen, open, embedded, focused, armed]);
+  }, [prefs.conversation, prefs.listen, prefs.language, open, embedded, focused, armed]);
   // Push-to-talk with the keyboard: hold Space while Spark's box is empty (or nothing is focused).
   useEffect(() => {
     if (prefs.listen !== "hold" || !open) return;

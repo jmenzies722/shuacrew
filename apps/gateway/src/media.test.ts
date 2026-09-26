@@ -55,3 +55,9 @@ describe("media", () => {
     writeFileSync(path.join(dir, "done"), "");
   }, 180_000);
 });
+
+import { languageArg } from "./media.js";
+it("transcribes English by default, auto-detects on request, and refuses anything odd", () => {
+  expect(languageArg()).toBe("en"); expect(languageArg("auto")).toBe("auto"); expect(languageArg("es")).toBe("es");
+  expect(languageArg("es; rm -rf /")).toBe("en"); expect(languageArg("english")).toBe("en");
+});

@@ -84,14 +84,17 @@ export function fixNames(text: string, names: string[]): string {
   });
 }
 
-export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean } = {}, t = tools(undefined, options.fast ? "fast" : "accurate")): Promise<string> {
+/** "en" (default), "auto" (Whisper detects it), or a two-letter language code; anything else falls back to English. */
+export function languageArg(language?: string) { return language === "auto" || (language && /^[a-z]{2}$/.test(language)) ? language : "en"; }
+
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean; language?: string } = {}, t = tools(undefined, options.fast ? "fast" : "accurate")): Promise<string> {
   options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);
   try {
     await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], options.timeoutMs ?? 120_000, options.signal);
     const threads = String(Math.max(2, Math.min(8, os.cpus().length - 2)));
-    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", "en", ...(options.fast ? ["-bs", "1", "-bo", "1"] : ["-bs", "5"]), ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
+    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", languageArg(options.language), ...(options.fast ? ["-bs", "1", "-bo", "1"] : ["-bs", "5"]), ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
     return out
       .split("\n")
       .map((l) => l.replace(/^\[(\d\d:\d\d:\d\d)\.\d+ --> (\d\d:\d\d:\d\d)\.\d+\]\s*/, (_, a: string, b: string) => `[${a.replace(/^00:/, "")}–${b.replace(/^00:/, "")}] `).trim())

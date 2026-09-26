@@ -41,6 +41,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>NSLocationWhenInUseUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
   <key>NSAppleEventsUsageDescription</key><string>So Spark can play and pause your music, change appearance and run tasks you ask for. Only when you ask.</string>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>ShuaCrew link</string><key>CFBundleURLSchemes</key><array><string>shuacrew</string></array></dict></array>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>So Today can plan around your meetings. Read on this Mac only — titles and times, never sent anywhere.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Only for the "Hey Spark" wake word, and only if you turn it on. Recognised on this Mac; nothing is sent anywhere.</string>
   <key>NSMicrophoneUsageDescription</key><string>So you can talk to your crew instead of typing. Speech is transcribed on this Mac.</string>
   <key>NSScreenCaptureUsageDescription</key><string>Spark looks at the display it's on only when you ask with the eye on. One screenshot, never recorded, never in the background.</string>

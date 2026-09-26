@@ -19,3 +19,8 @@ it("recaps the evening once, from 6pm, with only what really happened", () => {
     .toBe("Here's your day. The crew shipped 2 things, including the landing page and the pricing research. 1 session hit a problem worth a look. You reviewed 4 learning cards. Lined up for tomorrow: Leash MVP. Good work today.");
   expect(eveningRecap({ finished: [], failed: 0, reviewed: 0, tomorrow: [], waiting: 0 })).toBe("Here's your day. A quiet one — sometimes that's exactly right. Rest up.");
 });
+
+it("plans around the calendar when it's connected", () => {
+  expect(morningBrief({ now: at(8), finished: [], waiting: 0, due: 0, ventures: [], running: 0, meetings: [{ title: "Standup", time: "10:00 AM" }, { title: "1:1", time: "2:00 PM" }] }))
+    .toBe("Good morning. 2 meetings today; the first is Standup at 10:00 AM. What should we build today?");
+});
