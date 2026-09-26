@@ -19,7 +19,7 @@ function mix(a: string, b: string, t: number) {
 function theme(color: string) {
   const css = getComputedStyle(document.documentElement);
   const v = (k: string, d: string) => { const x = css.getPropertyValue(k).trim(); return /^#[0-9a-f]{6}$/i.test(x) || /^rgba?\(/.test(x) ? x : d; };
-  const c = /^#[0-9a-f]{6}$/i.test(color) ? color : "#8b7cf6", panel = v("--panel", "#16161a");
+  const c = /^#[0-9a-f]{6}$/i.test(color) ? color : "#8e48ff", panel = v("--panel", "#16161a");
   return {
     startOnLoad: false, securityLevel: "strict" as const, theme: "base" as const, fontFamily: "Geist Variable, ui-sans-serif, system-ui",
     flowchart: { curve: "basis" as const, padding: 14, nodeSpacing: 46, rankSpacing: 56, htmlLabels: true },
@@ -37,7 +37,7 @@ function theme(color: string) {
 }
 
 /** One Mermaid diagram, rendered in your colours, with zoom, copy, save and a bigger canvas. */
-export function Diagram({ code, color = "#8b7cf6", onExpand, expanded, onSave }: { code: string; color?: string; onExpand?: (open: boolean) => void; expanded?: boolean; onSave?: (name: string, svg: string) => void }) {
+export function Diagram({ code, color = "#8e48ff", onExpand, expanded, onSave }: { code: string; color?: string; onExpand?: (open: boolean) => void; expanded?: boolean; onSave?: (name: string, svg: string) => void }) {
   const id = `d${useId().replace(/[^a-z0-9]/gi, "")}`, host = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState(""), [error, setError] = useState(""), [zoom, setZoom] = useState(1), [copied, setCopied] = useState(false);
   useEffect(() => {

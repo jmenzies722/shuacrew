@@ -28,7 +28,7 @@ export const PALETTES: Palette[] = [
 ];
 
 export const ACCENTS: Array<{ id: AccentId; name: string; dark: string; light: string }> = [
-  { id: "iris", name: "Iris", dark: "#8b7cf6", light: "#6a55e0" },
+  { id: "iris", name: "Iris", dark: "#8e48ff", light: "#723acc" },
   { id: "amber", name: "Amber", dark: "#ffb020", light: "#b86e00" },
   { id: "mono", name: "Mono", dark: "#ededed", light: "#18181b" },
   { id: "blue", name: "Blue", dark: "#5b8cff", light: "#2f63d6" },

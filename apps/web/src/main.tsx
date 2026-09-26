@@ -1,4 +1,5 @@
 import "@fontsource-variable/geist";
+import "@fontsource-variable/space-grotesk";
 import "@fontsource-variable/jetbrains-mono";
 import "./styles.css";
 import "./workspace.css";

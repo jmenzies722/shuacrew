@@ -119,7 +119,7 @@ export function HubSidebar() {
   return <nav className="side" aria-label="Sidebar">
     <div className="side-brand">
       <span className="side-logo" aria-hidden><i /><i /><i /></span>
-      <span className="side-brand-text"><b>ShuaCrew</b><small className={`is-${connection}`}><i />{connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting" : "Gateway offline"}</small></span>
+      <span className="side-brand-text"><b>Shua <em>Crew</em></b><small className={`is-${connection}`}><i />{connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting" : "Gateway offline"}</small></span>
       <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
     </div>
     <button type="button" className={`side-spark ${sparkOpen ? "is-on" : ""}`} style={sparkVars(prefs.color)} onClick={toggleSparkPanel} title={`${name}  ⌘J`}>

@@ -1,72 +1,60 @@
 /*
- * Craft: depth for the Pristine design. Surfaces are lit from above (a bright top edge, a darker base), sit on soft
- * shadows, and carry the accent only where it means something. Crisp, never flat, never glowing for its own sake.
+ * Craft: the Kiro Crew look for the Pristine palette. Purple-tinted blacks, floating rounded panels on a darker
+ * canvas, hairline borders, and exactly one colour — the violet accent — for anything active. Every surface below
+ * uses the palette tokens, so nothing drifts out of sync.
  */
 :root[data-palette="pristine"] {
-  --ink: #09090b;
-  --surface: linear-gradient(180deg, #17171b 0%, #121215 100%);
-  --surface-hi: linear-gradient(180deg, #1d1d22 0%, #16161a 100%);
-  --surface-flat: #141417;
-  --edge: rgba(255, 255, 255, 0.07);
-  --edge-strong: rgba(255, 255, 255, 0.11);
-  --lit: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --depth: var(--lit), 0 0 0 1px var(--edge), 0 10px 30px -16px rgba(0, 0, 0, 0.85), 0 2px 5px -1px rgba(0, 0, 0, 0.35);
-  --depth-hover: var(--lit), 0 0 0 1px color-mix(in srgb, var(--amber) 32%, var(--edge-strong)), 0 16px 40px -18px rgba(0, 0, 0, 0.9), 0 0 0 4px color-mix(in srgb, var(--amber) 6%, transparent);
+  --accent-text: #c19aff;
+  --active-bg: #352f3d;
+  --active-line: #4a464f;
+  --surface: var(--panel);
+  --surface-hi: var(--raised);
+  --depth: 0 0 0 1px var(--line-strong), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --depth-hover: 0 0 0 1px var(--active-line), 0 12px 28px rgba(0, 0, 0, 0.45);
   --radius-card: 14px;
 }
 
-/* The canvas: a quiet light from the top-left in the accent, a cool counter-light, and a fine grain. */
-[data-palette="pristine"] #main {
-  position: relative;
-  background:
-    radial-gradient(1100px 520px at 12% -12%, color-mix(in srgb, var(--amber) 8%, transparent), transparent 62%),
-    radial-gradient(900px 480px at 108% 4%, rgba(56, 189, 248, 0.045), transparent 60%),
-    var(--ink);
-}
-[data-palette="pristine"] #main::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: .035; mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-[data-palette="pristine"] #main > * { position: relative; z-index: 1; }
+/* The canvas and the floating main panel. */
+[data-palette="pristine"] body { background: var(--sunken); }
+[data-palette="pristine"] #main { background: var(--ink); }
 
-/* Surfaces: every card-like thing shares one material. */
+/* Surfaces: one material everywhere. */
 [data-palette="pristine"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
   .today-lanes-box, .island-tile, .wg-tile, .spark-record, .brief, .crew-cta, .lib-row, .pb-row, .tl-card, .sheet) {
-  background: var(--surface) !important; border-color: transparent !important; border-radius: var(--radius-card);
-  box-shadow: var(--depth) !important; transition: box-shadow .22s ease, transform .22s cubic-bezier(.2,.9,.3,1.2);
+  background: var(--panel) !important; border-color: transparent !important; border-radius: var(--radius-card);
+  box-shadow: var(--depth) !important; transition: box-shadow .18s ease, transform .18s ease;
 }
-[data-palette="pristine"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row, .lib-row:is(button)):hover { box-shadow: var(--depth-hover) !important; transform: translateY(-2px); }
-[data-palette="pristine"] :is(.board-col, .vn-lane) { background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01)) !important; box-shadow: var(--lit), 0 0 0 1px var(--edge) !important; border-radius: 16px; }
-[data-palette="pristine"] .stat-chip { background: var(--surface-hi); box-shadow: var(--lit), 0 0 0 1px var(--edge), 0 6px 16px -10px rgba(0,0,0,.8); border-radius: 12px; }
-[data-palette="pristine"] .stat-chip strong { font-weight: 650; }
+[data-palette="pristine"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row):hover { box-shadow: var(--depth-hover) !important; }
+[data-palette="pristine"] :is(.board-col, .vn-lane) { background: var(--sunken) !important; box-shadow: 0 0 0 1px var(--line) !important; border-radius: 14px; }
+[data-palette="pristine"] .stat-chip { background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); border-radius: 12px; }
+[data-palette="pristine"] .stat-chip strong { font-weight: 600; }
 
-/* Buttons: primary is a lit accent with a crisp bevel; quiet ones are raised glass. */
-[data-palette="pristine"] .ui-btn[data-variant="primary"], [data-palette="pristine"] :is(.wel-next, .buddy-send:not(:disabled), .pol-tester .ui-btn) {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 88%, #fff) 0%, var(--amber) 55%, color-mix(in srgb, var(--amber) 82%, #000) 100%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px color-mix(in srgb, var(--amber) 70%, #000), 0 6px 18px -8px color-mix(in srgb, var(--amber) 70%, transparent);
-  color: #fff;
+/* Buttons: the accent is solid violet; the rest are quiet outlines. */
+[data-palette="pristine"] .ui-btn[data-variant="primary"], [data-palette="pristine"] :is(.wel-next, .buddy-send:not(:disabled)) {
+  background: var(--amber); color: #fff; box-shadow: 0 0 0 1px var(--amber), 0 4px 14px -6px var(--amber);
 }
-[data-palette="pristine"] .ui-btn[data-variant="primary"]:hover { filter: brightness(1.07); }
+[data-palette="pristine"] .ui-btn[data-variant="primary"]:hover { background: #9f63ff; }
 [data-palette="pristine"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset) {
-  background: var(--surface-hi) !important; border-color: transparent !important;
-  box-shadow: var(--lit), 0 0 0 1px var(--edge-strong), 0 2px 6px -2px rgba(0,0,0,.5) !important;
+  background: transparent !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important;
 }
-[data-palette="pristine"] :is(.ui-btn[data-variant="quiet"], .tb-btn):hover { box-shadow: var(--lit), 0 0 0 1px color-mix(in srgb, var(--amber) 35%, var(--edge-strong)), 0 4px 12px -4px rgba(0,0,0,.6) !important; }
+[data-palette="pristine"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset):hover { background: var(--raised) !important; box-shadow: 0 0 0 1px var(--active-line) !important; }
 
-/* The composer: the most important field in the app gets the most careful material. */
-[data-palette="pristine"] .composer-box {
-  background: linear-gradient(180deg, #18181c, #121215) !important; border-radius: 18px;
-  box-shadow: var(--lit), 0 0 0 1px var(--edge-strong), 0 24px 60px -28px rgba(0,0,0,.95), 0 0 0 0 transparent !important;
-}
-[data-palette="pristine"] .composer-box:focus-within { box-shadow: var(--lit), 0 0 0 1px color-mix(in srgb, var(--amber) 60%, transparent), 0 0 0 5px color-mix(in srgb, var(--amber) 10%, transparent), 0 24px 60px -28px rgba(0,0,0,.95) !important; }
+/* The composer: Kiro's rounded field with a violet glow along its edge when you're in it. */
+[data-palette="pristine"] .composer-box { background: var(--panel) !important; border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong) !important; }
+[data-palette="pristine"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px rgba(142, 72, 255, .45) !important; }
 
-/* Top bar: a crisp strip with a hairline, the search as an inset well. */
-[data-palette="pristine"] header[aria-label="Top bar"] { background: linear-gradient(180deg, rgba(255,255,255,.02), transparent); box-shadow: inset 0 -1px 0 var(--edge); }
-[data-palette="pristine"] .tb-center > button { background: linear-gradient(180deg, #111114, #0d0d10) !important; border-color: transparent !important; box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 0 1px var(--edge), 0 1px 0 rgba(255,255,255,.04) !important; }
-[data-palette="pristine"] .island-pill { background: var(--surface-hi); box-shadow: var(--lit), 0 0 0 1px var(--edge-strong); }
+/* Top bar: blends into the canvas; search is an outlined capsule. */
+[data-palette="pristine"] header[aria-label="Top bar"] { background: var(--sunken); box-shadow: none; }
+[data-palette="pristine"] .tb-center > button { background: var(--ink) !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important; border-radius: 10px; }
+[data-palette="pristine"] .island-pill { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
 
-/* Headings: tighter and crisper. */
-[data-palette="pristine"] .pane-header h1 { font-size: 27px; font-weight: 650; letter-spacing: -.035em; background: linear-gradient(180deg, #fff, #c9c9d1); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Headings. */
+[data-palette="pristine"] .pane-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--text); }
 
-/* Hub tab strip: an inset track with a raised thumb. */
-[data-palette="pristine"] .hub-tab-on { background: var(--surface-hi); box-shadow: var(--lit), 0 0 0 1px var(--edge-strong), 0 2px 6px -2px rgba(0,0,0,.6); }
+/* Hub tabs: Kiro's selected state. */
+[data-palette="pristine"] .hub-tab-on { background: var(--active-bg); box-shadow: 0 0 0 1px var(--active-line); }
+[data-palette="pristine"] .hub-tab.is-on { color: var(--accent-text); }
+[data-palette="pristine"] .hub-tab-on::after { display: none; }
+
+/* Accent text reads in Kiro's lighter violet. */
+[data-palette="pristine"] :is(.settings-kicker, .prose-agent a) { color: var(--accent-text); }

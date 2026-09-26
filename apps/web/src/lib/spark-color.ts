@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 
-/** A companion's finish: a solid colour ("#8b7cf6") or a gradient ("grad:#from:#to"). */
+/** A companion's finish: a solid colour ("#8e48ff") or a gradient ("grad:#from:#to"). */
 export const SPARK_FINISHES: Array<{ id: string; name: string }> = [
-  { id: "#8b7cf6", name: "Iris" }, { id: "#111114", name: "Onyx" }, { id: "#f5b544", name: "Amber" }, { id: "#ff7a59", name: "Coral" }, { id: "#f472b6", name: "Pink" },
+  { id: "#8e48ff", name: "Kiro" }, { id: "#111114", name: "Onyx" }, { id: "#f5b544", name: "Amber" }, { id: "#ff7a59", name: "Coral" }, { id: "#f472b6", name: "Pink" },
   { id: "#60a5fa", name: "Blue" }, { id: "#34d399", name: "Mint" }, { id: "#e5e7eb", name: "Pearl" },
   { id: "grad:#a78bfa:#60a5fa", name: "Aurora" }, { id: "grad:#f472b6:#f59e0b", name: "Sunset" }, { id: "grad:#22d3ee:#6366f1", name: "Ocean" },
   { id: "grad:#34d399:#0ea5e9", name: "Lagoon" }, { id: "grad:#18181b:#7c3aed", name: "Nebula" }, { id: "grad:#050506:#52525b", name: "Obsidian" },
@@ -19,7 +19,7 @@ export function validFinish(v: unknown): v is string {
 export function stops(finish: string): { from: string; to: string; gradient: boolean } {
   const m = /^grad:(#[0-9a-f]{6}):(#[0-9a-f]{6})$/i.exec(finish);
   if (m) return { from: m[1]!.toLowerCase(), to: m[2]!.toLowerCase(), gradient: true };
-  const c = HEX.test(finish) ? finish.toLowerCase() : "#8b7cf6";
+  const c = HEX.test(finish) ? finish.toLowerCase() : "#8e48ff";
   return { from: c, to: c, gradient: false };
 }
 
