@@ -106,3 +106,6 @@
 .spark-today-col li b { font-weight: 500; color: var(--text); }
 .spark-today-col li small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spark-today-col li.is-failed b { color: #f97583; }
+.spark-today-memory { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; color: var(--text-2); }
+.spark-today-memory svg { color: var(--accent-text, var(--amber)); }
+.spark-today-memory button { margin-left: 4px; font-size: 12px; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }

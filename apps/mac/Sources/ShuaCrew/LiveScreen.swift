@@ -139,3 +139,59 @@ enum Selection {
         return (String(text.prefix(8000)), app.localizedName ?? "")
     }
 }
+
+/// Screen memory: about once a minute, while you've turned it on, read the TEXT on your screen and hand it to the local
+/// gateway so Spark can answer "what was that error an hour ago?". No images are kept, nothing leaves the Mac, and it
+/// skips password managers, private browser windows, ShuaCrew itself, and any minute you weren't at the Mac.
+@MainActor
+final class ScreenMemoryRecorder {
+    static let key = "shuacrew.screenMemory"
+    private let base: URL
+    private var timer: Timer?
+    private var busy = false
+    var excluding: () -> [Int] = { [] }
+    var enabled: Bool { UserDefaults.standard.bool(forKey: Self.key) }
+
+    init(base: URL) { self.base = base; if enabled { start() } }
+
+    func set(_ on: Bool) { UserDefaults.standard.set(on, forKey: Self.key); on ? start() : stop() }
+    private func start() {
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.tick() } }
+    }
+    private func stop() { timer?.invalidate(); timer = nil }
+
+    func tick() async {
+        guard enabled, !busy, ScreenAccess.granted(), let app = NSWorkspace.shared.frontmostApplication,
+              app.bundleIdentifier != Bundle.main.bundleIdentifier, !SparkHands.offLimits.contains(app.bundleIdentifier ?? ""),
+              CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!) < 300 else { return }
+        let title = Self.windowTitle(of: app)
+        if title.range(of: "private|incognito|inprivate", options: [.regularExpression, .caseInsensitive]) != nil { return }
+        busy = true; defer { busy = false }
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            let screen = NSScreen.main ?? NSScreen.screens[0]
+            let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+            guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else { return }
+            let mine = content.windows.filter { w in self.excluding().contains(Int(w.windowID)) || w.owningApplication?.bundleIdentifier == Bundle.main.bundleIdentifier }
+            let config = SCStreamConfiguration()
+            config.width = Int(Double(display.width) * screen.backingScaleFactor); config.height = Int(Double(display.height) * screen.backingScaleFactor)
+            let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, excludingWindows: mine), configuration: config)
+            let lines = await ScreenText.read(ScreenText.scaled(image, longest: 2200) ?? image, timeout: 4)
+            let text = lines.compactMap { $0["t"] as? String }.joined(separator: "\n")
+            guard text.count >= 20 else { return }
+            var request = URLRequest(url: URL(string: "/api/screen-memory", relativeTo: base)!)
+            request.httpMethod = "POST"; request.setValue("1", forHTTPHeaderField: "X-ShuaCrew"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["at": Date().timeIntervalSince1970 * 1000, "app": app.localizedName ?? "", "window": title, "text": text])
+            _ = try? await URLSession.shared.data(for: request)
+        } catch { /* a missed minute is fine */ }
+    }
+
+    private static func windowTitle(of app: NSRunningApplication) -> String {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var window: CFTypeRef?, title: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(root, kAXFocusedWindowAttribute as CFString, &window) == .success, let w = window else { return "" }
+        AXUIElementCopyAttributeValue(w as! AXUIElement, kAXTitleAttribute as CFString, &title)
+        return (title as? String) ?? ""
+    }
+}

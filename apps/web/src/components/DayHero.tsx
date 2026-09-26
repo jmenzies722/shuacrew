@@ -4,7 +4,7 @@ import { AudioLines, Briefcase, CheckCircle2, GraduationCap, Loader2, Megaphone,
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { api } from "../lib/api";
-import { morningBrief } from "../lib/morning";
+import { localDay, morningBrief } from "../lib/morning";
 import { describe } from "../lib/weather";
 import { SpeechQueue } from "../lib/buddy-voice";
 import { savePower } from "../lib/power";
@@ -69,7 +69,7 @@ export function DayHero() {
           ?? radio.stations.find((s) => s.tracks.length)?.id ?? radio.youtube[0]?.id;
         if (pick) await playStation(pick);
       }
-      try { localStorage.setItem("shuacrew.morning", now.toISOString().slice(0, 10)); } catch { /* ignore */ }
+      try { localStorage.setItem("shuacrew.morning", localDay(now)); } catch { /* ignore */ }
       if (approvals[0]?.run) void navigate({ to: "/sessions/$id", params: { id: approvals[0].run } });
       else if (running[0]) void navigate({ to: "/sessions/$id", params: { id: running[0].id } });
       else void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")));

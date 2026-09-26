@@ -1,3 +1,4 @@
+import { useScreenMemory } from "../lib/screen-memory";
 import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
@@ -65,6 +66,7 @@ export function SparkSettings() {
         <div className="spark-swatches">{SPARK_FINISHES.map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}
           <label className="spark-custom" title="Any colour"><input type="color" value={stops(prefs.color).from} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
       </SettingRow>
+      <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
       <SettingRow name="Stay on top" detail={`Off: ${name} sits on your desktop like any window — it won't cover your work, and comes forward when you call it, when it talks, and while it's teaching. Drag it anywhere; it stays there.`} modified={prefs.onTop}><Switch label="Stay on top" on={prefs.onTop} onChange={(onTop) => set({ onTop })} /></SettingRow>
       <SettingRow name="Size on the desktop" modified={prefs.size !== "m"}><Segmented label="Size" value={prefs.size} onChange={(size) => set({ size })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} /></SettingRow>
@@ -116,6 +118,15 @@ export function SparkSettings() {
 }
 
 /** How Spark has actually done for you: every action it took, and whether it worked. */
+function ScreenMemoryRow({ name }: { name: string }) {
+  const mem = useScreenMemory();
+  if (!mem.available) return null;
+  const on = !!mem.state?.on;
+  return <SettingRow name="Screen memory" detail={`${name} reads the text on your screen about once a minute so you can ask “what was that error an hour ago?”. Text only, kept 3 days on this Mac; skips password managers, private windows and minutes you're away. See or forget it in Policy & Audit.${mem.state && !mem.state.access ? " Needs Screen Recording permission for ShuaCrew." : ""}`} modified={on}>
+    <Switch label="Screen memory" on={on} onChange={(v) => mem.set(v)} />
+  </SettingRow>;
+}
+
 function TrackRecord({ name }: { name: string }) {
   const log = useSparkLog(), s = summary(log);
   return <div className="spark-record">

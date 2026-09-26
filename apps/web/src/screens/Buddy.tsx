@@ -1,6 +1,7 @@
 import { logSense } from "../lib/spark-log";
+import { asksAboutEarlier, recall } from "../lib/screen-memory";
 import { logAction } from "../lib/spark-log";
-import { morningBrief, shouldBrief } from "../lib/morning";
+import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand } from "../lib/radio";
 import { AnimatePresence, motion } from "motion/react";
@@ -154,7 +155,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [done, setDone] = useState<Record<string, Done[]>>({});
   const [bubble, setBubble] = useState<{ text: string; path: string } | null>(null);
   // Once a day: "your day in 20 seconds", spoken on tap.
-  const [morning, setMorning] = useState(false);
+  const [morning, setMorning] = useState(false), [evening, setEvening] = useState(false);
   // Guide mode: the step Spark is spotlighting right now, waiting for you to do it.
   const [guide, setGuide] = useState<GuideStep | null>(null), [cheer, setCheer] = useState(false);
   // Spark's face follows what's really happening: a finish, a failure, or a long quiet stretch.
@@ -220,7 +221,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   }, []);
   useEffect(() => { if (convo) void loadRun(convo.run); }, [convo, loadRun]);
   // The native panel sizes itself to what's showing, so the clear rest never blocks your clicks.
-  useEffect(() => { if (!embedded) post({ type: "buddyExpand", open, wide: open && wide, peek: !open && (!!bubble || !!guide || morning), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size, wide, embedded, morning]);
+  useEffect(() => { if (!embedded) post({ type: "buddyExpand", open, wide: open && wide, peek: !open && (!!bubble || !!guide || morning || evening), size: prefs.size }); if (open) setTimeout(() => input.current?.focus(), 60); }, [open, bubble, guide, prefs.size, wide, embedded, morning]);
   // One conversation in two places: the desktop panel and the app's side panel follow each other.
   useEffect(() => {
     const on = (e: StorageEvent) => { if (e.key !== KEY) return; try { const next = JSON.parse(e.newValue ?? "null"); handled.current = null; setConvo(next); } catch { /* ignore */ } };
@@ -321,11 +322,33 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   useEffect(() => { if (!bubble) return; const t = setTimeout(() => setBubble(null), 9000); return () => clearTimeout(t); }, [bubble]);
   useEffect(() => {
     if (embedded) return;
-    const check = () => { let last: string | null = null; try { last = localStorage.getItem("shuacrew.morning"); } catch { /* ignore */ } if (shouldBrief(last, new Date())) setMorning(true); };
+    const check = () => {
+      let last: string | null = null, lastEve: string | null = null;
+      try { last = localStorage.getItem("shuacrew.morning"); lastEve = localStorage.getItem("shuacrew.evening"); } catch { /* ignore */ }
+      if (shouldBrief(last, new Date()) && new Date().getHours() < 12) setMorning(true);
+      if (shouldRecap(lastEve, new Date())) setEvening(true);
+    };
     check(); const t = setInterval(check, 10 * 60_000); return () => clearInterval(t);
   }, [embedded]);
+  // 6pm: the day, wrapped — what shipped, what you learned, what's lined up. Only real things.
+  const playEvening = async () => {
+    setEvening(false); try { localStorage.setItem("shuacrew.evening", localDay(new Date())); } catch { /* ignore */ }
+    speech.current.unlock(); setOpen(true); setTab("chat");
+    const learn = await api<{ days?: Array<{ day: string; reviews: number }> }>("/api/learning").catch(() => ({ days: [] as Array<{ day: string; reviews: number }> }));
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("buddy"));
+    const today = work.filter((r) => r.updatedAt >= midnight.getTime());
+    const text = eveningRecap({
+      finished: today.filter((r) => r.status === "done" || r.status === "merged").sort((a, b) => b.updatedAt - a.updatedAt).map((r) => r.title),
+      failed: today.filter((r) => r.status === "failed").length,
+      reviewed: learn.days?.find((d) => d.day === localDay(new Date()) || d.day === new Date().toISOString().slice(0, 10))?.reviews ?? 0,
+      tomorrow: work.filter((r) => r.status === "queued").map((r) => r.title),
+      waiting: Object.keys(crew.approvals).length,
+    });
+    setBrief({ q: "Your day, wrapped", a: text }); speech.current.say(text);
+  };
   const playMorning = async () => {
-    setMorning(false); try { localStorage.setItem("shuacrew.morning", new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+    setMorning(false); try { localStorage.setItem("shuacrew.morning", localDay(new Date())); } catch { /* ignore */ }
     speech.current.unlock(); setOpen(true); setTab("chat");
     const [brief$, learn] = await Promise.all([
       api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing").catch(() => ({ sections: [] as Array<{ title: string; items: Array<{ text: string }> }> })),
@@ -417,14 +440,17 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       if (see || liveOn) { const shot = await capture(); atts = [await upload(shot.file)]; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length);
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
-      const appNow = shuacrewNow({
+      const remembered = asksAboutEarlier(q) ? await recall(q) : "";
+      if (remembered) logSense("saw", "Checked your screen memory", q);
+      const appNowBase = shuacrewNow({
         members: Object.values(crew.members).map((m) => ({ name: m.name, role: (m as { role?: string }).role })),
         ventures: Object.values(crew.ventures ?? {}).map((v) => (v as { name: string }).name),
         radio: { on: rs.playing ? rs.live?.name ?? rs.track?.title ?? null : null, stations: [...rs.stations.filter((x) => x.tracks.length).map((x) => x.name), ...rs.youtube.map((x) => x.name)] },
       });
+      const appNow = remembered ? `${appNowBase}\n\n${remembered}` : appNowBase;
       if (convo && status && !["failed", "cancelled"].includes(status)) {
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
-        const withMap = (text: string) => (mapped ? text : `${text}\n\n[app]\n${appNow}`);
+        const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? t : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
         await followUp(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
@@ -464,6 +490,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
   // The desktop Spark: pinned on top only if you chose it; always comes forward when it starts talking.
   useEffect(() => { if (!embedded) post({ type: "buddyOnTop", on: prefs.onTop }); }, [prefs.onTop, embedded]);
+  useEffect(() => { if (!embedded) post({ type: "buddyScreenMemory" }); }, [embedded]); // wakes the recorder if you turned it on
   useEffect(() => { if (!embedded && speaking) post({ type: "buddyRaise" }); }, [speaking, embedded]);
   // Music steps aside while you and Spark talk (the radio and Music/Spotify), and comes back once it's quiet again.
   // "Talking" covers the whole exchange: you speaking, Spark thinking, and Spark answering — no gap in between.
@@ -570,7 +597,8 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       <div><button type="button" onClick={() => void advance()}>Done <ChevronRight size={11} /></button><button type="button" onClick={stopGuide}>Stop</button></div></div>}
     {!open && !guide && !bubble && morning && <button type="button" className="buddy-bubble is-morning" onClick={() => void playMorning()}>Your day in 20 seconds<small>Tap to hear it</small></button>}
     {!open && !guide && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
-    {!open && !guide && !bubble && !morning && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
+    {!open && !guide && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
+    {!open && !guide && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
     <div className={`buddy-spark size-${prefs.size} ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
       {timer && <svg className="buddy-focus" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" /><circle cx="50" cy="50" r="46" className="fill" style={{ strokeDashoffset: `${289 * (1 - focusPct)}` }} /></svg>}
       <SparkCharacter preferences={prefs} mood={mood} /><i className="buddy-shadow" />

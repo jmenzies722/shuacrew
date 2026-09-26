@@ -22,6 +22,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private static let peek = NSSize(width: 320, height: 190)
 
     private let gateway: Gateway
+    private lazy var memory: ScreenMemoryRecorder = {
+        let m = ScreenMemoryRecorder(base: gateway.base)
+        m.excluding = { [weak self] in self.map { [$0.panel.windowNumber] } ?? [] }
+        return m
+    }()
     private let panel: BuddyPanel
     private let web: WKWebView
     private let grip = BuddyGrip()
@@ -304,6 +309,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if on { raise() }
         case "buddyRaise":
             raise()
+        case "buddyScreenMemory":
+            if let on = body["on"] as? Bool { memory.set(on); if on { Task { await memory.tick() } } }
+            send("shuacrew:screenMemory", ["on": memory.enabled, "access": ScreenAccess.granted()], to: sender)
         case "buddySelection":
             if let sel = Selection.read() { send("shuacrew:selection", ["text": sel.text, "app": sel.app], to: sender) }
             else { send("shuacrew:selection", ["text": "", "app": NSWorkspace.shared.frontmostApplication?.localizedName ?? ""], to: sender) }

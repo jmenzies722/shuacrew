@@ -5,10 +5,32 @@ export interface MorningInput {
   ventures: Array<{ name: string; stage: string }>; running: number;
 }
 
+/** Your calendar day (local, not UTC — 9pm in New York is still today). */
+export const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 /** Offer it once per calendar day, from 5am. */
 export function shouldBrief(lastDay: string | null, now: Date): boolean {
   if (now.getHours() < 5) return false;
-  return lastDay !== now.toISOString().slice(0, 10);
+  return lastDay !== localDay(now);
+}
+
+/** The evening recap: offered once a day from 6pm. */
+export function shouldRecap(lastDay: string | null, now: Date): boolean {
+  return now.getHours() >= 18 && lastDay !== localDay(now);
+}
+
+export interface EveningInput { finished: string[]; failed: number; reviewed: number; tomorrow: string[]; waiting: number }
+/** What happened today and what's lined up — only real things, under 30 seconds, ending on something kind. */
+export function eveningRecap(i: EveningInput): string {
+  const parts = ["Here's your day."];
+  if (i.finished.length) parts.push(i.finished.length === 1 ? `The crew shipped ${i.finished[0]}.` : `The crew shipped ${i.finished.length} things, including ${i.finished[0]} and ${i.finished[1]}.`);
+  if (i.failed) parts.push(`${i.failed} session${i.failed === 1 ? "" : "s"} hit a problem worth a look.`);
+  if (i.reviewed) parts.push(`You reviewed ${i.reviewed} learning card${i.reviewed === 1 ? "" : "s"}.`);
+  if (i.waiting) parts.push(`${i.waiting} decision${i.waiting === 1 ? " is" : "s are"} still waiting on you.`);
+  if (i.tomorrow.length) parts.push(`Lined up for tomorrow: ${i.tomorrow.slice(0, 2).join(" and ")}.`);
+  if (parts.length === 1) parts.push("A quiet one — sometimes that's exactly right.");
+  parts.push(i.finished.length || i.reviewed ? "Good work today." : "Rest up.");
+  return parts.join(" ");
 }
 
 const greeting = (h: number) => (h < 5 ? "Up late" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
