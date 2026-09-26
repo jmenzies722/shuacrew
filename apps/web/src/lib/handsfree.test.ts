@@ -40,3 +40,9 @@ it("encodes a 16 kHz mono WAV from 48 kHz audio", async () => {
   expect(head.getUint16(22, true)).toBe(1);              // mono
   expect(head.getUint32(40, true)).toBe(16000 * 2);      // one second of 16-bit samples
 });
+
+it("ignores Spark's own voice echoing back, but still hears a real interruption", () => {
+  const { s } = run(vadStart(), 0.004, 2000);
+  expect(run(s, 0.05, 300, true).events).toEqual([]);        // a short loud blip while Spark talks: echo, not you
+  expect(run(s, 0.05, 700, true).events).toEqual(["start"]); // you, clearly and for more than half a second
+});

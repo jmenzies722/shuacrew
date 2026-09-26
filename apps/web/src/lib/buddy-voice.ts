@@ -40,7 +40,7 @@ export class SpeechQueue {
   private ctx() { this.context ??= new AudioContext({ latencyHint: "interactive" }); if (this.context.state === "suspended") void this.context.resume().catch(() => {}); return this.context; }
   private out() { const c = this.ctx(); if (!this.master) { this.master = c.createGain(); this.master.connect(c.destination); } return this.master; }
   /** Soft barge-in: drop to a murmur while we find out whether you're really talking; stop() if you are. */
-  duck(on: boolean) { const g = this.out().gain, t = this.ctx().currentTime; g.cancelScheduledValues(t); g.setTargetAtTime(on ? 0.2 : 1, t, 0.06); }
+  duck(on: boolean) { const g = this.out().gain, t = this.ctx().currentTime; g.cancelScheduledValues(t); g.setTargetAtTime(on ? 0.45 : 1, t, 0.08); }
 
   /** Speak a sentence — in Spark's voice, or `as` a crew member's own voice. */
   say(text: string, as?: { voiceId: string; speed: number }) {

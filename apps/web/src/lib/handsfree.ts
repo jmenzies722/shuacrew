@@ -14,12 +14,14 @@ export const vadStart = (): VadState => ({ noise: 0.008, speaking: false, voiced
  * so its own speech leaking past echo cancellation doesn't count as you.
  */
 export function vadStep(s: VadState, rms: number, dt: number, o: VadOptions = VAD, strict = false): { state: VadState; event?: "start" | "end" | "discard" } {
-  const threshold = Math.max(o.floor, s.noise * o.ratio) * (strict ? 2.4 : 1);
+  // While Spark talks, its own voice leaks back through the speakers: only a clearly louder, sustained voice (half a
+  // second) counts as you interrupting — so echo never makes Spark cut in and out.
+  const threshold = Math.max(o.floor, s.noise * o.ratio) * (strict ? 3.2 : 1);
   const loud = rms > threshold;
   if (!s.speaking) {
-    const noise = loud ? s.noise : s.noise * 0.97 + rms * 0.03;
+    const noise = loud || strict ? s.noise : s.noise * 0.97 + rms * 0.03; // don't learn Spark's voice as "room noise"
     const voiced = loud ? s.voiced + dt : 0;
-    if (voiced >= o.startMs) return { state: { noise, speaking: true, voiced, quiet: 0, spoke: voiced }, event: "start" };
+    if (voiced >= (strict ? Math.max(o.startMs, 500) : o.startMs)) return { state: { noise, speaking: true, voiced, quiet: 0, spoke: voiced }, event: "start" };
     return { state: { ...s, noise, voiced } };
   }
   const quiet = loud ? 0 : s.quiet + dt, spoke = s.spoke + dt;
