@@ -7,8 +7,9 @@ import { api, decideApproval, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { daysUntil, placed, saveNote, saveWidgets, streak, useNote, useWidgets, WIDGET_INFO, type WidgetId } from "../lib/widgets";
-import { PlayingChip, PlayingTile, useNowPlaying } from "./NowPlaying";
-import { MixChip, MixDesk, Setlist, SetlistChip } from "./StudioDesk";
+import { useRadio } from "../lib/radio";
+import { RadioChip, RadioTile } from "./RadioWidget";
+import "../screens/studio.css";
 import { playSound } from "./Sounds";
 import { useLook } from "../lib/look";
 import "./topbar-widgets.css";
@@ -100,9 +101,7 @@ function LearningChipBody() { const learn = learning.use(); return <><Graduation
 function CountdownChipBody() { const c = useWidgets().countdown; return c ? <><CalendarClock size={13} /><span className="tabular-nums">{Math.max(0, daysUntil(c.date))}d</span><span className="tb-dim wg-trunc">{c.label}</span></> : <CalendarClock size={14} />; }
 function Chip({ id }: { id: WidgetId }) {
   switch (id) {
-    case "playing": return <PlayingChip />;
-    case "mix": return <MixChip />;
-    case "setlist": return <SetlistChip />;
+    case "playing": return <RadioChip />;
     case "weather": return <WeatherChipBody />;
     case "focus": return <FocusChipBody />;
     case "crew": return <CrewChipBody />;
@@ -118,9 +117,7 @@ function Chip({ id }: { id: WidgetId }) {
 // ── tiles (popover bodies and Spark) ─────────────────────────────────────────────────────────
 export function WidgetTile({ id, ctx, close }: { id: WidgetId; ctx: WidgetCtx; close?: () => void }) {
   switch (id) {
-    case "playing": return <PlayingTile ctx={ctx} />;
-    case "mix": return <MixDesk ctx={ctx} compact />;
-    case "setlist": return <Setlist ctx={ctx} compact />;
+    case "playing": return <RadioTile ctx={ctx} />;
     case "weather": return <WeatherTile />;
     case "focus": return <FocusTile close={close} />;
     case "crew": return <CrewTile ctx={ctx} />;
@@ -276,8 +273,8 @@ function CountdownTile() {
 // ── placements ───────────────────────────────────────────────────────────────────────────────
 /** The top bar's widgets, in your order. */
 export function TopBarWidgets({ ctx }: { ctx: WidgetCtx }) {
-  const prefs = useWidgets(), crew = useCrew(), timer = useFocusTimer(), track = useNowPlaying();
-  return <>{placed(prefs, "topbar").map((id) => <Pop key={id} label={WIDGET_INFO[id].name} active={id === "playing" && track.mood !== "quiet" || id === "mix" && crew.runs.length > 0 || id === "setlist" && (track.mood !== "quiet" || crew.approvals.length > 0) || id === "focus" && !!timer || id === "crew" && crew.approvals.length > 0} chip={<Chip id={id} />}>
+  const prefs = useWidgets(), crew = useCrew(), timer = useFocusTimer(), radio = useRadio();
+  return <>{placed(prefs, "topbar").map((id) => <Pop key={id} label={WIDGET_INFO[id].name} active={id === "playing" && radio.playing || id === "focus" && !!timer || id === "crew" && crew.approvals.length > 0} chip={<Chip id={id} />}>
     {(close) => <WidgetTile id={id} ctx={ctx} close={close} />}
   </Pop>)}</>;
 }

@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import Fastify from "fastify";
 import { expect, it } from "vitest";
-import { Radio, matchStation, nameParts, parseCommand, radioRoutes } from "./radio.js";
+import { Radio, matchStation, nameParts, parseCommand, radioRoutes, youtubeId } from "./radio.js";
+
+process.env.SHUACREW_RADIO_YOUTUBE = path.join(os.tmpdir(), `radio-yt-${process.pid}.json`); // never the real list
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "radio-"));
 
@@ -55,9 +57,16 @@ it("streams listed tracks with ranges, refuses unknown ids, and relays commands 
     expect((await post({ cmd: "pause" })).statusCode).toBe(409); // nobody is listening yet
     const heard: unknown[] = []; const off = radio.subscribe((c) => heard.push(c));
     expect((await post({ cmd: "play", station: "jazz" })).statusCode).toBe(200);
-    expect((await post({ cmd: "play", station: "hip hop" })).statusCode).toBe(409); // empty station says so
+    const fallback = await post({ cmd: "play", station: "hip hop" }); // no local hip-hop yet: a live YouTube station instead
+    expect(fallback.statusCode).toBe(200); expect(fallback.json()).toMatchObject({ station: "lofi hip hop radio 📚" });
     expect((await post({ cmd: "play", station: "opera" })).statusCode).toBe(404);
     off();
-    expect(heard).toEqual([{ cmd: "play", station: "lofi-jazz", track: undefined }]);
+    expect(heard).toEqual([{ cmd: "play", station: "lofi-jazz", track: undefined }, { cmd: "play", station: "yt-lofi-girl", track: undefined }]);
   } finally { await app.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it("reads YouTube video ids from every link shape and nothing else", () => {
+  for (const u of ["https://www.youtube.com/watch?v=jfKfPfyJRdk", "https://youtu.be/jfKfPfyJRdk", "https://www.youtube.com/live/jfKfPfyJRdk?si=x", "https://m.youtube.com/watch?v=jfKfPfyJRdk&t=3", "jfKfPfyJRdk"]) expect(youtubeId(u)).toBe("jfKfPfyJRdk");
+  expect(youtubeId("https://evil.example/watch?v=jfKfPfyJRdk")).toBeNull();
+  expect(youtubeId("https://www.youtube.com/watch?v=short")).toBeNull();
 });

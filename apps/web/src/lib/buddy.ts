@@ -32,7 +32,44 @@ export type Action =
   | { type: "venture"; name: string; pitch?: string; validate?: boolean }
   | { type: "playbook"; playbook: string; idea?: string; venture?: string }
   | { type: "remember"; text: string }
-  | { type: "run"; command: string };
+  | { type: "run"; command: string }
+  | { type: "go"; path: string }
+  | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string };
+/** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
+export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
+  { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky" },
+  { path: "/activity", name: "Today", hub: "Home", about: "your day: the morning brief, what needs you, what finished, focus time" },
+  { path: "/crew", name: "Team", hub: "Crew", about: "your AI crew members (each has a role, model, voice, memory and lessons); create or edit them" },
+  { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
+  { path: "/floor", name: "Floor", hub: "Crew", about: "a live map of who is working on what right now" },
+  { path: "/studio", name: "Studio (ShuaCrew Radio)", hub: "Crew", about: "the radio: the user's own lofi files as stations plus live YouTube lofi jazz / hip-hop stations, ambience (rain, café, brown noise)" },
+  { path: "/ventures", name: "Ventures", hub: "Build", about: "business ideas as a pipeline (idea → validate → build → launch → grow) with revenue" },
+  { path: "/playbooks", name: "Playbooks", hub: "Build", about: "multi-step plans the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
+  { path: "/specs", name: "Specs", hub: "Build", about: "written specs the crew builds from" },
+  { path: "/board", name: "Board", hub: "Build", about: "every session by status: queued, running, awaiting you, reviewing, done" },
+  { path: "/schedules", name: "Schedules", hub: "Build", about: "work that runs on its own on a schedule" },
+  { path: "/library", name: "Library", hub: "Know", about: "everything the crew made: reports, pages, specs, images, saved knowledge (searchable)" },
+  { path: "/memory", name: "Memory", hub: "Know", about: "what every agent has learned about the user: lessons, preferences, corrections" },
+  { path: "/learn", name: "Learning", hub: "Know", about: "courses and spaced-repetition quizzes toward the user's career goal" },
+  { path: "/integrations", name: "Tools & Skills", hub: "System", about: "MCP tools, connected services and Claude Code skills (including the radio skill)" },
+  { path: "/policy", name: "Policy & Audit", hub: "System", about: "what agents may never touch, what needs approval, and the full audit trail" },
+  { path: "/observability", name: "Insights", hub: "System", about: "usage, tokens, cost, health and throughput over time" },
+  { path: "/terminal", name: "Terminal", hub: "System", about: "a real terminal on the Mac, with an agent that can help" },
+  { path: "/settings", name: "Settings", hub: "", about: "appearance/theme and accent, workspace, widgets, chat, agents, automation, safety, Spark, voice, notifications, mobile, data" },
+];
+/** What the app holds right now, for Spark to answer from (names only — never invented). */
+export function shuacrewNow(input: { members: Array<{ name: string; role?: string }>; ventures: string[]; radio: { on: string | null; stations: string[] } }) {
+  return [
+    "SHUACREW — THE APP YOU LIVE IN (you know it inside out; explain any part and take them there):",
+    ...SHUACREW_PAGES.map((p) => `- ${p.name}${p.hub ? ` (${p.hub})` : ""} ${p.path}: ${p.about}`),
+    "Keys: ⌘J opens you (Spark) inside the app, ⌃⌥Space from anywhere; ⌘K search; ⌘N new session; ⌘1–5 the hubs; ⌘\\ folds the sidebar; ⌘⇧F Flow mode (hides everything but the work).",
+    input.members.length ? `Crew members: ${input.members.map((m) => (m.role ? `${m.name} (${m.role})` : m.name)).join(", ")}.` : "No crew members yet.",
+    input.ventures.length ? `Ventures: ${input.ventures.slice(0, 12).join(", ")}.` : "",
+    `Radio: ${input.radio.on ? `playing ${input.radio.on}` : "off"}${input.radio.stations.length ? `; stations: ${input.radio.stations.slice(0, 10).join(", ")}` : ""}.`,
+    'Take them to a page: ```do [{"type":"go","path":"/studio"}]``` · radio: ```do [{"type":"radio","cmd":"play","station":"lofi jazz"}]``` (cmd: play | pause | resume | next | previous | stop). Use radio for ShuaCrew Radio; media is only for Music/Spotify.',
+  ].filter(Boolean).join("\n");
+}
+
 /** The playbooks Spark can start by id (the built-in library). */
 export const PLAYBOOKS = ["validate-idea", "landing-page", "mvp", "launch", "growth-review"] as const;
 
@@ -186,6 +223,8 @@ function toAction(v: unknown): Action | null {
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
+    case "go": { const path = str(o.path, 80); return path && SHUACREW_PAGES.some((p) => p.path === path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}#`)) ? { type: "go", path } : null; }
+    case "radio": { const cmds = ["play", "pause", "resume", "next", "previous", "stop"] as const; const cmd = cmds.find((c) => c === o.cmd); const station = str(o.station, 80); return cmd ? { type: "radio", cmd, ...(station ? { station } : {}) } : null; }
     case "run": { const command = str(o.command, 2000); return command && !/[\u0000-\u0008]/.test(command) ? { type: "run", command } : null; }
     default: return null;
   }
@@ -214,6 +253,8 @@ export function describeAction(a: Action): string {
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
+    case "go": return `Open ${SHUACREW_PAGES.find((p) => a.path === p.path || a.path.startsWith(p.path + "/"))?.name ?? a.path}`;
+    case "radio": return a.cmd === "play" ? `Radio: ${a.station ?? "on"}` : `Radio: ${a.cmd}`;
     case "run": return `Run ${a.command.length > 48 ? `${a.command.slice(0, 48)}…` : a.command}`;
   }
 }
@@ -291,7 +332,7 @@ const DESIGN = [
   "Use real technologies where they fit (Postgres, Redis, Kafka, S3, CDN, etc.) and say why. No filler.",
 ].join("\n");
 
-export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "") {
+export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "", appNow = "") {
   const design = isDesign(question);
   return [
     `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read an attached screenshot.`,
@@ -306,7 +347,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Build, code, research, anything multi-step: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
-      'Music: ALWAYS use media (play, pause, next, play_query), never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
+      'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media (play, pause, next, play_query). Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
     ].join("\n"),
@@ -332,6 +373,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       ].join("\n")
       : "No screenshot this time; answer from the question alone. If they want to be shown something on screen, ask them to turn on the eye so you can see.",
     design ? DESIGN : "For anything with structure (an architecture, a flow, a data model), you can include a ```mermaid diagram — it renders as a real diagram.",
+    appNow,
     crewNow ? `${crewNow}\nIf they ask what's going on, what's playing, or who is working, answer from CREW NOW. Don't invent sessions.` : "",
     `\nThe user says: ${question}`,
   ].join("\n");

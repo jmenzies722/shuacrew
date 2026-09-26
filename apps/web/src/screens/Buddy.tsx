@@ -1,7 +1,7 @@
 import { logAction } from "../lib/spark-log";
 import { morningBrief, shouldBrief } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
-import { radioCommand } from "../lib/radio";
+import { getRadio, loadRadio, radioCommand } from "../lib/radio";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, AudioLines, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
@@ -10,7 +10,7 @@ import { api, followUp, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { upload, withAttachments } from "../lib/attachments";
-import { actFollowUp, buddyPrompt, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { actFollowUp, buddyPrompt, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
@@ -108,6 +108,8 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
     onRanOutput?.(a.command, r.ok, r.output ?? "");
     return { ok: r.ok, message: r.message };
   })();
+  if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: describeAction(a) }); }
+  if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
   if (a.type === "note") { const n = localStorage.getItem("shuacrew.widgets.note") ?? ""; saveNote(n ? `${n}\n${a.text}` : a.text); return Promise.resolve({ ok: true, message: "Added to your note" }); }
@@ -226,7 +228,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     const out: Array<{ who: "you" | "spark"; text: string; live?: boolean; id?: number }> = convo ? [{ who: "you", text: convo.first }] : [];
     let streaming = "";
     for (const e of (events ?? []) as AnyEvent[]) {
-      if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]! }); streaming = ""; }
+      if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]!.split("\n\n[app]")[0]! }); streaming = ""; }
       else if (e.kind === "agent.delta") streaming += e.body.text;
       else if (e.kind === "agent.message") { out.push({ who: "spark", text: e.body.text, id: e.seq }); streaming = ""; }
     }
@@ -389,11 +391,20 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       if (see || liveOn) { const shot = await capture(); atts = [await upload(shot.file)]; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length);
+      const rs = getRadio(); if (!rs.loaded) void loadRadio();
+      const appNow = shuacrewNow({
+        members: Object.values(crew.members).map((m) => ({ name: m.name, role: (m as { role?: string }).role })),
+        ventures: Object.values(crew.ventures ?? {}).map((v) => (v as { name: string }).name),
+        radio: { on: rs.playing ? rs.live?.name ?? rs.track?.title ?? null : null, stations: [...rs.stations.filter((x) => x.tracks.length).map((x) => x.name), ...rs.youtube.map((x) => x.name)] },
+      });
       if (convo && status && !["failed", "cancelled"].includes(status)) {
-        await followUp(convo.run, withAttachments(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q, atts));
+        const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
+        const withMap = (text: string) => (mapped ? text : `${text}\n\n[app]\n${appNow}`);
+        if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
+        await followUp(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, appNow), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
@@ -406,12 +417,36 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     m.onPhase = (p, detail) => { setPhase(p); if (p === "error" && detail) setError(detail); };
     m.onLevel = setLevel;
     m.onPartial = setHeard;
-    m.onTurn = (t) => void askRef.current(t);
-    m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.stop(); };
-    if (prefs.conversation && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, open, embedded, focused, armed]);
+    // Interrupting: Spark drops to a murmur the moment you start, and only stops once your words are real —
+    // a cough, a door or its own voice through the speakers no longer cuts it off mid-sentence.
+    m.onTurn = (t) => { if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
+    m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
+    m.onDropped = () => speech.current.duck(false);
+    m.mode = prefs.listen;
+    const wanted = prefs.listen === "hold" || prefs.conversation;
+    if (wanted && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
+  }, [prefs.conversation, prefs.listen, open, embedded, focused, armed]);
+  // Push-to-talk with the keyboard: hold Space while Spark's box is empty (or nothing is focused).
+  useEffect(() => {
+    if (prefs.listen !== "hold" || !open) return;
+    const typing = (t: EventTarget | null) => { const el = t as HTMLElement | null; if (!el) return false; if (el === input.current) return !!input.current?.value; return !!el.closest?.("input,textarea,select,[contenteditable=true],.xterm"); };
+    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); setArmed(true); speech.current.unlock(); mic.current.hold(); };
+    const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; mic.current.release(); };
+    window.addEventListener("keydown", down); window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); mic.current.release(); };
+  }, [prefs.listen, open]);
   useEffect(() => () => mic.current.stop(), []);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
+  // Music steps aside while you and Spark talk (the radio and Music/Spotify), and comes back once it's quiet again.
+  // "Talking" covers the whole exchange: you speaking, Spark thinking, and Spark answering — no gap in between.
+  const talking = speaking || phase === "hearing" || phase === "transcribing" || !!busy || working;
+  useEffect(() => {
+    if (!mine()) return;
+    if (talking) { post({ type: "buddyDuck", on: true }); void radioCommand({ cmd: "duck" }); return; }
+    const t = setTimeout(() => { post({ type: "buddyDuck", on: false }); void radioCommand({ cmd: "unduck" }); }, 2000);
+    return () => clearTimeout(t);
+  }, [talking]);
+  const setListen = (listen: "auto" | "hold") => { setArmed(true); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, listen }); };
   const toggleTalk = () => { setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
   const reset = () => { stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
   const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
@@ -434,6 +469,13 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         <button type="button" role="tab" aria-selected={tab === "chat"} onClick={() => setTab("chat")}><MessageCircle size={12} /> Chat</button>
         <button type="button" role="tab" aria-selected={tab === "widgets"} onClick={() => setTab("widgets")}><LayoutGrid size={12} /> Widgets{approvals > 0 && <em>{approvals}</em>}</button>
       </nav>
+      {tab === "chat" && <div className="spk-voicebar">
+        <span className="spk-voicebar-label"><AudioLines size={12} /> {phase === "hearing" ? "Hearing you…" : phase === "transcribing" ? "Got it…" : phase === "starting" ? "Opening the mic…" : phase === "error" ? "Mic unavailable" : prefs.listen === "hold" ? (phase === "listening" ? "Hold the mic or Space to talk" : "Click here, then hold to talk") : prefs.conversation && phase === "listening" ? "Listening — just talk" : prefs.conversation ? "Mic paused — click Spark to listen" : "Tap the mic to talk"}</span>
+        <div className="spk-listen" role="radiogroup" aria-label="How to talk">
+          <button type="button" role="radio" aria-checked={prefs.listen === "auto"} className={prefs.listen === "auto" ? "is-on" : ""} onClick={() => setListen("auto")} title="Open mic: just talk">Auto</button>
+          <button type="button" role="radio" aria-checked={prefs.listen === "hold"} className={prefs.listen === "hold" ? "is-on" : ""} onClick={() => setListen("hold")} title="Push-to-talk: hold the talk button or Space">Hold</button>
+        </div>
+      </div>}
       {tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={embedded ? { go: (path) => { window.shuacrew?.navigate(path); } } : ctx} /></div> : <>
         <div className="buddy-thread spk-thread" ref={thread}>
           {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
@@ -479,7 +521,11 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => { const next = !v; try { localStorage.setItem(SEE, next ? "1" : "0"); } catch { /* ignore */ } return next; })}>{see ? <Eye size={15} /> : <EyeOff size={15} />}</button>
         <textarea ref={input} rows={1} value={draft} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") close(); }} aria-label="Message" />
-        <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={15} /></button>
+        {prefs.listen === "hold"
+          ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" style={{ "--lvl": level } as CSSProperties}
+              onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.hold(); }}
+              onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
+          : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={15} /></button>}
         <motion.button className="buddy-send" disabled={!!busy || !draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>
       </form>
     </section>;

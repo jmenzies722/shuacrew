@@ -11,6 +11,8 @@ export interface CompanionPreferences {
   hotkey: SparkHotkey; guide: "click" | "manual";
   /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
   control: "off" | "ask" | "auto"; conversation: boolean; interrupt: boolean;
+  /** How the mic takes a turn: "auto" (open mic, just talk) or "hold" (push-to-talk: hold the talk button or Space). */
+  listen: "auto" | "hold";
 }
 export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const;
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
@@ -27,7 +29,8 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     character: choice("character", SPARK_CHARACTERS, "spark"), color: validFinish(v.color) ? (v.color === "theme" ? "theme" : v.color.toLowerCase()) : "theme",
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
-    control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false };
+    control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
+    listen: choice("listen", ["auto", "hold"], "auto") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

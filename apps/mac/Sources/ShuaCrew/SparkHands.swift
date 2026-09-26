@@ -200,6 +200,22 @@ enum SparkHands {
         return String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.split(separator: "\n").map(String.init).prefix(80).map { $0 } ?? []
     }
 
+    /// While you and Spark talk, music steps aside: pause Music/Spotify if (and only if) they're playing, and bring back
+    /// exactly what was paused afterwards. Never launches a player that isn't already running.
+    private static var ducked: [String] = []
+    static func duck(_ on: Bool) {
+        let ids = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        if on {
+            guard ducked.isEmpty else { return }
+            for (app, id) in [("Music", "com.apple.Music"), ("Spotify", "com.spotify.client")] where ids.contains(id) {
+                if runResult("tell application \"\(app)\" to get player state as string") == "playing", run("tell application \"\(app)\" to pause") { ducked.append(app) }
+            }
+        } else {
+            for app in ducked where ids.contains(app == "Music" ? "com.apple.Music" : "com.spotify.client") { run("tell application \"\(app)\" to play") }
+            ducked = []
+        }
+    }
+
     private static func runningPlayer() -> String? {
         let ids = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
         return ids.contains("com.spotify.client") ? "Spotify" : ids.contains("com.apple.Music") ? "Music" : nil

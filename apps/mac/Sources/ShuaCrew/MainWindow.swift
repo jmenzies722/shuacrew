@@ -25,6 +25,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     init(gateway: Gateway) {
         self.gateway = gateway
         let config = WKWebViewConfiguration()
+        config.mediaTypesRequiringUserActionForPlayback = [] // the radio and Spark can start sound when you ask by voice
         // Mark the page before it renders so the CSS lays out for the Mac window from the first frame.
         config.userContentController.addUserScript(WKUserScript(
             source: "document.documentElement.dataset.shell = 'mac'; document.documentElement.dataset.nativeVoice = '1';",
@@ -343,9 +344,14 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     }
 
     /// The gateway's pages stay here; every other link opens in your browser.
+    private static let playerHosts: Set<String> = ["www.youtube-nocookie.com", "www.youtube.com", "youtube.com"]
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if url.host == gateway.base.host && url.port == gateway.base.port || url.scheme == "about" {
+        // The radio's YouTube stations play in YouTube's own embedded player: allow that inside a frame (never as
+        // the page itself). Everything else outside the gateway opens in your browser.
+        let embeddedPlayer = action.targetFrame.map { !$0.isMainFrame } == true && Self.playerHosts.contains(url.host ?? "")
+        if url.host == gateway.base.host && url.port == gateway.base.port || url.scheme == "about" || embeddedPlayer {
             decisionHandler(.allow)
         } else {
             NSWorkspace.shared.open(url)

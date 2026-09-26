@@ -101,3 +101,44 @@
 .radio-eq i:nth-child(2) { animation-delay: -.3s; } .radio-eq i:nth-child(3) { animation-delay: -.6s; }
 @keyframes radio-eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
 @media (prefers-reduced-motion: reduce) { .radio-vinyl, .radio-eq i { animation: none; } }
+
+/* Live stations: YouTube's own player plays them; here they get art, a live dot, and a paste-a-link field. */
+.radio-stations button svg { color: var(--text-3); }
+.radio-stations button.is-on svg { color: inherit; }
+.radio-label.has-art { background-size: cover; background-position: center; box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 70%, #000); }
+.radio-live-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); }
+.radio-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #f94359; box-shadow: 0 0 0 4px rgba(249, 67, 89, .18); animation: radio-live 1.6s ease-in-out infinite; }
+@keyframes radio-live { 50% { box-shadow: 0 0 0 7px rgba(249, 67, 89, 0); } }
+.radio-row-art { background-size: cover; background-position: center; }
+.radio-list .radio-row-x { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--text-3); opacity: 0; transition: opacity .15s, background .15s; }
+.radio-list li:hover .radio-row-x { opacity: 1; }
+.radio-list .radio-row-x:hover { color: var(--text); background: var(--raised); }
+.radio-add { display: flex; gap: 6px; margin-top: 10px; }
+.radio-add input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border-radius: 10px; font-size: 12.5px; color: var(--text); background: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); outline: none; }
+.radio-add input:focus { box-shadow: inset 0 0 0 1px var(--amber), 0 0 16px -6px var(--accent-glow, var(--amber)); }
+.radio-add button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--on-accent, #fff); background: var(--amber); }
+.radio-add button:disabled { opacity: .4; }
+.radio-setup { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .radio-live-dot { animation: none; } }
+
+/* Radio widget (top bar popover, Spark widgets): same look as the Studio, pocket size. */
+.rw-chip-text { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-tile { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rw-now { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rw-art { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; color: var(--on-accent, #fff); background: var(--amber) center / cover; box-shadow: 0 0 0 3px var(--ink), 0 0 0 4px var(--line-strong); }
+.rw-art.is-on { animation: radio-spin 4s linear infinite; }
+.rw-text { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left; }
+.rw-text b, .rw-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-text b { font-size: 13px; font-weight: 600; color: var(--text); }
+.rw-text small { font-size: 11.5px; color: var(--text-3); }
+.rw-btn { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--text-2); flex-shrink: 0; }
+.rw-btn:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+.rw-btn:disabled { opacity: .35; }
+.rw-btn.is-main { width: 34px; height: 34px; color: var(--on-accent, #fff); background: var(--amber); }
+.rw-btn.is-main:hover:not(:disabled) { background: var(--accent-hover, var(--amber)); color: var(--on-accent, #fff); }
+.rw-stations { display: flex; flex-wrap: wrap; gap: 5px; }
+.rw-stations button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.rw-stations button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-stations button:hover { background: var(--raised); color: var(--text); }
+.rw-stations button.is-on { color: var(--accent-text, var(--amber)); background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+@media (prefers-reduced-motion: reduce) { .rw-art.is-on { animation: none; } }

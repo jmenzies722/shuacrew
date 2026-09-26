@@ -147,7 +147,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     // A route that set its own (stricter or sandboxed) policy keeps it.
     if (!reply.hasHeader("Content-Security-Policy")) reply.header(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'",
     );
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Referrer-Policy", "no-referrer");
@@ -939,7 +939,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         .sort((a, b) => a.seq - b.seq)
         .map((a) => ({ id: a.id, run: a.run, runTitle: (a.run && state.runs[a.run]?.title) || "", tool: a.tool, summary: summary(a.input), risk: a.risk, reason: a.reason })),
       // Only real usage windows; a model that needs paid credits isn't "limited", it's not in the plan.
-      limited: Object.entries(state.limited).flatMap(([key, l]) => (l.credits ? [] : [key])),
+      // …and only while the window is still closed: a limit whose reset time has passed pauses nothing.
+      limited: Object.entries(state.limited).flatMap(([key, l]) => (l.credits || l.until <= Date.now() ? [] : [key])),
       // What just finished, for "ready for review" / "failed" notifications.
       recent: runs
         // A playbook's phases announce themselves as reviews (below), not as finished sessions.

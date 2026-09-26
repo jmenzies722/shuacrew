@@ -4,7 +4,7 @@
  * downloaded, generated or sent anywhere — and relays play/pause/skip commands from Spark, agents (through the radio
  * skill) or the terminal to the player in the app over a small event stream.
  */
-import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import os from "node:os";
@@ -16,12 +16,35 @@ const AUDIO = new Set([".mp3", ".m4a", ".aac", ".wav", ".flac", ".aiff", ".aif",
 const TYPES: Record<string, string> = { ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".flac": "audio/flac", ".aiff": "audio/aiff", ".aif": "audio/aiff", ".ogg": "audio/ogg", ".opus": "audio/ogg" };
 const MAX_TRACKS = 2000;
 
+/** A YouTube live station, played through YouTube's own embedded player (never downloaded). */
+export interface YouTubeStation { id: string; name: string; genre: "Lofi Jazz" | "Lofi Hip-Hop" | "Other"; videoId: string; channel: string }
+/** Verified with YouTube oEmbed on 2026-09-25: long-running 24/7 streams that allow embedding. */
+export const DEFAULT_YOUTUBE: YouTubeStation[] = [
+  { id: "yt-lofi-girl", name: "lofi hip hop radio 📚", genre: "Lofi Hip-Hop", videoId: "jfKfPfyJRdk", channel: "Lofi Girl" },
+  { id: "yt-chillhop", name: "Chillhop Radio · jazzy & lofi", genre: "Lofi Jazz", videoId: "5yx6BWlEVcY", channel: "Chillhop Music" },
+  { id: "yt-jazz-lofi", name: "jazz/lofi hip hop radio 🌱", genre: "Lofi Jazz", videoId: "kgx4WGK0oNU", channel: "Abao in Tokyo" },
+  { id: "yt-lofi-sleep", name: "lofi hip hop radio 💤 sleep/chill", genre: "Lofi Hip-Hop", videoId: "JD-kMIpDfnY", channel: "Lofi Girl" },
+];
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+/** Pull the 11-character video id out of any YouTube link (watch, live, youtu.be, embed) or a bare id. */
+export function youtubeId(input: string): string | null {
+  const t = input.trim();
+  if (VIDEO_ID.test(t)) return t;
+  try {
+    const u = new URL(t);
+    if (!/(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be)$/.test(u.hostname)) return null;
+    const id = u.hostname.endsWith("youtu.be") ? u.pathname.slice(1) : u.searchParams.get("v") ?? u.pathname.match(/\/(?:live|embed|shorts)\/([^/?]+)/)?.[1] ?? "";
+    return VIDEO_ID.test(id) ? id : null;
+  } catch { return null; }
+}
+
 export interface RadioTrack { id: string; station: string; title: string; artist: string; duration: number | null; file: string }
 export interface RadioStation { id: string; name: string; tracks: RadioTrack[] }
 export type RadioCommand =
   | { cmd: "play"; station?: string; track?: string }
   | { cmd: "pause" } | { cmd: "resume" } | { cmd: "next" } | { cmd: "previous" } | { cmd: "stop" }
-  | { cmd: "volume"; value: number };
+  | { cmd: "volume"; value: number }
+  | { cmd: "duck" } | { cmd: "unduck" };
 
 export const radioRoot = () => process.env.SHUACREW_RADIO_DIR || path.join(os.homedir(), "Music", "ShuaCrew Radio");
 export const stationId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -48,6 +71,11 @@ function probe(file: string): Promise<{ title?: string; artist?: string; duratio
 }
 
 export class Radio {
+  private youtubeFile = process.env.SHUACREW_RADIO_YOUTUBE || path.join(os.homedir(), ".shuacrew", "radio-youtube.json");
+  youtube(): YouTubeStation[] {
+    try { const list = JSON.parse(readFileSync(this.youtubeFile, "utf8")) as YouTubeStation[]; return Array.isArray(list) ? list.filter((x) => VIDEO_ID.test(x.videoId)) : DEFAULT_YOUTUBE; } catch { return DEFAULT_YOUTUBE; }
+  }
+  saveYoutube(list: YouTubeStation[]) { mkdirSync(path.dirname(this.youtubeFile), { recursive: true }); writeFileSync(this.youtubeFile, JSON.stringify(list, null, 2)); }
   private cache = new Map<string, { mtime: number; size: number; title: string; artist: string; duration: number | null }>();
   private byId = new Map<string, RadioTrack>();
   private listeners = new Set<(c: RadioCommand) => void>();
@@ -119,7 +147,7 @@ export function parseCommand(body: unknown): RadioCommand | null {
   const b = (body ?? {}) as Record<string, unknown>;
   switch (b.cmd) {
     case "play": return { cmd: "play", station: typeof b.station === "string" ? b.station : undefined, track: typeof b.track === "string" ? b.track : undefined };
-    case "pause": case "resume": case "next": case "previous": case "stop": return { cmd: b.cmd };
+    case "pause": case "resume": case "next": case "previous": case "stop": case "duck": case "unduck": return { cmd: b.cmd };
     case "volume": { const v = Number(b.value); return Number.isFinite(v) ? { cmd: "volume", value: Math.min(1, Math.max(0, v > 1 ? v / 100 : v)) } : null; }
     default: return null;
   }
@@ -129,6 +157,15 @@ export function parseCommand(body: unknown): RadioCommand | null {
 export function matchStation(stations: RadioStation[], query: string): RadioStation | undefined {
   const q = stationId(query);
   return stations.find((s) => s.id === q) ?? stations.find((s) => s.id.includes(q) || q.includes(s.id.replace(/^lofi-/, "")));
+}
+
+/** "lofi girl", "chillhop", "sleep", or a genre ("jazz", "hip hop") → a YouTube station. Local folders win on exact names. */
+export function matchYoutube(list: YouTubeStation[], query: string): YouTubeStation | undefined {
+  const q = query.toLowerCase().trim();
+  const byName = list.find((s) => s.id === q || s.name.toLowerCase().includes(q) || s.channel.toLowerCase().includes(q));
+  if (byName) return byName;
+  if (/youtube|stream|live/.test(q)) return list.find((s) => /jazz/.test(q) ? s.genre === "Lofi Jazz" : /hip/.test(q) ? s.genre === "Lofi Hip-Hop" : true);
+  return undefined;
 }
 
 function stream(reply: FastifyReply, file: string, range: string | undefined) {
@@ -144,8 +181,36 @@ function stream(reply: FastifyReply, file: string, range: string | undefined) {
   return reply.header("Content-Length", size).send(createReadStream(file));
 }
 
-export function radioRoutes(app: FastifyInstance, radio = new Radio()) {
-  app.get("/api/radio", async () => ({ root: radio.root, exists: existsSync(radio.root), stations: (await radio.stations()).map((s) => ({ ...s, tracks: s.tracks.map(({ file: _f, ...t }) => t) })) }));
+export function radioRoutes(app: FastifyInstance, radio = new Radio(), fetcher: typeof fetch = fetch) {
+  app.get("/api/radio", async () => ({ root: radio.root, exists: existsSync(radio.root), youtube: radio.youtube(), stations: (await radio.stations()).map((s) => ({ ...s, tracks: s.tracks.map(({ file: _f, ...t }) => t) })) }));
+  // YouTube stations: add by link (checked with YouTube's oEmbed — it must exist and allow embedding), or remove.
+  app.post<{ Body: { url?: string; name?: string; genre?: string } }>("/api/radio/youtube", async (req, reply) => {
+    const videoId = youtubeId(req.body?.url ?? "");
+    if (!videoId) return reply.code(400).send({ error: "That isn't a YouTube link." });
+    const list = radio.youtube();
+    if (list.some((s) => s.videoId === videoId)) return reply.code(409).send({ error: "That station is already on the dial." });
+    let title = "", channel = "";
+    try {
+      const r = await fetcher(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, { signal: AbortSignal.timeout(8000) });
+      if (r.status === 401 || r.status === 403) return reply.code(422).send({ error: "That video doesn't allow playing outside YouTube." });
+      if (!r.ok) return reply.code(404).send({ error: "YouTube doesn't know that video." });
+      const o = await r.json() as { title?: string; author_name?: string }; title = o.title ?? ""; channel = o.author_name ?? "";
+    } catch { return reply.code(502).send({ error: "Couldn't reach YouTube to check that link." }); }
+    const genre = req.body?.genre === "Lofi Jazz" || req.body?.genre === "Lofi Hip-Hop" ? req.body.genre : /jazz/i.test(title) ? "Lofi Jazz" : /hip ?hop|lofi|lo-fi/i.test(title) ? "Lofi Hip-Hop" : "Other";
+    const station: YouTubeStation = { id: `yt-${videoId.toLowerCase()}`, name: (req.body?.name?.trim() || title || "YouTube station").slice(0, 80), genre, videoId, channel };
+    radio.saveYoutube([...list, station]);
+    return station;
+  });
+  app.delete<{ Params: { id: string } }>("/api/radio/youtube/:id", async (req) => { radio.saveYoutube(radio.youtube().filter((s) => s.id !== req.params.id)); return { ok: true }; });
+  // Station art: YouTube's thumbnail, fetched here so the page keeps its strict img-src 'self'.
+  app.get<{ Params: { videoId: string } }>("/api/radio/youtube/:videoId/art", async (req, reply) => {
+    if (!VIDEO_ID.test(req.params.videoId)) return reply.code(400).send();
+    try {
+      const r = await fetcher(`https://i.ytimg.com/vi/${req.params.videoId}/hqdefault.jpg`, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return reply.code(404).send();
+      return reply.header("Content-Type", "image/jpeg").header("Cache-Control", "max-age=86400").send(Buffer.from(await r.arrayBuffer()));
+    } catch { return reply.code(502).send(); }
+  });
   app.post("/api/radio/setup", async () => { await radio.setup(); return { root: radio.root, ok: true }; });
   app.post("/api/radio/reveal", async (_req, reply) => {
     if (!existsSync(radio.root)) await radio.setup();
@@ -164,8 +229,18 @@ export function radioRoutes(app: FastifyInstance, radio = new Radio()) {
     if (!c) return reply.code(400).send({ error: 'cmd must be play, pause, resume, next, previous, stop or volume' });
     if (c.cmd === "play" && c.station) {
       const s = matchStation(await radio.stations(), c.station);
-      if (!s) return reply.code(404).send({ error: `No station called "${c.station}". Stations are folders in ${radio.root}.` });
-      if (!s.tracks.length) return reply.code(409).send({ error: `${s.name} has no tracks yet — add audio files to ${path.join(radio.root, s.name)}.` });
+      // Your own music first; then a YouTube station you named ("lofi girl", "chillhop"); then one of the same kind.
+      const named = !s?.tracks.length ? matchYoutube(radio.youtube(), c.station) : undefined;
+      if (named) { c.station = named.id; const sent = radio.command(c); return sent.listeners ? { ok: true, station: named.name } : reply.code(409).send({ error: "ShuaCrew isn't open, so there's no player to control." }); }
+      if (!s || !s.tracks.length) {
+        // No local music for that yet: tune to a live YouTube station of the same kind instead of saying no.
+        const genre = /jazz/i.test(c.station) || /jazz/i.test(s?.name ?? "") ? "Lofi Jazz" : /hip|lofi|lo-fi|beats|study|chill/i.test(c.station) || /hip/i.test(s?.name ?? "") ? "Lofi Hip-Hop" : null;
+        const live = genre ? radio.youtube().find((x) => x.genre === genre) : undefined;
+        if (!live) return s ? reply.code(409).send({ error: `${s.name} has no tracks yet — add audio files to ${path.join(radio.root, s.name)}.` }) : reply.code(404).send({ error: `No station called "${c.station}".` });
+        c.station = live.id;
+        const sent = radio.command(c);
+        return sent.listeners ? { ok: true, station: live.name } : reply.code(409).send({ error: "ShuaCrew isn't open, so there's no player to control." });
+      }
       c.station = s.id;
     }
     const sent = radio.command(c);

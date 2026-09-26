@@ -16,3 +16,9 @@ it("never celebrates hydration, duplicates, stale state or closely spaced comple
   expect(celebrateCompletion(fresh.state, { id: "next", seq: 102 }, 21000, "idle").celebrate).toBe(false);
   expect(celebrateCompletion(first, { id: "new", seq: 101 }, 20000, "offline").celebrate).toBe(false);
 });
+
+it("listens with an open mic by default and keeps push-to-talk when chosen", () => {
+  expect(parseCompanion(null).listen).toBe("auto");
+  expect(parseCompanion({ listen: "hold" }).listen).toBe("hold");
+  expect(parseCompanion({ listen: "shout" }).listen).toBe("auto");
+});

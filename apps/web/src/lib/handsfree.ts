@@ -5,7 +5,7 @@
 
 export interface VadState { noise: number; speaking: boolean; voiced: number; quiet: number; spoke: number }
 export interface VadOptions { startMs: number; endMs: number; minSpeechMs: number; ratio: number; floor: number }
-export const VAD: VadOptions = { startMs: 140, endMs: 900, minSpeechMs: 350, ratio: 3.2, floor: 0.012 };
+export const VAD: VadOptions = { startMs: 140, endMs: 1100, minSpeechMs: 350, ratio: 3.2, floor: 0.012 }; // 1.1 s of quiet ends a turn: natural pauses don't cut you off
 export const vadStart = (): VadState => ({ noise: 0.008, speaking: false, voiced: 0, quiet: 0, spoke: 0 });
 
 /**
@@ -70,12 +70,17 @@ export class HandsFree {
   private captionAt = 0;
   /** Spark is talking: listen harder (echo), and a real interruption stops it. */
   speaking = false;
+  /** "auto": open mic, turns start and end on your voice. "hold": push-to-talk — a turn is exactly while you hold. */
+  mode: "auto" | "hold" = "auto";
+  private holding = false;
   onPhase?: (p: Phase, detail?: string) => void;
   onLevel?: (level: number) => void;
   onTurn?: (text: string) => void;
   /** Your words so far, while you're still talking ("" when a turn starts or ends). */
   onPartial?: (text: string) => void;
   onBargeIn?: () => void;
+  /** What sounded like a start wasn't words (a cough, the speakers, noise): whatever reacted to it can carry on. */
+  onDropped?: () => void;
 
   get active() { return !!this.stream; }
 
@@ -97,6 +102,7 @@ export class HandsFree {
       this.onLevel?.(Math.min(1, rms * 12));
       if (this.paused) return;
       if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > keep) this.preroll.shift(); }
+      if (this.mode === "hold") { if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption(); return; }
       const r = vadStep(this.state, rms, frameMs, VAD, this.speaking);
       this.state = r.state;
       if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
@@ -107,6 +113,22 @@ export class HandsFree {
     source.connect(this.node);
     this.node.connect(this.ctx.destination); // required for onaudioprocess to run; the node outputs silence
     this.onPhase?.("listening");
+  }
+
+  /** Push-to-talk: start a turn now (keeping the last moment before you pressed, so the first word isn't clipped). */
+  hold() {
+    if (!this.stream || this.holding || this.paused) return;
+    this.holding = true;
+    if (this.speaking) this.onBargeIn?.();
+    this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now();
+    this.onPartial?.(""); this.onPhase?.("hearing");
+  }
+  /** Push-to-talk: you let go — send what you said (a tap under ~0.3 s is ignored). */
+  release() {
+    if (!this.holding) return;
+    this.holding = false;
+    const frames = this.turn?.length ?? 0, seconds = this.ctx ? (frames * 2048) / this.ctx.sampleRate : 0;
+    void this.finish(seconds > 0.3 + 0.4);
   }
 
   /** The words so far, quickly (the fast model); the accurate transcript still comes when you stop. */
@@ -124,13 +146,14 @@ export class HandsFree {
 
   private async finish(keep: boolean) {
     const turn = this.turn; this.turn = null; this.turnId++;
-    if (!keep || !turn?.length || !this.ctx) { this.onPhase?.("listening"); return; }
+    if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); this.onPhase?.("listening"); return; }
     this.paused = true; this.onPhase?.("transcribing");
     try {
       const r = await fetch("/api/transcribe?voice=1&name=turn.wav", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, this.ctx.sampleRate) });
       const { text = "", error } = await r.json() as { text?: string; error?: string };
       if (error) this.onPhase?.("error", error);
       else if (meaningful(text)) this.onTurn?.(text.trim());
+      else this.onDropped?.();
       this.onPartial?.("");
     } catch { this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
     finally { this.paused = false; if (this.stream) this.onPhase?.("listening"); }

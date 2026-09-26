@@ -137,6 +137,18 @@ function schedule(): void {
   fallback = setTimeout(flush, 250);
 }
 
+/** Usage limits that still apply. A limit carries its reset time; once that passes it no longer pauses anything, so
+ * it must not keep showing as "paused" in the top bar (the scheduler already ignores expired ones). */
+export function inForce<T extends { until: number }>(limited: Record<string, T>, now = Date.now()): Record<string, T> {
+  return Object.fromEntries(Object.entries(limited).filter(([, l]) => l.until > now));
+}
+// Limits expire on their own, without an event: drop them the minute they lapse.
+if (typeof window !== "undefined") setInterval(() => {
+  const { crew } = useLive.getState();
+  const now = Date.now();
+  if (Object.values(crew.limited).some((l) => l.until <= now)) useLive.setState({ crew: { ...crew, limited: inForce(crew.limited, now) } });
+}, 60_000);
+
 function flush(): void {
   if (frame) cancelAnimationFrame(frame);
   clearTimeout(fallback);
@@ -173,7 +185,7 @@ function flush(): void {
       runs,
       rooms: fresh("rooms", crew.rooms ?? {}, (r) => Object.fromEntries(Object.entries(r).filter(([, room]) => !room.archived).map(([id, room]) => [id, { ...room }]))),
       approvals: fresh("approvals", crew.approvals, shallow),
-      limited: fresh("limited", crew.limited, shallow),
+      limited: fresh("limited", crew.limited, inForce),
       members: fresh("members", crew.members, shallow),
       artifacts: fresh("artifacts", crew.artifacts, shallow),
       knowledge: fresh("knowledge", crew.knowledge, shallow),
@@ -193,7 +205,7 @@ const ACTIVITY = new Set(["run.created", "run.status", "turn.started", "turn.com
 export async function connect(): Promise<void> {
   try {
     const [snapshot, activity] = await Promise.all([api<CrewState>("/api/snapshot"), api<AnyEvent[]>("/api/activity").catch(() => [])]);
-    useLive.setState({ crew: snapshot, activity });
+    useLive.setState({ crew: { ...snapshot, limited: inForce(snapshot.limited) }, activity });
   } catch {
     useLive.setState({ connection: "offline" });
   }

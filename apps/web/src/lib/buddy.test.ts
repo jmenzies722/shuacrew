@@ -92,5 +92,6 @@ it("knows the real controls on screen and runs blocks as soon as they close", as
 it("reads run commands and keeps music off the mouse", () => {
   expect(parseActions('```do [{"type":"run","command":"df -h ~"}]```')).toEqual([{ type: "run", command: "df -h ~" }]);
   expect(parseActions('```do [{"type":"run","command":""}]```')).toEqual([]);
-  expect(buddyPrompt("play music", null)).toContain("never click a play button");
+  expect(buddyPrompt("play music", null)).toMatch(/never click a play button/i);
+  expect(buddyPrompt("put on some lofi", null)).toMatch(/ShuaCrew Radio .* use radio/);
 });

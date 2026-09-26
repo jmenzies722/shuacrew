@@ -214,6 +214,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // What Spark is allowed to do right now, for the page to show (and to ask for access when you choose to).
             if body["ask"] as? Bool == true { SparkHands.askForAccess() }
             send("shuacrew:hands", ["trusted": SparkHands.trusted, "shortcuts": SparkHands.shortcutNames()], to: sender)
+        case "buddyDuck":
+            SparkHands.duck(body["on"] as? Bool ?? false)
         case "buddyHotkey":
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":

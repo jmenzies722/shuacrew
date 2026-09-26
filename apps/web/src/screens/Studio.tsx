@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
-import { CloudRain, Coffee, FolderOpen, Pause, Play, Radio as RadioIcon, SkipBack, SkipForward, Sparkles, Volume1, Volume2, VolumeX, Waves } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CloudRain, Coffee, FolderOpen, Pause, Play, Plus, Radio as RadioIcon, SkipBack, SkipForward, Sparkles, Trash2, Tv, Volume1, Volume2, VolumeX, Waves } from "lucide-react";
 import { PaneLayout } from "../components/Pane";
-import { clock, levels, loadRadio, next, playStation, previous, revealRadio, seek, setupRadio, setVolume, toggle, useRadio, type RadioTrack } from "../lib/radio";
+import { addYoutube, clock, levels, loadRadio, next, playStation, previous, removeYoutube, revealRadio, seek, setupRadio, setVolume, toggle, useRadio, type RadioTrack, type YouTubeStation } from "../lib/radio";
 import { playScape, stopScape, useScape, type Scape } from "../lib/soundscape";
 import "./studio.css";
 
@@ -19,56 +19,52 @@ export function Studio() {
         <span className="radio-skill" title="Crew sessions and Spark can control the radio through the shuacrew-radio skill"><Sparkles size={12} /> Ask Spark or any agent: “put on lofi jazz”</span>
       </header>
 
-      {!r.loaded ? <div className="radio-empty"><p>Tuning in…</p></div>
-        : !r.exists ? <div className="radio-empty">
-          <RadioIcon size={28} />
-          <h2>Set up your stations</h2>
-          <p>ShuaCrew Radio plays your own music files. This makes <b>Lofi Jazz</b> and <b>Lofi Hip-Hop</b> folders in <code>{r.root}</code>. Drop tracks in and they're on air.</p>
-          <button type="button" className="radio-cta" onClick={() => void setupRadio()}>Create my stations</button>
-        </div>
-        : <>
-          <section className="radio-deck" aria-label="Now playing">
-            <Record spinning={r.playing} label={station?.name ?? "ShuaCrew Radio"} />
-            <div className="radio-now">
-              <nav className="radio-stations" aria-label="Stations">
-                {r.stations.map((s) => <button key={s.id} type="button" className={s.id === r.station ? "is-on" : ""} onClick={() => void playStation(s.id)}>
-                  <span>{s.name}</span><small>{s.tracks.length}</small>
-                </button>)}
-              </nav>
-              <div className="radio-title">
-                <small>{r.track ? (r.playing ? "On air" : "Paused") : station?.tracks.length ? "Ready" : "Off air"}</small>
-                <h2>{r.track?.title ?? (station?.tracks.length ? `${station.name}` : "Nothing to play yet")}</h2>
-                <p>{r.track ? r.track.artist || station?.name : station?.tracks.length ? `${station.tracks.length} tracks · shuffled, loops forever` : `Add audio files to the ${station?.name ?? "station"} folder to put it on air.`}</p>
-              </div>
-              <Visualizer on={r.playing} />
-              <Progress position={r.position} duration={r.duration || r.track?.duration || 0} disabled={!r.track} />
-              <div className="radio-controls">
-                <button type="button" aria-label="Previous" onClick={() => void previous()} disabled={!r.track}><SkipBack size={18} /></button>
-                <button type="button" className="radio-play" aria-label={r.playing ? "Pause" : "Play"} disabled={!station?.tracks.length}
-                  onClick={() => (r.track ? toggle() : station && void playStation(station.id))}>{r.playing ? <Pause size={22} /> : <Play size={22} />}</button>
-                <button type="button" aria-label="Next" onClick={() => void next()} disabled={!r.track}><SkipForward size={18} /></button>
-                <Volume value={r.volume} />
-              </div>
-              {r.error && <p className="radio-error" role="status">{r.error}</p>}
+      {!r.loaded ? <div className="radio-empty"><p>Tuning in…</p></div> : <>
+        <section className="radio-deck" aria-label="Now playing">
+          <Record spinning={r.playing} label={r.live?.name ?? station?.name ?? "ShuaCrew Radio"} art={r.live ? `/api/radio/youtube/${r.live.videoId}/art` : undefined} />
+          <div className="radio-now">
+            <nav className="radio-stations" aria-label="Stations">
+              {r.stations.map((s) => <button key={s.id} type="button" className={!r.live && s.id === r.station ? "is-on" : ""} onClick={() => void playStation(s.id)}>
+                <FolderOpen size={12} /><span>{s.name}</span><small>{s.tracks.length}</small>
+              </button>)}
+              {r.youtube.map((s) => <button key={s.id} type="button" className={r.live?.id === s.id ? "is-on" : ""} onClick={() => void playStation(s.id)} title={`${s.channel} · live on YouTube`}>
+                <Tv size={12} /><span>{s.name}</span>
+              </button>)}
+            </nav>
+            <div className="radio-title">
+              <small>{r.live ? (r.playing ? "● Live on YouTube" : "Live · paused") : r.track ? (r.playing ? "On air" : "Paused") : "Pick a station"}</small>
+              <h2>{r.live?.name ?? r.track?.title ?? (station?.tracks.length ? station.name : "Lofi, whenever you want it")}</h2>
+              <p>{r.live ? `${r.live.channel} · ${r.live.genre}` : r.track ? r.track.artist || station?.name : station?.tracks.length ? `${station.tracks.length} tracks · shuffled, loops forever` : "Your own files, or a live station from YouTube — pick one above."}</p>
             </div>
-          </section>
-
-          <div className="radio-cols">
-            <section className="radio-panel" aria-label="Tracks">
-              <header><strong>{station?.name ?? "Tracks"}</strong><button type="button" onClick={() => void revealRadio()}><FolderOpen size={13} /> Open folder</button></header>
-              {station?.tracks.length ? <ol className="radio-list">{station.tracks.map((t) => <TrackRow key={t.id} t={t} on={r.track?.id === t.id} playing={r.playing && r.track?.id === t.id} onPlay={() => void playStation(station.id, t.id)} />)}</ol>
-                : <p className="radio-hint">Empty. Drop mp3, m4a, wav or flac files into <code>{r.root}/{station?.name}</code>. Name them “Artist - Title” if they have no tags. {total ? "" : "Every folder you add there becomes a new station."}</p>}
-            </section>
-            <div className="radio-side">
-              <section className="radio-panel" aria-label="Up next">
-                <header><strong>Up next</strong><span>{r.queue.length ? `${r.queue.length} in the shuffle` : "—"}</span></header>
-                {r.queue.length ? <ol className="radio-list is-compact">{r.queue.slice(0, 6).map((t) => <TrackRow key={t.id} t={t} on={false} playing={false} onPlay={() => station && void playStation(station.id, t.id)} />)}</ol>
-                  : <p className="radio-hint">Start a station and the shuffle shows here.</p>}
-              </section>
-              <Ambience />
+            <Visualizer on={r.playing} />
+            {r.live ? <div className="radio-live-row"><span className="radio-live-dot" /> 24/7 live stream</div> : <Progress position={r.position} duration={r.duration || r.track?.duration || 0} disabled={!r.track} />}
+            <div className="radio-controls">
+              <button type="button" aria-label="Previous" onClick={() => void previous()} disabled={!r.track && !r.live}><SkipBack size={18} /></button>
+              <button type="button" className="radio-play" aria-label={r.playing ? "Pause" : "Play"}
+                onClick={() => (r.track || r.live ? toggle() : void playStation(station?.tracks.length ? station.id : r.youtube[0]?.id ?? ""))}>{r.playing ? <Pause size={22} /> : <Play size={22} />}</button>
+              <button type="button" aria-label="Next" onClick={() => void next()} disabled={!r.track && !r.live}><SkipForward size={18} /></button>
+              <Volume value={r.volume} />
             </div>
+            {r.error && <p className="radio-error" role="status">{r.error}</p>}
           </div>
-        </>}
+        </section>
+
+        <div className="radio-cols">
+          <section className="radio-panel" aria-label="Your music">
+            <header><strong>Your music{station && !r.live ? ` · ${station.name}` : ""}</strong>{r.exists && <button type="button" onClick={() => void revealRadio()}><FolderOpen size={13} /> Open folder</button>}</header>
+            {!r.exists ? <div className="radio-setup">
+              <p className="radio-hint">Play your own lofi: this makes <b>Lofi Jazz</b> and <b>Lofi Hip-Hop</b> folders in <code>{r.root}</code>. Drop tracks in and they're on air.</p>
+              <button type="button" className="radio-cta" onClick={() => void setupRadio()}>Create my stations</button>
+            </div>
+              : station?.tracks.length ? <ol className="radio-list">{station.tracks.map((t) => <TrackRow key={t.id} t={t} on={!r.live && r.track?.id === t.id} playing={r.playing && r.track?.id === t.id} onPlay={() => void playStation(station.id, t.id)} />)}</ol>
+              : <p className="radio-hint">No tracks here yet. Drop mp3, m4a, wav or flac files into <code>{r.root}/{station?.name ?? "Lofi Jazz"}</code> — name them “Artist - Title” if they have no tags. Every folder there becomes a station.</p>}
+          </section>
+          <div className="radio-side">
+            <LiveStations list={r.youtube} on={r.live?.id ?? null} />
+            <Ambience />
+          </div>
+        </div>
+      </>}
     </div>
   </PaneLayout>;
 }
@@ -81,9 +77,9 @@ function TrackRow({ t, on, playing, onPlay }: { t: RadioTrack; on: boolean; play
   </button></li>;
 }
 
-function Record({ spinning, label }: { spinning: boolean; label: string }) {
+function Record({ spinning, label, art }: { spinning: boolean; label: string; art?: string }) {
   return <div className={`radio-record ${spinning ? "is-spinning" : ""}`} aria-hidden="true">
-    <div className="radio-vinyl"><div className="radio-label"><span>{label}</span></div></div>
+    <div className="radio-vinyl"><div className={`radio-label ${art ? "has-art" : ""}`} style={art ? { backgroundImage: `url(${art})` } : undefined}>{!art && <span>{label}</span>}</div></div>
     <div className={`radio-arm ${spinning ? "is-down" : ""}`} />
   </div>;
 }
@@ -130,6 +126,26 @@ function Volume({ value }: { value: number }) {
   return <label className="radio-volume"><button type="button" aria-label={value ? "Mute" : "Unmute"} onClick={() => setVolume(value ? 0 : 0.6)}><Icon size={16} /></button>
     <input type="range" min={0} max={1} step={0.01} value={value} aria-label="Volume" style={{ "--pct": `${value * 100}%` } as React.CSSProperties} onChange={(e) => setVolume(Number(e.target.value))} />
   </label>;
+}
+
+function LiveStations({ list, on }: { list: YouTubeStation[]; on: string | null }) {
+  const [url, setUrl] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
+  const add = async () => { if (!url.trim()) return; setBusy(true); setMsg(""); const err = await addYoutube(url); setBusy(false); if (err) setMsg(err); else setUrl(""); };
+  return <section className="radio-panel" aria-label="Live on YouTube">
+    <header><strong>Live on YouTube</strong><span>24/7 streams</span></header>
+    <ol className="radio-list is-compact">{list.map((s) => <li key={s.id} className={on === s.id ? "is-on" : ""}>
+      <button type="button" onClick={() => void playStation(s.id)}>
+        <span className="radio-row-icon radio-row-art" style={{ backgroundImage: `url(/api/radio/youtube/${s.videoId}/art)` }} />
+        <span className="radio-row-text"><b>{s.name}</b><small>{s.channel} · {s.genre}</small></span>
+        <span className="radio-row-x" role="button" tabIndex={0} aria-label={`Remove ${s.name}`} onClick={(e) => { e.stopPropagation(); void removeYoutube(s.id); }}><Trash2 size={12} /></span>
+      </button>
+    </li>)}</ol>
+    <form className="radio-add" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+      <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a YouTube link to add a station" aria-label="YouTube link" />
+      <button type="submit" disabled={busy || !url.trim()} aria-label="Add station"><Plus size={14} /></button>
+    </form>
+    {msg && <p className="radio-hint" role="status">{msg}</p>}
+  </section>;
 }
 
 const SCAPES: Array<{ id: Exclude<Scape, "off">; label: string; icon: typeof CloudRain }> = [

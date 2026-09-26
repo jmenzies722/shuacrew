@@ -1,14 +1,12 @@
 import { useSyncExternalStore } from "react";
 
 /** Widgets: small live views of real things (your Mac, your crew, your day) you can place in the top bar and in Spark. */
-export const WIDGETS = ["playing", "mix", "setlist", "weather", "focus", "crew", "clock", "spend", "system", "learning", "note", "countdown"] as const;
+export const WIDGETS = ["playing", "weather", "focus", "crew", "clock", "spend", "system", "learning", "note", "countdown"] as const;
 export type WidgetId = (typeof WIDGETS)[number];
 export type Placement = "topbar" | "spark";
 
 export const WIDGET_INFO: Record<WidgetId, { name: string; blurb: string }> = {
-  playing: { name: "Now playing", blurb: "The session on right now — who, what, how long. Open it, stop it, or skip to what's waiting." },
-  mix: { name: "Mix desk", blurb: "A channel per crew member: what's on, spend, mute and solo for new work." },
-  setlist: { name: "Tonight's set", blurb: "The day as a show — what needs you, what's on, what's already played." },
+  playing: { name: "Radio", blurb: "ShuaCrew Radio: what's on, play, pause and skip, and a quick station switch." },
   weather: { name: "Weather", blurb: "Now, today's high and low, the next hours." },
   focus: { name: "Focus", blurb: "5–90 minute blocks; a notification and a chime when done. Shared by the app and Spark." },
   crew: { name: "Crew", blurb: "Sessions working right now and decisions waiting on you — answer them in place." },
@@ -32,7 +30,7 @@ export interface WidgetPrefs {
 }
 
 export const DEFAULT_WIDGETS: WidgetPrefs = {
-  version: 3, order: [...WIDGETS], topbar: ["playing", "crew", "weather", "focus"], spark: ["playing", "mix", "setlist", "crew", "focus", "weather", "spend", "note"], zones: [], countdown: null,
+  version: 3, order: [...WIDGETS], topbar: ["playing", "crew", "weather", "focus"], spark: ["playing", "crew", "focus", "weather", "spend", "note"], zones: [], countdown: null,
 };
 
 const isId = (v: unknown): v is WidgetId => typeof v === "string" && (WIDGETS as readonly string[]).includes(v);
@@ -55,12 +53,6 @@ export function parseWidgets(value: unknown): WidgetPrefs {
   const knewPlaying = Array.isArray(v.order) && v.order.includes("playing");
   if (v.version !== 2 && v.version !== 3 && !knewPlaying && Array.isArray(v.topbar) && !topbar.includes("playing")) topbar = ["playing", ...topbar];
   if (v.version !== 2 && v.version !== 3 && !knewPlaying && Array.isArray(v.spark) && !spark.includes("playing")) spark = ["playing", ...spark];
-  // v3: mix desk + setlist join Spark once. After that, turning them off stays off.
-  const knewMix = Array.isArray(v.order) && v.order.includes("mix");
-  if (v.version !== 3 && !knewMix && Array.isArray(v.spark)) {
-    if (!spark.includes("mix")) spark = [...spark, "mix"];
-    if (!spark.includes("setlist")) spark = [...spark, "setlist"];
-  }
   return { version: 3, order, topbar, spark, zones, countdown };
 }
 

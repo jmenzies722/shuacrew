@@ -8,7 +8,9 @@ describe("widgets", () => {
     expect(p.order[0]).toBe("note");
     expect(p.order).toHaveLength(WIDGETS.length); // unknown dropped, the rest appended
     expect(p.topbar).toEqual(["playing", "clock"]);
-    expect(parseWidgets({ version: 2, order: ["playing", "crew"], spark: ["playing", "crew"] }).spark).toEqual(["playing", "crew", "mix", "setlist"]);
+    expect(parseWidgets({ version: 2, order: ["playing", "crew"], spark: ["playing", "crew"] }).spark).toEqual(["playing", "crew"]);
+    // The old Studio's mix desk and setlist are retired: saved layouts that had them simply lose them.
+    expect(parseWidgets({ version: 3, order: ["playing", "mix", "setlist", "crew"], spark: ["mix", "playing", "setlist"], topbar: ["setlist", "crew"] })).toMatchObject({ spark: ["playing"], topbar: ["crew"] });
     expect(p.zones).toEqual(["Europe/London"]);
     expect(p.countdown).toEqual({ label: "Launch", date: "2026-12-01" });
     expect(parseWidgets({ countdown: { label: "x", date: "soon" } }).countdown).toBeNull();
