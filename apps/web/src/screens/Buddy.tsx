@@ -1,3 +1,4 @@
+import { logSense } from "../lib/spark-log";
 import { logAction } from "../lib/spark-log";
 import { morningBrief, shouldBrief } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
@@ -48,6 +49,7 @@ function capture(): Promise<{ file: File; width: number; height: number; text: S
     const on = (e: CustomEvent<{ data?: string; width?: number; height?: number; text?: ScreenLine[]; context?: ScreenContext; error?: string }>) => {
       clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
       const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
+      logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
       const bytes = Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0));
       resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
     };
@@ -187,7 +189,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   // Live: Spark watches your screen as a real stream (one frame a second, in memory only) while this is on.
   const [liveOn, setLiveOn] = useState(false), [liveBusy, setLiveBusy] = useState(false);
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<{ on: boolean; error?: string }>).detail; setLiveOn(d.on); setLiveBusy(false); if (d.error) setError(d.error); };
+    const on = (e: Event) => { const d = (e as CustomEvent<{ on: boolean; error?: string }>).detail; if (!d.error) logSense("saw", d.on ? "Started watching your screen live" : "Stopped watching your screen"); setLiveOn(d.on); setLiveBusy(false); if (d.error) setError(d.error); };
     window.addEventListener("shuacrew:live", on); return () => window.removeEventListener("shuacrew:live", on);
   }, []);
   const toggleLive = () => { setLiveBusy(true); setError(""); post({ type: "buddyLive", on: !liveOn }); if (!native()) { setLiveBusy(false); setError("Live watching works in the ShuaCrew Mac app."); } };
@@ -391,6 +393,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
           window.addEventListener("shuacrew:selection", on); post({ type: "buddySelection" });
           setTimeout(() => { window.removeEventListener("shuacrew:selection", on); resolve({ text: "", app: "" }); }, 1500);
         });
+        if (sel.text) logSense("saw", "Read your selection", `${sel.app}: ${sel.text}`);
         if (!sel.text) { const a = native() ? "Select the text or code you want explained first, then ask me again." : "Explain-this reads your selection in the ShuaCrew Mac app."; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
         setDraft("");
         void askRef.current(`Explain this${sel.app ? ` from ${sel.app}` : ""}\n\n[screen] The user selected this and wants it explained at their level: what it is, what it does, why it matters, and one gotcha. Keep it short and concrete. Then add ONE quiz card about the key idea with a card block.\n\n<selection>\n${sel.text}\n</selection>`);
@@ -441,7 +444,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     m.onPartial = setHeard;
     // Interrupting: Spark drops to a murmur the moment you start, and only stops once your words are real —
     // a cough, a door or its own voice through the speakers no longer cuts it off mid-sentence.
-    m.onTurn = (t) => { if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
+    m.onTurn = (t) => { logSense("heard", "Heard you", t); if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     m.onDropped = () => speech.current.duck(false);
     m.mode = prefs.listen;

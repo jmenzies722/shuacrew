@@ -1,3 +1,4 @@
+import { SparkToday } from "../components/SparkToday";
 import "./policy.css";
 import type { Decision } from "@shuacrew/core/policy-types";
 import { Button, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
@@ -54,6 +55,7 @@ export function Policy() {
     <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1280px] px-8 pb-12 pt-6">
       <PaneHeader title="Policy & Audit" description="One policy for every runtime; the tightest rule wins; every decision says which rule made it."
         actions={<span className={`pol-chain is-${verify ? (verify.ok ? "ok" : "bad") : "wait"}`}><StatusGlyph tone={verify ? (verify.ok ? "ok" : "bad") : "wait"} />{verify ? (verify.ok ? `Audit chain intact · ${verify.count.toLocaleString()} events` : `Chain broken at #${verify.brokenAt}`) : "Checking the chain…"}</span>} />
+      <SparkToday />
       <section className="pol-tester">
         <Eyebrow className="mb-3">Why would this be allowed?</Eyebrow>
         <div className="flex gap-2">

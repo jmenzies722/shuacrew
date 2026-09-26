@@ -44,3 +44,10 @@
 .day-plan-card span { display: grid; min-width: 0; }
 .day-plan-card small { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
 .day-plan-card b { font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-hero-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.day-standup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 12.5px; color: var(--text-2); }
+.day-standup > svg { color: var(--accent-text, var(--amber)); flex-shrink: 0; }
+.day-standup > button:not(.day-switch) { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.day-switch { position: relative; width: 32px; height: 18px; border-radius: 999px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-strong); flex-shrink: 0; transition: background .15s; }
+.day-switch i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-3); transition: transform .18s, background .15s; }
+.day-switch.is-on { background: var(--amber); } .day-switch.is-on i { transform: translateX(14px); background: var(--on-accent, #fff); }

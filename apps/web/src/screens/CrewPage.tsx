@@ -1,3 +1,4 @@
+import { CREW_TEMPLATES } from "../lib/crew-templates";
 import type { CrewMember, RunView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
@@ -254,6 +255,13 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-label="Crew member">
       <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-[560px] max-w-full rounded-[16px] border border-line-strong bg-panel p-5 shadow-[0_30px_90px_rgba(0,0,0,.45)]">
         <div className="mb-4 text-[16px] font-semibold">{member.id ? `Edit ${member.name}` : "New crew member"}</div>
+        {!member.id && <div className="crew-templates" role="group" aria-label="Start from a template">
+          <span>Start from</span>
+          {CREW_TEMPLATES.map((t) => <button key={t.key} type="button" className={draft.role === t.role ? "is-on" : ""} onClick={() => {
+            setDraft((d) => ({ ...d, name: t.name, role: t.role, emoji: t.emoji, color: t.color, runtime: "claude", model: "", persona: t.persona, triggers: t.triggers.join(", "), delegatable: true }));
+            setVoice(t.voice);
+          }}>{t.role}</button>)}
+        </div>}
         <div className="grid grid-cols-2 gap-3">
           <label className="field">
             <span>Name</span>

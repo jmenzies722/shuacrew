@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AudioLines, Briefcase, CheckCircle2, GraduationCap, Loader2, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
+import { AudioLines, Briefcase, CheckCircle2, GraduationCap, Loader2, Megaphone, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { api } from "../lib/api";
@@ -26,6 +26,11 @@ export function DayHero() {
   const [finished, setFinished] = useState<string[]>([]);
   const [speaking, setSpeaking] = useState(false), [starting, setStarting] = useState(false);
   const speech = useRef<SpeechQueue | null>(null);
+  // The daily crew standup: a weekday 8:30 schedule that files a note in the Library.
+  const [standupOn, setStandupOn] = useState<boolean | null>(null);
+  useEffect(() => { void api<{ on: boolean }>("/api/standup").then((r) => setStandupOn(r.on)).catch(() => setStandupOn(null)); }, []);
+  const toggleStandup = () => { const on = !standupOn; setStandupOn(on); void api("/api/standup", { body: { on } }).catch(() => setStandupOn(!on)); };
+  const standup = Object.values(crew.artifacts ?? {}).filter((a) => a.title?.startsWith("Crew standup")).sort((a, b) => b.createdAt - a.createdAt)[0];
   useEffect(() => {
     void api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing")
       .then((b) => setFinished((b.sections ?? []).find((x) => /finish/i.test(x.title))?.items.map((x) => x.text) ?? []))
@@ -95,7 +100,14 @@ export function DayHero() {
       </div>
     </div>
     <p className="day-hero-brief">{brief}</p>
-    <p className="day-hero-note"><RadioIcon size={12} /> Start my day turns on Flow mode, puts your radio on, and opens the first thing that needs you.</p>
+    <div className="day-hero-row">
+      <p className="day-hero-note"><RadioIcon size={12} /> Start my day turns on Flow mode, puts your radio on, and opens the first thing that needs you.</p>
+      {standupOn !== null && <span className="day-standup">
+        <Megaphone size={13} />
+        {standup ? <button type="button" onClick={() => void navigate({ to: "/library", hash: standup.id })}>{standup.title}</button> : <span>Crew standup</span>}
+        <button type="button" role="switch" aria-checked={standupOn} className={`day-switch ${standupOn ? "is-on" : ""}`} onClick={toggleStandup} title={standupOn ? "Weekdays at 8:30 · click to turn off" : "Turn on a weekday 8:30 standup from your crew"}><i /></button>
+      </span>}
+    </div>
     <div className="day-plan">{plan.map((p) => <button key={p.label} type="button" className={`day-plan-card is-${p.tone}`} onClick={p.go}>
       <p.icon size={15} /><span><small>{p.label}</small><b>{p.value}</b></span>
     </button>)}</div>

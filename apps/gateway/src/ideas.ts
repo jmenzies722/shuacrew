@@ -8,7 +8,7 @@ import type { FastifyInstance } from "fastify";
 export const IDEA_SCHEDULE = "idea-inbox";
 export const IDEA_SCORING_ASK = [
   "Score the new ideas in my ShuaCrew idea inbox.",
-  "1. List ventures: curl -s http://127.0.0.1:7420/api/ventures — ideas are the ones at stage \"idea\".",
+  "1. List ventures: curl -s http://127.0.0.1:7420/api/snapshot — use .ventures (name, pitch, stage); ideas are the ones at stage \"idea\".",
   "2. Skip any idea that already has a Library item titled \"Idea score: <name>\" (search the library first).",
   "3. For each remaining idea, research on the web: who has this problem and how badly (demand), who already solves it and how (competitors, with links and prices), and what it would take to build a first version (effort).",
   "4. Score demand, competition (10 = wide open) and effort (10 = easy) from 1 to 10, give a one-paragraph verdict and the single cheapest way to test demand this week.",
