@@ -174,13 +174,22 @@ export type ProducerMove =
   | { kind: "brief" }
   | { kind: "scape"; scape: Scape }
   | { kind: "stop-radio" }
+  | { kind: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous"; station?: string }
   | { kind: "focus"; minutes: number };
 
 export function producerMove(q: string): ProducerMove | null {
   const t = q.trim();
   if (isStudioAsk(t)) return { kind: "brief" };
   if (/^(stop|kill|turn off) (the )?(radio|soundscape|music|record)\b/i.test(t)) return { kind: "stop-radio" };
-  const scape = /^(put on|play|start) (the )?(brown|rain|caf[eé]|soundscape|radio)\b/i.exec(t);
+  // ShuaCrew Radio: your own lofi stations.
+  const lofi = /^(put on|play|start|tune (in )?to)( some| the| my)? (lo-?fi)( radio)?\s*(jazz|hip[\s-]?hop)?\b/i.exec(t);
+  if (lofi) return { kind: "radio", cmd: "play", station: lofi[6] ? (/jazz/i.test(lofi[6]) ? "jazz" : "hip hop") : undefined };
+  if (/^(put on|play|start|turn on)( some| the| my)? (music|radio|shuacrew radio)\b/i.test(t)) return { kind: "radio", cmd: "play" };
+  if (/^(next|skip)( this)?( song| track| one)?\b/i.test(t) || /^play the next (song|track)\b/i.test(t)) return { kind: "radio", cmd: "next" };
+  if (/^(previous|go back|last) (song|track)\b/i.test(t)) return { kind: "radio", cmd: "previous" };
+  if (/^pause( the)? (music|radio|song)\b/i.test(t)) return { kind: "radio", cmd: "pause" };
+  if (/^(resume|unpause)( the)?( music| radio)?\b/i.test(t)) return { kind: "radio", cmd: "resume" };
+  const scape = /^(put on|play|start) (the )?(brown|rain|caf[eé]|soundscape)\b/i.exec(t);
   if (scape) {
     const name = scape[3]!.toLowerCase();
     return { kind: "scape", scape: name.startsWith("caf") ? "cafe" : name === "rain" ? "rain" : "brown" };

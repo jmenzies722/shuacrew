@@ -9,6 +9,7 @@
 import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
 import { weatherRoutes } from "./weather-routes.js";
+import { radioRoutes } from "./radio.js";
 import { systemRoutes } from "./system-routes.js";
 import { settingsRoutes } from "./settings-routes.js";
 import { createCrewMember } from "./crew-create.js";
@@ -156,6 +157,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   roomRoutes(app, options.rooms);
   devRoutes(app, options.store, options.supervisor);
   weatherRoutes(app);
+  radioRoutes(app);
   systemRoutes(app);
   if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });

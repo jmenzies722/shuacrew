@@ -1,6 +1,7 @@
 import { logAction } from "../lib/spark-log";
 import { morningBrief, shouldBrief } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
+import { radioCommand } from "../lib/radio";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, AudioLines, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
@@ -375,7 +376,12 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
       }
       if (move.kind === "scape") { playScape(move.scape, sounds.volume); const a = `Putting on ${move.scape}.`; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
-      if (move.kind === "stop-radio") { stopScape(); const a = "Radio off."; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
+      if (move.kind === "stop-radio") { stopScape(); void radioCommand({ cmd: "stop" }); const a = "Radio off."; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
+      if (move.kind === "radio") {
+        const r = await radioCommand({ cmd: move.cmd, station: move.station });
+        const a = r.ok ? (move.cmd === "play" ? (move.station ? `Putting on lofi ${move.station}.` : "Putting the radio on.") : move.cmd === "next" ? "Next one." : move.cmd === "previous" ? "Going back." : move.cmd === "pause" ? "Paused." : "Back on.") : r.error;
+        setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
+      }
       if (move.kind === "focus") { setFocus(startFocus(move.minutes)); const a = `${move.minutes}-minute focus. I'll chime when it's done.`; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
     }
     setBusy(see ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");

@@ -3,6 +3,7 @@
  * approvals and policy, and serves the dashboard. Everything it knows is in its event log, so a
  * restart is a replay: runs that were mid-flight are re-queued and resume their conversations.
  */
+import { installRadioSkill } from "./radio.js";
 import { copyFileSync, existsSync, mkdirSync, statSync, truncateSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -97,6 +98,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   setInterval(() => library.resync(), 15 * 60_000).unref(); // your folders, kept current
   const ventures = new Ventures(store, path.join(home, "venture-keys.json"));
   const skills = new Skills(store, path.join(home, "plugin"));
+  installRadioSkill(path.join(home, "plugin")); // the radio is a skill every Claude session can use
   const backups = new Backups(store, home);
   const port = options.port ?? Number(process.env.SHUACREW_PORT ?? 7420);
   const host = options.host ?? process.env.SHUACREW_HOST ?? "127.0.0.1";

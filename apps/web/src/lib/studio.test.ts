@@ -91,6 +91,12 @@ describe("spark producer", () => {
     expect(producerMove("put on rain")).toEqual({ kind: "scape", scape: "rain" });
     expect(producerMove("start a 25")).toEqual({ kind: "focus", minutes: 25 });
     expect(producerMove("stop the radio")).toEqual({ kind: "stop-radio" });
+    expect(producerMove("put on lofi jazz")).toEqual({ kind: "radio", cmd: "play", station: "jazz" });
+    expect(producerMove("play some lo-fi hip hop")).toEqual({ kind: "radio", cmd: "play", station: "hip hop" });
+    expect(producerMove("put on some music")).toEqual({ kind: "radio", cmd: "play" });
+    expect(producerMove("next song")).toEqual({ kind: "radio", cmd: "next" });
+    expect(producerMove("pause the music")).toEqual({ kind: "radio", cmd: "pause" });
+    expect(producerMove("play the radio")).toEqual({ kind: "radio", cmd: "play" });
     expect(producerMove("open safari")).toBeNull();
   });
   it("answers from live state and stays quiet when nothing is on", () => {
