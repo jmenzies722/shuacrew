@@ -18,7 +18,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 
 export const launchTask = (body: { markdown: string; repo?: string; runtime?: string; model?: string }) => api<{ id: string }>("/api/tasks", { body });
 
-export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; member?: string }) =>
+export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; member?: string; title?: string; labels?: string[] }) =>
   api<{ id: string }>("/api/runs", { body: { ...body, member: routeLaunch(body.member, getMix()) } });
 
 export const decideApproval = (id: string, allow: boolean, extra: { always?: boolean; comment?: string } = {}) =>

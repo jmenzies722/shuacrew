@@ -1,4 +1,5 @@
 import { CREW_TEMPLATES } from "../lib/crew-templates";
+import { CrewPerformance } from "../components/CrewPerformance";
 import type { CrewMember, RunView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
@@ -64,6 +65,7 @@ export function CrewPage() {
             </AnimatePresence>
           </div>
         )}
+        {list.length > 0 && <CrewPerformance members={list} runs={runs} lessons={lessons} />}
       </div>
       {editing && <MemberEditor member={editing} runtimes={runtimes} onClose={() => setEditing(null)} />}
     </div>

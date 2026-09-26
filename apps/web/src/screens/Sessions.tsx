@@ -15,7 +15,7 @@ import {
   Folder,
   Paperclip,
   GitBranch,
-  ListChecks,
+  ListChecks, Swords,
   Plus,
   Search,
   ShieldCheck,
@@ -601,6 +601,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   // A new session starts from Settings → Session defaults; a follow-up inside a run never does.
   const defaults = run ? DEFAULT_WORKSPACE : getWorkspace();
   const [task, setTask] = useState(defaults.task);
+  // Race: the same task to Claude and Codex at once, each in its own branch — keep the better one.
+  const [race, setRace] = useState(false);
   const [autopilot, setAutopilot] = useState(defaults.autopilot);
   const [repo, setRepo] = useState("");
   const [runtime, setRuntime] = useState(defaults.runtime);
@@ -823,6 +825,13 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
         return;
       }
       const common = { repo: repo || undefined, runtime: runtime || undefined, model: model || undefined };
+      if (race && !task) {
+        const tag = `race:${Date.now().toString(36)}`, short = message.split("\n")[0]!.slice(0, 60);
+        const [first] = await Promise.all((["claude", "codex"] as const).map((rt) => launchRun({ ask: message, repo: repo || undefined, runtime: rt, effort: effort || undefined, approveAll: auto, title: `Race · ${rt === "claude" ? "Claude" : "Codex"} · ${short}`, labels: [tag] })));
+        setText(""); setFiles([]); setRace(false);
+        navigate({ to: "/sessions/$id", params: { id: first!.id } });
+        return;
+      }
       const { id } = task
         ? await launchTask({ markdown: message.startsWith("#") ? message : `# ${message.split("\n")[0]}\n${message}`, ...common })
         : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto, member: member || undefined });
@@ -972,6 +981,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
             <button className="rounded-full px-2 py-1 text-[11px] text-fg-2 hover:bg-raised" title="Talk with Shua or a crew member" onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:voice", { detail: { runId: run?.member ? run.id : undefined, memberId: run?.member || member || "shua", runtime: run?.runtime || runtime || undefined } }))}>Voice mode</button>
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
+            {!run && <Toggle on={race} onClick={() => setRace((v) => !v)} icon={<Swords size={12} />} label="Race" title="Send this to Claude and Codex at once, each in its own branch — compare and keep the better one" />}
             {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
             {run?.worktree && (
               <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { CloudRain, Coffee, FolderOpen, Pause, Play, Plus, Radio as RadioIcon, SkipBack, SkipForward, Sparkles, Trash2, Tv, Volume1, Volume2, VolumeX, Waves } from "lucide-react";
+import { CloudRain, Coffee, FolderOpen, Pause, Play, Plus, Radio as RadioIcon, SkipBack, SkipForward, Sparkles, Timer, Trash2, Tv, Volume1, Volume2, VolumeX, Waves } from "lucide-react";
+import { formatFocusRemaining, remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
+import { focusMinutes } from "../lib/focus-stats";
+import { savePower } from "../lib/power";
 import { PaneLayout } from "../components/Pane";
 import { addYoutube, clock, levels, loadRadio, next, playStation, previous, removeYoutube, revealRadio, seek, setupRadio, setVolume, toggle, useRadio, type RadioTrack, type YouTubeStation } from "../lib/radio";
 import { playScape, stopScape, useScape, type Scape } from "../lib/soundscape";
@@ -60,6 +63,7 @@ export function Studio() {
               : <p className="radio-hint">No tracks here yet. Drop mp3, m4a, wav or flac files into <code>{r.root}/{station?.name ?? "Lofi Jazz"}</code> — name them “Artist - Title” if they have no tags. Every folder there becomes a station.</p>}
           </section>
           <div className="radio-side">
+            <FocusRoom />
             <LiveStations list={r.youtube} on={r.live?.id ?? null} />
             <Ambience />
           </div>
@@ -145,6 +149,26 @@ function LiveStations({ list, on }: { list: YouTubeStation[]; on: string | null 
       <button type="submit" disabled={busy || !url.trim()} aria-label="Add station"><Plus size={14} /></button>
     </form>
     {msg && <p className="radio-hint" role="status">{msg}</p>}
+  </section>;
+}
+
+/** Focus room: one click for deep work — timer, Flow mode, your radio and rain. Minutes are the real focus log. */
+function FocusRoom() {
+  const timer = useFocusTimer(), r = useRadio(), scape = useScape();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const left = timer ? remainingFocusMs(timer, now) : 0;
+  const week = focusMinutes(7), today = week.at(-1)?.minutes ?? 0;
+  const enter = async (minutes: number) => {
+    setFocus(startFocus(minutes)); savePower({ flow: true });
+    if (!r.playing) { const pick = r.stations.find((s) => s.tracks.length)?.id ?? r.youtube.find((s) => s.genre === "Lofi Jazz")?.id ?? r.youtube[0]?.id; if (pick) await playStation(pick); }
+    if (scape === "off") playScape("rain", 0.25);
+  };
+  return <section className="radio-panel" aria-label="Focus room">
+    <header><strong>Focus room</strong><span>{today ? `${today} min focused today` : "timer · Flow mode · radio · rain"}</span></header>
+    {timer && left > 0
+      ? <div className="focus-live"><b>{formatFocusRemaining(left)}</b><span>left in this focus session</span><button type="button" onClick={() => { setFocus(null); savePower({ flow: false }); }}>End</button></div>
+      : <div className="focus-start">{[25, 50].map((m) => <button key={m} type="button" onClick={() => void enter(m)}><Timer size={14} /> {m} min</button>)}</div>}
   </section>;
 }
 
