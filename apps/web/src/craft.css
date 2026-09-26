@@ -109,3 +109,17 @@
 .spark-today-memory { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; color: var(--text-2); }
 .spark-today-memory svg { color: var(--accent-text, var(--amber)); }
 .spark-today-memory button { margin-left: 4px; font-size: 12px; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Crew routines on Schedules. */
+.routines { display: grid; gap: 12px; padding: 16px 18px; margin-bottom: 18px; border-radius: 16px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.routines > header { display: grid; gap: 2px; }
+.routines > header strong { font-size: 15px; font-weight: 600; }
+.routines > header span { font-size: 12.5px; color: var(--text-3); }
+.routines-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 900px) { .routines-grid { grid-template-columns: minmax(0, 1fr); } }
+.routine { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border-radius: 12px; background: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.routine > svg { flex-shrink: 0; color: var(--text-3); }
+.routine.is-on > svg { color: var(--accent-text, var(--amber)); }
+.routine > span { display: grid; flex: 1; min-width: 0; }
+.routine b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.routine small { font-size: 12px; color: var(--text-3); }

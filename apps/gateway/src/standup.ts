@@ -13,6 +13,7 @@ export const STANDUP_ASK = [
   "3. For each member with activity: two short lines — what they finished or moved forward yesterday, and what's next or blocked (name the session). Skip members with no activity; say \"quiet day\" if nobody did anything.",
   "4. Finish with one line: the single most important thing for the user today.",
   "5. Save it to the Library titled \"Crew standup — <weekday, month day>\". Only report what the data shows; never invent work.",
+  "Save with: curl -s -X POST http://127.0.0.1:7420/api/library/artifacts -H \"X-ShuaCrew: 1\" -H \"Content-Type: application/json\" -d <json with title, filename, content> (build the JSON with python3 so quotes are escaped).",
 ].join("\n");
 
 interface ScheduleStore { list(): Array<{ id: string }>; set(input: { id?: string; name?: string; when: string; ask?: string }): unknown; remove(id: string): unknown }

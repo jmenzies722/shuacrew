@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AudioLines, Briefcase, CheckCircle2, GraduationCap, Loader2, Megaphone, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
+import { AudioLines, Award, Briefcase, CheckCircle2, Flame, GraduationCap, Loader2, Lock, Megaphone, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
+import { achievements, streak } from "../lib/achievements";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { api } from "../lib/api";
@@ -76,6 +77,15 @@ export function DayHero() {
     } finally { setStarting(false); }
   };
 
+  // Streaks and achievements from real activity.
+  const doneRuns = runs.filter((r) => (r.status === "done" || r.status === "merged") && !r.labels?.includes("buddy"));
+  const shippedDays = new Set(doneRuns.map((r) => localDay(new Date(r.updatedAt))));
+  const learnDays = new Set((learn.value?.days ?? []).filter((d) => d.reviews > 0).map((d) => d.day));
+  const reviewed = (learn.value?.days ?? []).reduce((n, d) => n + d.reviews, 0);
+  const badges = achievements({ shippedDays, shipped: doneRuns.length, learnDays, reviewed, ventures: ventures.length, earning: ventures.filter((v) => v.stage === "earning").length, members: Object.keys(crew.members).length }, now);
+  const earned = badges.filter((b) => b.earned), nextUp = badges.filter((b) => !b.earned).slice(0, 2);
+  const learnStreak = streak(learnDays, now), shipStreak = streak(shippedDays, now);
+
   const plan: Array<{ icon: typeof Play; label: string; value: string; go: () => void; tone: "wait" | "live" | "ok" | "idle" }> = [
     { icon: CheckCircle2, label: "Needs you", value: approvals.length ? `${approvals.length} decision${approvals.length === 1 ? "" : "s"}` : "Nothing waiting", tone: approvals.length ? "wait" : "ok", go: () => void navigate({ to: "/board" }) },
     { icon: Loader2, label: "In progress", value: running.length ? `${running.length} session${running.length === 1 ? "" : "s"} working` : "Crew is idle", tone: running.length ? "live" : "idle", go: () => void navigate({ to: "/board" }) },
@@ -107,6 +117,12 @@ export function DayHero() {
         {standup ? <button type="button" onClick={() => void navigate({ to: "/library", hash: standup.id })}>{standup.title}</button> : <span>Crew standup</span>}
         <button type="button" role="switch" aria-checked={standupOn} className={`day-switch ${standupOn ? "is-on" : ""}`} onClick={toggleStandup} title={standupOn ? "Weekdays at 8:30 · click to turn off" : "Turn on a weekday 8:30 standup from your crew"}><i /></button>
       </span>}
+    </div>
+    <div className="day-streaks" aria-label="Streaks and achievements">
+      <span className={`day-streak ${learnStreak ? "is-on" : ""}`}><Flame size={13} /> {learnStreak ? `${learnStreak}-day learning streak` : "No learning streak yet"}</span>
+      <span className={`day-streak ${shipStreak ? "is-on" : ""}`}><Flame size={13} /> {shipStreak ? `${shipStreak}-day shipping streak` : "No shipping streak yet"}</span>
+      {earned.map((b) => <span key={b.id} className="day-badge is-earned" title={b.how}><Award size={12} /> {b.name}</span>)}
+      {nextUp.map((b) => <span key={b.id} className="day-badge" title={b.how}><Lock size={11} /> {b.name}{b.progress ? ` · ${b.progress}` : ""}</span>)}
     </div>
     <div className="day-plan">{plan.map((p) => <button key={p.label} type="button" className={`day-plan-card is-${p.tone}`} onClick={p.go}>
       <p.icon size={15} /><span><small>{p.label}</small><b>{p.value}</b></span>

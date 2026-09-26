@@ -347,6 +347,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       waiting: Object.keys(crew.approvals).length,
     });
     setBrief({ q: "Your day, wrapped", a: text }); speech.current.say(text);
+    // Journal from your day: the recap, kept in your Library.
+    const date = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    void api("/api/library/artifacts", { body: { title: `Journal — ${date}`, filename: `journal-${localDay(new Date())}.md`, content: `# ${date}\n\n${text}\n` } }).catch(() => {});
   };
   const playMorning = async () => {
     setMorning(false); try { localStorage.setItem("shuacrew.morning", localDay(new Date())); } catch { /* ignore */ }

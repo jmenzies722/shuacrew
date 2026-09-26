@@ -1,3 +1,5 @@
+import { Routines } from "../components/Routines";
+import "../screens/today.css";
 import { Button, Chip, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -62,6 +64,7 @@ export function Schedules() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: schedules.filter((x) => !x.paused).length, label: "active schedules", tone: "amber" }, { value: hooks.length, label: "webhooks" }, { value: beats.length, label: "heartbeats" }, { value: "", label: "Quiet hours →", to: "/settings", hash: "quiet" }, { value: "", label: "Scheduled modes →", to: "/settings", hash: "schedule" }]} />} eyebrow="Brain" icon={CalendarClock} title="Schedules & Triggers" description="Cron jobs, webhooks and heartbeats. Script-only jobs and heartbeats make no model call — they wake an agent only when something needs one." />
+        <Routines onChange={() => void refresh()} />
 
         <NewSchedule onSaved={refresh} />
 

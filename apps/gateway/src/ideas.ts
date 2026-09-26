@@ -13,6 +13,7 @@ export const IDEA_SCORING_ASK = [
   "3. For each remaining idea, research on the web: who has this problem and how badly (demand), who already solves it and how (competitors, with links and prices), and what it would take to build a first version (effort).",
   "4. Score demand, competition (10 = wide open) and effort (10 = easy) from 1 to 10, give a one-paragraph verdict and the single cheapest way to test demand this week.",
   "5. Save each scorecard to the Library titled \"Idea score: <name>\". Cite sources. Never invent numbers — say \"unknown\" when you can't find them.",
+  "Save with: curl -s -X POST http://127.0.0.1:7420/api/library/artifacts -H \"X-ShuaCrew: 1\" -H \"Content-Type: application/json\" -d <json with title, filename, content> (build the JSON with python3 so quotes are escaped).",
 ].join("\n");
 
 /** "idea: a CRM for dog walkers — scheduling and payments" → a short name and the full pitch. */

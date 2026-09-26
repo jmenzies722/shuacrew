@@ -41,7 +41,7 @@ export function SettingsCommand({ go }: { go: (hash: string) => void }) {
   const checks = useChecks();
   const active = useActiveMode();
   const runs = useLive((st) => st.crew.runs);
-  const finishedToday = useMemo(() => { const start = new Date(); start.setHours(0, 0, 0, 0); return Object.values(runs).filter((r) => !r.parent && !r.labels.includes("learning") && ["done", "merged"].includes(r.status) && r.updatedAt >= start.getTime()).length; }, [runs]);
+  const finishedToday = useMemo(() => { const start = new Date(); start.setHours(0, 0, 0, 0); return Object.values(runs).filter((r) => !r.parent && !r.labels.includes("learning") && !r.labels.includes("buddy") && ["done", "merged"].includes(r.status) && r.updatedAt >= start.getTime()).length; }, [runs]);
   const focus = focusMinutes(7), today = focus.at(-1)!.minutes, maxFocus = Math.max(30, ...focus.map((f) => f.minutes));
   const [history, setHistory] = useState<Array<{ at: number; changed: string[] }> | null>(null);
   const [notice, setNotice] = useState("");
