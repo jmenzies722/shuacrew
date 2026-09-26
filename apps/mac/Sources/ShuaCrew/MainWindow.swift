@@ -282,12 +282,44 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         if ProcessInfo.processInfo.environment["SHUACREW_DEBUG_HIT"] == "1" { reportHits() }
         // SHUACREW_APP_SELFTEST='{"type":"open_app","name":"Calculator"}' at launch: the app window's Spark panel path
         // (page → this window → Spark → back here) runs one action and logs the result. Only the launcher can set it.
+        // SHUACREW_SNAPSHOT=/path/shot.png at launch: after the page settles, save what this window's page actually
+        // looks like (optionally after SHUACREW_SNAPSHOT_JS runs, e.g. to open Spark) plus the layout of the sidebar and the
+        // window buttons, to /path/shot.json. For checking the real app without screen recording or synthetic input.
+        if let path = ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT"], path.hasSuffix(".png") { snapshot(to: path) }
         if let spec = ProcessInfo.processInfo.environment["SHUACREW_APP_SELFTEST"], spec.hasPrefix("{") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                 self?.web.evaluateJavaScript("""
                 window.addEventListener('shuacrew:did', e => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: e.detail.ok, message: 'app window: ' + e.detail.message }), { once: true });
                 window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDo', id: 'selftest', action: \(spec) });
                 """)
+            }
+        }
+    }
+
+    private func snapshot(to path: String) {
+        let script = ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT_JS"] ?? ""
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            if !script.isEmpty { self.web.evaluateJavaScript(script) }
+            let wait = Double(ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT_WAIT"] ?? "") ?? 1.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                guard let self, let window = self.window else { return }
+                let measure = """
+                JSON.stringify({ probe: window.__probe ?? null, attrs: Object.fromEntries([...document.documentElement.attributes].map(a => [a.name, a.value])), viewport: [innerWidth, innerHeight, devicePixelRatio], rects: [".side", ".side-brand", ".side-spark", ".side-new", ".side-scroll", ".side-foot", "header[aria-label='Top bar']", "#main", ".spark-side"].map(s => { const r = document.querySelector(s)?.getBoundingClientRect(); return [s, r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] : null]; }) })
+                """
+                self.web.evaluateJavaScript(measure) { result, _ in
+                    let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind -> String? in
+                        guard let b = window.standardWindowButton(kind) else { return nil }
+                        let f = b.convert(b.bounds, to: nil), h = window.contentView?.bounds.height ?? 0
+                        return "[\(Int(f.minX)),\(Int(h - f.maxY)),\(Int(f.width)),\(Int(f.height))]"
+                    }
+                    let json = "{\"page\":\(result as? String ?? "null"),\"windowButtons\":[\(buttons.joined(separator: ","))],\"window\":[\(Int(window.frame.width)),\(Int(window.frame.height))]}"
+                    try? json.write(toFile: path.replacingOccurrences(of: ".png", with: ".json"), atomically: true, encoding: .utf8)
+                }
+                self.web.takeSnapshot(with: nil) { image, _ in
+                    guard let image, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
             }
         }
     }

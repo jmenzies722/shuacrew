@@ -129,8 +129,8 @@ export function Sessions() {
   const loaded = useLive((s) => s.crew.head > 0);
   const id = params.id && (known || !loaded) ? params.id : undefined;
   return (
-    <div className={`grid h-full gap-2 p-2 pt-0 ${id && changes ? "grid-cols-[300px_minmax(0,1fr)_320px]" : "grid-cols-[300px_minmax(0,1fr)]"} max-[1150px]:grid-cols-[260px_minmax(0,1fr)] max-[760px]:grid-cols-1`}>
-      <SessionsPanel selected={id} />
+    <div className={`sessions-layout ${id ? "is-thread" : "is-fresh"} ${id && changes ? "has-changes" : ""}`}>
+      {id && <SessionsPanel selected={id} />}
       {id ? <Chat id={id} changes={changes} onToggleChanges={() => setChanges((v) => !v)} /> : <NewSession />}
       {id && changes && <ChangesPanel id={id} />}
     </div>
@@ -540,9 +540,9 @@ function NewSession() {
     { icon: Sparkles, text: "Look at my most recent project and suggest the next three things to build" },
   ];
   return (
-    <section className="sheet flex min-h-0 flex-col" aria-label="New session">
-      <div className="hero min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center px-6 pb-[12vh] pt-10">
+    <section className="sheet hero-sheet flex min-h-0 min-w-0 flex-col" aria-label="New session">
+      <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div className="hero-stack">
           <NeedsYou />
           <div className="hero-mark">
             <LogoMark size={60} />
@@ -845,8 +845,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   };
 
   return (
-    <div className={hero ? "mt-7" : "shrink-0 px-4 pb-3 pt-1"}>
-      <div className={`relative mx-auto ${hero ? "" : "max-w-[var(--chat-width,820px)]"}`}>
+    <div className={hero ? "mt-7 min-w-0" : "shrink-0 px-4 pb-3 pt-1"}>
+      <div className={`relative mx-auto min-w-0 ${hero ? "" : "max-w-[var(--chat-width,820px)]"}`}>
         {slash.length > 0 && (
           <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-[12px] border border-line-strong bg-raised shadow-[0_18px_50px_rgba(0,0,0,.35)]" role="listbox" aria-label="Commands">
             {slash.map((c, i) => (
@@ -964,7 +964,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             className="block max-h-[240px] w-full resize-none bg-transparent text-[14px] leading-relaxed text-fg outline-none placeholder:text-fg-3"
             aria-label="Message"
           />
-          <div className="mt-2 flex items-center gap-1.5">
+          <div className="composer-tools">
             <input ref={picker} type="file" multiple hidden onChange={(e) => (e.target.files && attach(e.target.files), (e.target.value = ""))} />
             <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach photos, videos, voice notes or files (or drop / paste them)" aria-label="Attach files">
               <Paperclip size={14} />
@@ -1001,7 +1001,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
           </div>
         </div>
         {!run && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-[12px] text-fg-3">
+          <div className="composer-meta">
             {isMac() ? (
               <button onClick={() => void chooseFolder()} className="flex items-center gap-1.5 hover:text-fg" title={repo || "Runs in ShuaCrew's own workspace"}>
                 <Folder size={12} /> {repo ? repo.split("/").pop() : "default workspace"}
@@ -1009,7 +1009,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             ) : (
               <label className="flex items-center gap-1.5">
                 <Folder size={12} />
-                <input list="composer-repos" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="default workspace" className="mono w-56 bg-transparent text-[11.5px] text-fg outline-none placeholder:text-fg-3" />
+                <input list="composer-repos" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="default workspace" className="mono w-56 max-w-full min-w-0 bg-transparent text-[11.5px] text-fg outline-none placeholder:text-fg-3" />
                 <datalist id="composer-repos">
                   {recent.map((r) => (
                     <option key={r} value={r} />
@@ -1339,7 +1339,7 @@ function TodayBriefing() {
         </button>
       </div>
       {open && briefing.sections.length > 0 && (
-        <div className="mt-3 grid gap-3">
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 [overflow-wrap:anywhere]">
           {briefing.sections.map((section) => (
             <div key={section.title}>
               <div className="brief-title">{section.title}</div>

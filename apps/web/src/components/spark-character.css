@@ -1,5 +1,9 @@
 .spark-character { position: relative; display: inline-grid; place-items: center; width: 84px; height: 84px; }
 .spark-character > svg, .spark-character > .spark-art { width: 100%; height: 100%; overflow: visible; }
+/* Chat avatars: uniform zoom on the head, never a non-square stretch of the atlas cell. */
+.spark-character.is-portrait { overflow: hidden; }
+.spark-character.is-portrait > .spark-art { transform: scale(1.9); transform-origin: 50% 22%; }
+.spark-character.is-portrait > svg { width: 145%; height: 145%; margin-top: -6%; }
 .ch-face .ch-eyes ellipse { fill: var(--ch-face, #15151a); transform-box: fill-box; transform-origin: center; animation: ch-blink 4.2s infinite; }
 .ch-spark .ch-face { display: none; }
 .ch-glint { fill: var(--ch-glint, #fff); }
@@ -17,6 +21,8 @@
 .mood-thinking .ch-aura { animation-duration: 1s; }
 .mood-happy .ch-eyes ellipse { transform: scaleY(.35); animation: none; }
 .mood-happy svg, .mood-happy > .spark-art { animation: ch-hop .5s ease-in-out 2; }
+.mood-happy.is-portrait { animation: ch-hop .5s ease-in-out 2; }
+.mood-happy.is-portrait > svg, .mood-happy.is-portrait > .spark-art { animation: none; }
 @keyframes ch-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
 @keyframes ch-talk { from { transform: scaleY(.35); } to { transform: scaleY(1.1); } }
 @keyframes ch-aura { 50% { transform: scale(1.12); opacity: .3; } }
@@ -25,4 +31,4 @@
 @keyframes ch-squish { 50% { transform: scale(1.04, .95); } }
 @keyframes ch-float { 50% { transform: translateY(-4px); } }
 @keyframes ch-hop { 50% { transform: translateY(-10px); } }
-@media (prefers-reduced-motion: reduce) { .spark-character *, .spark-character svg { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .spark-character, .spark-character *, .spark-character svg { animation: none !important; } }

@@ -3,7 +3,7 @@
  * canvas, hairline borders, and exactly one colour — the violet accent — for anything active. Every surface below
  * uses the palette tokens, so nothing drifts out of sync.
  */
-:root[data-palette="pristine"] {
+:root {
   --accent-text: color-mix(in srgb, var(--amber) 55%, #fff);
   --active-bg: color-mix(in srgb, var(--amber) 16%, var(--panel));
   --active-line: color-mix(in srgb, var(--amber) 32%, var(--line-strong));
@@ -17,46 +17,60 @@
 }
 
 /* The canvas and the floating main panel. */
-[data-palette="pristine"] body { background: var(--sunken); }
-[data-palette="pristine"] #main { background: var(--ink); }
+[data-theme="dark"] body { background: var(--sunken); }
+[data-theme="dark"] #main { background: var(--ink); }
 
 /* Surfaces: one material everywhere. */
-[data-palette="pristine"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
+[data-theme="dark"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
   .today-lanes-box, .island-tile, .wg-tile, .spark-record, .brief, .crew-cta, .lib-row, .pb-row, .tl-card, .sheet) {
   background: var(--panel) !important; border-color: transparent !important; border-radius: var(--radius-card);
   box-shadow: var(--depth) !important; transition: box-shadow .18s ease, transform .18s ease;
 }
-[data-palette="pristine"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row):hover { box-shadow: var(--depth-hover) !important; }
-[data-palette="pristine"] :is(.board-col, .vn-lane) { background: var(--sunken) !important; box-shadow: 0 0 0 1px var(--line) !important; border-radius: 14px; }
-[data-palette="pristine"] .stat-chip { background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); border-radius: 12px; }
-[data-palette="pristine"] .stat-chip strong { font-weight: 600; }
+[data-theme="dark"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row):hover { box-shadow: var(--depth-hover) !important; }
+[data-theme="dark"] :is(.board-col, .vn-lane) { background: var(--sunken) !important; box-shadow: 0 0 0 1px var(--line) !important; border-radius: 14px; }
+[data-theme="dark"] .stat-chip { background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); border-radius: 12px; }
+[data-theme="dark"] .stat-chip strong { font-weight: 600; }
 
 /* Buttons: the accent is solid violet; the rest are quiet outlines. */
-[data-palette="pristine"] .ui-btn[data-variant="primary"], [data-palette="pristine"] :is(.wel-next, .buddy-send:not(:disabled)) {
+[data-theme="dark"] .ui-btn[data-variant="primary"], [data-theme="dark"] :is(.wel-next, .buddy-send:not(:disabled)) {
   background: var(--amber); color: var(--on-accent, #fff); box-shadow: 0 0 0 1px var(--amber), 0 4px 14px -6px var(--amber);
 }
-[data-palette="pristine"] .ui-btn[data-variant="primary"]:hover { background: var(--accent-hover); }
-[data-palette="pristine"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset) {
+[data-theme="dark"] .ui-btn[data-variant="primary"]:hover { background: var(--accent-hover); }
+[data-theme="dark"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset) {
   background: transparent !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important;
 }
-[data-palette="pristine"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset):hover { background: var(--raised) !important; box-shadow: 0 0 0 1px var(--active-line) !important; }
+[data-theme="dark"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset):hover { background: var(--raised) !important; box-shadow: 0 0 0 1px var(--active-line) !important; }
 
 /* The composer: Kiro's rounded field with a violet glow along its edge when you're in it. */
-[data-palette="pristine"] .composer-box { background: var(--panel) !important; border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong) !important; }
-[data-palette="pristine"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px var(--accent-glow) !important; }
+[data-theme="dark"] .composer-box { background: var(--panel) !important; border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong) !important; }
+[data-theme="dark"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px var(--accent-glow) !important; }
 
 /* Top bar: blends into the canvas; search is an outlined capsule. */
-[data-palette="pristine"] header[aria-label="Top bar"] { background: var(--sunken); box-shadow: none; }
-[data-palette="pristine"] .tb-center > button { background: var(--ink) !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important; border-radius: 10px; }
-[data-palette="pristine"] .island-pill { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
+[data-theme="dark"] header[aria-label="Top bar"] { background: var(--sunken); box-shadow: none; }
+[data-theme="dark"] .tb-center > button { background: var(--ink) !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important; border-radius: 10px; }
+[data-theme="dark"] .island-pill { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
 
 /* Headings. */
-[data-palette="pristine"] .pane-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: #ebe9ee; }
+[data-theme="dark"] .pane-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: #ebe9ee; }
 
 /* Hub tabs: Kiro's selected state. */
-[data-palette="pristine"] .hub-tab-on { background: var(--active-bg); box-shadow: 0 0 0 1px var(--active-line); }
-[data-palette="pristine"] .hub-tab.is-on { color: var(--accent-text); }
-[data-palette="pristine"] .hub-tab-on::after { display: none; }
+[data-theme="dark"] .hub-tab-on { background: var(--active-bg); box-shadow: 0 0 0 1px var(--active-line); }
+[data-theme="dark"] .hub-tab.is-on { color: var(--accent-text); }
+[data-theme="dark"] .hub-tab-on::after { display: none; }
 
 /* Accent text reads in Kiro's lighter violet. */
-[data-palette="pristine"] :is(.settings-kicker, .prose-agent a) { color: var(--accent-text); }
+[data-theme="dark"] :is(.settings-kicker, .prose-agent a) { color: var(--accent-text); }
+
+/* Proportions: when Spark is open the conversation keeps the room. The sessions list and changes sheet step aside
+   before the chat is squeezed, Spark and the sidebar scale with the window, and toolbar labels never break mid-label. */
+@media (max-width: 1560px) { [data-frame]:has(.spark-side) aside.side-pane { display: none; } }
+@media (max-width: 1900px) { [data-frame]:has(.spark-side) aside.sheet { display: none; } }
+.spark-side-inner { width: clamp(340px, 24vw, 400px) !important; }
+@media (max-width: 1300px) { .side { width: 220px !important; } }
+.composer-tools > button { white-space: nowrap; }
+/* Narrow sidebar: the shortcut hint makes way so "Ask Spark" and its line read in full. */
+@media (max-width: 1300px) { .side-spark kbd { display: none; } }
+/* The Today brief: its rows wrap inside the card instead of running past its edge. */
+.brief .grid { grid-template-columns: minmax(0, 1fr); }
+.brief-item { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.brief-item * { min-width: 0; }

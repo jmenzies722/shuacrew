@@ -117,7 +117,7 @@ function SparkSide() {
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
   }, []);
   return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className="spark-side" aria-label="Spark"
-    initial={{ width: 0, opacity: 0 }} animate={{ width: 400, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
+    initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
     <div className="spark-side-inner"><Buddy embedded onClose={() => setSparkPanel(false)} /></div>
   </motion.aside>}</AnimatePresence>;
 }
@@ -287,7 +287,7 @@ function SparkButton() {
   const open = useSparkPanel(), prefs = useCompanion(), sidebarWide = useSidebarWide();
   if (sidebarWide) return null; // the sidebar's "Ask" row is the way in
   return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={sparkVars(prefs.color)}>
-    <SparkCharacter preferences={prefs} size={20} /><span>{prefs.nickname || "Spark"}</span>
+    <SparkCharacter preferences={prefs} size={22} crop="portrait" /><span>{prefs.nickname || "Spark"}</span>
   </button>;
 }
 

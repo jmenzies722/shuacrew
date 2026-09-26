@@ -5,10 +5,14 @@ import { useLive } from "../lib/live";
 import { loadFocus, pauseFocus, remainingFocusMs, resumeFocus, saveFocus, startFocus, formatFocusRemaining, type FocusTimer } from "../lib/focus-timer";
 import "./companion.css";
 
-export function SparkArt({ preferences }: { preferences: CompanionPreferences }) {
-  const col = ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"].indexOf(preferences.accessory);
-  const row = ["calm", "curious", "bright"].indexOf(preferences.face);
-  return <span className="spark-art" aria-hidden="true" style={{ backgroundPosition: `${col / 6 * 100}% ${row / 2 * 100}%` } as CSSProperties} />;
+/** Sprite slot for the original Spark atlas: 7 accessories × 3 faces. Same math for full-body and portrait — portrait is a CSS zoom on the head, not a different slot. */
+export function sparkAtlasStyle(face: CompanionPreferences["face"], accessory: CompanionPreferences["accessory"]): CSSProperties {
+  const col = ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"].indexOf(accessory);
+  const row = ["calm", "curious", "bright"].indexOf(face);
+  return { backgroundPosition: `${col / 6 * 100}% ${row / 2 * 100}%` };
+}
+export function SparkArt({ preferences, crop = "full" }: { preferences: CompanionPreferences; crop?: "full" | "portrait" }) {
+  return <span className={`spark-art ${crop === "portrait" ? "is-portrait" : ""}`} aria-hidden="true" style={sparkAtlasStyle(preferences.face, preferences.accessory)} />;
 }
 const LABEL: Record<CompanionPose, string> = { offline: "Offline · activity unknown", review: "A decision needs you", failed: "Work needs attention", working: "Working on your tasks", idle: "Ready when you are" };
 export function Companion({ preferences, pose, decisions, members = [], openDecisions, openCrew, startFocus, celebrating = false }: {
