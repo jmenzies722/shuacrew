@@ -59,6 +59,9 @@ export function DayHero() {
     speech.current.unlock();
     for (const sentence of brief.match(/[^.!?]+[.!?]+/g) ?? [brief]) speech.current.say(sentence.trim());
   };
+  // shuacrew://start-day (Shortcuts, Siri) lands here and presses the button.
+  const startRef = useRef<() => void>(() => {});
+  useEffect(() => { const on = () => startRef.current(); window.addEventListener("shuacrew:start-day", on); return () => window.removeEventListener("shuacrew:start-day", on); }, []);
   const startDay = async () => {
     setStarting(true);
     try {
@@ -86,6 +89,7 @@ export function DayHero() {
   const earned = badges.filter((b) => b.earned), nextUp = badges.filter((b) => !b.earned).slice(0, 2);
   const learnStreak = streak(learnDays, now), shipStreak = streak(shippedDays, now);
 
+  startRef.current = () => void startDay();
   const plan: Array<{ icon: typeof Play; label: string; value: string; go: () => void; tone: "wait" | "live" | "ok" | "idle" }> = [
     { icon: CheckCircle2, label: "Needs you", value: approvals.length ? `${approvals.length} decision${approvals.length === 1 ? "" : "s"}` : "Nothing waiting", tone: approvals.length ? "wait" : "ok", go: () => void navigate({ to: "/board" }) },
     { icon: Loader2, label: "In progress", value: running.length ? `${running.length} session${running.length === 1 ? "" : "s"} working` : "Crew is idle", tone: running.length ? "live" : "idle", go: () => void navigate({ to: "/board" }) },

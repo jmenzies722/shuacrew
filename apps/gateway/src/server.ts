@@ -13,6 +13,8 @@ import { radioRoutes } from "./radio.js";
 import { ideaRoutes } from "./ideas.js";
 import { standupRoutes } from "./standup.js";
 import { routineRoutes } from "./routines.js";
+import { healthAlerts } from "./health-alerts.js";
+import { statfs } from "node:fs/promises";
 import { screenMemoryRoutes } from "./screen-memory.js";
 import { systemRoutes } from "./system-routes.js";
 import { settingsRoutes } from "./settings-routes.js";
@@ -939,7 +941,16 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       const text = typeof i.command === "string" ? i.command : typeof i.file_path === "string" ? i.file_path : typeof i.path === "string" ? i.path : JSON.stringify(input ?? "");
       return text.length > 160 ? `${text.slice(0, 157)}…` : text;
     };
+    const disk = await statfs(os.homedir()).catch(() => null);
+    const alerts = healthAlerts({
+      rssMb: Math.round(process.memoryUsage().rss / 1e6),
+      diskFreeGb: disk ? (disk.bavail * disk.bsize) / 1e9 : null,
+      speech: options.speech?.status().state ?? null,
+      runtimesOut: [...options.runtimes.keys()].filter((id) => id !== "mock" && supervisor.limitedUntil(id) > Date.now()),
+      battery: null,
+    });
     return {
+      alerts,
       running: runs.filter((r) => r.status === "running" || r.status === "planning").length,
       awaiting: Object.keys(state.approvals).length,
       reviewing: runs.filter((r) => r.status === "reviewing").length,

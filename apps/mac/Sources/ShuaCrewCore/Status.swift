@@ -85,6 +85,16 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
     public var tokensToday: Int = 0
     /// The session on right now — menu bar Now Playing. Absent on older gateways.
     public var now: Now?
+    /// Health problems worth a notification (gateway memory, disk, voice engine, runtimes out). Absent on older gateways.
+    public var alerts: [Alert]?
+    public struct Alert: Decodable, Equatable, Sendable {
+        public let id: String
+        public let level: String
+        public let text: String
+        public init(id: String, level: String, text: String) { self.id = id; self.level = level; self.text = text }
+    }
+    /// Alerts that weren't there last time — each problem notifies once, and again only if it clears and comes back.
+    public func newAlerts(since seen: Set<String>) -> [Alert] { (alerts ?? []).filter { !seen.contains($0.id) } }
 
     public struct Now: Decodable, Equatable, Sendable {
         public let id: String?
@@ -100,7 +110,7 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         public var line: String { who.isEmpty ? title : "\(title) — \(who)" }
     }
 
-    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing, menuBar, tokensToday, now }
+    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing, menuBar, tokensToday, now, alerts }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -114,6 +124,7 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         briefing = try c.decodeIfPresent(Briefing.self, forKey: .briefing)
         menuBar = try c.decodeIfPresent(String.self, forKey: .menuBar) ?? "attention"
         tokensToday = try c.decodeIfPresent(Int.self, forKey: .tokensToday) ?? 0
+        alerts = try c.decodeIfPresent([Alert].self, forKey: .alerts)
         now = try c.decodeIfPresent(Now.self, forKey: .now)
     }
 

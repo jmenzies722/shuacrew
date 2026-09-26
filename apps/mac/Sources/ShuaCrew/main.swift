@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.showWindow(nil)
             NSApp.activate()
             tray = Tray(gateway: gateway, window: window, notifications: true)
+            tray?.onAskSpark = { [weak self] in self?.buddy.open() }
             window.onNotificationSettings = { [weak self] body in self?.tray?.notificationSettings(body) }
             // ⌥Space, anywhere: ShuaCrew comes forward with the message box ready; again, it hides.
             hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
@@ -52,6 +53,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !quiet { buddy.start() }
         }
         Task { await mobile.start() }
+    }
+
+    // shuacrew:// links — for Shortcuts, Siri ("Run shortcut…"), Raycast, a browser bookmark:
+    //   shuacrew://ask?q=…   shuacrew://idea?text=…   shuacrew://radio/play?station=lofi%20jazz   shuacrew://radio/pause
+    //   shuacrew://open/studio   shuacrew://start-day
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleLink(_:reply:)), forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+    @objc private func handleLink(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue, let url = URL(string: text), url.scheme == "shuacrew" else { return }
+        let query = Dictionary((URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
+        let path = url.path.split(separator: "/").map(String.init)
+        switch url.host ?? "" {
+        case "ask": buddy.open(asking: query["q"] ?? query["text"])
+        case "idea": if let idea = query["text"] ?? query["q"], !idea.isEmpty { buddy.open(asking: "idea: \(idea)") }
+        case "radio": Tray.radio(gateway.base, cmd: path.first ?? "play", station: query["station"])
+        case "open":
+            let page = "/" + path.joined(separator: "/")
+            if page.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { NSApp.activate(); window.showWindow(nil); window.navigate(page) }
+        case "start-day": NSApp.activate(); window.showWindow(nil); window.navigate("/activity"); window.page("setTimeout(() => window.dispatchEvent(new Event('shuacrew:start-day')), 900)")
+        default: break
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { quiet }

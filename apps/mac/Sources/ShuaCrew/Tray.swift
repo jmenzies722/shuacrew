@@ -48,6 +48,8 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
             for outcome in next.newlyFinished(since: finished) { notify(outcome) }
             for review in next.newReviews(since: reviewed) { notify(review) }
         }
+        for alert in next.newAlerts(since: alerted) { notify(alert) }
+        alerted = Set((next.alerts ?? []).map(\.id)) // cleared problems can alert again if they return
         finished.formUnion(next.recent.map(\.key))
         reviewed.formUnion(next.reviews.map(\.key))
         // Each morning's briefing announces itself once — even across app restarts.
@@ -145,6 +147,13 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
             if let id = track.id, track.stoppable { menu.addItem(action("Stop", #selector(stopNow), id)) }
         }
         menu.addItem(.separator())
+        menu.addItem(action("Ask Spark…", #selector(askSpark), nil))
+        let radio = NSMenuItem(title: "Radio", action: nil, keyEquivalent: ""), radioMenu = NSMenu()
+        for (title, cmd, station) in [("Play lofi jazz", "play", "lofi jazz"), ("Play lofi hip-hop", "play", "lofi hip hop"), ("Pause", "pause", ""), ("Resume", "resume", ""), ("Next", "next", "")] {
+            let item = action(title, #selector(radioCommand), "\(cmd)|\(station)"); radioMenu.addItem(item)
+        }
+        radio.submenu = radioMenu; menu.addItem(radio)
+        menu.addItem(.separator())
         menu.addItem(action("Open ShuaCrew", #selector(open), nil))
         menu.addItem(action("New Session…", #selector(newRun), nil))
         menu.addItem(.separator())
@@ -157,6 +166,22 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         item.target = self
         item.representedObject = value
         return item
+    }
+
+    var onAskSpark: (() -> Void)?
+    @objc private func askSpark(_ sender: NSMenuItem) { onAskSpark?() }
+    @objc private func radioCommand(_ sender: NSMenuItem) {
+        guard let spec = sender.representedObject as? String else { return }
+        let parts = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        Self.radio(gateway.base, cmd: parts[0], station: parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil)
+    }
+    /// ShuaCrew Radio from outside the page (menu bar, shuacrew:// links): the gateway relays it to the player.
+    static func radio(_ base: URL, cmd: String, station: String?) {
+        var request = URLRequest(url: URL(string: "/api/radio/command", relativeTo: base)!)
+        request.httpMethod = "POST"; request.setValue("1", forHTTPHeaderField: "X-ShuaCrew"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["cmd": cmd]; if let station { body["station"] = station }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: request).resume()
     }
 
     @objc private func allow(_ sender: NSMenuItem) { decide(sender.representedObject as? String, allow: true) }
@@ -294,6 +319,16 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
         content.sound = preferences.sounds ? .default : nil
         content.userInfo = ["run": outcome.id]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: outcome.key, content: content, trigger: nil))
+    }
+
+    private var alerted = Set<String>()
+    private func notify(_ alert: CrewStatus.Alert) {
+        let content = UNMutableNotificationContent()
+        content.title = alert.level == "critical" ? "ShuaCrew needs attention" : "ShuaCrew health"
+        content.body = alert.text
+        content.sound = alert.level == "critical" && preferences.sounds ? .default : nil
+        content.userInfo = ["home": true]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "alert-\(alert.id)", content: content, trigger: nil))
     }
 
     private func notify(_ briefing: CrewStatus.Briefing) {

@@ -154,6 +154,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         }
     }
 
+    /// Open Spark from the menu bar or a shuacrew:// link, optionally asking something right away.
+    func open(asking text: String? = nil) {
+        raise(); panel.makeKeyAndOrderFront(nil)
+        if let text, let data = try? JSONSerialization.data(withJSONObject: [text]), let json = String(data: data, encoding: .utf8) {
+            web.evaluateJavaScript("window.buddy && window.buddy.ask(\(json)[0])")
+        } else {
+            web.evaluateJavaScript("window.buddy && window.buddy.focus()")
+        }
+    }
+
     private func toggle() {
         raise()
         panel.makeKeyAndOrderFront(nil)

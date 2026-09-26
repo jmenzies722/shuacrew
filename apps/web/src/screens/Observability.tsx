@@ -1,3 +1,4 @@
+import { HealthAlerts } from "../components/HealthAlerts";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Activity, ArrowUpRight, BarChart3, RefreshCw } from "lucide-react";
@@ -47,6 +48,7 @@ export function Observability({ usage = false }: { usage?: boolean }) {
   return <div className="obs-page">
     <header className="obs-hero"><div><h1>{usage ? "Usage" : "Observability"}</h1><p>{usage ? "Observed tokens. Honest coverage. No invented bill." : "Find what needs you. Follow every number back to a real run."}</p></div><button className="obs-refresh" onClick={() => setRefresh(n => n + 1)} disabled={loading}><RefreshCw size={14} /> {loading ? "Refreshing…" : "Refresh"}</button></header>
     <nav className="obs-tabs" aria-label="Analytics panes"><Link to="/observability" aria-current={!usage ? "page" : undefined}>Observability</Link><Link to="/usage" aria-current={usage ? "page" : undefined}>Usage</Link><Link to="/developer">Developer <ArrowUpRight size={13} /></Link></nav>
+    {!usage && <HealthAlerts />}
     <ProviderStrip providers={providers} />
     {providerError && <p className="obs-warning" role="status">Provider status could not refresh; any connection indicators above are stale. {providerError}</p>}
     <div className="obs-filters"><label>Window<select value={days} onChange={e => resetPage(() => setDays(Number(e.target.value) as typeof days))}><option value={7}>Last 7 UTC days</option><option value={30}>Last 30 UTC days</option><option value={0}>All recorded history</option></select></label><label>Provider<select value={provider} onChange={e => resetPage(() => setProvider(e.target.value))}><option value="">All providers</option>{[...new Set([provider, ...(data?.availableProviders ?? []), ...providers.map(p => p.id)])].filter(Boolean).map(p => <option key={p}>{p}</option>)}</select></label><label>Venture<select value={venture} onChange={e => resetPage(() => setVenture(e.target.value))}><option value="">All ventures</option>{[...new Set([venture, ...(data?.availableVentures ?? []), ...Object.keys(ventures)])].filter(Boolean).map(id => <option value={id} key={id}>{ventures[id]?.name ?? id}</option>)}</select></label><span className="obs-source">{connection !== "live" ? "Disconnected · recorded data only" : data ? `Local event log · #${data.source.head} · checked ${new Date(data.source.computedAt).toLocaleTimeString()}` : "Reading local event log…"}</span></div>

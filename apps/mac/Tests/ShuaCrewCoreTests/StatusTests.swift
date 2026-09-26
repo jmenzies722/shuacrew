@@ -71,3 +71,12 @@ import Testing
     #expect(try status(#"{"menuBar":"running","# + base + "}").badge == "2")
     #expect(CrewStatus.compact(1_300_000) == "1.3M")
 }
+
+@Test func healthAlertsNotifyOncePerProblem() throws {
+  let json = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"recent":[],"reviews":[],"alerts":[{"id":"disk","level":"critical","text":"Only 3 GB free"}]}"#
+  let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+  #expect(status.newAlerts(since: []).map(\.id) == ["disk"])
+  #expect(status.newAlerts(since: ["disk"]).isEmpty)
+  let old = try JSONDecoder().decode(CrewStatus.self, from: Data(#"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"recent":[],"reviews":[]}"#.utf8))
+  #expect(old.alerts == nil && old.newAlerts(since: []).isEmpty)
+}
