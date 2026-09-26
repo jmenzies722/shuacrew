@@ -119,6 +119,14 @@ export class HandsFree {
     this.onPhase?.("listening");
   }
 
+  /** Push-to-talk: open the mic only now, and start the turn the moment it's live. */
+  async press() {
+    if (this.holding) return;
+    this.pressed = true;
+    if (!this.stream) await this.start();
+    if (this.pressed) this.hold(); // still holding once the mic came up
+  }
+  private pressed = false;
   /** Push-to-talk: start a turn now (keeping the last moment before you pressed, so the first word isn't clipped). */
   hold() {
     if (!this.stream || this.holding || this.paused) return;
@@ -129,10 +137,12 @@ export class HandsFree {
   }
   /** Push-to-talk: you let go — send what you said (a tap under ~0.3 s is ignored). */
   release() {
-    if (!this.holding) return;
+    this.pressed = false;
+    if (!this.holding) { if (this.mode === "hold") this.stop(); return; }
     this.holding = false;
     const frames = this.turn?.length ?? 0, seconds = this.ctx ? (frames * 2048) / this.ctx.sampleRate : 0;
-    void this.finish(seconds > 0.3 + 0.4);
+    // In push-to-talk the mic closes as soon as your words are sent — it's never left open.
+    void this.finish(seconds > 0.3).then(() => { if (this.mode === "hold" && !this.holding) this.stop(); });
   }
 
   /** The words so far, quickly (the fast model); the accurate transcript still comes when you stop. */

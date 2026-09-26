@@ -511,14 +511,14 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     m.onDropped = () => speech.current.duck(false);
     m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
-    const wanted = prefs.listen === "hold" || prefs.conversation || wakeTurn.current;
+    const wanted = (prefs.listen !== "hold" && prefs.conversation) || wakeTurn.current;
     if (wanted && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
   }, [prefs.conversation, prefs.listen, prefs.language, open, embedded, focused, armed]);
   // Push-to-talk with the keyboard: hold Space while Spark's box is empty (or nothing is focused).
   useEffect(() => {
     if (prefs.listen !== "hold" || !open) return;
     const typing = (t: EventTarget | null) => { const el = t as HTMLElement | null; if (!el) return false; if (el === input.current) return !!input.current?.value; return !!el.closest?.("input,textarea,select,[contenteditable=true],.xterm"); };
-    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); setArmed(true); speech.current.unlock(); mic.current.hold(); };
+    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); setArmed(true); speech.current.unlock(); void mic.current.press(); };
     const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; mic.current.release(); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); mic.current.release(); };
@@ -590,7 +590,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         <button type="button" role="tab" aria-selected={tab === "widgets"} onClick={() => setTab("widgets")}><LayoutGrid size={12} /> Widgets{approvals > 0 && <em>{approvals}</em>}</button>
       </nav>
       {tab === "chat" && <div className="spk-voicebar">
-        <span className="spk-voicebar-label"><AudioLines size={12} /> {phase === "hearing" ? "Hearing you…" : phase === "transcribing" ? "Got it…" : phase === "starting" ? "Opening the mic…" : phase === "error" ? "Mic unavailable" : wakeTurn.current && phase === "listening" ? "Listening — go ahead" : prefs.listen === "hold" ? (phase === "listening" ? "Hold the mic or Space to talk" : "Click here, then hold to talk") : prefs.conversation && phase === "listening" ? "Listening — just talk" : prefs.conversation ? "Mic paused — click Spark to listen" : "Tap the mic to talk"}</span>
+        <span className="spk-voicebar-label"><AudioLines size={12} /> {phase === "hearing" ? "Hearing you…" : phase === "transcribing" ? "Got it…" : phase === "starting" ? "Opening the mic…" : phase === "error" ? "Mic unavailable" : wakeTurn.current && phase === "listening" ? "Listening — go ahead" : prefs.listen === "hold" ? "Hold the mic or Space to talk · mic is off until you do" : prefs.conversation && phase === "listening" ? "Listening — just talk" : prefs.conversation ? "Mic paused — click Spark to listen" : "Tap the mic to talk"}</span>
         <div className="spk-listen" role="radiogroup" aria-label="How to talk">
           <button type="button" role="radio" aria-checked={prefs.listen === "auto"} className={prefs.listen === "auto" ? "is-on" : ""} onClick={() => setListen("auto")} title="Open mic: just talk">Auto</button>
           <button type="button" role="radio" aria-checked={prefs.listen === "hold"} className={prefs.listen === "hold" ? "is-on" : ""} onClick={() => setListen("hold")} title="Push-to-talk: hold the talk button or Space">Hold</button>
@@ -643,7 +643,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") close(); }} aria-label="Message" />
         {prefs.listen === "hold"
           ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" style={{ "--lvl": level } as CSSProperties}
-              onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.hold(); }}
+              onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.mode = "hold"; void mic.current.press(); }}
               onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
           : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={15} /></button>}
         <motion.button className="buddy-send" disabled={!!busy || !draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>
