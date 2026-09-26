@@ -5,6 +5,7 @@ import { logAction } from "../lib/spark-log";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand } from "../lib/radio";
+import { sparkBrain } from "../lib/spark-brain";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, AudioLines, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
@@ -13,7 +14,7 @@ import { api, followUp, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { upload, withAttachments } from "../lib/attachments";
-import { actFollowUp, buddyPrompt, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, actFollowUp, buddyPrompt, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
@@ -204,7 +205,15 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   useEffect(() => { const f = () => setFocused(true), b = () => setFocused(false); window.addEventListener("focus", f); window.addEventListener("blur", b); return () => { window.removeEventListener("focus", f); window.removeEventListener("blur", b); }; }, []);
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
   const wakeTurn = useRef(false); // "Hey Spark" opened the mic for one request
-  const [convo, setConvo] = useState<{ run: string; first: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
+  // Spark's brain: Claude, or a model on this Mac when Claude is out of usage (or you chose local). Never stuck.
+  const limited = useLive((s) => s.crew.limited);
+  const claudeOut = (model: string) => sparkBrain("auto", limited, model) === "local";
+  const onMac = sparkBrain(prefs.brain, limited, "claude-haiku-4-5") === "local";
+  const localPersona = { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, memory: memory.facts, goal: memory.goal };
+  const localSys = localSystem(localPersona);
+  // Pre-load the local model AND read Spark's instructions into its cache, so the first answer is quick.
+  useEffect(() => { if (onMac) void api("/api/local/warm", { body: { model: prefs.localModel, system: localSys } }).catch(() => {}); }, [onMac, prefs.localModel, localSys]);
+  const [convo, setConvo] = useState<{ run: string; first: string; runtime?: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
   const input = useRef<HTMLTextAreaElement>(null), thread = useRef<HTMLDivElement>(null);
   const convoRef = useRef(convo); convoRef.current = convo;
   const speech = useRef<SpeechQueue>(null as unknown as SpeechQueue); speech.current ??= new SpeechQueue();
@@ -239,7 +248,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     const out: Array<{ who: "you" | "spark"; text: string; live?: boolean; id?: number }> = convo ? [{ who: "you", text: convo.first }] : [];
     let streaming = "";
     for (const e of (events ?? []) as AnyEvent[]) {
-      if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]!.split("\n\n[app]")[0]! }); streaming = ""; }
+      if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, "").split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]!.split("\n\n[app]")[0]! }); streaming = ""; }
       else if (e.kind === "agent.delta") streaming += e.body.text;
       else if (e.kind === "agent.message") { out.push({ who: "spark", text: e.body.text, id: e.seq }); streaming = ""; }
     }
@@ -443,7 +452,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     setBusy(see ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
-      if (see || liveOn) { const shot = await capture(); atts = [await upload(shot.file)]; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
+      // On this Mac the model can't use the image — skip the upload, and only read the screen when the question is about it.
+      const localNow = prefs.brain === "local" || claudeOut("claude-sonnet-5");
+      if ((see || liveOn) && (!localNow || aboutScreen(q))) { const shot = await capture(); if (!localNow) atts = [await upload(shot.file)]; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length);
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
       const remembered = asksAboutEarlier(q) ? await recall(q) : "";
@@ -456,15 +467,31 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       const earlier = earlierToday(); rememberAsk(q);
       const language = prefs.language === "auto" ? "LANGUAGE: answer in the same language the user wrote or spoke (your voice can speak it)." : "";
       const appNow = [appNowBase, remembered, earlier, language].filter(Boolean).join("\n\n");
-      if (convo && status && !["failed", "cancelled"].includes(status)) {
+      const wantLocal = sparkBrain(prefs.brain, limited, screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5") === "local";
+      const brain = wantLocal ? "local" : "claude";
+      const recap = convo && (convo.runtime ?? "claude") !== brain
+        ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
+      const screenLines = screen?.text.length ? screenText(screen.text, 2500) : "";
+      // Keep the live part tiny (it's what the local model must read fresh): earlier-today only when you refer back.
+      const runningNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
+      const status = `radio ${rs.playing ? `playing ${rs.live?.name ?? rs.track?.title ?? "a station"}` : "off"} · ${runningNow} crew session${runningNow === 1 ? "" : "s"} working · ${Object.keys(crew.approvals).length} decision${Object.keys(crew.approvals).length === 1 ? "" : "s"} waiting`;
+      const liveLocal = localAsk(q, { now: new Date(), status, screen: screenLines, extra: [remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (you were on another model; carry on naturally):\n${recap}` : ""] });
+      if (wantLocal && !(convo && convo.runtime === "local" && status && !["failed", "cancelled"].includes(status))) {
+        setBrief(null);
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: `<spark-system>\n${localSys}\n</spark-system>\n${liveLocal}`, title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "local", model: prefs.localModel, labels: ["buddy"] } });
+        const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: "local" }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        setDraft(""); return;
+      }
+      if (wantLocal) { await followUp(convo!.run, `<spark-system>\n${localSys}\n</spark-system>\n${liveLocal}`); setDraft(""); return; }
+      if (convo && (convo.runtime ?? "claude") === brain && status && !["failed", "cancelled"].includes(status)) {
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? t : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
         await followUp(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, appNow), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "claude", model: screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
-        const next = { run: r.id, first: q.split("\n\n[screen]")[0]! }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, recap ? `${appNow}\n\nEARLIER IN THIS CONVERSATION (you were on another model; carry on naturally):\n${recap}` : appNow), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: wantLocal ? prefs.localModel : screen || isDesign(q) ? "claude-sonnet-5" : "claude-haiku-4-5", effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
     } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); }
@@ -523,6 +550,16 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     const t = setTimeout(() => { post({ type: "buddyDuck", on: false }); void radioCommand({ cmd: "unduck" }); }, 2000);
     return () => clearTimeout(t);
   }, [talking]);
+  // The question that ran into the limit isn't lost: once Claude is out, it's asked again on this Mac (once).
+  const rescued = useRef("");
+  useEffect(() => {
+    if (!onMac || !convo || (convo.runtime ?? "claude") === "local" || busy) return;
+    if (!status || !["queued", "failed", "paused"].includes(status)) return;
+    const last = messages.at(-1);
+    if (last?.who !== "you" || rescued.current === `${convo.run}:${last.text}`) return;
+    rescued.current = `${convo.run}:${last.text}`;
+    void askRef.current(last.text);
+  }, [onMac, status, convo, messages, busy]);
   const setListen = (listen: "auto" | "hold") => { setArmed(true); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, listen }); };
   const toggleTalk = () => { setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
   const reset = () => { stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
@@ -541,7 +578,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""}`} style={sparkVars(prefs.color)} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)}>
       <header className="spk-head">
         <span className={`spk-avatar is-${speaking ? "speaking" : phase === "hearing" ? "hearing" : working || busy ? "thinking" : "idle"}`}><SparkCharacter preferences={prefs} mood={mood} size={38} crop="portrait" /></span>
-        <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span className={`spk-status is-${status$.split(" ")[0]}`}><VoiceBars level={speaking ? 0.6 : level} active={speaking || phase === "hearing" || (prefs.conversation && phase === "listening")} />{status$}</span></div>
+        <div className="spk-who"><strong>{prefs.nickname || "Spark"}{onMac && <em className="spk-local" title={prefs.brain === "local" ? "Running on this Mac — private, no usage limits" : "Claude is out of usage, so I'm running on this Mac — no limits, still here"}>On this Mac</em>}</strong><span className={`spk-status is-${status$.split(" ")[0]}`}><VoiceBars level={speaking ? 0.6 : level} active={speaking || phase === "hearing" || (prefs.conversation && phase === "listening")} />{status$}</span></div>
         <button type="button" className={`spk-live ${liveOn ? "is-on" : ""}`} aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive} title={liveOn ? "Watching your screen live · click to stop" : "Watch my screen live (in memory only, nothing saved)"}><i />{liveOn ? "Live" : "Watch"}</button>
         <button type="button" aria-label={voice.on ? "Mute" : "Let it talk"} title={voice.on ? "Talks out loud · click to mute" : "Muted · click to hear answers"} className={voice.on ? "is-on" : ""} onClick={() => { speech.current.unlock(); if (voice.on) speech.current.stop(); saveBuddyVoice({ on: !voice.on }); }}>{voice.on ? <Volume2 size={14} /> : <VolumeX size={14} />}</button>
         {convo && !embedded && <button type="button" aria-label="Open in ShuaCrew" title="Open this conversation in ShuaCrew" onClick={() => post({ type: "buddyOpen", run: convo.run })}><Maximize2 size={14} /></button>}

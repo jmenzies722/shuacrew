@@ -165,6 +165,19 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   weatherRoutes(app);
   radioRoutes(app);
   screenMemoryRoutes(app);
+  // Load Spark's local model before it's needed (called when Claude runs out), so the first answer isn't a cold start.
+  app.post<{ Body: { model?: string; system?: string } }>("/api/local/warm", async (req, reply) => {
+    const local = options.runtimes.get("local") as (Runtime & { warm?: (m: string, minutes?: number, system?: string) => Promise<boolean>; installed?: () => Promise<string[]> }) | undefined;
+    if (!local?.warm || !local.installed) return reply.code(404).send({ error: "no local runtime" });
+    const have = await local.installed();
+    const model = req.body?.model && have.includes(req.body.model) ? req.body.model : have[0];
+    if (!model) return reply.code(409).send({ error: "No local model installed — run: ollama pull llama3.2:3b" });
+    return { model, ready: await local.warm(model, 30, typeof req.body?.system === "string" ? req.body.system.slice(0, 20_000) : undefined) };
+  });
+  app.get("/api/local", async () => {
+    const local = options.runtimes.get("local") as (Runtime & { installed?: () => Promise<string[]> }) | undefined;
+    return { available: local?.installed ? await local.installed() : [] };
+  });
   systemRoutes(app);
   if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
@@ -946,7 +959,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       rssMb: Math.round(process.memoryUsage().rss / 1e6),
       diskFreeGb: disk ? (disk.bavail * disk.bsize) / 1e9 : null,
       speech: options.speech?.status().state ?? null,
-      runtimesOut: [...options.runtimes.keys()].filter((id) => id !== "mock" && supervisor.limitedUntil(id) > Date.now()),
+      runtimesOut: [...options.runtimes.keys()].filter((id) => id !== "mock" && id !== "local" && supervisor.limitedUntil(id) > Date.now()),
       battery: null,
     });
     return {

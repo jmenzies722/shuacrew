@@ -21,3 +21,16 @@ it("tells Spark what's really there — members, ventures, the radio — and not
   expect(text).toContain("Rhea (Researcher)"); expect(text).toContain("Leash"); expect(text).toContain("playing Chillhop Radio");
   expect(shuacrewNow({ members: [], ventures: [], radio: { on: null, stations: [] } })).toContain("No crew members yet.");
 });
+
+import { localAsk, localSystem } from "./buddy";
+it("keeps Spark's local prompt compact and identical from call to call (so it caches)", () => {
+  const persona = { name: "Shua", tone: "chill" as const, length: "brief" as const, goal: "AI Platform Engineer", memory: ["Deploys on Fridays"] };
+  const a = localSystem(persona), b = localSystem({ ...persona });
+  expect(a).toBe(b);
+  expect(a.length).toBeLessThan(5600); // ~1,300 tokens, read once and cached, versus ~3,300 re-read for the full prompt
+  expect(a).toMatch(/radio/i);
+  expect(a).toMatch(/```do/); expect(a).toMatch(/Studio/); expect(a).toMatch(/AI Platform Engineer/);
+  const ask = localAsk("what time is it?", { now: new Date(2026, 8, 26, 9, 5) });
+  expect(ask.split("\n\n[screen]")[0]).toBe("what time is it?"); // the chat shows only the question
+  expect(ask).toMatch(/Saturday/);
+});

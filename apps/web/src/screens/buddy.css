@@ -205,3 +205,4 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 /* Push-to-talk: the button lights with your voice while you hold it. */
 .buddy-talk.is-hold { touch-action: none; user-select: none; -webkit-user-select: none; }
 .buddy-talk.is-hold.is-hearing { color: var(--on-accent, #fff); background: var(--amber); box-shadow: 0 0 0 calc(3px + var(--lvl, 0) * 10px) color-mix(in srgb, var(--amber) 25%, transparent); transform: scale(1.06); }
+.spk-local { margin-left: 8px; padding: 2px 7px; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; vertical-align: 2px; color: #4cc38a; background: rgba(76, 195, 138, .12); box-shadow: inset 0 0 0 1px rgba(76, 195, 138, .3); }

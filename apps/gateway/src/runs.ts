@@ -541,7 +541,7 @@ export class Supervisor {
     }
     const other =
       this.options.failover && moves < 3
-        ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock"), runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
+        ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local") /* the local model has no tools: never hand it crew work */, runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
     if (other) {
       this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${why} — moved to ${other}` }, { run });

@@ -95,3 +95,10 @@ it("reads run commands and keeps music off the mouse", () => {
   expect(buddyPrompt("play music", null)).toMatch(/never click a play button/i);
   expect(buddyPrompt("put on some lofi", null)).toMatch(/ShuaCrew Radio .* use radio/);
 });
+
+it("starts speaking at the first clause of a reply, but never chops a short opener", () => {
+  expect(nextSentences("The Studio page in ShuaCrew is your radio, where you can", 0).chunks).toEqual(["The Studio page in ShuaCrew is your radio,"]);
+  expect(nextSentences("Sure, I'll open", 0).chunks).toEqual([]);
+  const t = "The Studio page in ShuaCrew is your radio, where you can play lofi.", first = nextSentences(t, 0);
+  expect(nextSentences(t, first.upto, true).chunks).toEqual(["where you can play lofi."]); // the rest follows normally
+});

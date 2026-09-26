@@ -315,6 +315,8 @@ export function nextSentences(text: string, from: number, final = false): { chun
   let cut = 0;
   for (const m of tail.matchAll(/[.!?:](?=\s)|\n/g)) cut = m.index! + 1;
   if (final || fence >= 0) cut = tail.length;
+  // Start talking sooner: at the very start of a reply, the first clause (6+ words, up to a comma) goes out on its own.
+  if (!cut && from === 0) { const clause = /^\s*(?:\S+\s+){5,}?\S+?[,;—–](?=\s)/.exec(tail); if (clause) cut = clause[0].length; }
   const chunks = tail.slice(0, cut).split(/(?<=[.!?:])\s+|\n+/).map(spoken).filter((s) => /\w/.test(s));
   return { chunks, upto: from + cut };
 }
@@ -386,4 +388,38 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
 /** What goes back after they do a guided step: a fresh look, and the ask for what's next. */
 export function guideFollowUp(label: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }) {
   return `[guide] Done — I did “${label}”. A fresh screenshot is attached (${screen.width}×${screen.height}). What's the next step? Use one guide block, or guide {"done": true} if we're finished.${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}`;
+}
+
+/**
+ * Spark on a model running on this Mac: a compact prompt (a fraction of the full one) split into a STABLE part — the
+ * same text every time, so the local model reads it once and caches it — and a small live part per question.
+ */
+export function localSystem(p: Persona): string {
+  return [
+    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures, learning and radio. You're running on a model on their Mac right now (no usage limits).`,
+    `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Be accurate; if you don't know, say so.`,
+    "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
+    '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below} · radio {cmd: play|pause|resume|next|stop, station?: "lofi jazz"|"lofi hip hop"}',
+    "- media {command: play|pause|next|previous|play_query, query?, app?: Music|Spotify} · remember {text} · card {front, back} (a quiz card) · run {command} (a terminal command; risky ones ask first)",
+    "ShuaCrew pages (what each is for — answer questions about the app from this, never guess):",
+    ...SHUACREW_PAGES.map((x) => `- ${x.name} ${x.path}: ${x.about}`),
+    p.goal ? `Their career goal: ${p.goal}.` : "",
+    p.memory?.length ? `What you know about them: ${p.memory.slice(0, 8).join(" | ")}` : "",
+    "You can't see images; when the screen matters you're given its text.",
+    "Never claim something is playing, running or waiting unless the NOW line says so.",
+  ].filter(Boolean).join("\n");
+}
+/** The question first (the chat shows only that part), then the live context after a [screen] marker. */
+export function localAsk(q: string, live: { now: Date; screen?: string; extra?: string[]; status?: string }): string {
+  const context = [
+    `NOW: ${live.now.toLocaleString([], { weekday: "long", hour: "numeric", minute: "2-digit" })}${live.status ? ` · ${live.status}` : ""}.`,
+    live.screen ? `Their screen now (text):\n${live.screen.slice(0, 2500)}` : "",
+    ...(live.extra ?? []).filter(Boolean).map((x) => x.slice(0, 2500)),
+  ].filter(Boolean).join("\n\n");
+  return `${q}\n\n[screen]\n${context}`;
+}
+
+/** Is this question about what's on screen? (Local answers only read the screen's text when it is — it's slow to read.) */
+export function aboutScreen(q: string) {
+  return /\b(this|that|these|here|screen|window|page|tab|error|warning|message|code|line|button|click|looking at|see|showing|selected|explain)\b/i.test(q);
 }

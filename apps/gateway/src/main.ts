@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
-import { AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
+import { LocalRuntime, AcpRuntime, ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
 import { Memory } from "./memory.js";
 import { Crew } from "./crew.js";
 import { Terminals } from "./terminals.js";
@@ -39,6 +39,7 @@ export function dataDir(): string {
 
 interface RuntimeConfig {
   claude?: { authMode?: AuthMode; enabled?: boolean };
+  local?: { enabled?: boolean };
   codex?: { authMode?: AuthMode; enabled?: boolean };
   /** ACP agents are opt-in: nothing launches one unless it is listed here. */
   acp?: Array<{ id: string; label: string; command: string; args?: string[]; authMode?: AuthMode }>;
@@ -65,6 +66,8 @@ export async function registry(): Promise<Map<string, Runtime>> {
     const id = agent.id.startsWith("acp:") ? agent.id : `acp:${agent.id}`;
     runtimes.set(id, new AcpRuntime({ id, label: agent.label, command: agent.command, args: agent.args ?? [], authMode: agent.authMode }));
   }
+  // On this Mac (Ollama): Spark's fallback when Claude and Codex are out of usage. Never used for crew work.
+  if (config.local?.enabled !== false) runtimes.set("local", new LocalRuntime());
   if (process.env.SHUACREW_DEMO === "1") runtimes.set("mock", new MockRuntime());
   return runtimes;
 }
@@ -136,7 +139,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   rooms = new RoomCoordinator(store, supervisor, crew, runtimes);
   tools.rooms = rooms;
   tools.crew = crew;
-  tools.runtimeIds = () => [...runtimes.keys()].filter((id) => id !== "mock");
+  tools.runtimeIds = () => [...runtimes.keys()].filter((id) => id !== "mock" && id !== "local");
   const plays = new Plays(store, supervisor);
   ventures.startPlay = (input) => plays.start(input);
   const autonomy = {

@@ -16,5 +16,5 @@ export function earlierToday(): string {
   const d = read();
   if (!d.asks.length) return "";
   const t = (at: number) => new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return ["EARLIER TODAY the user asked you (use it when they refer back — \"that thing from earlier\"; don't bring it up otherwise):", ...d.asks.map((a) => `- ${t(a.at)}: ${a.q}`)].join("\n");
+  return ["EARLIER TODAY the user asked you (use it when they refer back — \"that thing from earlier\"; don't bring it up otherwise):", ...d.asks.slice(-6).map((a) => `- ${t(a.at)}: ${a.q.slice(0, 140)}`)].join("\n");
 }
