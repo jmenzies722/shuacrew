@@ -429,6 +429,28 @@ export function localSystem(p: Persona): string {
     "Never claim something is playing, running or waiting unless the NOW line says so.",
   ].filter(Boolean).join("\n");
 }
+/**
+ * After Spark opens something for a question ("what's the weather", "check the Lakers score"), it should read what
+ * opened and answer with the specifics, not stop at "opened it". Plain commands ("open Notes") need no look.
+ */
+export function looksForAnswer(q: string): boolean {
+  const t = q.toLowerCase();
+  return /\b(weather|forecast|temperature|rain|price|stock|score|news|headline|traffic|flight|hours|recipe|definition|meaning|who|what|when|where|which|how (much|many|long|far|old)|is it|are there|check|look up|find|search|compare|tell me|show me)\b/.test(t)
+    && !/^\s*(please\s+)?(open|launch|start|quit|close)\s+[\w .'-]{1,40}\s*$/.test(t);
+}
+
+/**
+ * How much model a turn needs: quick chat and commands stay fast; real thinking (code, debugging, planning, writing,
+ * comparing, anything long) gets the stronger model. The screen and design questions were already "balanced".
+ */
+export function turnTier(q: string, o: { screen: boolean; design: boolean }): "fast" | "balanced" | "frontier" {
+  if (o.design) return "balanced";
+  const t = q.toLowerCase();
+  const deep = /\b(debug|fix|refactor|implement|architecture|design|plan|strategy|write (a|an|the|me)|draft|essay|analy[sz]e|compare|trade-?offs?|explain why|prove|review|optimi[sz]e|algorithm|step[- ]by[- ]step)\b/.test(t)
+    || /```|\bfunction\b|=>|\bclass\b|stack trace|traceback/.test(q) || q.length > 280;
+  return deep || o.screen ? "balanced" : "fast";
+}
+
 const ENGINES: Record<string, string> = { claude: "Claude", codex: "Codex (OpenAI)", local: "a local model on this Mac" };
 /**
  * Who Spark actually is this turn. Sent every turn so a conversation that moved model (Claude out → local) never

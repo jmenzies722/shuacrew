@@ -22,7 +22,7 @@ export function getBuddyVoice() { return current; }
 const AHEAD = 2;          // sentences generating in parallel (more lets the engine finish them out of order)
 const LEAD = 0.18;        // seconds of buffer before the first sound; absorbs network/generation jitter
 
-interface Line { text: string; voiceId: string; speed: number; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean }
+interface Line { text: string; voiceId: string; speed: number; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean; heard?: boolean }
 
 export class SpeechQueue {
   private context?: AudioContext;
@@ -35,6 +35,9 @@ export class SpeechQueue {
   private speaking = false;
   private idleTimer?: ReturnType<typeof setTimeout>;
   onSpeaking?: (speaking: boolean) => void;
+  /** Each sentence the moment its sound starts (captions follow the voice, not the text stream); null when Spark stops. */
+  onCaption?: (line: { text: string; speed: number } | null) => void;
+  private captionTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private master?: GainNode;
   /** Measures what Spark is actually playing (after ducking), so the mic can tell its echo from you. */
@@ -111,6 +114,7 @@ export class SpeechQueue {
         source.buffer = buffer; source.connect(this.out()); // the engine already spoke at the chosen speed
         source.onended = () => { this.sources.delete(source); source.disconnect(); this.maybeIdle(); };
         source.start(this.at); this.sources.add(source);
+        if (!line.heard) { line.heard = true; const caption = { text: line.text, speed: line.speed }; const t = setTimeout(() => { this.captionTimers.delete(t); this.onCaption?.(caption); }, Math.max(0, (this.at - now) * 1000)); this.captionTimers.add(t); }
         this.at += buffer.duration;
       }
       if (!line.done) return;       // wait for more of this sentence before moving on
@@ -125,11 +129,12 @@ export class SpeechQueue {
     // A short grace period so a sentence arriving right after the last one doesn't flicker "speaking" off and on.
     this.idleTimer = setTimeout(() => { if (!this.sources.size && !this.lines.length) this.setSpeaking(false); }, 250);
   }
-  private setSpeaking(on: boolean) { if (this.speaking !== on) { this.speaking = on; this.onSpeaking?.(on); } }
+  private setSpeaking(on: boolean) { if (this.speaking !== on) { this.speaking = on; this.onSpeaking?.(on); if (!on) this.onCaption?.(null); } }
 
   stop() {
     this.abort.abort(); this.abort = new AbortController();
     this.lines = []; clearTimeout(this.idleTimer);
+    for (const t of this.captionTimers) clearTimeout(t); this.captionTimers.clear();
     // A quick fade (60 ms), not a hard cut mid-sound: stopping sounds deliberate, never like a glitch.
     const playing = [...this.sources]; this.sources.clear(); this.setSpeaking(false);
     const c = this.context, g = this.master?.gain;

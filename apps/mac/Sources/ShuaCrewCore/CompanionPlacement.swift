@@ -32,7 +32,7 @@ public enum CompanionPlacement {
 public enum NotchIsland {
     /// The widest the island grows past the housing, each side; the deepest it drops below it.
     public static let maxFlare: CGFloat = 150
-    public static let maxDrop: CGFloat = 320
+    public static let maxDrop: CGFloat = 380
 
     /// The camera housing, from the menu-bar strips either side of it and the safe-area inset (the cutout's real
     /// height, which can differ from the menu bar's by a point). Nil on a display without a notch.
@@ -53,6 +53,11 @@ public enum NotchIsland {
     /// Where the pointer opens it: generous sideways (the cutout's edges are easy to overshoot), a little below.
     public static func hoverTarget(housing: CGRect) -> CGRect {
         CGRect(x: housing.minX - 28, y: housing.minY - 12, width: housing.width + 56, height: housing.height + 12)
+    }
+    /// The open chat, hung from the notch: flush with the top of the screen, centred on the housing, kept on screen.
+    public static func chat(size: CGSize, housing: CGRect, screen: CGRect) -> CGRect {
+        let x = min(max(housing.midX - size.width / 2, screen.minX + 8), screen.maxX - 8 - size.width)
+        return CGRect(x: x, y: screen.maxY - min(size.height, screen.height - 8), width: size.width, height: min(size.height, screen.height - 8))
     }
     /// While open, the island itself (plus a small margin) keeps it open.
     public static func openTarget(housing: CGRect, flare: CGFloat, drop: CGFloat) -> CGRect {

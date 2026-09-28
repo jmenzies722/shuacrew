@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { actFollowUp, buddyPrompt, engineLine, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
+import { actFollowUp, buddyPrompt, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
   const reply = 'Click Save.\n```point {"x": 0.82, "y": 0.07, "label": "Save button"}```';
@@ -117,4 +117,17 @@ it("tells Spark which model it is on, and owns a local fallback's limits", () =>
   expect(fallback).toContain("Claude and Codex are unavailable");
   expect(fallback).toContain("can't see images, run crew sessions");
   expect(engineLine("local", "gpt-oss:20b", false)).toContain("switch Spark's brain to Auto");
+});
+it("reads the screen after opening something only when the ask wants an answer", () => {
+  expect(looksForAnswer("what's the weather in Austin")).toBe(true);
+  expect(looksForAnswer("check the Lakers score")).toBe(true);
+  expect(looksForAnswer("open Notes")).toBe(false);
+  expect(looksForAnswer("launch Visual Studio Code")).toBe(false);
+});
+it("routes each turn to the model it needs", () => {
+  expect(turnTier("pause the radio", { screen: false, design: false })).toBe("fast");
+  expect(turnTier("hi!", { screen: false, design: false })).toBe("fast");
+  expect(turnTier("help me debug this failing test", { screen: false, design: false })).toBe("balanced");
+  expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
+  expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });

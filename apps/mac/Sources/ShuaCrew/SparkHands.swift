@@ -216,6 +216,43 @@ enum SparkHands {
         }
     }
 
+    /// What Music or Spotify is playing, for the notch: title, artist, state, position and artwork. Reads only a player
+    /// that's already running (a `tell` would launch it), and fetches artwork once per track, shrunk to a small JPEG.
+    private static var artCache: (id: String, url: String)?
+    static func nowPlaying() -> [String: Any]? {
+        guard let app = runningPlayer() else { return nil }
+        let script = app == "Spotify" ? """
+            tell application "Spotify"
+              if player state is stopped then return "stopped"
+              set t to current track
+              return (player state as string) & tab & (name of t) & tab & (artist of t) & tab & (album of t) & tab & (player position as string) & tab & ((duration of t) / 1000 as string) & tab & (id of t) & tab & (artwork url of t)
+            end tell
+            """ : """
+            tell application "Music"
+              if player state is stopped then return "stopped"
+              set t to current track
+              return (player state as string) & tab & (name of t) & tab & (artist of t) & tab & (album of t) & tab & (player position as string) & tab & (duration of t as string) & tab & (persistent ID of t) & tab & ""
+            end tell
+            """
+        guard let out = runResult(script), out != "stopped" else { return nil }
+        let f = out.components(separatedBy: "\t")
+        guard f.count >= 8, !f[1].isEmpty else { return nil }
+        let number = { (s: String) in Double(s.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+        if artCache?.id != f[6] { artCache = (f[6], app == "Spotify" ? f[7] : musicArtwork() ?? "") }
+        return ["app": app, "playing": f[0] == "playing", "title": f[1], "artist": f[2], "album": f[3], "position": number(f[4]), "duration": number(f[5]), "art": artCache?.url ?? ""]
+    }
+    private static func musicArtwork() -> String? {
+        var error: NSDictionary?
+        guard let data = NSAppleScript(source: "tell application \"Music\" to get raw data of artwork 1 of current track")?.executeAndReturnError(&error).data, error == nil,
+              let image = NSImage(data: data), let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        let side = 160, small = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        guard let small else { return nil }
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: small)
+        rep.draw(in: NSRect(x: 0, y: 0, width: side, height: side)); NSGraphicsContext.restoreGraphicsState()
+        guard let jpeg = small.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else { return nil }
+        return "data:image/jpeg;base64,\(jpeg.base64EncodedString())"
+    }
+
     private static func runningPlayer() -> String? {
         let ids = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
         return ids.contains("com.spotify.client") ? "Spotify" : ids.contains("com.apple.Music") ? "Music" : nil

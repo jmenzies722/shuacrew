@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useScreenMemory, useWakeWord } from "../lib/screen-memory";
 import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
@@ -108,11 +109,13 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <FnKeyRow name={name} />
       <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
-      <SettingRow name="Desktop home" detail="Notch dock centers below the MacBook camera and opens downward. On other displays it sits at the top center. Free placement remembers where you dragged it." modified={prefs.desktopPlacement !== "free"}>
+      <SettingRow name="Desktop home" detail="MacBook notch turns the camera housing into a smart island: hover to open it, and the chat grows out of it. On other displays it sits at the top centre. Free placement remembers where you dragged it." modified={prefs.desktopPlacement !== "free"}>
         <Segmented label="Desktop home" value={prefs.desktopPlacement} onChange={(desktopPlacement) => set({ desktopPlacement })} options={[["free", "Free placement"], ["notch", "MacBook notch"]]} />
       </SettingRow>
+      {prefs.desktopPlacement === "notch" && <NotchLook prefs={prefs} set={set} name={name} />}
       <SettingRow name="Stay on top" detail={`In free placement, keep ${name} above other windows. The notch dock stays available above your workspace.`} modified={prefs.onTop}><Switch label="Stay on top" on={prefs.onTop} onChange={(onTop) => set({ onTop })} /></SettingRow>
       <SettingRow name="Follow my cursor" detail={`${name} rides beside your pointer wherever you work, like a buddy at your elbow. Clicks pass through it while it follows; press your ${name} shortcut to talk. It walks off to point at things and comes back.`} modified={!prefs.follow}><Switch label="Follow my cursor" on={prefs.follow} onChange={(follow) => set({ follow })} /></SettingRow>
+      <SettingRow name="Notice when I'm stuck" detail={`While live watching is on, ${name} glances at your screen's text every 15 seconds (on this Mac; no images kept). An error that won't go away, the same error coming back, or searching again and again: ${name} offers to walk you through it. Once, then it leaves you alone.`} modified={!prefs.notice}><Switch label="Notice when I'm stuck" on={prefs.notice} onChange={(notice) => set({ notice })} /></SettingRow>
       <SparkReach name={name} />
       <ChromeRow name={name} />
       <SettingRow name="Keep going on its own" detail={`Say “agent:” and a task (or let ${name} hand work to the crew) and it becomes a mission: ${name} stays with it, tells the crew to keep going when it stops early to ask or hits a failure (up to 3 times), and tells you when it's done. It never approves anything for you.`} modified={!prefs.persist}><Switch label="Keep going on its own" on={prefs.persist} onChange={(persist) => set({ persist })} /></SettingRow>
@@ -190,6 +193,30 @@ function ChatLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pat
     </SettingRow>
     <SettingRow name="Header" detail="Gradient washes the top of the window in your accent." modified={prefs.chatHeader !== "plain"}>
       <Segmented label="Header" value={prefs.chatHeader} onChange={(chatHeader) => set({ chatHeader })} options={[["plain", "Plain"], ["gradient", "Gradient"]]} />
+    </SettingRow>
+  </>;
+}
+
+/** Customize the notch: what the island shows and how it glows, with a live preview. */
+function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (patch: Partial<CompanionPreferences>) => void; name: string }) {
+  return <>
+    <h4 className="spark-h">Customize the notch</h4>
+    <div className="notch-look-preview buddy" data-notch-glow={prefs.notchGlow} aria-hidden>
+      <div className="shua-island is-live" style={{ "--hw": "120px", "--hh": "26px", "--flare": "96px", "--drop": prefs.notchCaptions ? "46px" : "0px" } as CSSProperties}>
+        <div className="shua-island-shape">
+          <div className="shua-island-ears"><span className="shua-island-ear"><i className="shua-island-face is-speaking" />{prefs.notchMedia && <i className="notch-look-art" />}</span><span className="shua-island-cam" /><span className="shua-island-ear is-live"><i className="shua-island-dot" /></span></div>
+          {prefs.notchCaptions && <div className="shua-island-live"><div className="notch-caption"><p className="notch-caption-now"><span className="is-said">Your build passed, </span><span className="is-said">and two </span><span>approvals are waiting.</span></p></div></div>}
+        </div>
+      </div>
+    </div>
+    <SettingRow name="Live captions" detail={`While ${name} talks, the notch shows the words as they're said, sentence by sentence, so you can read along when it says a lot.`} modified={!prefs.notchCaptions}><Switch label="Live captions" on={prefs.notchCaptions} onChange={(notchCaptions) => set({ notchCaptions })} /></SettingRow>
+    <SettingRow name="Now playing" detail="Music or Spotify in the notch: artwork, title, progress and play, pause and skip. It only reads a player that's already open." modified={!prefs.notchMedia}><Switch label="Now playing" on={prefs.notchMedia} onChange={(notchMedia) => set({ notchMedia })} /></SettingRow>
+    <SettingRow name="Mic & screen controls" detail={`Turn the mic and live screen watching on or off right from the notch and the chat's top edge.`} modified={!prefs.notchControls}><Switch label="Mic and screen controls" on={prefs.notchControls} onChange={(notchControls) => set({ notchControls })} /></SettingRow>
+    <SettingRow name="Glow" detail="Accent lights the island's edge while it's open or talking; Spectrum runs your palette's gradient round it." modified={prefs.notchGlow !== "accent"}>
+      <Segmented label="Glow" value={prefs.notchGlow} onChange={(notchGlow) => set({ notchGlow })} options={[["off", "Off"], ["accent", "Accent"], ["spectrum", "Spectrum"]]} />
+    </SettingRow>
+    <SettingRow name="Island size" detail="Roomy shows radio, sessions and your focus timer when you hover; Compact keeps just ask, controls, captions and music." modified={prefs.notchSize !== "roomy"}>
+      <Segmented label="Island size" value={prefs.notchSize} onChange={(notchSize) => set({ notchSize })} options={[["roomy", "Roomy"], ["compact", "Compact"]]} />
     </SettingRow>
   </>;
 }

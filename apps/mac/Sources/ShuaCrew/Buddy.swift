@@ -333,12 +333,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let frame = isMini && !isOpen
             ? CompanionPlacement.follow(cursor: pointer, size: size, visible: pointerScreen.visibleFrame)   // the fn card opens beside your pointer
             : docked
-            ? CompanionPlacement.dock(size: actual, screen: screen.frame, visible: screen.visibleFrame, topInset: screen.safeAreaInsets.top)
+            ? NotchIsland.chat(size: actual, housing: notchHousing ?? NotchIsland.virtualHousing(screen: screen.frame, menuBar: screen.frame.maxY - screen.visibleFrame.maxY), screen: screen.frame)
             : CompanionPlacement.clamp(NSRect(x: corner.x - size.width, y: corner.y, width: size.width, height: size.height), to: screen.visibleFrame)
         // Dock mode uses real web buttons; the free-placement character keeps its native drag grip.
         grip.isHidden = docked || isOpen
-        panel.level = docked || staysOnTop || isMini ? .floating : .normal
+        panel.level = docked ? .statusBar : staysOnTop || isMini ? .floating : .normal
         panel.setFrame(frame, display: true, animate: false)
+        // The open chat grows out of the notch: the page draws the housing's black cap at the top, sized to the real cutout.
+        if docked, let housing = notchHousing { web.evaluateJavaScript("window.buddy && window.buddy.notch && window.buddy.notch({ w: \(Int(housing.width)), h: \(Int(housing.height)), real: \(screen.safeAreaInsets.top > 10) })") }
         if isMini { raise() }
     }
 
@@ -484,6 +486,17 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let sender { teaching.handle(body, to: sender) }
         case "buddyCapture":
             Task { await capture(to: sender) }
+        case "buddyGlance":
+            // Proactive help: a quiet look at the live frame's TEXT only (no image leaves the Mac), so Spark can notice when
+            // you're stuck. Only while you've turned on live watching, never on password managers or ShuaCrew itself.
+            guard live.running, let frame = live.frame(), let front = NSWorkspace.shared.frontmostApplication,
+                  front.bundleIdentifier != Bundle.main.bundleIdentifier, !SparkHands.offLimits.contains(front.bundleIdentifier ?? "") else { break }
+            let app = front.localizedName ?? ""
+            Task {
+                let lines = await ScreenText.read(ScreenText.scaled(frame, longest: 1600) ?? frame, timeout: 3)
+                let text = lines.compactMap { $0["t"] as? String }.joined(separator: "\n")
+                self.send("shuacrew:glance", ["app": app, "text": String(text.prefix(5000))], to: sender)
+            }
         case "buddyScreenAccess":
             send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)], to: sender)
         case "buddyPoint":
@@ -531,6 +544,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // The page measured its open island: keep the hover area matched to what you actually see.
             if let f = body["flare"] as? Double { islandFlare = CGFloat(f) }
             if let d = body["drop"] as? Double { islandDrop = CGFloat(d) }
+        case "buddyNowPlaying":
+            // The notch asks what Music or Spotify is playing (only while it shows media).
+            send("shuacrew:media", SparkHands.nowPlaying() ?? ["title": ""])
         case "buddyNookFocus":
             // You clicked into the nook's Ask box: let it take the keyboard so you can type.
             NSApp.activate(); panel.makeKey()

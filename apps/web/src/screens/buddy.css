@@ -483,3 +483,90 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .shua-island .spark-nook-tile b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
 .shua-island .spark-nook-say { -webkit-line-clamp: 3; }
 @media (prefers-reduced-motion: reduce) { .shua-island-shape, .shua-island-body { transition: none; } }
+
+/* ── The smart notch ────────────────────────────────────────────────────────────────────────────── */
+/* Live captions: while Spark talks with the island tucked in, it widens a touch and captions the words as they're said. */
+.shua-island-live { display: none; padding: 2px 18px 0; }
+.shua-island.is-live .shua-island-live { display: block; animation: nook-in .3s ease both; }
+.shua-island.is-live .shua-island-shape { --r: 22px; }
+.notch-caption { display: grid; gap: 1px; font-size: 12.5px; line-height: 1.4; text-align: center; }
+.notch-caption p { margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.notch-caption-past { color: #6f6979; font-size: 11px; -webkit-line-clamp: 1 !important; }
+.notch-caption-now span { color: #4a4552; transition: color .18s ease; }
+.notch-caption-now span.is-said { color: #f4f1f8; }
+.shua-island-body .notch-caption { text-align: left; padding: 0 2px; }
+.shua-island-body .notch-caption p { -webkit-line-clamp: 3; }
+@keyframes nook-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Artwork in the tucked-in ear while music plays. */
+.shua-island-art { width: 20px; height: 20px; border-radius: 5px; object-fit: cover; flex: none; animation: nook-in .3s ease both; }
+
+/* Ask + mic + watch in one row. */
+.spark-nook-row { display: flex; align-items: center; gap: 6px; }
+.spark-nook-row .spark-nook-ask { flex: 1; min-width: 0; }
+.spark-nook-toggle { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 12px; color: #a39cae; background: #111014; box-shadow: inset 0 0 0 1px #26222d; transition: color .15s, background .15s, box-shadow .15s; }
+.spark-nook-toggle:hover { color: #f1eef5; }
+.spark-nook-toggle.is-on { color: #fff; background: color-mix(in srgb, var(--amber) 30%, #111014); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent), 0 0 14px -4px var(--accent-glow, var(--amber)); }
+.spark-nook-toggle:disabled { opacity: .5; }
+
+/* Now playing: artwork, title, a progress line and transport. */
+.spark-nook-media { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px 8px 8px; border-radius: 14px; background: linear-gradient(180deg, #141218, #0c0b0f); box-shadow: inset 0 0 0 1px #221f28; }
+.spark-nook-media > img, .spark-nook-media > i { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; display: grid; place-items: center; color: #8d8797; background: #1d1a22; box-shadow: 0 6px 16px -8px #000; }
+.spark-nook-media-text { display: grid; gap: 2px; min-width: 0; }
+.spark-nook-media-text b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spark-nook-media-text small { font-size: 11px; color: #8d8797; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spark-nook-bar { display: block; height: 3px; margin-top: 5px; border-radius: 3px; background: #26222d; overflow: hidden; }
+.spark-nook-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--accent-grad, var(--amber)); transition: width 1.4s linear; }
+.spark-nook-ctl.is-media button { width: 28px; min-width: 28px; height: 28px; padding: 0; border-radius: 50%; }
+.spark-nook-ctl.is-media button.is-main { width: 32px; height: 32px; color: #000; background: #f1eef5; }
+
+/* Edge glow while Spark is talking or working (Settings → Notch). */
+.buddy[data-notch-glow="accent"] .shua-island:is(.is-live, .is-open) .shua-island-shape,
+.buddy[data-notch-glow="accent"] .spk-pop.is-notched { box-shadow: 0 24px 60px -22px rgba(0,0,0,.9), 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent), 0 10px 40px -12px var(--accent-glow, var(--amber)); }
+.buddy[data-notch-glow="spectrum"] .shua-island:is(.is-live, .is-open) .shua-island-shape::after,
+.buddy[data-notch-glow="spectrum"] .spk-pop.is-notched::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--ring, 0deg), var(--amber), var(--accent-2, #ff4fa3), var(--accent-3, #4fc3ff), var(--amber));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: ring-turn 5s linear infinite; }
+.buddy[data-notch-size="compact"] .shua-island.is-open .spark-nook-tiles { display: none; }
+
+/* The open chat grows out of the notch: one black shape, flush with the top of the screen, the chat inset inside it. */
+.buddy.is-docked.is-open { padding: 0; }
+.buddy.is-docked .spk-pop.is-notched { position: relative; width: calc(100% - 20px); margin: 0 10px; padding: 0 8px 8px; background: #000; border-radius: 0 0 30px 30px; transform-origin: top center;
+  box-shadow: 0 30px 70px -24px rgba(0,0,0,.9), inset 0 -1px 0 color-mix(in srgb, var(--amber) 40%, transparent); }
+.spk-pop.is-notched::before { content: ""; position: absolute; top: 0; left: -10px; right: -10px; height: 10px; pointer-events: none;
+  background: radial-gradient(circle at 0 100%, transparent 9.5px, #000 10px) left / 10px 10px no-repeat, radial-gradient(circle at 100% 100%, transparent 9.5px, #000 10px) right / 10px 10px no-repeat; }
+.spk-pop.is-notched > .buddy-card { border-radius: 22px; }
+.shua-chat-cap { display: grid; grid-template-columns: 1fr var(--hw) 1fr; align-items: center; height: var(--hh); flex: none; color: #f2eff6; }
+.shua-chat-cap > span { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 6px; }
+.shua-chat-cap .is-live { justify-content: flex-end; gap: 4px; }
+.shua-chat-cap strong { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.shua-chat-cap button { display: grid; place-items: center; width: 26px; height: 24px; border-radius: 8px; color: #a39cae; }
+.shua-chat-cap button:hover { color: #fff; background: #1d1a22; }
+.shua-chat-cap button.is-on { color: #fff; background: color-mix(in srgb, var(--amber) 32%, #1d1a22); }
+.shua-chat-caption { padding: 2px 10px 8px; }
+@media (prefers-reduced-motion: reduce) { .notch-caption-now span { transition: none; } .shua-island-live, .shua-island-art { animation: none; } }
+:root[data-motion="reduced"] .buddy .spk-pop.is-notched::after, :root[data-motion="reduced"] .buddy .shua-island-shape::after { animation: none; }
+/* Settings → Customize the notch: a small live preview of the island. */
+.notch-look-preview.buddy { position: relative; inset: auto; display: block; height: 96px; margin: 4px 0 10px; padding: 0; border-radius: 14px; overflow: hidden;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 10%, var(--sunken)), var(--sunken)); box-shadow: inset 0 0 0 1px var(--line); }
+.notch-look-preview .shua-island { pointer-events: none; }
+.notch-look-preview .shua-island-face { background: var(--accent-grad, var(--amber)); }
+.notch-look-art { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #ff9f0a, #bf5af2); }
+/* The island is always night-black, whatever the app theme: its text, tiles and footer carry their own inks. */
+.shua-island-body, .shua-island-live { color: #f1eef5; }
+.shua-island-body footer { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; color: #6f6979; }
+.shua-island-body footer button { height: 24px; padding: 0 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; color: #fff; background: var(--accent-grad, var(--amber)); }
+/* Open, the chat's own cap is the island: the tucked-in one steps aside. */
+.buddy.is-docked.is-open > .shua-island { display: none; }
+/* The glow ring never draws along the top: that edge is the screen's. */
+.buddy[data-notch-glow="spectrum"] .shua-island:is(.is-live, .is-open) .shua-island-shape::after,
+.buddy[data-notch-glow="spectrum"] .spk-pop.is-notched::after { inset: -2px 0 0 0; }
+/* Stuck? One gentle offer: a hint in the tucked-in island, the choice when you hover. */
+.shua-island-hint { margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: color-mix(in srgb, var(--amber) 45%, #fff); }
+.spark-nook-stuck { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 9px 10px; border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 22%, #141218), #0c0b0f); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+.spark-nook-stuck > div { display: grid; gap: 2px; min-width: 0; }
+.spark-nook-stuck b { font-size: 12.5px; }
+.spark-nook-stuck small { font-size: 11px; color: #a39cae; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spark-nook-stuck button { height: 26px; padding: 0 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; color: #e8e4ee; background: #1d1a22; }
+.spark-nook-stuck button.is-go { color: #fff; background: var(--accent-grad, var(--amber)); }

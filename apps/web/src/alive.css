@@ -99,3 +99,17 @@
 }
 :root[data-motion="reduced"] :is(.hero-sheet .composer-box, .spk .chat-composer, .terminal-ask):focus-within,
 :root[data-motion="reduced"] :is(.hub-badge.is-live, .side-row em.is-live, .logo-mark .logo-orbit, .logo-mark .logo-core) { animation: none !important; }
+
+/* ── Spark, full screen (⌘⇧J): the side panel takes the whole workspace, the conversation centred and roomy ── */
+#main { position: relative; }
+.spark-side.is-full { position: absolute; inset: 0; z-index: 30; width: auto !important; background: var(--ink); }
+.spark-side.is-full .spark-side-inner { width: 100% !important; padding: var(--gutter); }
+.spk.is-full { border-radius: var(--frame-radius, 18px); background: radial-gradient(70% 50% at 50% 0%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 70%), var(--panel); }
+.spk.is-full .spk-head { padding-inline: max(20px, calc((100% - 860px) / 2)); }
+.spk.is-full :is(.spk-thread, .spk-missions, .spk-connection-notice, .spk-watch-banner, .spk-mic-status) { padding-inline: max(20px, calc((100% - 820px) / 2)); }
+.spk.is-full .chat-composer { width: min(820px, calc(100% - 40px)); margin-inline: auto; margin-bottom: 18px; }
+.spk.is-full .spk-hello { padding-top: 6vh; }
+.spk.is-full .spk-hello h2 { font-size: 34px; }
+.spk.is-full .spk-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 680px; margin-inline: auto; }
+.spk.is-full .buddy-msg { font-size: 15px; line-height: 1.6; }
+.spk-full-toggle[aria-pressed="true"] { color: var(--amber); }

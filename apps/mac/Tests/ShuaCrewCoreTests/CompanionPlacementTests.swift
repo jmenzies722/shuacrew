@@ -59,3 +59,13 @@ import Testing
     let v = NotchIsland.virtualHousing(screen: CGRect(x: 0, y: 0, width: 1920, height: 1080), menuBar: 25)
     #expect(v.midX == 960 && v.maxY == 1080)
 }
+@Test func notchChatHangsFromTheHousing() {
+    let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117), housing = CGRect(x: 754, y: 1079, width: 220, height: 38)
+    let chat = NotchIsland.chat(size: CGSize(width: 440, height: 640), housing: housing, screen: screen)
+    #expect(chat.maxY == screen.maxY)                        // flush with the top: grows out of the notch, no gap
+    #expect(abs(chat.midX - housing.midX) < 0.001)
+    let tall = NotchIsland.chat(size: CGSize(width: 440, height: 5000), housing: housing, screen: screen)
+    #expect(tall.minY >= screen.minY)                        // never taller than the screen
+    let edge = NotchIsland.chat(size: CGSize(width: 440, height: 640), housing: CGRect(x: 1700, y: 1079, width: 20, height: 38), screen: screen)
+    #expect(edge.maxX <= screen.maxX)                        // kept on screen
+}

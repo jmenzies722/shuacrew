@@ -31,7 +31,7 @@ import { sparkVars } from "../lib/spark-color";
 import { CompactRail, HubSidebar, HubTabs, setSidebarWide, useSidebarWide } from "./HubNav";
 import { Welcome, welcomed } from "../components/Welcome";
 import { Buddy } from "../screens/Buddy";
-import { setSparkPanel, toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
+import { setSparkFull, setSparkPanel, toggleSparkFull, toggleSparkPanel, useSparkFull, useSparkPanel } from "../lib/spark-panel";
 import { WorkspaceSpark } from "../components/WorkspaceSpark";
 import "../polish.css";
 import { RadioHost } from "../components/NowPlaying";
@@ -119,14 +119,17 @@ export function Shell() {
 
 /** Spark inside the app: the same assistant and conversation as on the desktop, as a side panel. ⌘J. */
 function SparkSide() {
-  const open = useSparkPanel();
+  const open = useSparkPanel(), full = useSparkFull();
   useEffect(() => {
-    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); toggleSparkPanel(); } };
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); if (e.shiftKey) toggleSparkFull(); else toggleSparkPanel(); }
+      else if (e.key === "Escape" && full && !e.defaultPrevented) setSparkFull(false);
+    };
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
-  }, []);
-  return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className="spark-side" aria-label="Spark"
+  }, [full]);
+  return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Spark"
     initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
-    <div className="spark-side-inner"><Buddy embedded onClose={() => setSparkPanel(false)} /></div>
+    <div className="spark-side-inner"><Buddy embedded full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
   </motion.aside>}</AnimatePresence>;
 }
 

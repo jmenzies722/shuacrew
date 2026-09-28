@@ -31,6 +31,10 @@ export interface CompanionPreferences {
   persist: boolean;
   /** How the chat window looks: solid (default) or frosted glass; its tone, corners, text size and header. */
   chatStyle: "solid" | "glass"; chatTone: "theme" | "deep" | "accent"; chatCorners: "round" | "soft" | "square"; chatText: "s" | "m" | "l"; chatHeader: "plain" | "gradient";
+  /** The notch island: live captions while Spark talks, what's playing (with artwork), mic + screen controls, its edge glow and size. */
+  /** Notice when I'm stuck: while live watching is on, Spark glances at the screen's text and offers help, unasked. */
+  notice: boolean;
+  notchCaptions: boolean; notchMedia: boolean; notchControls: boolean; notchGlow: "off" | "accent" | "spectrum"; notchSize: "compact" | "roomy";
 }
 export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
 /** Retain saved legacy companions without offering them as new robot choices. */
@@ -56,7 +60,9 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) ? v.modelChoice.slice(0,160) : "", brain: choice("brain", ["auto", "local"], "auto"), localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
-    chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain") };
+    chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
+    notice: v.notice !== false, notchCaptions: v.notchCaptions !== false, notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

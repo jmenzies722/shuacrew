@@ -151,6 +151,12 @@ export function Guide() {
             { title: "A live welcome", where: "Chat window", body: "A greeting for the time of day, a Right now strip from what's really happening, and suggestions that change with it. Tap to ask." },
             { title: "Quick replies", where: "Under each answer", body: "Tell me more, Make it shorter, Show me on screen, Do it for me: the next step in one tap, without typing." },
             { title: "Your chat, your look", where: "Settings → Presence & brain", body: "Solid or Glass, Theme / Deep / Accent tone, Round / Soft / Square corners, text size and a gradient header, previewed live." },
+            { title: "The smart notch", where: "Settings → Desktop home → MacBook notch", body: "The camera housing becomes a Dynamic Island. Hover to open it: ask, mic and screen-watch toggles, what Music or Spotify is playing (artwork, progress, play/pause/skip), the radio, your working sessions and your focus timer. Open the chat and it grows out of the notch. Customize captions, now playing, controls, glow and size in Settings." },
+            { title: "Live captions", where: "The notch, while it talks", body: "Every sentence appears the moment it's spoken and lights up word by word, so you can read along when it says a lot." },
+            { title: "Notices when you're stuck", where: "Live watching on", body: "It glances at your screen's text (on this Mac, no images kept). An error that won't go away, the same error coming back, or searching again and again: it offers to walk you through it, once. Not now keeps it quiet for half an hour." },
+            { title: "Reads what it opens", where: "“What's the weather?”", body: "When it opens a page or app to answer you, it looks at what opened and tells you the specifics: the numbers, names and times." },
+            { title: "Knows its own model", where: "Status pill", body: "Each turn goes to the model it needs: quick chat stays fast; code, planning and writing get a stronger one. It always says which model it's on. If Claude and Codex are both out, it tells you it's on this Mac and what it can't do yet." },
+            { title: "Full screen", where: "⌘⇧J · Esc to leave", body: "Spark takes the whole window: the same conversation, roomy and centred, for long talks, lessons and diagrams." },
           ]} />
         </Section>
 

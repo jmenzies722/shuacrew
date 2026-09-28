@@ -6,6 +6,11 @@ const listeners = new Set<() => void>();
 export function setSparkPanel(next: boolean) { open = next; try { localStorage.setItem(KEY, next ? "1" : "0"); } catch { /* ignore */ } listeners.forEach((l) => l()); }
 export function toggleSparkPanel() { setSparkPanel(!open); }
 export function useSparkPanel() { return useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l); }; }, () => open, () => open); }
+/** Full screen: Spark takes the whole workspace (same conversation), for long talks, teaching and diagrams. Not remembered. */
+let full = false;
+export function setSparkFull(next: boolean) { full = next; if (next && !open) setSparkPanel(true); else listeners.forEach((l) => l()); }
+export function toggleSparkFull() { setSparkFull(!full); }
+export function useSparkFull() { return useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l); }; }, () => full && open, () => full && open); }
 
 // A user-selected suggestion survives mounting the side panel. It never submits a turn.
 let suggestion: string | null = null;
