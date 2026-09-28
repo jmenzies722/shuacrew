@@ -29,6 +29,8 @@ export interface CompanionPreferences {
   follow: boolean;
   /** Keep going on its own: work handed to the crew becomes a mission Spark stays with to the end (on by default). */
   persist: boolean;
+  /** How the chat window looks: solid (default) or frosted glass; its tone, corners, text size and header. */
+  chatStyle: "solid" | "glass"; chatTone: "theme" | "deep" | "accent"; chatCorners: "round" | "soft" | "square"; chatText: "s" | "m" | "l"; chatHeader: "plain" | "gradient";
 }
 export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
 /** Retain saved legacy companions without offering them as new robot choices. */
@@ -52,7 +54,9 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
     desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
     modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) ? v.modelChoice.slice(0,160) : "", brain: choice("brain", ["auto", "local"], "auto"), localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
-    follow: v.follow !== false, persist: v.persist !== false };
+    follow: v.follow !== false, persist: v.persist !== false,
+    chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
+    chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

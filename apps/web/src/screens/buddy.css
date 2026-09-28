@@ -382,3 +382,35 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spk .spk-hello-avatar { width: 64px; height: 64px; border-radius: 20px; }
 .spk .spk-starters { gap: 5px; margin-top: 6px; }
 .spk .spk-starters button { min-height: 34px; padding: 6px 12px; }
+
+/* ── Chat window look (Settings → Spark → Chat window) ──────────────────────────────────────── */
+.buddy-card.spk { --chat-bg: var(--panel); --chat-radius: 20px; --chat-text: 13.5px; }
+.buddy-card.spk[data-chat-tone="deep"] { --chat-bg: var(--sunken); }
+.buddy-card.spk[data-chat-tone="accent"] { --chat-bg: color-mix(in srgb, var(--amber) 10%, var(--panel)); }
+.buddy-card.spk[data-chat-corners="soft"] { --chat-radius: 12px; }
+.buddy-card.spk[data-chat-corners="square"] { --chat-radius: 6px; }
+.buddy-card.spk[data-chat-text="s"] { --chat-text: 12.5px; }
+.buddy-card.spk[data-chat-text="l"] { --chat-text: 15px; }
+/* Solid (default): opaque in every palette, even Frost — the panel colour laid over the solid page ink. */
+.buddy-card.spk[data-chat-style="solid"] { background: linear-gradient(var(--chat-bg), var(--chat-bg)), var(--ink) !important; }
+.buddy-card.spk[data-chat-style="glass"] { background: color-mix(in srgb, var(--chat-bg) 68%, transparent) !important; }
+/* Blur set without !important (the minifier drops important backdrop-filters); the doubled attribute outranks the base rule. */
+.buddy-card.spk[data-chat-style="solid"][data-chat-style] { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.buddy-card.spk[data-chat-style="glass"][data-chat-style] { -webkit-backdrop-filter: blur(28px) saturate(1.6); backdrop-filter: blur(28px) saturate(1.6); }
+.buddy-card.spk[data-chat-corners] { border-radius: var(--chat-radius) !important; }
+.buddy-card.spk[data-chat-text] :is(.buddy-msg, .chat-composer textarea) { font-size: var(--chat-text); }
+.buddy-card.spk[data-chat-header="gradient"] .spk-head { background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 22%, transparent), color-mix(in srgb, var(--accent-2, var(--amber)) 14%, transparent) 70%, transparent); }
+/* Floating: on the desktop the card sits inside the panel with a margin and a real shadow. */
+.buddy.is-open:not(.is-docked):not(.is-embedded) .spk-pop { box-sizing: border-box; padding: 8px; }
+.buddy.is-open:not(.is-docked):not(.is-embedded) .buddy-card.spk { box-shadow: 0 0 0 1px var(--line-strong), 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset, 0 22px 48px -16px rgba(0,0,0,.65), 0 0 0 6px color-mix(in srgb, var(--amber) 5%, transparent) !important; }
+
+/* The live preview in Settings. */
+.chat-look-preview { display: grid; place-items: center; padding: 22px 16px; margin: 4px 0 6px; border-radius: 14px; overflow: hidden;
+  background: radial-gradient(40% 70% at 20% 30%, color-mix(in srgb, var(--amber) 55%, transparent), transparent 70%), radial-gradient(40% 70% at 80% 70%, color-mix(in srgb, var(--accent-2, var(--amber)) 50%, transparent), transparent 70%), repeating-linear-gradient(45deg, var(--raised) 0 10px, var(--sunken) 10px 20px); }
+.chat-look-preview .buddy-card.spk { width: min(320px, 100%); max-height: none; animation: none; box-shadow: 0 0 0 1px var(--line-strong), 0 18px 40px -16px rgba(0,0,0,.6); }
+.chat-look-preview .spk-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.chat-look-preview .spk-head b { font-size: 13px; }
+.chat-look-preview .spk-thread { display: grid; gap: 8px; padding: 10px 12px 12px; }
+.chat-look-preview .spk-row { display: flex; } .chat-look-preview .spk-row.is-you { justify-content: flex-end; }
+.chat-look-preview .buddy-msg { max-width: 85%; padding: 8px 11px; border-radius: 12px; line-height: 1.45; }
+.chat-look-preview .buddy-msg.is-spark { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); }

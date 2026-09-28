@@ -8,6 +8,8 @@ import { parseCompanion, saveCompanion, ROBOT_CHARACTERS, SPARK_HOTKEYS, useComp
 import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
+import "../screens/buddy.css";
+import "../alive.css";
 import { summary, useSparkLog } from "../lib/spark-log";
 import { resetWelcome } from "./Welcome";
 
@@ -115,6 +117,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <ChromeRow name={name} />
       <SettingRow name="Keep going on its own" detail={`Say “agent:” and a task (or let ${name} hand work to the crew) and it becomes a mission: ${name} stays with it, tells the crew to keep going when it stops early to ask or hits a failure (up to 3 times), and tells you when it's done. It never approves anything for you.`} modified={!prefs.persist}><Switch label="Keep going on its own" on={prefs.persist} onChange={(persist) => set({ persist })} /></SettingRow>
       <SettingRow name="Size on the desktop" modified={prefs.size !== "m"}><Segmented label="Size" value={prefs.size} onChange={(size) => set({ size })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} /></SettingRow>
+      <ChatLook prefs={prefs} set={set} name={name} />
 
     </section>}
 
@@ -161,6 +164,36 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
 }
 
 /** How Spark has actually done for you: every action it took, and whether it worked. */
+/** The chat window's look: solid or glass, tone, corners, text size, header — with a live preview. */
+function ChatLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (patch: Partial<CompanionPreferences>) => void; name: string }) {
+  return <>
+    <div className="chat-look-preview" aria-hidden>
+      <section className="buddy-card spk" data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader}>
+        <header className="spk-head"><b>{name}</b><span className="spk-status spk-pill"><i className="spk-dot" />Ready</span></header>
+        <div className="spk-thread">
+          <div className="spk-row is-you"><div className="buddy-msg is-you">Anything I should know this morning?</div></div>
+          <div className="spk-row"><div className="buddy-msg is-spark">Two approvals are waiting, and your mission finished overnight. Want the summary?</div></div>
+        </div>
+      </section>
+    </div>
+    <SettingRow name="Chat window" detail="Solid is opaque and easy to read over anything. Glass lets your desktop show through, frosted." modified={prefs.chatStyle !== "solid"}>
+      <Segmented label="Chat window" value={prefs.chatStyle} onChange={(chatStyle) => set({ chatStyle })} options={[["solid", "Solid"], ["glass", "Glass"]]} />
+    </SettingRow>
+    <SettingRow name="Tone" detail="Theme follows your palette; Deep is darker and calmer; Accent tints it with your accent colour." modified={prefs.chatTone !== "theme"}>
+      <Segmented label="Tone" value={prefs.chatTone} onChange={(chatTone) => set({ chatTone })} options={[["theme", "Theme"], ["deep", "Deep"], ["accent", "Accent"]]} />
+    </SettingRow>
+    <SettingRow name="Corners" modified={prefs.chatCorners !== "round"}>
+      <Segmented label="Corners" value={prefs.chatCorners} onChange={(chatCorners) => set({ chatCorners })} options={[["round", "Round"], ["soft", "Soft"], ["square", "Square"]]} />
+    </SettingRow>
+    <SettingRow name="Text size" modified={prefs.chatText !== "m"}>
+      <Segmented label="Text size" value={prefs.chatText} onChange={(chatText) => set({ chatText })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} />
+    </SettingRow>
+    <SettingRow name="Header" detail="Gradient washes the top of the window in your accent." modified={prefs.chatHeader !== "plain"}>
+      <Segmented label="Header" value={prefs.chatHeader} onChange={(chatHeader) => set({ chatHeader })} options={[["plain", "Plain"], ["gradient", "Gradient"]]} />
+    </SettingRow>
+  </>;
+}
+
 /** Spark for Chrome: the pairing key to paste into the extension once, and how to install it. */
 function ChromeRow({ name }: { name: string }) {
   const [key, setKey] = useState(""), [shown, setShown] = useState(false), [copied, setCopied] = useState(false);
