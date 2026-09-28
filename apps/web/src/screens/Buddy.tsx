@@ -21,7 +21,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionBrief, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, actFollowUp, buddyPrompt, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, actFollowUp, buddyPrompt, engineLine, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
@@ -656,7 +656,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       });
       const earlier = earlierToday(); rememberAsk(q);
       const language = prefs.language === "auto" ? "LANGUAGE: answer in the same language the user wrote or spoke (your voice can speak it)." : "";
-      const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}`;
+      const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}`;
       const appNow = [appNowBase, identity, remembered, earlier, language].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
@@ -832,6 +832,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       {practicing && tab !== "teach" && <div className="buddy-practice-status" role="status"><button onClick={() => setTab("teach")}>{lesson?.practice.status === "checking" ? "Checking your latest attempt…" : "Your guided lesson is still here"}</button><button onClick={() => void pausePractice().catch(e => setError(String(e)))}>Pause</button></div>}
       {liveOn && <button type="button" className="spk-watch-banner" onClick={toggleLive} disabled={liveBusy}><i />Watching your screen live<span>Stop watching</span></button>}
       {(choiceError || choice?.runtime === null) && <p className="spk-connection-notice" role="status">{choiceError ? "Connection unavailable. Your message stays here." : choice?.reason}</p>}
+      {choice?.runtime === "local" && prefs.brain !== "local" && <p className="spk-connection-notice is-fallback" role="status">Claude and Codex are unavailable, so {prefs.nickname || "Spark"} is on this Mac ({choice.model}): chat and quick actions only. Real work waits for them.</p>}
       {tab === "chat" && (phase === "hearing" || phase === "transcribing" || phase === "error") && <p className="spk-mic-status" role="status">{phase === "hearing" ? "Listening…" : phase === "transcribing" ? "Turning your voice into text…" : "Microphone unavailable. You can keep typing."}</p>}
       {tab === "teach" ? <Teaching compact /> : tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={embedded ? { go: (path) => { window.shuacrew?.navigate(path); } } : ctx} /></div> : <>
         <div className="buddy-thread spk-thread" ref={thread} onScroll={(e) => { const el = e.currentTarget; followBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (followBottom.current) setBehind(false); }}>

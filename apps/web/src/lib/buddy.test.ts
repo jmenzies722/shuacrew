@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { actFollowUp, buddyPrompt, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
+import { actFollowUp, buddyPrompt, engineLine, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
   const reply = 'Click Save.\n```point {"x": 0.82, "y": 0.07, "label": "Save button"}```';
@@ -108,4 +108,13 @@ it("does not present a guided click as verified success", () => {
   expect(prompt).toContain("success is not yet verified");
   expect(prompt).toContain("keep the same goal");
   expect(prompt).not.toContain("Done — I did");
+});
+it("tells Spark which model it is on, and owns a local fallback's limits", () => {
+  expect(engineLine("claude", "claude-sonnet-5", false)).toContain("running on Claude (claude-sonnet-5)");
+  expect(engineLine("claude", "claude-sonnet-5", false)).not.toContain("can't");
+  const fallback = engineLine("local", "gpt-oss:20b", true);
+  expect(fallback).toContain("a local model on this Mac (gpt-oss:20b)");
+  expect(fallback).toContain("Claude and Codex are unavailable");
+  expect(fallback).toContain("can't see images, run crew sessions");
+  expect(engineLine("local", "gpt-oss:20b", false)).toContain("switch Spark's brain to Auto");
 });

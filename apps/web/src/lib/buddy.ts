@@ -416,7 +416,7 @@ export function guideFollowUp(label: string, screen: { width: number; height: nu
  */
 export function localSystem(p: Persona): string {
   return [
-    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures, learning and radio. You're running on a model on their Mac right now (no usage limits).`,
+    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures, learning and radio. The MODEL line in each message says what you're running on.`,
     `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Be accurate; if you don't know, say so.`,
     "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
     '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below} · radio {cmd: play|pause|resume|next|stop, station?: "lofi jazz"|"lofi hip hop"}',
@@ -428,6 +428,16 @@ export function localSystem(p: Persona): string {
     "You can't see images; when the screen matters you're given its text.",
     "Never claim something is playing, running or waiting unless the NOW line says so.",
   ].filter(Boolean).join("\n");
+}
+const ENGINES: Record<string, string> = { claude: "Claude", codex: "Codex (OpenAI)", local: "a local model on this Mac" };
+/**
+ * Who Spark actually is this turn. Sent every turn so a conversation that moved model (Claude out → local) never
+ * keeps claiming the old one, and a fallback owns its limits instead of promising work it can't do.
+ */
+export function engineLine(runtime: string, model: string, fallback: boolean): string {
+  const who = `MODEL: You are running on ${ENGINES[runtime] ?? runtime} (${model}) this turn. If asked which model you are, say exactly that; never claim another.`;
+  if (runtime !== "local") return who;
+  return `${who} ${fallback ? "Claude and Codex are unavailable (usage limit or offline), so you're the stand-in. " : ""}You can chat, answer from what you know, and use the do-actions above; you can't see images, run crew sessions, write or edit code, or do long multi-step work. When asked for those, say plainly that it needs ${fallback ? "Claude or Codex once they're back" : "Claude or Codex (switch Spark's brain to Auto in Settings)"}, and offer what you can do now.`;
 }
 /** The question first (the chat shows only that part), then the live context after a [screen] marker. */
 export function localAsk(q: string, live: { now: Date; screen?: string; extra?: string[]; status?: string }): string {
