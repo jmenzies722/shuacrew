@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, BookMarked, BookOpen, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, LayoutDashboard, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
+import { Activity, BookMarked, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, LayoutDashboard, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
 import { isTopLevelWork } from "../lib/crew";
@@ -33,7 +33,7 @@ function useRemember(path: string) {
 export function HubRail() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const here = locate(path)?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
+  const here = locate(path)?.hub.id ?? (path.startsWith("/settings") ? "settings" : path.startsWith("/guide") ? "guide" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
   useRemember(path);
@@ -60,6 +60,7 @@ export function HubRail() {
   return <nav className="hub-rail" aria-label="Hubs">
     {HUBS.map((hub, i) => item(hub.id, hub.label, ICON[hub.id], () => go(hub), `${hub.label} — ${hub.hint}  ⌘${i + 1}`, badge(hub.id)))}
     <span className="hub-spacer" />
+    {item("guide", "Guide", BookOpenText, () => void navigate({ to: "/guide" }), "Guide — everything ShuaCrew can do")}
     {item("settings", "Settings", Settings, () => void navigate({ to: "/settings" }), "Settings  ⌘,")}
   </nav>;
 }
@@ -100,7 +101,7 @@ const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
 export function HubSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
+  const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : path.startsWith("/guide") ? "guide" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const runs = useLive((s) => s.crew.runs);
   const connection = useLive((s) => s.connection);
@@ -149,6 +150,7 @@ export function HubSidebar() {
     </div>}
     </div>
     <div className="side-foot">
+      <button type="button" className={`side-row ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })}><i className="side-ico" data-hub="guide"><BookOpenText size={14} strokeWidth={2} /></i><span>Guide</span></button>
       <button type="button" className={`side-row ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })}><i className="side-ico" data-hub="settings"><Settings size={14} strokeWidth={2} /></i><span>Settings</span><kbd>⌘,</kbd></button>
     </div>
   </nav>;

@@ -56,6 +56,7 @@ export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; ab
   { path: "/policy", name: "Policy & Audit", hub: "System", about: "what agents may never touch, what needs approval, and the full audit trail" },
   { path: "/observability", name: "Insights", hub: "System", about: "usage, tokens, cost, health and throughput over time" },
   { path: "/terminal", name: "Terminal", hub: "System", about: "a real terminal on the Mac, with an agent that can help" },
+  { path: "/guide", name: "Guide", hub: "", about: "the ShuaCrew guide: what the app is, every hub and page, Spark, engines, privacy, shortcuts and what is not finished yet; open it when someone asks how ShuaCrew works" },
   { path: "/settings", name: "Settings", hub: "", about: "appearance/theme and accent, workspace, widgets, chat, agents, automation, safety, Spark, voice, notifications, mobile, data" },
 ];
 /** What the app holds right now, for Spark to answer from (names only — never invented). */

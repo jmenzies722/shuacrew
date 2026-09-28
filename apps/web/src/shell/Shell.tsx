@@ -59,6 +59,7 @@ export const NAV = [
   { to: "/observability", label: "Observability", hint: "Health, latency and recorded activity", icon: Activity, key: "o", group: "System" },
   { to: "/usage", label: "Usage", hint: "Recorded tokens and honest coverage", icon: BarChart3, key: "u", group: "System" },
   { to: "/developer", label: "Developer", hint: "Gateway diagnostics and audit integrity", icon: SquareTerminal, key: "d", group: "System" },
+  { to: "/guide", label: "Guide", hint: "Everything ShuaCrew can do", icon: BookOpen, key: "h", group: "System" },
   { to: "/settings", label: "Settings", hint: "Agents, look, data", icon: Settings, key: ",", group: "System" },
 ] as const;
 

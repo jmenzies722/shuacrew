@@ -22,6 +22,7 @@ const RunDetail = lazyRouteComponent(() => import("./screens/RunDetail"), "RunDe
 const Integrations = lazyRouteComponent(() => import("./screens/Pages"), "Integrations");
 const Policy = lazyRouteComponent(() => import("./screens/Pages"), "Policy");
 const Settings = lazyRouteComponent(() => import("./screens/Settings"), "Settings");
+const Guide = lazyRouteComponent(() => import("./screens/Guide"), "Guide");
 const Specs = lazyRouteComponent(() => import("./screens/Pages"), "Specs");
 const PlayPage = lazyRouteComponent(() => import("./screens/Playbooks"), "PlayPage");
 const Playbooks = lazyRouteComponent(() => import("./screens/Playbooks"), "Playbooks");
@@ -58,6 +59,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/integrations", component: Integrations }),
   createRoute({ getParentRoute: () => root, path: "/policy", component: Policy }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
+  createRoute({ getParentRoute: () => root, path: "/guide", component: Guide }),
 ];
 
 export const router = createRouter({ routeTree: root.addChildren(routes), defaultPreload: "intent" });
