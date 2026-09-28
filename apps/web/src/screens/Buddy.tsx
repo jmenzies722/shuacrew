@@ -11,6 +11,7 @@ import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption } from "../components/NotchCaption";
+import { PANES, paneURL } from "../lib/settings-panes";
 import { Recommendations } from "../components/Recommendations";
 import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
@@ -150,6 +151,12 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
     onRanOutput?.(a.command, r.ok, r.output ?? "");
     return { ok: r.ok, message: r.message };
   })();
+  if (a.type === "open_settings") {
+    // The exact page of System Settings, by its direct link (the Mac app opens only System Settings links).
+    const pane = PANES.find((p) => p.key === a.pane);
+    if (!pane) return Promise.resolve({ ok: false, message: "I don't know that Settings page" });
+    return performNow({ ...a, url: paneURL(pane) } as Action).then((r) => ({ ...r, message: r.ok ? `Opened ${pane.name}` : r.message }));
+  }
   if (a.type === "mac") return new Promise((resolve) => {
     // Your files, calendar, reminders, notes, contacts and Mac status, read on this Mac; the result goes back to Spark.
     if (!native()) { resolve({ ok: false, message: "This works in the ShuaCrew Mac app" }); return; }
@@ -720,7 +727,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const a = next ? (now ? "Voice mode is already on. Just talk." : "Voice mode on. Just talk, I'm listening.") : (now ? "Voice mode off." : "Voice mode is already off.");
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
-    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
+    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "settings" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
     if (move && PLAYER) {
       const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
       const player = async () => {
@@ -744,6 +751,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (m?.title) { const r = await perform({ type: "media", command: move.cmd, app: m.app }); done(r.ok ? (move.cmd === "next" ? "Next one." : "Going back.") : r.message); return; }
         done("Nothing's playing."); return;
       }
+      if (move.kind === "settings") { const r = await perform({ type: "open_settings", pane: move.pane }); done(r.ok ? r.message : r.message); return; }
       if (move.kind === "browse") {
         const { media: m } = await player();
         const r = await perform({ type: "media", command: "open_query", query: move.query, ...(move.app ? { app: move.app } : m?.app ? { app: m.app } : {}) });

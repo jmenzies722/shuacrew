@@ -1,3 +1,4 @@
+import { findPane } from "./settings-panes";
 import type { AnyEvent } from "@shuacrew/core/events";
 import type { ApprovalView, CrewMember, PlayView, RunView, VentureView } from "@shuacrew/core/projections";
 import { useSyncExternalStore } from "react";
@@ -181,6 +182,8 @@ export type ProducerMove =
   | { kind: "voice"; on: boolean | "toggle" }
   /** "Stop talking", "be quiet", "shh": stop what Spark is saying or doing, right now. */
   | { kind: "hush" }
+  /** "open Wi-Fi settings", "take me to Night Shift": that exact page of System Settings. */
+  | { kind: "settings"; pane: string }
   /** "open music artist by Drake", "show me Drake on Spotify": open that artist / album / search in the music app. */
   | { kind: "browse"; query: string; app?: "Spotify" | "Music" }
   /** "play Drake", "play some jazz on Spotify": search and play in the music app, right away. */
@@ -219,6 +222,8 @@ export function producerMove(q: string): ProducerMove | null {
   if (/^(put on|play|start|turn on)( some| the| my)? (music|radio|shuacrew radio)\b/i.test(t)) return { kind: "radio", cmd: "play" };
   if (/^pause( the)? radio$/i.test(t)) return { kind: "radio", cmd: "pause" };
   if (/^(resume|unpause)( the)? radio$/i.test(t)) return { kind: "radio", cmd: "resume" };
+  const nav = /^(?:open|show(?: me)?|take me to|go to|bring up|pull up|where (?:is|are|do i (?:change|find|set|turn on|turn off)))\s+(?:the\s+|my\s+)?(.+?)$/i.exec(t);
+  if (nav) { const rest = nav[1]!, pane = findPane(rest); if (pane && (/\b(settings?|preferences?|pane|page|permission|access)\b/i.test(rest) || rest.trim().toLowerCase().split(" ").length <= 3)) return { kind: "settings", pane: pane.key }; }
   const appOf = (a?: string) => (a ? (/spotify/i.test(a) ? "Spotify" as const : "Music" as const) : undefined);
   const browse = /^(?:open|show(?: me)?|go to|pull up|find|look up|bring up)\s+(?:the\s+)?(?:(apple music|music|spotify)\s+)?(?:the\s+)?(artist|album|playlist|song|track)s?\s+(?:by\s+|called\s+|named\s+|for\s+)?(.{2,60}?)(?:'s page)?(?:\s+(?:in|on)\s+(spotify|apple music|music))?$/i.exec(t)
     ?? /^(?:open|show(?: me)?|go to|pull up|find|look up|bring up)\s+()()(.{2,60}?)(?:'s page)?\s+(?:in|on)\s+(spotify|apple music|music)$/i.exec(t);

@@ -1,3 +1,4 @@
+import { PANES } from "./settings-panes";
 import { noEmoji } from "./no-emoji";
 /** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
 export interface Point { x: number; y: number; label: string; target?: string }
@@ -37,6 +38,7 @@ export type Action =
   | { type: "card"; front: string; back: string }
   | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
   | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
+  | { type: "open_settings"; pane: string }
   | { type: "mac"; op: "find" | "read" | "recent" | "calendar" | "reminders" | "add_reminder" | "notes" | "contacts" | "status"; query?: string; path?: string; kind?: string; days?: number; title?: string; due?: string };
 /** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
@@ -231,6 +233,7 @@ function toAction(v: unknown): Action | null {
       const to = str(o.to, 200) ?? "", subject = str(o.subject, 300) ?? "", body = str(o.body, 20_000) ?? "";
       return (to === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) && (subject || body) ? { type: "mail", op, to, subject, body } : null;
     }
+    case "open_settings": { const pane = PANES.find((p) => p.key === o.pane); return pane ? { type: "open_settings", pane: pane.key } : null; }
     case "mac": {
       // Your Mac, read on this Mac: files (Spotlight), calendar, reminders, notes, contacts, status. The Mac app checks again.
       const op = (["find", "read", "recent", "calendar", "reminders", "add_reminder", "notes", "contacts", "status"] as const).find((x) => x === o.op);
@@ -281,6 +284,7 @@ export function describeAction(a: Action): string {
     case "focus": return `${a.minutes}-minute focus`;
     case "crew": return "Hand to the crew";
     case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
+    case "open_settings": return `Open ${PANES.find((p) => p.key === a.pane)?.name ?? "Settings"}`;
     case "mac": return a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : "Check your Mac";
     case "note": return "Add to your note";
     case "media": return a.command === "play_query" ? `Play “${a.query}”` : `Music: ${a.command.replace("_", " ")}`;
@@ -423,6 +427,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Building software, writing code in a repo, or long research reports: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
       "YOU STAY WITH THEM. When they want to learn, find, set up or do something on their Mac or a website, YOU walk them through it yourself, live, one step at a time (guide), or do it for them (act) when they ask you to: never hand that to the crew, never say you can't, never stop after one step. After each step you'll get a fresh screenshot automatically; give the next step until it's done, then the done block. If something unexpected shows up, adapt and keep going.",
       'Their email (Gmail or any account in the Mac Mail app), read and draft only, NEVER send: unread ```do [{"type":"mail","op":"unread"}]``` · search ```do [{"type":"mail","op":"search","query":"invoice"}]``` · read one (id from a list) ```do [{"type":"mail","op":"read","id":123}]``` · draft a reply ```do [{"type":"mail","op":"draft","to":"a@b.com","subject":"…","body":"…"}]``` (it opens in Mail for them to send). You get the results back; then say the gist in a sentence or two.',
+      `SYSTEM SETTINGS — take them to the exact page, never a hunt: \`\`\`do [{"type":"open_settings","pane":"displays"}]\`\`\` (pane: ${PANES.map((p) => p.key).join(" | ")}). Night Shift, brightness, resolution are in displays; dark mode in appearance; permissions like screen-recording, full-disk-access, microphone, accessibility-access open right on that switch. Then point at the exact control if they need to change something there.`,
       'THEIR MAC — look before you guess (read on this Mac): find files ```do [{"type":"mac","op":"find","query":"lease agreement","kind":"pdf"}]``` (kind?: pdf|images|documents|folders|apps) · read a file or folder ```do [{"type":"mac","op":"read","path":"~/Documents/plan.md"}]``` · recent files {"op":"recent","days":3} · calendar {"op":"calendar","days":2} · reminders {"op":"reminders"} · add a reminder {"op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"} · Apple Notes {"op":"notes","query":"passport"} · contacts {"op":"contacts","query":"Sam"} · this Mac now (apps, battery, storage, Wi-Fi) {"op":"status"}. You get the result back; answer from it with the specifics. Use these whenever the answer lives on their Mac (their files, schedule, people, notes) instead of saying you don\'t know.',
       'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',

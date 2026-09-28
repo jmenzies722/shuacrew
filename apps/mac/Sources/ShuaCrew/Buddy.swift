@@ -464,6 +464,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "shortcut":
                 Task { let r = await SparkHands.shortcut(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+            case "open_settings":
+                // A System Settings page, straight to it. Only genuine System Settings links are opened.
+                let link = action["url"] as? String ?? ""
+                if link.range(of: #"^x-apple\.systempreferences:com\.apple\.[A-Za-z0-9.\-]+(\?Privacy_[A-Za-z]+)?$"#, options: .regularExpression) != nil, let url = URL(string: link) {
+                    NSWorkspace.shared.open(url); did(["id": id, "ok": true, "message": "Opened"], to: sender)
+                } else { did(["id": id, "ok": false, "message": "That isn't a System Settings page."], to: sender) }
             case "mac":
                 // Your files, calendar, reminders, notes, contacts and this Mac's state (see MacKnowledge): off the main thread.
                 MacKnowledge.run(action) { [weak self] ok, message, output in
