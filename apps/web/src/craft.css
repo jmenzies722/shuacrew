@@ -18,7 +18,8 @@
 
 /* The canvas and the floating main panel. */
 [data-theme="dark"] body { background: var(--sunken); }
-[data-theme="dark"] #main { background: var(--ink); }
+/* The page card is solid; the column around it stays clear, so every gutter shows the same ground (and the living background) as the sidebar's. */
+[data-theme="dark"] .workspace-card { background: var(--ink); }
 
 /* Surfaces: one material everywhere. */
 [data-theme="dark"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
@@ -46,7 +47,8 @@
 [data-theme="dark"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px var(--accent-glow) !important; }
 
 /* Top bar: blends into the canvas; search is an outlined capsule. */
-[data-theme="dark"] header[aria-label="Top bar"] { background: var(--sunken); box-shadow: none; }
+/* The top bar sits on the same ground as the gutters (no band of its own), so the two cards float on one surface. */
+[data-theme="dark"] header[aria-label="Top bar"] { background: transparent; box-shadow: none; }
 [data-theme="dark"] .tb-center > button { background: var(--ink) !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important; border-radius: 10px; }
 [data-theme="dark"] .island-pill { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
 

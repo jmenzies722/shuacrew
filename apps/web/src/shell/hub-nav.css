@@ -32,7 +32,7 @@
 
 /* Spark in the app: a side panel that slides in from the right, and its button in the top bar. */
 .spark-side { flex-shrink: 0; min-height: 0; overflow: hidden; }
-.spark-side-inner { width: 400px; height: 100%; }
+.spark-side-inner { width: 400px; height: 100%; box-sizing:border-box; padding:var(--gutter) var(--gutter) var(--gutter) 0; }
 .spark-side .buddy.is-embedded { height: 100%; }
 .spark-btn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 5px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--text-2);
   background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); transition: color .15s, box-shadow .15s, background .15s; }
@@ -76,6 +76,7 @@
 .side-spacer { flex: 1; min-height: 12px; }
 .side-foot { display: flex; align-items: center; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 .side-foot .side-row { flex: 1; }
+.side-foot .side-guide { flex: 0 0 auto; width: auto; } /* Guide stays compact so Settings keeps its label and ⌘, */
 .side-fold, .rail-unfold { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--text-3); transition: background .15s, color .15s; }
 .side-fold:hover, .rail-unfold:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
 .rail-wrap { display: flex; flex-direction: column; align-items: center; min-height: 0; border-right: 1px solid var(--line); }
@@ -86,7 +87,7 @@
 @media (prefers-reduced-motion: reduce) { .side, .side-dot.is-live { animation: none; } }
 
 /* ── Sidebar, Kiro Crew style: a floating rounded panel, plain line icons, one violet selection. ── */
-.side { width: 244px; margin: 8px 0 8px 8px; padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
+.side { width: 244px; margin: var(--gutter-top) 0 var(--gutter) var(--gutter); padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
   background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
 .side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
 /* The ShuaCrew mark (same as the app icon): a lit core with three crew on an orbit, drawn in the theme's accent. */
@@ -134,7 +135,7 @@
 .side-label { padding: 14px 10px 6px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); }
 .side-dot.is-live { background: var(--amber); }
 .side-foot { padding-top: 8px; border-top: 1px solid var(--line-strong); }
-.rail-wrap { margin: 8px 0 8px 8px; border-radius: 16px; border-right: 0; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.rail-wrap { margin: var(--gutter-top) 0 var(--gutter) var(--gutter); border-radius: 16px; border-right: 0; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
 .hub-on { background: var(--active-bg); box-shadow: inset 0 0 0 1px var(--active-line); }
 .hub.is-on { color: var(--accent-text); } .hub.is-on .hub-icon { color: var(--accent-text); }
 /* Flat list: every page is a row; sections are quiet labels, nothing folds. */

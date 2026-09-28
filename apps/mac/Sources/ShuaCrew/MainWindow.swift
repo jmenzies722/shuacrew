@@ -9,7 +9,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     private let strip = DragStrip()
     private weak var material: NSVisualEffectView?
     /// The page's top bar is this tall; the traffic lights are centred in it.
-    static let titleBarHeight: CGFloat = 38
+    static let titleBarHeight: CGFloat = 48 // matches the web top bar row (Shell.tsx grid-rows-[48px_1fr])
     private let gateway: Gateway
     private let overlay = StartOverlay()
     private let location = LocationOnce()

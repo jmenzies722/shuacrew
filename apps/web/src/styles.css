@@ -194,13 +194,9 @@ body {
 }
 [data-shell="mac"][data-palette="frost"] { --chrome: rgba(5, 5, 7, 0.72); }
 [data-shell="mac"][data-fullscreen] { --chrome: var(--ink); }
-/* The work area is solid, inset like a sheet under the translucent chrome. */
-[data-shell="mac"] #main {
-  background: var(--ink);
-  border-top-left-radius: 12px;
-  box-shadow: inset 1px 1px 0 var(--line);
-  padding-top: 8px;
-}
+/* The work area is the page card (.workspace-card): #main adds no inset or fill of its own, so the
+   sidebar and the page share one top edge, one gutter and one ground. The card stays solid under the chrome. */
+[data-shell="mac"] .workspace-card { background: var(--ink); }
 
 /* Three dots that breathe while an agent thinks. */
 .thinking-dots {
@@ -699,7 +695,7 @@ body {
 
 /* ── Frost Black: the glass ───────────────────────────────────────── */
 /* A faint glow in the black so the frost has something to catch. */
-[data-palette="frost"] #main,
+[data-palette="frost"] .workspace-card,
 [data-palette="frost"]:not([data-shell="mac"]) body {
   background:
     radial-gradient(1100px 520px at 85% -8%, rgba(140, 150, 255, 0.07), transparent 60%),
@@ -761,6 +757,13 @@ body {
 .pane-search { display: flex; height: 32px; align-items: center; gap: 8px; border-radius: 9px; padding: 0 10px; font-size: 12.5px; color: var(--text-3); background: color-mix(in srgb, var(--text) 4.5%, transparent); transition: background .15s, box-shadow .15s; }
 .pane-search:focus-within { background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
 
+/* One frame, proportional: the sidebar and the page are two cards with the same gutter on every side and the
+   same top edge. The companion row is the page card's header; sheets inside it sit flush, divided by hairlines. */
+:root { --gutter: 12px; --gutter-top: 8px; }
+.workspace-card { margin: var(--gutter-top) var(--gutter) var(--gutter); border-radius: 16px; overflow: hidden; box-shadow: 0 0 0 1px var(--line-strong); }
+.workspace-card .sessions-layout { padding: 0; gap: 0; }
+.workspace-card .sessions-layout > .sheet { border-radius: 0; box-shadow: none; }
+.workspace-card .sessions-layout > * + * { border-left: 1px solid var(--line); }
 /* Sessions: a thread keeps the list; a new session is one sheet so it never shoves the hub sidebar. */
 .sessions-layout { display: grid; height: 100%; min-width: 0; gap: 8px; padding: 0 8px 8px; }
 .sessions-layout.is-fresh { grid-template-columns: minmax(0, 1fr); }
@@ -771,18 +774,30 @@ body {
 
 /* The home: a quiet centre with the composer front and middle. */
 .hero-sheet { min-width: 0; }
-.hero-stack { display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: 640px; min-width: 0; margin: 0 auto; padding: 36px 24px 10vh; }
+.hero-stack { display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: 640px; min-width: 0; margin: 0 auto; padding: 0 24px 10vh; }
+/* The ask sits in the middle of the panel; the briefing and getting-started follow when you scroll. */
+.hero { container-type: size; }
+.hero-core { display: flex; flex-direction: column; justify-content: center; min-height: 100cqh; padding-block: 24px; }
 .hero-mark { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto; filter: drop-shadow(0 12px 28px rgba(0, 0, 0, .55)) drop-shadow(0 0 22px rgba(255, 255, 255, .07)); }
 .hero-mark img { width: 56px; height: 56px; }
 .hero-title { margin-top: 20px; text-align: center; font-size: clamp(22px, 3.2vw, 30px); font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; overflow-wrap: anywhere; background: linear-gradient(180deg, var(--text), color-mix(in srgb, var(--text) 72%, transparent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero-sub { margin: 10px auto 0; max-width: 520px; text-align: center; font-size: 14px; line-height: 1.55; color: var(--text-3); }
-.hero-ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.hero-ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 14px; }
 @media (max-width: 900px) { .hero-ideas { grid-template-columns: 1fr; } }
 .composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; min-width: 0; }
 .composer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 6px; padding: 0 6px; font-size: 12px; color: var(--text-3); min-width: 0; }
-.hero-idea { display: flex; align-items: flex-start; gap: 9px; min-width: 0; border-radius: 12px; padding: 10px 12px; text-align: left; font-size: 12.5px; line-height: 1.45; color: var(--text-2); background: color-mix(in srgb, var(--text) 3.5%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, color .15s, box-shadow .15s, transform .15s; }
-.hero-idea svg { margin-top: 2px; }
-.hero-idea:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); transform: translateY(-1px); }
+.hero-idea { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; border-radius: 12px; padding: 8px 12px 8px 8px; text-align: left; font-size: 12.5px; line-height: 1.4; color: var(--text-2);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text) 4.5%, transparent), color-mix(in srgb, var(--text) 1.5%, transparent));
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  transition: color .18s, box-shadow .18s, background .18s, transform .18s var(--motion-ease, ease); }
+/* The icon sits in its own small accent chip, so each idea reads at a glance. */
+.hero-idea-icon { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 8px; color: var(--accent-text, var(--amber)); background: var(--amber-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 22%, transparent); }
+.hero-idea > span { flex: 1; min-width: 0; }
+.hero-idea-go { flex-shrink: 0; color: var(--accent-text, var(--amber)); opacity: 0; transform: translate(-4px, 4px); transition: opacity .18s, transform .18s var(--motion-ease, ease); }
+.hero-idea:hover { color: var(--text); background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 9%, transparent), color-mix(in srgb, var(--amber) 3%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 38%, var(--line-strong)), 0 8px 24px -14px color-mix(in srgb, var(--amber) 70%, transparent); transform: translateY(-1px); }
+.hero-idea:hover .hero-idea-go, .hero-idea:focus-visible .hero-idea-go { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .hero-idea, .hero-idea-go { transition: none; } .hero-idea:hover { transform: none; } }
 
 /* The composer: glass, a hairline, and a glow only while you're typing. */
 .composer-box { border-radius: 18px; padding: 12px 14px 10px; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong), 0 14px 40px -26px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .03); transition: box-shadow .2s, background .2s; }

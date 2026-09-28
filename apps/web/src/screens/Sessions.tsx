@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Sunrise,
   Trash2,
+  ArrowUpRight,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
@@ -543,6 +544,7 @@ function NewSession() {
     <section className="sheet hero-sheet flex min-h-0 min-w-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="hero-stack">
+          <div className="hero-core">
           <NeedsYou />
           <div className="hero-mark">
             <LogoMark size={60} />
@@ -553,10 +555,12 @@ function NewSession() {
           <div className="hero-ideas stagger">
             {ideas.map(({ icon: Icon, text }) => (
               <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea">
-                <Icon size={14} className="shrink-0 text-amber" />
+                <i className="hero-idea-icon"><Icon size={14} /></i>
                 <span className="line-clamp-2">{text}</span>
+                <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
               </button>
             ))}
+          </div>
           </div>
           <TodayBriefing />
           <GettingStarted />

@@ -78,13 +78,13 @@ export function Shell() {
   const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
-    <div className="workspace-frame grid h-full grid-cols-[auto_1fr] grid-rows-[38px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
+    <div className="workspace-frame grid h-full grid-cols-[auto_1fr] grid-rows-[48px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
       <div className="living-bg" aria-hidden="true"><i /><i /><i /></div>
       {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
       <Sidebar />
       <main className="min-h-0 min-w-0 overflow-hidden flex" id="main">
-        <div className="min-h-0 min-w-0 flex flex-1 flex-col">
+        <div className="workspace-card min-h-0 min-w-0 flex flex-1 flex-col">
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
