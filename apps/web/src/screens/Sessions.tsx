@@ -548,6 +548,8 @@ function NewSession() {
         <div className="hero-stack">
           <div className="hero-core">
           <NeedsYou />
+          {/* Your day, right under what needs you: the first thing you see in a new session. */}
+          <TodayBriefing />
           <div className="hero-mark">
             <LogoMark size={60} />
           </div>
@@ -564,7 +566,6 @@ function NewSession() {
             ))}
           </div>
           </div>
-          <TodayBriefing />
           <GettingStarted />
         </div>
       </div>
