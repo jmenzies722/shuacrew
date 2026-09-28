@@ -578,3 +578,14 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .notch-heard p { margin: 0; font-size: 12.5px; line-height: 1.4; color: #f4f1f8; text-align: center; }
 .notch-heard.is-open { max-height: 110px; }
 .notch-heard.is-open p { text-align: left; padding: 0 2px; }
+/* Live activities: your notch widgets as a swipeable row of dark tiles (the island is always night-black). */
+.notch-widgets { --panel: #141218; --raised: #1d1a22; --sunken: #0c0b0f; --text: #f1eef5; --text-2: #bdb6c8; --text-3: #8d8797; --line: #26222d; --line-strong: #35303d; color-scheme: dark;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(190px, 46%); gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; padding-bottom: 2px; }
+.notch-widgets::-webkit-scrollbar { display: none; }
+.notch-widgets .wg-tile { scroll-snap-align: start; max-height: 150px; overflow: auto; border-radius: 14px; padding: 10px 11px; color: var(--text); background: linear-gradient(180deg, #141218, #0c0b0f); box-shadow: inset 0 0 0 1px #221f28; }
+.buddy[data-notch-size="compact"] .shua-island.is-open .notch-widgets { display: none; }
+.spark-nook-mission { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 12px; text-align: left; color: #f1eef5; background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 18%, #141218), #0c0b0f); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent); }
+.spark-nook-mission > i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-grad, var(--amber)); animation: spk-breathe 1.2s ease-in-out infinite; }
+.spark-nook-mission span { display: grid; min-width: 0; } .spark-nook-mission small { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: #8d8797; }
+.spark-nook-mission b { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .spark-nook-mission em { font-style: normal; font-size: 11px; color: #a39cae; }
+.shua-island-ear em.is-focus { min-width: 26px; color: #000; background: #f1eef5; }

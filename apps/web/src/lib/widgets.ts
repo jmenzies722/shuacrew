@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 /** Widgets: small live views of real things (your Mac, your crew, your day) you can place in the top bar and in Spark. */
 export const WIDGETS = ["playing", "weather", "focus", "crew", "clock", "spend", "system", "learning", "note", "countdown"] as const;
 export type WidgetId = (typeof WIDGETS)[number];
-export type Placement = "topbar" | "spark";
+export type Placement = "topbar" | "spark" | "notch";
 
 export const WIDGET_INFO: Record<WidgetId, { name: string; blurb: string }> = {
   playing: { name: "Radio", blurb: "ShuaCrew Radio: what's on, play, pause and skip, and a quick station switch." },
@@ -24,13 +24,15 @@ export interface WidgetPrefs {
   order: WidgetId[];
   topbar: WidgetId[];
   spark: WidgetId[];
+  /** Live activities in the MacBook notch island. */
+  notch: WidgetId[];
   /** IANA time zones for the Clocks widget. */
   zones: string[];
   countdown: { label: string; date: string } | null;
 }
 
 export const DEFAULT_WIDGETS: WidgetPrefs = {
-  version: 3, order: [...WIDGETS], topbar: ["playing", "crew", "weather", "focus"], spark: ["playing", "crew", "focus", "weather", "spend", "note"], zones: [], countdown: null,
+  version: 3, order: [...WIDGETS], topbar: ["playing", "crew", "weather", "focus"], spark: ["playing", "crew", "focus", "weather", "spend", "note"], notch: ["playing", "crew", "focus", "weather", "system", "countdown"], zones: [], countdown: null,
 };
 
 const isId = (v: unknown): v is WidgetId => typeof v === "string" && (WIDGETS as readonly string[]).includes(v);
@@ -49,11 +51,12 @@ export function parseWidgets(value: unknown): WidgetPrefs {
   const countdown = c && typeof c.label === "string" && typeof c.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? { label: c.label.trim().slice(0, 40) || "Countdown", date: c.date } : null;
   let topbar = list(v.topbar, DEFAULT_WIDGETS.topbar);
   let spark = list(v.spark, DEFAULT_WIDGETS.spark);
+  const notch = list(v.notch, DEFAULT_WIDGETS.notch);
   // First time Now Playing exists: put it on. After a v2 save, turning it off stays off.
   const knewPlaying = Array.isArray(v.order) && v.order.includes("playing");
   if (v.version !== 2 && v.version !== 3 && !knewPlaying && Array.isArray(v.topbar) && !topbar.includes("playing")) topbar = ["playing", ...topbar];
   if (v.version !== 2 && v.version !== 3 && !knewPlaying && Array.isArray(v.spark) && !spark.includes("playing")) spark = ["playing", ...spark];
-  return { version: 3, order, topbar, spark, zones, countdown };
+  return { version: 3, order, topbar, spark, notch, zones, countdown };
 }
 
 /** The widgets shown in one place, in your order. */

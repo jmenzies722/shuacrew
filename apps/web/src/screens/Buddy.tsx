@@ -33,7 +33,7 @@ import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../li
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
-import { SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
+import { NotchWidgets, SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
 import { useNowPlaying } from "../components/NowPlaying";
 import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/studio";
 import { playScape, stopScape } from "../lib/soundscape";
@@ -1051,7 +1051,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </button>
           <span className="shua-island-cam" aria-hidden />
           <span className="shua-island-ear is-live">
-            {approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
+            {approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
             {islandOpen && <small>{statusLabel}</small>}
           </span>
         </div>
@@ -1084,19 +1084,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
               <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => mediaCmd("next")} aria-label="Next"><SkipForward size={12} /></button>
             </div>
           </div>}
-          <div className="spark-nook-tiles">
-            <div className="spark-nook-tile"><small>Radio</small><b>{radio.playing ? (radio.title ?? radio.station ?? "Radio") : "Off"}</b>
-              <div className="spark-nook-ctl">{radio.playing
-                ? <><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void radioCommand({ cmd: "pause" }).then(() => radioNow().then(setRadio))} aria-label="Pause"><Square size={11} /></button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void radioCommand({ cmd: "next" })} aria-label="Next"><ChevronRight size={13} /></button></>
-                : <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void radioCommand({ cmd: getRadio().station ? "resume" : "play" })}>Play</button>}</div></div>
-            <div className="spark-nook-tile"><small>Sessions</small><b>{workingRuns.length ? (workingRuns.at(-1)!.title || `${workingRuns.length} working`) : "All quiet"}</b>
-              <div className="spark-nook-ctl">{approvals > 0 ? <button type="button" tabIndex={islandOpen ? 0 : -1} className="is-wait" onClick={() => post({ type: "buddyOpen", path: "/activity" })}>Review {approvals}</button>
-                : workingRuns.length ? <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: `/sessions/${workingRuns.at(-1)!.id}` })}>{workingRuns.length > 1 ? `+${workingRuns.length - 1} more` : "Open"}</button> : <span>Nothing needs you</span>}</div></div>
-            <div className="spark-nook-tile"><small>{activeMissions.length ? "Mission" : timer ? "Focus" : "Up next"}</small>
-              <b>{activeMissions.length ? (crew.runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task) : timer ? `${Math.ceil(remainingFocusMs(timer, now) / 60000)} min left` : hour < 12 ? "Start your day" : "Plan what's next"}</b>
-              {timer && !activeMissions.length ? <span className="spark-nook-bar"><i style={{ width: `${focusPct * 100}%` }} /></span>
-                : <div className="spark-nook-ctl">{activeMissions.length ? <span>{crew.runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</span> : <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(hour < 12 ? "Start my day" : "What should I focus on next?")}>Ask</button>}</div>}</div>
-          </div>
+          {activeMissions.length > 0 && <button type="button" className="spark-nook-mission" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: `/sessions/${activeMissions.at(-1)!.run}` })}>
+            <i className="is-live" /><span><small>Mission</small><b>{crew.runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task}</b></span><em>{crew.runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</em></button>}
+          <NotchWidgets ctx={ctx} tab={islandOpen ? 0 : -1} />
           <footer><button type="button" onClick={() => { setNook(false); setOpen(true); }}>Open chat</button><span>Move away to tuck it in</span></footer>
         </div>
       </div>

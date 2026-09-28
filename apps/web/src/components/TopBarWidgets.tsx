@@ -289,6 +289,13 @@ export function SparkWidgets({ ctx }: { ctx: WidgetCtx }) {
   return <div className="wg-board">{list.map((id) => <section key={id} className="wg-tile" aria-label={WIDGET_INFO[id].name}><WidgetTile id={id} ctx={ctx} /></section>)}</div>;
 }
 
+/** Live activities in the notch: the widgets you put there, as a swipeable row of dark tiles. */
+export function NotchWidgets({ ctx, tab = 0 }: { ctx: WidgetCtx; tab?: number }) {
+  const list = placed(useWidgets(), "notch");
+  if (!list.length) return null;
+  return <div className="notch-widgets" aria-label="Live activities">{list.map((id) => <section key={id} className="wg-tile" aria-label={WIDGET_INFO[id].name} tabIndex={tab}><WidgetTile id={id} ctx={ctx} /></section>)}</div>;
+}
+
 /**
  * The top bar's one status island: at a glance, just what's live (crew working, the weather, a running focus
  * block, tokens today, gateway health). Click it for everything else as tiles, like Control Center.
