@@ -23,6 +23,8 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
     doc = state.document,
     prefs = useCompanion(),
     [question, setQuestion] = useState(""),
+    // Which engine teaches: Claude by default; Codex when you choose it here. Remembered on this Mac.
+    [engine, setEngineState] = useState<"claude" | "codex">(() => { try { return localStorage.getItem("shuacrew.teaching.engine") === "codex" ? "codex" : "claude"; } catch { return "claude"; } }),
     [reference, setReference] = useState(""),
     [sources, setSources] = useState<TeachingSource[]>([]),
     [error, setError] = useState(""),
@@ -58,15 +60,11 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
   const change = (value: Record<string, unknown>) => {
     if (doc) void act(() => teachingChange(doc, value));
   };
+  const setEngine = (next: "claude" | "codex") => { setEngineState(next); try { localStorage.setItem("shuacrew.teaching.engine", next); } catch { /* this visit only */ } };
+  /** The model to ask for: your companion's pick when it's the same engine, otherwise the engine's own best. */
+  const teachingModel = () => { const choice = modelPreference(prefs.modelChoice); return choice.preferredRuntime === engine ? choice.preferredModel : undefined; };
   const explain = async (ask = question) => {
     if (!ask.trim()) return;
-    const choice = modelPreference(prefs.modelChoice);
-    if (choice.preferredRuntime && choice.preferredRuntime !== "claude") {
-      setError(
-        "Visual teaching requires Claude structured output in this version. Choose a Claude model or Auto; your companion chat selection is otherwise unchanged.",
-      );
-      return;
-    }
     setPending(true);
     setError("");
     try {
@@ -76,7 +74,8 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
         question: ask,
         baseRevision: current.revision,
         sources: extra.length ? [...current.sources, ...extra] : [],
-        model: choice.preferredModel,
+        model: teachingModel(),
+        runtime: engine,
       });
       setQuestion("");
       setReference("");
@@ -345,12 +344,9 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
               disabled={busy}
               onClick={() =>
                 void act(async () => {
-                  const choice = modelPreference(prefs.modelChoice);
-                  if (choice.preferredRuntime && choice.preferredRuntime !== "claude")
-                    throw new Error("Choose Claude or Auto for visual verification.");
                   const chosen = display ? Number(display) : displays[0]?.id;
                   if (chosen === undefined) throw new Error("Choose an available display first");
-                  await startPractice(doc, chosen, choice.preferredModel);
+                  await startPractice(doc, chosen, teachingModel(), engine);
                 })
               }
             >
@@ -490,8 +486,12 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
           </div>
         ))}
         <footer>
+          <div className="teach-engine" role="radiogroup" aria-label="Teaching engine">
+            <span>Teaching with</span>
+            {(["claude", "codex"] as const).map((id) => <button key={id} type="button" role="radio" aria-checked={engine === id} className={engine === id ? "is-on" : ""} onClick={() => setEngine(id)}>{id === "claude" ? "Claude" : "Codex"}</button>)}
+          </div>
           <small>
-            Sources stay on this Mac and are sent to the selected subscription model when you ask.
+            Sources stay on this Mac and are sent to {engine === "codex" ? "Codex (your ChatGPT plan)" : "Claude (your subscription)"} when you ask.
           </small>
           {busy ? (
             <button

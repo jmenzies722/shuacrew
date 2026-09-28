@@ -74,7 +74,7 @@ export async function pausePractice(native = true) {
   if (current?.practice.active)
     await teachingApi(`/${current.sessionId}/practice`, { active: false, baseRevision: current.revision });
 }
-export async function startPractice(doc: TeachingDocument, displayId: number, model?: string) {
+export async function startPractice(doc: TeachingDocument, displayId: number, model?: string, runtime: "claude" | "codex" = "claude") {
   starting = true;
   try {
     await teachingApi(`/${doc.sessionId}/practice`, {
@@ -82,6 +82,7 @@ export async function startPractice(doc: TeachingDocument, displayId: number, mo
       baseRevision: doc.revision,
       displayId,
       model,
+      runtime,
     });
     await teachingNative({ type: "buddyTeachPracticeStart", sessionId: doc.sessionId, displayId });
   } catch (error) {
