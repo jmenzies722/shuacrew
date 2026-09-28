@@ -22,6 +22,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var staysOnTop = false
     private var requestedSize = NSSize(width: 104, height: 108)
     private static let dockSize = NSSize(width: 240, height: 48)
+    /// The notch nook: what the pill opens into when you hover it.
+    private static let nookSize = NSSize(width: 520, height: 250)
+    private var isNook = false
     private static let open = NSSize(width: 420, height: 620)
     /// A canvas for diagrams: system designs need room.
     private static let wide = NSSize(width: 940, height: 720)
@@ -167,6 +170,28 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         RunLoop.main.add(timer, forMode: .common)
         followTimer = timer
     }
+    // MARK: notch nook: hover to open
+    /// In notch mode, watch the pointer against the pill (and the nook once open) and tell the page when you arrive
+    /// or leave; the page opens the nook and tucks it away. A light 10 Hz check, only while docked and closed.
+    private var nookTimer: Timer?
+    private var pointerInNook = false
+    private func updateNookWatch() {
+        let watch = docked && !isOpen
+        guard watch else { nookTimer?.invalidate(); nookTimer = nil; pointerInNook = false; return }
+        guard nookTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let inside = self.panel.frame.insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
+                guard inside != self.pointerInNook else { return }
+                self.pointerInNook = inside
+                self.web.evaluateJavaScript("window.buddy && window.buddy.nook && window.buddy.nook(\(inside))")
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        nookTimer = timer
+    }
+
     // MARK: fn key (Globe): tap for the quick card, hold to talk
     /// fn on its own: a tap shows or hides the small card beside your pointer; holding it talks until you let go.
     /// fn used as a modifier (fn+F-keys, fn+arrows) is left alone (see FnGesture). Watching keys outside
@@ -282,7 +307,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let screen = docked
             ? (NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? primary)
             : (NSScreen.screens.first(where: { $0.frame.contains(corner) }) ?? primary)
-        let actual = docked && !isOpen ? (size == Self.peek ? NSSize(width: 360, height: 240) : Self.dockSize) : size
+        let actual = docked && !isOpen ? (isNook ? Self.nookSize : size == Self.peek ? NSSize(width: 360, height: 240) : Self.dockSize) : size
         let pointer = NSEvent.mouseLocation, pointerScreen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? primary
         let frame = isMini && !isOpen
             ? CompanionPlacement.follow(cursor: pointer, size: size, visible: pointerScreen.visibleFrame)   // the fn card opens beside your pointer
@@ -292,7 +317,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // Dock mode uses real web buttons; the free-placement character keeps its native drag grip.
         grip.isHidden = docked || isOpen
         panel.level = docked || staysOnTop || isMini ? .floating : .normal
-        panel.setFrame(frame, display: true, animate: false)
+        panel.setFrame(frame, display: true, animate: docked && !isOpen && panel.isVisible) // the notch pill grows into the nook smoothly
         if isMini { raise() }
     }
 
@@ -341,6 +366,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Opened while following: it opens right where it is (beside your pointer), not back in the corner.
             if open && !isOpen && following && !docked && !isMini { rememberCorner() }
             isMini = !open && (body["mini"] as? Bool ?? false)
+            isNook = docked && !open && (body["nook"] as? Bool ?? false)
+            updateNookWatch()
             isOpen = open
             place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : isMini ? Self.mini : peek ? Self.peek : closed)
             updateFollow()
@@ -479,6 +506,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let on = body["on"] as? Bool { fnEnabled = on; UserDefaults.standard.set(on, forKey: "buddyFnKey"); startFnKey() }
             // 0 = Do Nothing; 1 input source, 2 emoji, 3 dictation — those also fire when fn is pressed.
             send("shuacrew:fnKey", ["on": fnEnabled, "globe": globeKeyUse(), "trusted": SparkHands.trusted], to: sender)
+        case "buddyNookFocus":
+            // You clicked into the nook's Ask box: let it take the keyboard so you can type.
+            NSApp.activate(); panel.makeKey()
         case "buddyFollow":
             following = body["on"] as? Bool ?? true
             UserDefaults.standard.set(following, forKey: "buddyFollowCursor")

@@ -414,3 +414,38 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .chat-look-preview .spk-row { display: flex; } .chat-look-preview .spk-row.is-you { justify-content: flex-end; }
 .chat-look-preview .buddy-msg { max-width: 85%; padding: 8px 11px; border-radius: 12px; line-height: 1.45; }
 .chat-look-preview .buddy-msg.is-spark { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* ── Notch nook: a black pill that is part of the notch; hover and it opens into a little dashboard ── */
+.spark-nook-wrap { order: -1; display: flex; flex-direction: column; align-items: center; width: 100%; }
+.spark-nook-wrap .spark-dock { width: 240px; height: 40px; min-height: 40px; gap: 8px; padding: 0 14px 0 10px; border-radius: 0 0 18px 18px; background: #000; box-shadow: 0 8px 22px -12px rgba(0,0,0,.8); transition: width .28s cubic-bezier(.2,.9,.3,1), border-radius .28s; }
+.spark-nook-wrap.is-open .spark-dock { width: 100%; border-radius: 0; box-shadow: none; }
+.spark-dock-live { flex: 1; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.spark-dock-live em { min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 700; color: #000; }
+.spark-dock-live em.is-wait { background: #e2a33b; }
+.spark-dock-live em.is-live { background: var(--accent-grad, var(--amber)); color: #fff; }
+.spark-dock-live .spk-bars { transform: scale(.8); }
+.spark-nook { width: 100%; box-sizing: border-box; display: grid; gap: 10px; padding: 4px 14px 12px; border-radius: 0 0 24px 24px; color: #f1eef5; background: #000;
+  box-shadow: 0 24px 50px -20px rgba(0,0,0,.85), inset 0 -1px 0 color-mix(in srgb, var(--amber) 35%, transparent); }
+.spark-nook-ask { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 5px 0 12px; border-radius: 12px; background: #111014; box-shadow: inset 0 0 0 1px #26222d; }
+.spark-nook-ask:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent), 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent); }
+.spark-nook-ask input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #f1eef5; font-size: 13px; }
+.spark-nook-ask input::placeholder { color: #8d8797; }
+.spark-nook-ask button { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; color: #fff; background: var(--accent-grad, var(--amber)); }
+.spark-nook-ask button:disabled { opacity: .35; background: #26222d; }
+.spark-nook-say { margin: 0; padding: 0 2px; font-size: 12.5px; line-height: 1.45; color: #cfc9d8; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.spark-nook-say.is-busy { color: color-mix(in srgb, var(--amber) 55%, #fff); }
+.spark-nook-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.spark-nook-tile { display: grid; gap: 3px; min-width: 0; padding: 9px 10px; border-radius: 12px; background: linear-gradient(180deg, #141218, #0c0b0f); box-shadow: inset 0 0 0 1px #221f28; }
+.spark-nook-tile small { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #8d8797; }
+.spark-nook-tile b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.spark-nook-ctl { display: flex; align-items: center; gap: 4px; min-height: 24px; font-size: 11px; color: #8d8797; }
+.spark-nook-ctl button { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 8px; border-radius: 8px; font-size: 11px; color: #e8e4ee; background: #1d1a22; }
+.spark-nook-ctl button:hover { background: color-mix(in srgb, var(--amber) 25%, #1d1a22); }
+.spark-nook-ctl button.is-wait { color: #000; background: #e2a33b; font-weight: 600; }
+.spark-nook footer { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; color: #6f6979; }
+.spark-nook footer button { height: 24px; padding: 0 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; color: #fff; background: var(--accent-grad, var(--amber)); }
+@media (prefers-reduced-motion: reduce) { .spark-nook-wrap .spark-dock { transition: none; } }
+.spark-nook-wrap .spark-dock > .spark-dock-face { flex: none; display: grid; place-items: center; width: 28px; height: 28px; overflow: hidden; border-radius: 9px; font-style: normal; }
+.spark-nook-wrap .spark-dock > strong { flex: none; }
+/* While the nook is open it is the whole show: other bubbles wait. */
+.buddy:has(.spark-nook-wrap.is-open) .buddy-bubble { display: none; }
