@@ -312,6 +312,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let screen = docked
             ? (NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? primary)
             : (NSScreen.screens.first(where: { $0.frame.contains(corner) }) ?? primary)
+        panel.flushTop = docked
         let actual = docked && !isOpen ? (isNook ? Self.nookSize : size == Self.peek ? NSSize(width: 360, height: 240) : Self.dockSize) : size
         // Notch mode, collapsed or hovering: one fixed canvas flush with the top of the screen; the page draws the island
         // shape inside it and grows it in place, so the window never resizes and nothing is clipped. Clicks pass through
@@ -809,6 +810,12 @@ enum ScreenText {
 final class BuddyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    /// In notch mode the island and its chat must sit flush with the top of the screen, over the camera housing.
+    /// macOS normally pushes windows below the menu bar, which drew a second "notch" one notch-height too low.
+    var flushTop = false
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        flushTop ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
 }
 
 /// Over the character: a click opens or closes the card, a drag moves Spark anywhere.
