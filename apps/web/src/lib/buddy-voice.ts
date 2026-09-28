@@ -75,7 +75,7 @@ export class SpeechQueue {
     }
   }
 
-  private async generate(line: Line) {
+  private async generate(line: Line, attempt = 0): Promise<void> {
     const signal = this.abort.signal, id = crypto.randomUUID(), context = this.ctx();
     try {
       const response = await fetch("/api/speech/synthesize", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/json" }, body: JSON.stringify({ id, generation: 1, voiceId: line.voiceId, text: line.text, speed: line.speed }), signal });
@@ -84,7 +84,12 @@ export class SpeechQueue {
         line.buffers.push(await context.decodeAudioData(data));
         this.schedule();
       });
-    } catch { line.failed = true; }
+    } catch {
+      // A hiccup in the voice engine: try the sentence once more (if none of it has played) rather than skip it —
+      // a skipped sentence sounds like Spark cutting out.
+      if (attempt === 0 && !signal.aborted && !line.buffers.length) return this.generate(line, 1);
+      line.failed = true;
+    }
     line.done = true;
     this.schedule();
   }
@@ -123,9 +128,13 @@ export class SpeechQueue {
   stop() {
     this.abort.abort(); this.abort = new AbortController();
     this.lines = []; clearTimeout(this.idleTimer);
-    for (const s of this.sources) { try { s.stop(); } catch { /* already ended */ } s.disconnect(); }
-    this.sources.clear(); this.setSpeaking(false);
-    if (this.master) this.master.gain.value = 1; // the next reply starts at full voice
+    // A quick fade (60 ms), not a hard cut mid-sound: stopping sounds deliberate, never like a glitch.
+    const playing = [...this.sources]; this.sources.clear(); this.setSpeaking(false);
+    const c = this.context, g = this.master?.gain;
+    if (c && g && playing.length) {
+      const t = c.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + 0.06);
+      setTimeout(() => { for (const s of playing) { try { s.stop(); } catch { /* already ended */ } s.disconnect(); } if (this.master) { this.master.gain.cancelScheduledValues(0); this.master.gain.value = 1; } }, 70);
+    } else if (this.master) this.master.gain.value = 1; // the next reply starts at full voice
   }
   /** Browsers only let a page start audio after a click or key; call this from one. */
   unlock() { this.ctx(); }

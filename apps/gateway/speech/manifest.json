@@ -1,13 +1,83 @@
 {
   "version": 1,
   "models": {
-    "qwen": { "repository": "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit", "revision": "f35faf19b0cc2160865af64ecf0f22f83d335135", "directory": "qwen-custom-4bit", "bytes": 2310000000, "license": "Apache-2.0" },
-    "pocket": { "repository": "kyutai/pocket-tts-without-voice-cloning", "revision": "e7205b6ee50e654a5ea19f0e9df2b0813b05e921", "directory": "pocket", "bytes": 650000000, "license": "MIT" }
+    "qwen": {
+      "repository": "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit",
+      "revision": "f35faf19b0cc2160865af64ecf0f22f83d335135",
+      "directory": "qwen-custom-4bit",
+      "bytes": 2310000000,
+      "license": "Apache-2.0"
+    },
+    "pocket": {
+      "repository": "kyutai/pocket-tts-without-voice-cloning",
+      "revision": "e7205b6ee50e654a5ea19f0e9df2b0813b05e921",
+      "directory": "pocket",
+      "bytes": 650000000,
+      "license": "MIT"
+    }
   },
   "voices": [
-    { "id": "aiden", "name": "Aiden", "accent": "en-US", "description": "American · conversational male", "engine": "qwen", "speaker": "Aiden", "license": "Apache-2.0", "source": "https://github.com/QwenLM/Qwen3-TTS" },
-    { "id": "ryan", "name": "Ryan", "accent": "en-US", "description": "American · expressive male", "engine": "qwen", "speaker": "Ryan", "license": "Apache-2.0", "source": "https://github.com/QwenLM/Qwen3-TTS" },
-    { "id": "charles", "name": "Charles", "accent": "en-GB", "description": "British · English male (Surrey)", "engine": "pocket", "speaker": "charles", "license": "CC-BY-4.0", "source": "https://huggingface.co/kyutai/tts-voices", "attribution": "CSTR VCTK Corpus, University of Edinburgh, speaker p254. Enhanced reference distributed by Kyutai. Synthetic speech, not the original speaker." },
-    { "id": "paul", "name": "Paul", "accent": "en-GB", "description": "British · English male (Nottingham)", "engine": "pocket", "speaker": "paul", "license": "CC-BY-4.0", "source": "https://huggingface.co/kyutai/tts-voices", "attribution": "CSTR VCTK Corpus, University of Edinburgh, speaker p259. Enhanced reference distributed by Kyutai. Synthetic speech, not the original speaker." }
+    {
+      "id": "aiden",
+      "name": "Aiden",
+      "accent": "en-US",
+      "description": "American · conversational male",
+      "engine": "qwen",
+      "speaker": "Aiden",
+      "license": "Apache-2.0",
+      "source": "https://github.com/QwenLM/Qwen3-TTS"
+    },
+    {
+      "id": "ryan",
+      "name": "Ryan",
+      "accent": "en-US",
+      "description": "American · expressive male",
+      "engine": "qwen",
+      "speaker": "Ryan",
+      "license": "Apache-2.0",
+      "source": "https://github.com/QwenLM/Qwen3-TTS"
+    },
+    {
+      "id": "charles",
+      "name": "Charles",
+      "accent": "en-GB",
+      "description": "British · English male (Surrey)",
+      "engine": "pocket",
+      "speaker": "charles",
+      "license": "CC-BY-4.0",
+      "source": "https://huggingface.co/kyutai/tts-voices",
+      "attribution": "CSTR VCTK Corpus, University of Edinburgh, speaker p254. Enhanced reference distributed by Kyutai. Synthetic speech, not the original speaker."
+    },
+    {
+      "id": "paul",
+      "name": "Paul",
+      "accent": "en-GB",
+      "description": "British · English male (Nottingham)",
+      "engine": "pocket",
+      "speaker": "paul",
+      "license": "CC-BY-4.0",
+      "source": "https://huggingface.co/kyutai/tts-voices",
+      "attribution": "CSTR VCTK Corpus, University of Edinburgh, speaker p259. Enhanced reference distributed by Kyutai. Synthetic speech, not the original speaker."
+    },
+    {
+      "id": "serena",
+      "name": "Serena",
+      "accent": "en-US",
+      "description": "Warm, gentle female · expressive",
+      "engine": "qwen",
+      "speaker": "Serena",
+      "license": "Apache-2.0",
+      "source": "https://github.com/QwenLM/Qwen3-TTS"
+    },
+    {
+      "id": "vivian",
+      "name": "Vivian",
+      "accent": "en-US",
+      "description": "Bright, lively female · expressive",
+      "engine": "qwen",
+      "speaker": "Vivian",
+      "license": "Apache-2.0",
+      "source": "https://github.com/QwenLM/Qwen3-TTS"
+    }
   ]
 }

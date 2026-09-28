@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 
 it("rejects empty, duplicate, foreign-language and unsafe manifests", () => {
-  expect(validateManifest(manifest).voices).toHaveLength(4);
+  expect(validateManifest(manifest).voices).toHaveLength(6);
   for (const voices of [[], [manifest.voices[0], manifest.voices[0]], [{ ...manifest.voices[0], accent: "fr-FR" }]]) expect(() => validateManifest({ ...manifest, voices })).toThrow();
   expect(() => validateManifest({ ...manifest, models: { ...manifest.models, qwen: { ...manifest.models.qwen, directory: "../bad" } } })).toThrow();
 });
@@ -30,7 +30,8 @@ it("protects speech routes and validates requests before starting synthesis", as
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.body.trim().split("\n").map(line => JSON.parse(line).type)).toEqual(["audio", "done"]);
     const status = await app.inject("/api/speech/status");
-    expect(status.json().voices.map((v: { accent: string }) => v.accent)).toEqual(["en-US", "en-US", "en-GB", "en-GB"]);
+    // Every voice is English (American or British), whatever else is added.
+    expect(new Set(status.json().voices.map((v: { accent: string }) => v.accent))).toEqual(new Set(["en-US", "en-GB"]));
   } finally { await app.close(); supervisor.shutdown(); store.close(); speech.close(); }
 });
 it("recovers after crash, malformed protocol and timeout without accepting stale audio", async () => {

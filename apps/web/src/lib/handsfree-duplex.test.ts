@@ -22,12 +22,20 @@ it("without a measured echo it stays cautious (louder and sustained)", () => {
 
 it("learns how much of Spark reaches the mic, and ignores silence between words", () => {
   let c = 0.6;
-  for (let i = 0; i < 300; i++) c = learnCoupling(c, 0.02, 0.2);   // quiet room: 10% comes back
-  expect(c).toBeLessThan(0.15);
+  for (let i = 0; i < 2000; i++) c = learnCoupling(c, 0.02, 0.2);  // quiet room: 10% comes back
+  expect(c).toBeCloseTo(0.15, 2);                                    // settles at the floor, never below it
+  expect(learnCoupling(0.2, 0.16, 0.2)).toBeGreaterThan(0.3);        // a loud echo syllable raises it at once
   expect(learnCoupling(0.3, 0.5, 0.001)).toBe(0.3);
 });
 
 it("a finished-sounding sentence lets the turn end sooner", () => {
   expect(endsSentence("Can you open my calendar?")).toBe(true);
   expect(endsSentence("so what I was thinking")).toBe(false);
+});
+
+it("a false start that goes quiet never builds up enough real speech to cut Spark off", () => {
+  let s: VadState = vadStart(); let talk = 0;
+  for (let t = 0; t < 300; t += 20) s = vadStep(s, 0.2, 20, undefined, true, 0.02).state;   // a blip starts a turn
+  for (let t = 0; t < 900; t += 20) { s = vadStep(s, 0.01, 20, undefined, true, 0.02).state; talk = s.talk; } // then quiet
+  expect(talk).toBeLessThan(600);
 });

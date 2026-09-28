@@ -3,10 +3,10 @@
  * turn on this Mac (whisper, via the gateway), and you can talk over it to interrupt. No buttons.
  */
 
-export interface VadState { noise: number; speaking: boolean; voiced: number; quiet: number; spoke: number }
+export interface VadState { noise: number; speaking: boolean; voiced: number; quiet: number; spoke: number; /** ms actually above the threshold in this turn (not just elapsed) */ talk: number }
 export interface VadOptions { startMs: number; endMs: number; minSpeechMs: number; ratio: number; floor: number }
 export const VAD: VadOptions = { startMs: 140, endMs: 1100, minSpeechMs: 350, ratio: 3.2, floor: 0.012 }; // 1.1 s of quiet ends a turn: natural pauses don't cut you off
-export const vadStart = (): VadState => ({ noise: 0.008, speaking: false, voiced: 0, quiet: 0, spoke: 0 });
+export const vadStart = (): VadState => ({ noise: 0.008, speaking: false, voiced: 0, quiet: 0, spoke: 0, talk: 0 });
 
 /**
  * One analysis frame: `rms` (0–1) over `dt` ms. Learns the room's noise floor while you're quiet, starts a turn
@@ -23,15 +23,15 @@ export function vadStep(s: VadState, rms: number, dt: number, o: VadOptions = VA
   if (!s.speaking) {
     const noise = loud || strict ? s.noise : s.noise * 0.97 + rms * 0.03; // don't learn Spark's voice as "room noise"
     const voiced = loud ? s.voiced + dt : 0;
-    if (voiced >= (adaptive ? Math.max(o.startMs, 260) : strict ? Math.max(o.startMs, 500) : o.startMs)) return { state: { noise, speaking: true, voiced, quiet: 0, spoke: voiced }, event: "start" };
+    if (voiced >= (adaptive ? Math.max(o.startMs, 260) : strict ? Math.max(o.startMs, 500) : o.startMs)) return { state: { noise, speaking: true, voiced, quiet: 0, spoke: voiced, talk: voiced }, event: "start" };
     return { state: { ...s, noise, voiced } };
   }
-  const quiet = loud ? 0 : s.quiet + dt, spoke = s.spoke + dt;
+  const quiet = loud ? 0 : s.quiet + dt, spoke = s.spoke + dt, talk = loud ? s.talk + dt : s.talk;
   if (quiet >= o.endMs) {
-    const next = { noise: s.noise, speaking: false, voiced: 0, quiet: 0, spoke: 0 };
+    const next = { noise: s.noise, speaking: false, voiced: 0, quiet: 0, spoke: 0, talk: 0 };
     return { state: next, event: spoke - quiet >= o.minSpeechMs ? "end" : "discard" };
   }
-  return { state: { ...s, quiet, spoke } };
+  return { state: { ...s, quiet, spoke, talk } };
 }
 
 /**
@@ -41,7 +41,10 @@ export function vadStep(s: VadState, rms: number, dt: number, o: VadOptions = VA
 export function learnCoupling(coupling: number, mic: number, out: number): number {
   if (out < 0.01) return coupling;                                 // Spark is between words: nothing to learn
   const ratio = Math.min(2, Math.max(0.02, mic / out));
-  return coupling * 0.96 + ratio * 0.04;
+  // Track the echo's peaks, not its average: rise fast on a loud syllable, relax slowly — and never trust less
+  // than a sane floor, so one of Spark's own loud words can't pass for you and cut it off mid-sentence.
+  const next = ratio > coupling ? coupling * 0.7 + ratio * 0.3 : coupling * 0.995 + ratio * 0.005;
+  return Math.max(0.15, next);
 }
 /** A sentence that sounds finished lets the turn end sooner (0.75 s instead of 1.1 s). */
 export const endsSentence = (caption: string) => /[.?!]["')\]]?\s*$/.test(caption.trim());
@@ -138,8 +141,9 @@ export class HandsFree {
       const r = vadStep(this.state, rms, frameMs, endsSentence(this.lastCaption) ? { ...VAD, endMs: 750 } : VAD, this.speaking, echo);
       this.state = r.state;
       if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
-      // Still talking over Spark after ~0.7 s: that's a real interruption — Spark stops, like a person would.
-      if (this.turn && this.speaking && !this.yielded && this.state.spoke >= 700) { this.yielded = true; this.onYield?.(); }
+      // Still talking over Spark after ~0.6 s of real speech: a real interruption — Spark stops, like a person would.
+      // Counted in time you were actually speaking (not just elapsed since a start), so a false start never cuts Spark off.
+      if (this.turn && this.speaking && !this.yielded && this.state.talk >= 600) { this.yielded = true; this.onYield?.(); }
       else if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption();
       else if (r.event === "end") void this.finish(true);
       else if (r.event === "discard") void this.finish(false);

@@ -9,7 +9,7 @@ import { SpeechInstaller } from "./speech-install.js";
 const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../speech");
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 const modelSchema = z.object({ repository: z.string().regex(/^[\w-]+\/[\w.-]+$/), revision: z.string().regex(/^[a-f0-9]{40}$/), directory: identifier, bytes: z.number().positive(), license: z.string().min(1) });
-const manifestSchema = z.object({ version: z.literal(1), models: z.record(z.string(), modelSchema), voices: z.array(z.object({ id: identifier, name: z.string().min(1), accent: z.enum(["en-US", "en-GB"]), description: z.string(), engine: z.enum(["qwen", "pocket"]), speaker: identifier.or(z.enum(["Aiden", "Ryan"])), license: z.string().min(1), source: z.string().url(), attribution: z.string().optional() })).min(1).max(4) }).superRefine((m, ctx) => {
+const manifestSchema = z.object({ version: z.literal(1), models: z.record(z.string(), modelSchema), voices: z.array(z.object({ id: identifier, name: z.string().min(1), accent: z.enum(["en-US", "en-GB"]), description: z.string(), engine: z.enum(["qwen", "pocket"]), speaker: identifier.or(z.enum(["Aiden", "Ryan", "Serena", "Vivian"])), license: z.string().min(1), source: z.string().url(), attribution: z.string().optional() })).min(1).max(24) }).superRefine((m, ctx) => {
   if (new Set(m.voices.map(v => v.id)).size !== m.voices.length || m.voices.some(v => !m.models[v.engine])) ctx.addIssue({ code: "custom", message: "Duplicate voice or missing model" });
 });
 export type SpeechManifest = z.infer<typeof manifestSchema>;
