@@ -21,7 +21,6 @@ export function getBuddyVoice() { return current; }
  */
 const AHEAD = 2;          // sentences generating in parallel (more lets the engine finish them out of order)
 const LEAD = 0.18;        // seconds of buffer before the first sound; absorbs network/generation jitter
-const REBUFFER = 0.08;    // if we ever fall behind, restart this far ahead instead of clipping
 
 interface Line { text: string; voiceId: string; speed: number; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean }
 
@@ -29,6 +28,7 @@ export class SpeechQueue {
   private context?: AudioContext;
   private lines: Line[] = [];
   private active = 0;            // generations in flight
+  private lead = LEAD;           // how far ahead we schedule; grows if generation ever falls behind
   private at = 0;                // where the next buffer goes on the timeline
   private sources = new Set<AudioBufferSourceNode>();
   private abort = new AbortController();
@@ -103,8 +103,10 @@ export class SpeechQueue {
       while (line.buffers.length) {
         const buffer = line.buffers.shift()!;
         const now = context.currentTime;
-        if (!this.speaking) { this.at = now + LEAD; this.setSpeaking(true); }
-        else if (this.at < now) this.at = now + REBUFFER;
+        if (!this.speaking) { this.at = now + LEAD; this.lead = LEAD; this.setSpeaking(true); }
+        // Fell behind (the voice model was busy): start again further ahead, and stay further ahead for the rest of this
+        // answer, so one slow moment doesn't become a stutter every sentence.
+        else if (this.at < now) { this.lead = Math.min(0.9, this.lead + 0.3); this.at = now + this.lead; }
         const source = context.createBufferSource();
         source.buffer = buffer; source.connect(this.out()); // the engine already spoke at the chosen speed
         source.onended = () => { this.sources.delete(source); source.disconnect(); this.maybeIdle(); };

@@ -10,7 +10,9 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "shuacrew.live-screen")
     private let context = CIContext()
-    private(set) var latest: CGImage?
+    /// The newest frame, kept unconverted: turning it into an image costs GPU time, so that happens only when Spark
+    /// actually looks (frame()), never once a second in the background while its voice model needs the GPU.
+    private var latest: CIImage?
     private(set) var latestAt = Date.distantPast
     private(set) var screen: NSScreen?
     var running: Bool { stream != nil }
@@ -23,8 +25,11 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else { throw LiveError.noDisplay }
         let mine = content.windows.filter { w in windowNumbers.contains(Int(w.windowID)) }
         let config = SCStreamConfiguration()
-        config.width = Int(Double(display.width) * screen.backingScaleFactor)
-        config.height = Int(Double(display.height) * screen.backingScaleFactor)
+        // At most 1600 px on the long side: plenty to read the screen, a fraction of a full Retina frame's cost.
+        let full = CGSize(width: Double(display.width) * screen.backingScaleFactor, height: Double(display.height) * screen.backingScaleFactor)
+        let scale = min(1, 1600 / max(full.width, full.height))
+        config.width = Int(full.width * scale)
+        config.height = Int(full.height * scale)
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1) // one frame a second is plenty to follow along
         config.showsCursor = true
         config.queueDepth = 3
@@ -45,7 +50,7 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The newest frame, if it's fresh enough to trust.
     func frame(maxAge: TimeInterval = 3) -> CGImage? {
         guard let latest, Date().timeIntervalSince(latestAt) <= maxAge else { return nil }
-        return latest
+        return context.createCGImage(latest, from: latest.extent)
     }
 
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -55,8 +60,7 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
            let raw = attachments.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete { return }
         let image = CIImage(cvPixelBuffer: pixels)
         Task { @MainActor in
-            guard let cg = self.context.createCGImage(image, from: image.extent) else { return }
-            self.latest = cg
+            self.latest = image
             self.latestAt = Date()
         }
     }
