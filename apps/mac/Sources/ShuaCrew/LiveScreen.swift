@@ -81,9 +81,12 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
 @MainActor
 enum ScreenElements {
     private static let interesting: Set<String> = [kAXButtonRole, kAXMenuItemRole, kAXMenuBarItemRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole,
-        "AXLink", "AXTab", kAXTextFieldRole, kAXTextAreaRole, "AXSearchField", kAXComboBoxRole, kAXSliderRole, kAXDisclosureTriangleRole]
+        "AXLink", "AXTab", kAXTextFieldRole, kAXTextAreaRole, "AXSearchField", kAXComboBoxRole, kAXSliderRole, kAXDisclosureTriangleRole,
+        "AXMenuButton", "AXDockItem", "AXSegmentedControl", kAXIncrementorRole, "AXSwitch", "AXToggle", kAXImageRole, kAXCellRole]
 
-    /// Up to 150 controls, positions as fractions of `screen` (from the top-left), plus the app and window names.
+    /// Every control you could be told to click, positions as fractions of `screen` (from the top-left): the front
+    /// window first, then that app's menu bar, the Dock and the menu-bar icons (Wi-Fi, battery, Control Center…), which
+    /// live in other processes. Icons without a text name still count, named from their help text or role.
     static func read(on screen: NSScreen) -> [String: Any] {
         guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return [:] }
         let root = AXUIElementCreateApplication(app.processIdentifier)
@@ -91,28 +94,55 @@ enum ScreenElements {
         AXUIElementCopyAttributeValue(root, kAXFocusedWindowAttribute as CFString, &windowValue)
         let window = windowValue.map { $0 as! AXUIElement }
         let title = window.flatMap { string($0, kAXTitleAttribute) } ?? ""
-        let mainHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-        let f = screen.frame
-        var out: [[String: Any]] = [], queue: [AXUIElement] = [window ?? root], seen = 0
-        while !queue.isEmpty, seen < 4000, out.count < 150 {
-            let el = queue.removeFirst(); seen += 1
+        var out: [[String: Any]] = []
+        walk(window ?? root, on: screen, into: &out, limit: 170, budget: 4000)
+        if let menuBar = element(root, kAXMenuBarAttribute) { walk(menuBar, on: screen, into: &out, limit: 200, budget: 200, depth: 2) }
+        for id in ["com.apple.dock", "com.apple.controlcenter", "com.apple.systemuiserver"] {
+            guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: id).first?.processIdentifier else { continue }
+            let other = AXUIElementCreateApplication(pid)
+            let start = element(other, "AXExtrasMenuBar") ?? other
+            walk(start, on: screen, into: &out, limit: 260, budget: 600, depth: 4)
+        }
+        return ["app": app.localizedName ?? "", "window": title, "elements": out]
+    }
+
+    private static func walk(_ start: AXUIElement, on screen: NSScreen, into out: inout [[String: Any]], limit: Int, budget: Int, depth maxDepth: Int = 40) {
+        let mainHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height, f = screen.frame
+        var queue: [(AXUIElement, Int)] = [(start, 0)], seen = 0
+        while !queue.isEmpty, seen < budget, out.count < limit {
+            let (el, depth) = queue.removeFirst(); seen += 1
             let role = string(el, kAXRoleAttribute) ?? ""
-            if interesting.contains(role), let c = frame(el) {
-                let name = [kAXTitleAttribute, kAXDescriptionAttribute, "AXPlaceholderValue", kAXValueAttribute].lazy.compactMap { string(el, $0)?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty && $0.count < 80 } ?? ""
+            if interesting.contains(role), let c = frame(el), c.width > 2, c.height > 2 {
                 // Global top-left points → this screen's fractions from its top-left.
                 let appKitY = mainHeight - c.midY
                 let x = (c.midX - f.minX) / f.width, y = (f.maxY - appKitY) / f.height
-                if !name.isEmpty, (0...1).contains(x), (0...1).contains(y) {
+                if (0...1).contains(x), (0...1).contains(y), let name = label(el, role: role) {
                     // Its size too (fractions), so a highlight can hug the real control instead of the model's guess.
                     let w = min(1, c.width / f.width), h = min(1, c.height / f.height)
-                    out.append(["name": name, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(), "x": (x * 10000).rounded() / 10000, "y": (y * 10000).rounded() / 10000,
-                                "w": (w * 10000).rounded() / 10000, "h": (h * 10000).rounded() / 10000])
+                    let subrole = (string(el, kAXSubroleAttribute) ?? "").replacingOccurrences(of: "AX", with: "").lowercased()
+                    out.append(["name": name, "role": subrole == "menuextra" ? "menuextra" : role.replacingOccurrences(of: "AX", with: "").lowercased(),
+                                "x": (x * 10000).rounded() / 10000, "y": (y * 10000).rounded() / 10000, "w": (w * 10000).rounded() / 10000, "h": (h * 10000).rounded() / 10000])
                 }
             }
+            guard depth < maxDepth else { continue }
             var children: CFTypeRef?
-            if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &children) == .success, let list = children as? [AXUIElement] { queue.append(contentsOf: list) }
+            if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &children) == .success, let list = children as? [AXUIElement] { queue.append(contentsOf: list.map { ($0, depth + 1) }) }
         }
-        return ["app": app.localizedName ?? "", "window": title, "elements": out]
+    }
+
+    /// What to call a control: its title or description, else its help text or identifier, else what kind of control it
+    /// is ("button", "image") — so icon-only buttons are listed too. Plain images and cells only when they're named.
+    private static func label(_ el: AXUIElement, role: String) -> String? {
+        let clean = { (s: String?) -> String? in s.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty || $0.count >= 80 ? nil : $0 } }
+        if let named = [kAXTitleAttribute, kAXDescriptionAttribute, "AXPlaceholderValue", kAXValueAttribute].lazy.compactMap({ clean(string(el, $0)) }).first { return named }
+        if role == kAXImageRole || role == kAXCellRole { return nil }
+        if let hint = [kAXHelpAttribute, "AXIdentifier"].lazy.compactMap({ clean(string(el, $0)) }).first(where: { !$0.hasPrefix("_NS:") }) { return hint }
+        return clean(string(el, kAXRoleDescriptionAttribute)).map { "\($0) (unlabelled icon)" }
+    }
+    private static func element(_ el: AXUIElement, _ key: String) -> AXUIElement? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, key as CFString, &v) == .success, let v else { return nil }
+        return (v as! AXUIElement)
     }
 
     private static func string(_ el: AXUIElement, _ key: String) -> String? {

@@ -153,6 +153,20 @@ enum SparkHands {
         }
         if command == "mute" { return runResult("set volume with output muted") != nil ? (true, "Muted") : (false, "Couldn't mute.") }
         let app = ["spotify": "Spotify", "music": "Music"][(a["app"] as? String ?? "").lowercased()] ?? runningPlayer() ?? "Music"
+        // Open (not play) an artist, album or search: Spotify through its own search link; Music by handing the Apple
+        // Music link straight to the Music app, so it opens there rather than in a browser.
+        if command == "open_query", let q = (a["query"] as? String)?.trimmingCharacters(in: .whitespaces), !q.isEmpty {
+            let term = q.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? q
+            if app == "Spotify" || (a["app"] as? String)?.lowercased() == "spotify" {
+                NSWorkspace.shared.open(URL(string: "spotify:search:\(term)")!)
+                return (true, "Opening \(q) in Spotify.")
+            }
+            let link = URL(string: "https://music.apple.com/search?term=\(term)")!
+            if let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
+                NSWorkspace.shared.open([link], withApplicationAt: music, configuration: NSWorkspace.OpenConfiguration())
+            } else { NSWorkspace.shared.open(link) }
+            return (true, "Opening \(q) in Music.")
+        }
         if command == "play_query", let q = (a["query"] as? String)?.trimmingCharacters(in: .whitespaces), !q.isEmpty {
             let safe = q.replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "")
             if app == "Spotify" {

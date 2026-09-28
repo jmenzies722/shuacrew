@@ -25,7 +25,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionBrief, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { type Shape, aboutScreen, actFollowUp, buddyPrompt, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { type Shape, aboutScreen, actFollowUp, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
@@ -430,7 +430,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Every instruction block runs once, as soon as it has finished streaming. Mouse & keyboard steps wait for the
   // end of the reply (each one hands back a fresh screenshot to continue from).
   const ran = useRef<Map<string, Set<string>>>(new Map());
-  const looked = useRef(new Set<string>());
+  const looked = useRef(new Set<string>()), recheck = useRef(new Set<string>());
   const runBlocks = (text: string, key: string, final: boolean) => {
     const seen = ran.current.get(key) ?? new Set<string>(); ran.current.set(key, seen);
     if (ran.current.size > 40) ran.current.delete(ran.current.keys().next().value!);
@@ -481,6 +481,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     handled.current = last.id;
     if (!mine()) return; // the other Spark surface asked; it speaks and acts
     const key = `${convo?.run}:${messages.length}`;
+    // "Switched it" with nothing done: don't let the claim stand. Stop saying it and send Spark straight back to do it
+    // (or say plainly it can't) — once per turn.
+    if (convo && claimsWithoutAction(last.text) && !recheck.current.has(convo.run + ":" + last.id)) {
+      recheck.current.add(convo.run + ":" + last.id);
+      speech.current.stop(); streamId.current = ""; spokenUpto.current = 0;
+      void followUp(convo.run, "[check] Your last reply said you did or are doing something, but it had no block, so NOTHING happened. Do it now with the right block (do / act / settings / guide) in this reply, or say plainly that you can't and what you can do instead. Don't apologise at length.").catch(() => {});
+      return;
+    }
     const rest = nextSentences(last.text, streamId.current === key ? spokenUpto.current : 0, true);
     rest.chunks.forEach((c) => speech.current.say(c)); streamId.current = ""; spokenUpto.current = 0;
     runBlocksRef.current(last.text, key, true);
@@ -693,7 +701,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const a = next ? (now ? "Voice mode is already on. Just talk." : "Voice mode on. Just talk, I'm listening.") : (now ? "Voice mode off." : "Voice mode is already off.");
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
-    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
+    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
     if (move && PLAYER) {
       const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
       const player = async () => {
@@ -716,6 +724,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (radioOn) { await radioCommand({ cmd: move.cmd }); done(move.cmd === "next" ? "Next one." : "Going back."); return; }
         if (m?.title) { const r = await perform({ type: "media", command: move.cmd, app: m.app }); done(r.ok ? (move.cmd === "next" ? "Next one." : "Going back.") : r.message); return; }
         done("Nothing's playing."); return;
+      }
+      if (move.kind === "browse") {
+        const { media: m } = await player();
+        const r = await perform({ type: "media", command: "open_query", query: move.query, ...(move.app ? { app: move.app } : m?.app ? { app: m.app } : {}) });
+        done(r.message); return;
       }
       if (move.kind === "play") {
         const { media: m } = await player();
@@ -905,6 +918,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   ].filter(Boolean).slice(0, 4) as string[];
   const lastSpark = messages.at(-1)?.who === "spark" && !messages.at(-1)?.live;
   const lastSparkText = [...messages].reverse().find((m) => m.who === "spark" && !m.live)?.text ?? "";
+  // The reply as it streams in (spoken words only, no machine blocks): the notch shows it live instead of "Thinking…".
+  const streamText = messages.at(-1)?.who === "spark" && messages.at(-1)?.live ? speakable(messages.at(-1)!.text).replace(/```[\s\S]*$/, "").trim() : "";
   quiet.current = !!busy || working || speaking || phase === "hearing" || phase === "transcribing" || !!guide || practicing;
   useEffect(() => {
     if (!liveOn || !prefs.notice || embedded || !native()) return;
@@ -941,7 +956,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const notched = prefs.desktopPlacement === "notch" && !embedded;
   // Speaking while tucked in: the island widens just enough to caption what Spark is saying, live.
   const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow) || !!stuck || !!task || !!guide);
+  const streamingNow = !!streamText && !speaking && !hearingNow;
+  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!stuck || !!task || !!guide);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -1104,7 +1120,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow ? 78 : 64) : 0}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow ? 78 : 64) : 0}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <div className="shua-island-ears">
@@ -1119,7 +1135,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <small>{statusLabel}</small>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <div className="notch-heard"><p>{heard}</p></div> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <div className="notch-heard"><p>{heard}</p></div> : streamingNow && prefs.notchCaptions ? <div className="notch-heard is-stream"><p>{streamText}<i className="notch-caret" /></p></div> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
@@ -1139,7 +1155,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </div>
           {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} />
             : hearingNow || phase === "hearing" ? <div className="notch-heard is-open"><p>{heard || "Listening…"}</p></div>
-            : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? "Thinking…" : gist(lastSparkText)}</p>}
+            : streamText ? <div className="notch-heard is-open is-stream"><p>{streamText}<i className="notch-caret" /></p></div>
+            : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? <>Thinking<span className="notch-dots"><i /><i /><i /></span></> : gist(lastSparkText)}</p>}
           {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           {showMedia && media && <div className="spark-nook-media">
             {media.art ? <img src={media.art} alt="" /> : <i><AudioLines size={16} /></i>}

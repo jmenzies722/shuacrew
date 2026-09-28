@@ -15,12 +15,13 @@ export interface Aim { x: number; y: number; w: number; h: number; label: string
 export interface ScreenFacts { text?: ScreenLine[]; context?: ScreenContext; aspect?: number }
 type Candidate = { x: number; y: number; w: number; h: number; name: string; role?: string };
 
-const ROUND_ROLES = new Set(["checkbox", "radiobutton", "switch", "disclosuretriangle", "colorwell"]);
+const ROUND_ROLES = new Set(["checkbox", "radiobutton", "switch", "disclosuretriangle", "colorwell", "menuextra"]);
 const PILL_ROLES = new Set(["button", "popupbutton", "menubutton", "searchfield", "textfield", "combobox", "tab", "link", "menubaritem", "slider"]);
 
 /** What a highlight around this thing should look like: its shape, from its role and its real proportions. */
 export function shapeOf(c: { w: number; h: number; role?: string }, aspect = 16 / 10): RegionShape {
   const ratio = (c.w * aspect) / c.h; // width ÷ height in real pixels
+  if (c.role === "dockitem") return "rounded";                              // app icons are rounded squares
   if (c.role && ROUND_ROLES.has(c.role)) return "circle";
   if (c.role && ratio > 0.75 && ratio < 1.33 && c.h < 0.06) return "circle";   // a round or square icon button
   if (c.role && (PILL_ROLES.has(c.role) || ratio > 2.2)) return "pill";

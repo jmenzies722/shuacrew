@@ -24,7 +24,7 @@ export type Action =
   | { type: "focus"; minutes: number }
   | { type: "crew"; ask: string }
   | { type: "note"; text: string }
-  | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "volume" | "volume_up" | "volume_down" | "mute"; query?: string; app?: string; level?: number }
+  | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "open_query" | "volume" | "volume_up" | "volume_down" | "mute"; query?: string; app?: string; level?: number }
   | { type: "system"; what: "dark_mode" | "sleep_display"; on?: boolean }
   | { type: "shortcut"; name: string }
   | { type: "settings"; changes: SparkChanges }
@@ -190,7 +190,7 @@ export interface ScreenContext { app?: string; window?: string; elements?: Array
 export function elementsText(ctx: ScreenContext | undefined, max = 120) {
   if (!ctx?.app && !ctx?.elements?.length) return "";
   const rows = (ctx.elements ?? []).slice(0, max).map((e, i) => `#${i + 1} ${e.name} [${e.role}] @${e.x.toFixed(3)},${e.y.toFixed(3)}`);
-  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates:\n${rows.join("\n")}` : ""}`;
+  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility, including the menu bar, the Dock and the menu-bar icons ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates. The ids and numbers are ONLY for blocks: never say or write them; name things the way they see them ("the Share button, top right", "Wi-Fi in the menu bar", "Music in the Dock"):\n${rows.join("\n")}` : ""}`;
 }
 
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
@@ -232,7 +232,7 @@ function toAction(v: unknown): Action | null {
     }
     case "note": { const text = str(o.text, 2000); return text ? { type: "note", text } : null; }
     case "media": {
-      const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "volume", "volume_up", "volume_down", "mute"] as const;
+      const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "open_query", "volume", "volume_up", "volume_down", "mute"] as const;
       const command = cmds.find((c) => c === o.command); if (!command) return null;
       const level = Number(o.level), query = str(o.query, 200), app = str(o.app, 20);
       if (command === "play_query" && !query) return null;
@@ -322,7 +322,32 @@ export function actFollowUp(did: string, ok: boolean, screen: { width: number; h
 }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return noEmoji(text).replace(/```(point|do|guide|draw|act|next)[\s\S]*?(```|$)/gi, "").trim(); }
+export function speakable(text: string) { return withoutPositions(noEmoji(text).replace(/```(point|do|guide|draw|act|next)[\s\S]*?(```|$)/gi, "")).trim(); }
+/**
+ * "Switched it for you." — with nothing actually done. True when a reply says it did (or is doing) something on the
+ * Mac but carries no block that would do it. Spark gets sent straight back to either do it or say it can't.
+ */
+export function claimsWithoutAction(text: string): boolean {
+  if (/```(do|act|guide|point|draw)\b/i.test(text)) return false;
+  const said = speakable(text).toLowerCase();
+  if (/\b(can'?t|cannot|couldn'?t|unable|not able|won'?t|isn'?t possible|don'?t have)\b/.test(said)) return false;
+  return /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)
+    && /^(ok|okay|sure|done|got it|on it|alright|all set|there you go|switched|opened|opening|paused|playing|turned|toggled|enabled|disabled|i'?ve|i have|i'?m|i )/.test(said.trim());
+}
+
+/**
+ * The numbered ids and coordinates Spark is given are for pointing, never for talking: "#12", "T40", "@0.82,0.07",
+ * "(0.82, 0.07)", "at x 0.8". Strip any that slip into what it says or shows.
+ */
+export function withoutPositions(text: string): string {
+  return text
+    .replace(/\s*\(\s*(?:#|T)\d{1,4}\s*\)/g, "")
+    .replace(/(?<![\w#])(?:item |element |control |line )?(?:#|T)\d{1,4}\b(?!\s*(?:%|minutes?|hours?|px))/g, "")
+    .replace(/\s*(?:\b(?:at|near|around)\s+)?@\s*0?\.\d+\s*,\s*0?\.\d+/gi, "")
+    .replace(/\s*(?:\b(?:at|near|around)\s+)?\(?\s*(?:x\s*[=:]?\s*)?0?\.\d{2,}\s*,\s*(?:y\s*[=:]?\s*)?0?\.\d{2,}\s*\)?/gi, "")
+    .replace(/\b(?:at|near)?\s*(?:the\s+)?(?:coordinates?|position)\s*(?=[.,;!?]|$)/gi, "")
+    .replace(/[ \t]{2,}/g, " ").replace(/\s+([.,;!?])/g, "$1");
+}
 /** Next moves: a ```next ["…","…"]``` block of 2–3 short things they could say next (shown as chips; never spoken). */
 export function parseNext(text: string): string[] {
   const m = /```next\s*([\s\S]*?)```/i.exec(text);
@@ -375,7 +400,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
     '```do [{"type":"open_app","name":"Safari"}]```',
     'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
-    'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
+    'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist) | open_query (open an artist, album or search without playing), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
     [
       "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, learning, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
       'Learn anything: ```do [{"type":"learn","topic":"Kubernetes"}]``` · quiz what is due: ```do [{"type":"learn","drill":true}]```',

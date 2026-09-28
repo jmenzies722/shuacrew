@@ -100,6 +100,11 @@ describe("spark producer", () => {
     expect(producerMove("stop voice mode")).toEqual({ kind: "voice", on: false });
     expect(producerMove("what is voice mode")).toBeNull();
     expect(producerMove("stop talking")).toEqual({ kind: "hush" });
+    expect(producerMove("open music artist by drake")).toEqual({ kind: "browse", query: "drake", app: "Music" });
+    expect(producerMove("Hey Shua, open Drake in Apple Music please")).toEqual({ kind: "browse", query: "Drake", app: "Music" });
+    expect(producerMove("show me taylor swift on spotify")).toEqual({ kind: "browse", query: "taylor swift", app: "Spotify" });
+    expect(producerMove("pull up the album Scorpion")).toEqual({ kind: "browse", query: "Scorpion" });
+    expect(producerMove("open safari")).toBeNull();
     expect(producerMove("shh")).toEqual({ kind: "hush" });
     expect(producerMove("put on lofi jazz")).toEqual({ kind: "radio", cmd: "play", station: "jazz" });
     expect(producerMove("play some lo-fi hip hop")).toEqual({ kind: "radio", cmd: "play", station: "hip hop" });

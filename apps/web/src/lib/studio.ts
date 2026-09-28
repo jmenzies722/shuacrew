@@ -181,6 +181,8 @@ export type ProducerMove =
   | { kind: "voice"; on: boolean | "toggle" }
   /** "Stop talking", "be quiet", "shh": stop what Spark is saying or doing, right now. */
   | { kind: "hush" }
+  /** "open music artist by Drake", "show me Drake on Spotify": open that artist / album / search in the music app. */
+  | { kind: "browse"; query: string; app?: "Spotify" | "Music" }
   /** "play Drake", "play some jazz on Spotify": search and play in the music app, right away. */
   | { kind: "play"; query: string; app?: "Spotify" | "Music" }
   | { kind: "focus"; minutes: number }
@@ -217,6 +219,10 @@ export function producerMove(q: string): ProducerMove | null {
   if (/^(put on|play|start|turn on)( some| the| my)? (music|radio|shuacrew radio)\b/i.test(t)) return { kind: "radio", cmd: "play" };
   if (/^pause( the)? radio$/i.test(t)) return { kind: "radio", cmd: "pause" };
   if (/^(resume|unpause)( the)? radio$/i.test(t)) return { kind: "radio", cmd: "resume" };
+  const appOf = (a?: string) => (a ? (/spotify/i.test(a) ? "Spotify" as const : "Music" as const) : undefined);
+  const browse = /^(?:open|show(?: me)?|go to|pull up|find|look up|bring up)\s+(?:the\s+)?(?:(apple music|music|spotify)\s+)?(?:the\s+)?(artist|album|playlist|song|track)s?\s+(?:by\s+|called\s+|named\s+|for\s+)?(.{2,60}?)(?:'s page)?(?:\s+(?:in|on)\s+(spotify|apple music|music))?$/i.exec(t)
+    ?? /^(?:open|show(?: me)?|go to|pull up|find|look up|bring up)\s+()()(.{2,60}?)(?:'s page)?\s+(?:in|on)\s+(spotify|apple music|music)$/i.exec(t);
+  if (browse) { const app = appOf(browse[4] || browse[1]); return { kind: "browse", query: browse[3]!.trim(), ...(app ? { app } : {}) }; }
   if (/^(play|put on) (something|anything|some music|music|a song)$/i.test(t)) return { kind: "player", cmd: "resume" };
   const play = /^(?:play|put on|queue up)\s+(?:some\s+|me\s+|the song\s+|the album\s+)?(.{2,80}?)(?:\s+(?:on|in|from)\s+(spotify|apple music|music))?$/i.exec(t);
   if (play && !/^(the )?(radio|lo-?fi|rain|brown|caf[eé]|soundscape|focus)\b/i.test(play[1]!)) return { kind: "play", query: play[1]!.trim(), ...(play[2] ? { app: /spotify/i.test(play[2]) ? "Spotify" as const : "Music" as const } : {}) };

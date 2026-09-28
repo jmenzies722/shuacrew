@@ -138,3 +138,20 @@ it("reads next moves (2–3 short suggestions) and keeps them out of speech", ()
   expect(speakable(reply)).toBe("Done: Night Shift is on.");
   expect(parseNext("no block")).toEqual([]);
 });
+import { withoutPositions } from "./buddy";
+it("never says the ids or coordinates it points with", () => {
+  expect(withoutPositions("Click the Share button (#12), top right.")).toBe("Click the Share button, top right.");
+  expect(withoutPositions("Tap Wi-Fi at @0.912,0.012 in the menu bar")).toBe("Tap Wi-Fi in the menu bar");
+  expect(withoutPositions("Open item T40 then press Save at (0.82, 0.07).")).toBe("Open then press Save.");
+  expect(withoutPositions("It's the #1 priority and takes 2 minutes.")).toContain("2 minutes");
+});
+import { claimsWithoutAction } from "./buddy";
+it("catches 'switched it' with nothing actually done", () => {
+  expect(claimsWithoutAction("Switched to dark mode.")).toBe(true);
+  expect(claimsWithoutAction("Sure, opening Safari for you.")).toBe(true);
+  expect(claimsWithoutAction("Done, I've turned on voice mode.")).toBe(true);
+  expect(claimsWithoutAction('Opening Safari.\n```do [{"type":"open_app","name":"Safari"}]```')).toBe(false);
+  expect(claimsWithoutAction("I can't change that setting from here, but I can open it for you.")).toBe(false);
+  expect(claimsWithoutAction("Kubernetes opened a new era of deployment tooling.")).toBe(false);
+  expect(claimsWithoutAction("The weather in Austin is 78 and sunny.")).toBe(false);
+});

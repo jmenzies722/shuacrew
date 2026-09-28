@@ -609,3 +609,12 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spark-nook-voice { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; flex: none; border-radius: 12px; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent-grad, var(--amber)); box-shadow: 0 6px 16px -8px var(--accent-glow, var(--amber)); }
 .spark-nook-voice.is-on { color: #000; background: #f1eef5; box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 35%, transparent); }
 .shua-island-voice { display: inline-flex; align-items: center; color: #f1eef5; }
+/* Streaming in the notch: the reply appears as it's written, newest words in view, with a soft caret. */
+.notch-heard.is-stream p { color: #e9e5ef; }
+.notch-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 1px; background: var(--amber); animation: notch-caret 1s steps(2) infinite; }
+@keyframes notch-caret { 50% { opacity: 0; } }
+.notch-dots { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
+.notch-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: notch-dot 1.1s ease-in-out infinite; }
+.notch-dots i:nth-child(2) { animation-delay: .15s; } .notch-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes notch-dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .notch-caret, .notch-dots i { animation: none; } }
