@@ -2,7 +2,9 @@ import type { CSSProperties } from "react";
 import { useScreenMemory, useWakeWord } from "../lib/screen-memory";
 import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { AudioLines, Check } from "lucide-react";
+import { VoiceSettings, setVoiceEverywhere } from "./VoiceSettings";
+import { useLive } from "../lib/live";
 import { api } from "../lib/api";
 import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
 import { parseCompanion, saveCompanion, ROBOT_CHARACTERS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
@@ -43,6 +45,7 @@ const readDesktop = () => { try { return localStorage.getItem(DESKTOP) !== "0"; 
 /** Spark, made yours: who it is, how it looks, how it sounds and talks, how you call it, how it shows you things. */
 export function SparkSettings({ searching = false }: { searching?: boolean }) {
   const prefs = useCompanion(), voice = useBuddyVoice();
+  const shua = useLive((l) => l.crew.members.shua);
   const [category, setCategory] = useState<"character" | "presence" | "voice" | "guidance">("character");
   const [nameDraft, setNameDraft] = useState(prefs.nickname);
   useEffect(() => setNameDraft(prefs.nickname), [prefs.nickname]);
@@ -137,11 +140,16 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       </SettingRow>
       {prefs.conversation && <SettingRow name="Talk over to interrupt" detail={`Start speaking while ${name} talks and it stops to listen.`} modified={!prefs.interrupt}><Switch label="Interrupt" on={prefs.interrupt} onChange={(interrupt) => set({ interrupt })} /></SettingRow>}
       <SettingRow name="Change me by asking" detail={`Say “talk faster”, “use Ryan's voice”, “be more direct”, “call yourself Nova”, “make yourself purple”, “stop clicking things”: ${name} updates these settings itself.`} />
-      {voice.on && <SettingRow name="Voice" detail={voices.length ? undefined : "Install local speech in Settings → Shua voice."}>
-        <select className="setting-input" value={voice.id} onChange={(e) => saveBuddyVoice({ id: e.target.value })} aria-label="Voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+      {voice.on && <SettingRow name="Voice" detail={voices.length ? "The same voice everywhere: on the desktop, in the notch, and when you talk to Shua in Sessions." : "Install the local voice below."}>
+        <select className="setting-input" value={voice.id} onChange={(e) => void setVoiceEverywhere(shua, e.target.value)} aria-label="Voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
         <Segmented label="Speed" value={String(voice.speed) as "0.9" | "1" | "1.15"} onChange={(v) => saveBuddyVoice({ speed: Number(v) })} options={[["0.9", "Calm"], ["1", "Normal"], ["1.15", "Quick"]]} />
       </SettingRow>}
     </section>}
+
+    {(searching || category === "voice") && <details className="settings-card batch-pad spark-voice-studio">
+      <summary><AudioLines size={16} /><span><strong>Hear every voice</strong><small>Audition the cast, install or repair the local voice engine, and tune conversation audio.</small></span></summary>
+      <VoiceSettings embedded />
+    </details>}
 
     {(searching || category === "guidance") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Showing you &amp; doing things</h4>

@@ -28,8 +28,7 @@ const SECTIONS = [
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette, group: "You" },
   { id: "workspace", title: "Workspace", description: "Shape the way you move through your day.", icon: Monitor, group: "You" },
   { id: "widgets", title: "Widgets", description: "Live views of your Mac, your crew and your day — in the top bar and in Spark.", icon: LayoutGrid, group: "You" },
-  { id: "play", title: "Spark", description: "Your desktop buddy: its character, voice, personality, and how it shows you things.", icon: Sparkles, group: "Companion" },
-  { id: "voice", title: "Shua voice", description: "Find a voice that feels right. Hear it before you choose.", icon: AudioLines, group: "Companion" },
+  { id: "play", title: "Shua companion", description: "One companion everywhere: on your desktop, in the notch, in the app and in Chrome. Its look, voice, personality and how it helps.", icon: Sparkles, group: "Companion" },
   { id: "chat", title: "Chat", description: "Your pace, your shortcuts, your conversations.", icon: MessageSquare, group: "Companion" },
   { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles, group: "Crew" },
   { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap, group: "Crew" },
@@ -42,7 +41,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { topbar: "widgets", "widget-board": "widgets", shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "voice", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "desktop-buddy": "play", spark: "play", "tool-cards": "chat", "shua-voice": "voice" };
+const GROUP_SECTION: Record<string, Section> = { voice: "play", "shua-voice": "play", topbar: "widgets", "widget-board": "widgets", shortcuts: "workspace", schedule: "power", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "power", prompts: "developer", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "play", flags: "developer", "diagnostics-report": "developer", snippets: "power", presets: "power", flow: "power", "session-defaults": "agents", budget: "workspace", transfer: "data", events: "developer", hud: "developer", "gateway-log": "developer", storage: "developer", companion: "play", "desktop-buddy": "play", spark: "play", "tool-cards": "chat" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -88,7 +87,7 @@ export function Settings() {
     { id: "menubar", section: "notifications", title: "Menu bar", terms: "menu bar status icon badge tokens running", body: <MenuBarSettings /> },
     { id: "sounds", section: "notifications", title: "Sounds", terms: "sounds audio chime approval done failed volume", body: <SoundSettings /> },
     { id: "look", section: "appearance", title: "Fonts & conversation", terms: "font fonts typeface serif mono code ligatures bubbles document width timestamps chat layout", body: <LookSettings /> },
-    { id: "speech-storage", section: "voice", title: "Speech models on this Mac", terms: "speech models storage disk delete whisper qwen voice space gb", body: <SpeechStorageSettings /> },
+    { id: "speech-storage", section: "play", title: "Speech models on this Mac", terms: "speech models storage disk delete whisper qwen voice space gb", body: <SpeechStorageSettings /> },
     { id: "flags", section: "developer", title: "Experimental features", terms: "feature flags experimental beta labs", body: <FlagSettings /> },
     { id: "diagnostics-report", section: "developer", title: "Debug report", terms: "diagnostics debug report bundle export support logs", body: <DiagnosticsSettings /> },
     { id: "widget-board", section: "widgets", title: "Your widgets", terms: "widgets top bar spark weather focus timer crew clock world time zone spend cost tokens system cpu memory battery disk learning cards streak note scratch countdown order", body: <WidgetSettings /> },
@@ -106,7 +105,7 @@ export function Settings() {
     { id: "hud", section: "developer", title: "Live HUD", terms: "hud overlay fps events per second stream lag connection debug floating", body: <HudToggle /> },
     { id: "gateway-log", section: "developer", title: "Gateway log", terms: "log logs gateway errors crash stderr tail search", body: <GatewayLog /> },
     { id: "storage", section: "developer", title: "Storage", terms: "disk storage size space database library models snapshots usage bytes", body: <StorageUsage /> },
-    { id: "spark", section: "play", title: "Make it yours", terms: "spark notch presence brain intelligence desktop buddy companion character orb byte kit blob robot name nickname colour color size personality tone voice talk speak hotkey shortcut guide show me steps spotlight clicky screen screenshot point open apps actions", body: <SparkSettings searching={!!query.trim()} /> },
+    { id: "spark", section: "play", title: "Make it yours", terms: "shua companion speech male female accent audition preview voice engine spark notch presence brain intelligence desktop buddy companion character orb byte kit blob robot name nickname colour color size personality tone voice talk speak hotkey shortcut guide show me steps spotlight clicky screen screenshot point open apps actions", body: <SparkSettings searching={!!query.trim()} /> },
     { id: "tool-cards", section: "chat", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
     { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">
       <p>Choose which crew rooms leave this Mac, compare pairing fingerprints, and revoke devices in the native setup window. Mobile sync is off by default.</p>
@@ -133,7 +132,6 @@ export function Settings() {
       <Choice name="Turn navigator" detail="Jump between prompts using the markers beside a desktop conversation." field="turnMap" options={[["show", "Show"], ["hide", "Hide"]]} />
     </div> },
     { id: "runtimes", section: "agents", title: "Runtime connections", terms: "claude codex acp subscription auth model provider connection", body: <RuntimeSettings /> },
-    { id: "shua-voice", section: "voice", title: "Voice & speaking style", terms: "shua speech voice male female accent language local free preview speed audio", body: <VoiceSettings /> },
     { id: "desktop-alerts", section: "notifications", title: "Mac desktop alerts", terms: "notifications permission desktop alerts background finish complete failure approval reviews quiet hours sounds morning briefing mute", body: <NotificationSettings /> },
     { id: "crew", section: "agents", title: "Build your crew", terms: "persona role member model prompts skills tools mcp policy approvals", body: <div className="settings-card settings-destinations">
       <Link to="/crew"><strong>Crew members <span>↗</span></strong><small>Choose roles, instructions, models, and which Claude specialists are available for delegation.</small></Link>

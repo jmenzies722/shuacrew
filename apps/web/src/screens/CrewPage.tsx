@@ -310,7 +310,7 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
           <span>Hand it work about… (comma-separated phrases)</span>
           <input value={draft.triggers} onChange={set("triggers")} placeholder="growth, retention, funnel, cohorts" />
         </label>
-        <div className="mt-4"><VoiceCastPicker value={voice} onChange={setVoice} /><p className="mt-2 text-[11px] text-fg-3">Preview the two local voices in Settings → Shua voice. Personality adds speaking style without replacing your instructions. Playback pace also changes pitch; 1× preserves the natural voice.</p></div>
+        <div className="mt-4"><VoiceCastPicker value={voice} onChange={setVoice} /><p className="mt-2 text-[11px] text-fg-3">Hear every voice in Settings → Shua companion → Personality &amp; voice. Personality adds speaking style without replacing your instructions. Playback pace also changes pitch; 1× preserves the natural voice.</p></div>
         {["claude", "codex"].includes(draft.runtime) && <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-[12px]">
           <input type="checkbox" className="mt-1 accent-[var(--amber)]" checked={draft.delegatable} onChange={(e) => setDraft((d) => ({ ...d, delegatable: e.target.checked }))} />
           <span><strong className="block font-medium">Available for delegation</strong><span className="mt-1 block text-fg-3">Crew rooms can assign this member supervised tasks using its provider, persona and model, in a separate workspace. Claude members are also available as native specialists outside rooms. Applies to new assignments.</span></span>
