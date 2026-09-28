@@ -470,6 +470,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 if link.range(of: #"^x-apple\.systempreferences:com\.apple\.[A-Za-z0-9.\-]+(\?Privacy_[A-Za-z]+)?$"#, options: .regularExpression) != nil, let url = URL(string: link) {
                     NSWorkspace.shared.open(url); did(["id": id, "ok": true, "message": "Opened"], to: sender)
                 } else { did(["id": id, "ok": false, "message": "That isn't a System Settings page."], to: sender) }
+            case "mac" where (action["op"] as? String ?? "").hasPrefix("music_"):
+                // What's playing / your playlists: on the music queue (one AppleScript at a time, never the main thread).
+                let op = action["op"] as? String ?? ""
+                SparkHands.musicQueue.async { let r = SparkHands.musicInfo(op); Task { @MainActor [weak self] in self?.did(["id": id, "ok": r.ok, "message": r.message, "output": r.output], to: sender) } }
             case "mac":
                 // Your files, calendar, reminders, notes, contacts and this Mac's state (see MacKnowledge): off the main thread.
                 MacKnowledge.run(action) { [weak self] ok, message, output in

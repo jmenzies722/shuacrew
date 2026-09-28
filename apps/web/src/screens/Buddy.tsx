@@ -59,7 +59,7 @@ const ctx: WidgetCtx = { go: (path) => post({ type: "buddyOpen", path }) };
 
 /** Ask the Mac for one screenshot of the display you're on (never stored beyond this question's session). */
 /** What Music or Spotify is playing right now (asked of the Mac app; null if neither is open or it doesn't answer fast). */
-function nowPlayingOnce(): Promise<{ app: string; playing: boolean; title: string } | null> {
+function nowPlayingOnce(): Promise<{ app: string; playing: boolean; title: string; artist?: string } | null> {
   if (!native()) return Promise.resolve(null);
   return new Promise((resolve) => {
     const on = (e: Event) => { clearTimeout(t); window.removeEventListener("shuacrew:media", on); const d = (e as CustomEvent).detail; resolve(d?.title ? d : null); };
@@ -727,7 +727,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const a = next ? (now ? "Voice mode is already on. Just talk." : "Voice mode on. Just talk, I'm listening.") : (now ? "Voice mode off." : "Voice mode is already off.");
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
-    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "settings" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
+    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "settings" || move.kind === "music" || move.kind === "whatsong" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
     if (move && PLAYER) {
       const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
       const player = async () => {
@@ -750,6 +750,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (radioOn) { await radioCommand({ cmd: move.cmd }); done(move.cmd === "next" ? "Next one." : "Going back."); return; }
         if (m?.title) { const r = await perform({ type: "media", command: move.cmd, app: m.app }); done(r.ok ? (move.cmd === "next" ? "Next one." : "Going back.") : r.message); return; }
         done("Nothing's playing."); return;
+      }
+      if (move.kind === "music") {
+        const { media: m } = await player();
+        const r = await perform({ type: "media", command: move.command, ...(move.query ? { query: move.query } : {}), ...(move.on !== undefined ? { on: move.on } : {}), ...(move.mode ? { mode: move.mode } : {}), ...(m?.app ? { app: m.app } : {}) });
+        done(r.message); return;
+      }
+      if (move.kind === "whatsong") {
+        const { radioOn, media: m } = await player();
+        const r = radioOn ? await radioNow().catch(() => null) : null;
+        done(m?.title ? `That's ${m.title}${m.artist ? ` by ${m.artist}` : ""}${m.playing ? "" : " (paused)"}.` : r?.playing ? `That's ${r.title ?? r.station ?? "ShuaCrew Radio"} on the radio.` : "Nothing's playing right now."); return;
       }
       if (move.kind === "settings") { const r = await perform({ type: "open_settings", pane: move.pane }); done(r.ok ? r.message : r.message); return; }
       if (move.kind === "browse") {

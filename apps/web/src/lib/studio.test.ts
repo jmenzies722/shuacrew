@@ -173,3 +173,20 @@ describe("crate + album", () => {
     expect(albumOf(undefined, {}, {})).toBeNull();
   });
 });
+import { describe as describeMusic, expect as expectMusic, it as itMusic } from "vitest";
+import { producerMove as move } from "./studio";
+describeMusic("Apple Music by asking", () => {
+  itMusic("plays a playlist, shuffles, repeats, favourites, saves, and knows the song", () => {
+    expectMusic(move("play my workout playlist")).toEqual({ kind: "music", command: "playlist", query: "workout" });
+    expectMusic(move("hey shua put on my chill vibes playlist please")).toEqual({ kind: "music", command: "playlist", query: "chill vibes" });
+    expectMusic(move("shuffle on")).toEqual({ kind: "music", command: "shuffle", on: true });
+    expectMusic(move("turn off shuffle")).toEqual({ kind: "music", command: "shuffle", on: false });
+    expectMusic(move("repeat this song")).toEqual({ kind: "music", command: "repeat", mode: "one" });
+    expectMusic(move("stop repeating")).toEqual({ kind: "music", command: "repeat", mode: "off" });
+    expectMusic(move("love this song")).toEqual({ kind: "music", command: "love" });
+    expectMusic(move("add this to my library")).toEqual({ kind: "music", command: "add_to_library" });
+    expectMusic(move("what's this song?")).toEqual({ kind: "whatsong" });
+    expectMusic(move("who sings this")).toEqual({ kind: "whatsong" });
+    expectMusic(move("play Drake")).toEqual({ kind: "play", query: "Drake" });
+  });
+});

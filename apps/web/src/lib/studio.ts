@@ -182,6 +182,10 @@ export type ProducerMove =
   | { kind: "voice"; on: boolean | "toggle" }
   /** "Stop talking", "be quiet", "shh": stop what Spark is saying or doing, right now. */
   | { kind: "hush" }
+  /** Music controls that need no model: a playlist by name, shuffle, repeat, favourite, add to library. */
+  | { kind: "music"; command: "playlist" | "shuffle" | "repeat" | "love" | "add_to_library"; query?: string; on?: boolean; mode?: "off" | "one" | "all" }
+  /** "What's this song?" — answered from what's actually playing. */
+  | { kind: "whatsong" }
   /** "open Wi-Fi settings", "take me to Night Shift": that exact page of System Settings. */
   | { kind: "settings"; pane: string }
   /** "open music artist by Drake", "show me Drake on Spotify": open that artist / album / search in the music app. */
@@ -222,6 +226,16 @@ export function producerMove(q: string): ProducerMove | null {
   if (/^(put on|play|start|turn on)( some| the| my)? (music|radio|shuacrew radio)\b/i.test(t)) return { kind: "radio", cmd: "play" };
   if (/^pause( the)? radio$/i.test(t)) return { kind: "radio", cmd: "pause" };
   if (/^(resume|unpause)( the)? radio$/i.test(t)) return { kind: "radio", cmd: "resume" };
+  const playlist = /^(?:play|put on|start)\s+(?:my|the)\s+(.{2,60}?)\s+playlist$/i.exec(t);
+  if (playlist) return { kind: "music", command: "playlist", query: playlist[1]!.trim() };
+  const shuffle = /^(?:(?:turn|switch)\s+)?shuffle\s+(on|off)$|^(?:turn|switch)\s+(on|off)\s+shuffle$|^shuffle(?:\s+(?:it|this|my music|the music))?$/i.exec(t);
+  if (shuffle) return { kind: "music", command: "shuffle", on: (shuffle[1] ?? shuffle[2] ?? "on").toLowerCase() === "on" };
+  if (/^(?:repeat|loop)\s+(?:this|the|that)\s+(?:song|track)$/i.test(t)) return { kind: "music", command: "repeat", mode: "one" };
+  const repeat = /^(?:(?:turn|switch)\s+)?repeat\s+(on|off|all)$|^(?:turn|switch)\s+(on|off)\s+repeat$|^stop repeating$/i.exec(t);
+  if (repeat) return { kind: "music", command: "repeat", mode: /off/i.test(repeat[1] ?? repeat[2] ?? "off") || /^stop/i.test(t) ? "off" : "all" };
+  if (/^(?:love|like|favou?rite|heart)\s+(?:this|the|that)(?:\s+(?:song|track))?$/i.test(t)) return { kind: "music", command: "love" };
+  if (/^(?:add|save)\s+(?:this|the|that)(?:\s+(?:song|track))?\s+to\s+(?:my\s+)?library$/i.test(t)) return { kind: "music", command: "add_to_library" };
+  if (/^(?:what(?:'s| is)\s+(?:this|that)(?:\s+(?:song|track))?|what song is (?:this|that|playing)|who (?:sings|is singing) (?:this|that)|what(?:'s| is) playing(?: right now)?)$/i.test(t)) return { kind: "whatsong" };
   const nav = /^(?:open|show(?: me)?|take me to|go to|bring up|pull up|where (?:is|are|do i (?:change|find|set|turn on|turn off)))\s+(?:the\s+|my\s+)?(.+?)$/i.exec(t);
   if (nav) { const rest = nav[1]!, pane = findPane(rest); if (pane && (/\b(settings?|preferences?|pane|page|permission|access)\b/i.test(rest) || rest.trim().toLowerCase().split(" ").length <= 3)) return { kind: "settings", pane: pane.key }; }
   const appOf = (a?: string) => (a ? (/spotify/i.test(a) ? "Spotify" as const : "Music" as const) : undefined);

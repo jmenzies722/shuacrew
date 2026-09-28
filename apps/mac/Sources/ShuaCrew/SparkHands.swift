@@ -153,6 +153,45 @@ enum SparkHands {
         }
         if command == "mute" { return runResult("set volume with output muted") != nil ? (true, "Muted") : (false, "Couldn't mute.") }
         let app = ["spotify": "Spotify", "music": "Music"][(a["app"] as? String ?? "").lowercased()] ?? runningPlayer() ?? "Music"
+        // Apple Music (and Spotify where it allows): playlists, shuffle, repeat, favourite, add to library, seek.
+        let safeQuery = ((a["query"] as? String) ?? "").replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespaces)
+        switch command {
+        case "playlist":
+            guard !safeQuery.isEmpty else { return (false, "Which playlist?") }
+            if app == "Spotify" {
+                NSWorkspace.shared.open(URL(string: "spotify:search:\(safeQuery.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? safeQuery)")!)
+                return (true, "Spotify doesn't let apps start playlists by name, so I searched for “\(safeQuery)”.")
+            }
+            let r = timed("Music", """
+            tell application "Music"
+              set hits to (every user playlist whose name contains "\(safeQuery)")
+              if (count of hits) = 0 then return "none"
+              play item 1 of hits
+              return name of item 1 of hits
+            end tell
+            """)
+            return r == nil ? (false, "Music didn't answer.") : r == "none" ? (false, "You don't have a playlist called “\(safeQuery)”.") : (true, "Playing your \(r!) playlist.")
+        case "shuffle":
+            let on = a["on"] as? Bool ?? true
+            let ok = timed(app, app == "Spotify" ? "tell application \"Spotify\" to set shuffling to \(on)" : "tell application \"Music\" to set shuffle enabled to \(on)") != nil
+            return ok ? (true, "Shuffle \(on ? "on" : "off").") : (false, "\(app) didn't answer.")
+        case "repeat":
+            let mode = ["off", "one", "all"].contains(a["mode"] as? String ?? "") ? a["mode"] as! String : "all"
+            let ok = timed(app, app == "Spotify" ? "tell application \"Spotify\" to set repeating to \(mode != "off")" : "tell application \"Music\" to set song repeat to \(mode)") != nil
+            return ok ? (true, mode == "off" ? "Repeat off." : mode == "one" ? (app == "Spotify" ? "Repeat on." : "Repeating this song.") : "Repeat on.") : (false, "\(app) didn't answer.")
+        case "love":
+            guard app == "Music" else { return (false, "Spotify doesn't let apps like songs; tap the heart in Spotify.") }
+            let ok = timed("Music", "tell application \"Music\" to set favorited of current track to true") != nil || timed("Music", "tell application \"Music\" to set loved of current track to true") != nil
+            return ok ? (true, "Added to your favourites.") : (false, "Couldn't favourite this song.")
+        case "add_to_library":
+            guard app == "Music" else { return (false, "Spotify doesn't let apps save songs; tap the plus in Spotify.") }
+            let r = timed("Music", "tell application \"Music\" to duplicate current track to source \"Library\"")
+            return r != nil ? (true, "Added to your library.") : (false, "Music wouldn't add this one from here; use ⋯ → Add to Library.")
+        case "seek":
+            let seconds = max(0, min(36_000, a["seconds"] as? Double ?? 0))
+            return timed(app, "tell application \"\(app)\" to set player position to \(Int(seconds))") != nil ? (true, "Skipped to \(Int(seconds) / 60):\(String(format: "%02d", Int(seconds) % 60)).") : (false, "\(app) didn't answer.")
+        default: break
+        }
         // Open (not play) an artist, album or search: Spotify through its own search link; Music by handing the Apple
         // Music link straight to the Music app, so it opens there rather than in a browser.
         if command == "open_query", let q = (a["query"] as? String)?.trimmingCharacters(in: .whitespaces), !q.isEmpty {
@@ -247,6 +286,38 @@ enum SparkHands {
 
     /// What Music or Spotify is playing, for the notch: title, artist, state, position and artwork. Reads only a player
     /// that's already running (a `tell` would launch it), and fetches artwork once per track, shrunk to a small JPEG.
+    /// For Spark to answer from: the song in detail, or your playlists.
+    nonisolated static func musicInfo(_ op: String) -> (ok: Bool, message: String, output: String) {
+        if op == "music_playlists" {
+            // AppleScript lists don't come back as text: join the names inside the script.
+            guard let names = timed("Music", """
+            tell application "Music"
+              set AppleScript's text item delimiters to " | "
+              set found to (name of every user playlist whose smart is false and special kind is none)
+              return found as text
+            end tell
+            """) else { return (false, "Music didn't answer.", "") }
+            return (true, "Checked your playlists", names.isEmpty ? "You don't have any playlists of your own in Apple Music." : "Your Apple Music playlists: \(names)")
+        }
+        guard let app = runningPlayer() else { return (true, "Nothing's playing", "No music app is open.") }
+        let detail = timed(app, app == "Music" ? """
+            tell application "Music"
+              if player state is stopped then return ""
+              set t to current track
+              set out to (name of t) & " — " & (artist of t) & " · album: " & (album of t) & " · genre: " & (genre of t)
+              if (year of t) > 0 then set out to out & " · year: " & ((year of t) as string)
+              return out & " · " & (player state as string)
+            end tell
+            """ : """
+            tell application "Spotify"
+              if player state is stopped then return ""
+              return (name of current track) & " — " & (artist of current track) & " · album: " & (album of current track) & " · " & (player state as string)
+            end tell
+            """)
+        guard let detail else { return (false, "\(app) didn't answer.", "") }
+        guard !detail.isEmpty else { return (true, "Nothing's playing", "Nothing is playing in \(app).") }
+        return (true, "Checked what's playing", "Now in \(app): \(detail)")
+    }
     nonisolated(unsafe) private static var artCache: (id: String, url: String)?
     nonisolated static func nowPlaying() -> [String: Any]? {
         guard let app = runningPlayer() else { return nil }
