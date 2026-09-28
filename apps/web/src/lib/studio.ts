@@ -175,24 +175,42 @@ export type ProducerMove =
   | { kind: "scape"; scape: Scape }
   | { kind: "stop-radio" }
   | { kind: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous"; station?: string }
+  /** Whatever's playing — ShuaCrew Radio, Music or Spotify — decided at the moment it runs. */
+  | { kind: "player"; cmd: "pause" | "resume" | "next" | "previous" }
+  /** "play Drake", "play some jazz on Spotify": search and play in the music app, right away. */
+  | { kind: "play"; query: string; app?: "Spotify" | "Music" }
   | { kind: "focus"; minutes: number }
   | { kind: "idea"; text: string }
   | { kind: "explain" };
 
+/** Spoken commands come wrapped in politeness: "hey Shua, can you pause the music please". Unwrap to the command. */
+export function commandText(q: string): string {
+  return q.trim()
+    .replace(/^(hey|hi|ok|okay|yo)[,!\s]+/i, "").replace(/^(shua|spark)[,!:\s]+/i, "")
+    .replace(/^(can|could|would|will) you( please)?\s+/i, "").replace(/^please\s+/i, "").replace(/^(go ahead and|just)\s+/i, "")
+    .replace(/[.!?]+$/, "").replace(/[\s,]+(please|for me|now|right now|thanks|thank you)\s*$/i, "").replace(/[.!?,]+$/, "").trim();
+}
 export function producerMove(q: string): ProducerMove | null {
-  const t = q.trim();
+  const t = commandText(q);
   if (isStudioAsk(t)) return { kind: "brief" };
   if (/^(new\s+)?idea\s*[:\-–—]\s*\S/i.test(t)) return { kind: "idea", text: t };
   if (/^(explain|break down|what does|what's|what is)\s+(this|that|the selection|what i (selected|highlighted))( (mean|do|code))?\s*[?.!]*$/i.test(t)) return { kind: "explain" };
-  if (/^(stop|kill|turn off) (the )?(radio|soundscape|music|record)\b/i.test(t)) return { kind: "stop-radio" };
+  if (/^(stop|kill|turn off) (the )?(radio|soundscape|record)\b/i.test(t)) return { kind: "stop-radio" };
+  // Music/Spotify or the radio — whichever is actually playing.
+  const MEDIA = "(the |my |this )?(music|song|track|tune|spotify|apple music|playback|audio|it|that)";
+  if (new RegExp(`^(pause|stop|hold)( ${MEDIA})?$`, "i").test(t)) return { kind: "player", cmd: "pause" };
+  if (new RegExp(`^(resume|unpause|continue|keep playing)( ${MEDIA})?$`, "i").test(t) || new RegExp(`^(play|start) ${MEDIA} again$`, "i").test(t)) return { kind: "player", cmd: "resume" };
+  if (new RegExp(`^(next|skip)( ${MEDIA}| one)?$`, "i").test(t) || /^play the next (song|track)$/i.test(t)) return { kind: "player", cmd: "next" };
+  if (/^(previous|go back|last|back)( (song|track|one))?$/i.test(t) || /^play the (previous|last) (song|track)$/i.test(t)) return { kind: "player", cmd: "previous" };
   // ShuaCrew Radio: your own lofi stations.
   const lofi = /^(put on|play|start|tune (in )?to)( some| the| my)? (lo-?fi)( radio)?\s*(jazz|hip[\s-]?hop)?\b/i.exec(t);
   if (lofi) return { kind: "radio", cmd: "play", station: lofi[6] ? (/jazz/i.test(lofi[6]) ? "jazz" : "hip hop") : undefined };
   if (/^(put on|play|start|turn on)( some| the| my)? (music|radio|shuacrew radio)\b/i.test(t)) return { kind: "radio", cmd: "play" };
-  if (/^(next|skip)( this)?( song| track| one)?\b/i.test(t) || /^play the next (song|track)\b/i.test(t)) return { kind: "radio", cmd: "next" };
-  if (/^(previous|go back|last) (song|track)\b/i.test(t)) return { kind: "radio", cmd: "previous" };
-  if (/^pause( the)? (music|radio|song)\b/i.test(t)) return { kind: "radio", cmd: "pause" };
-  if (/^(resume|unpause)( the)?( music| radio)?\b/i.test(t)) return { kind: "radio", cmd: "resume" };
+  if (/^pause( the)? radio$/i.test(t)) return { kind: "radio", cmd: "pause" };
+  if (/^(resume|unpause)( the)? radio$/i.test(t)) return { kind: "radio", cmd: "resume" };
+  if (/^(play|put on) (something|anything|some music|music|a song)$/i.test(t)) return { kind: "player", cmd: "resume" };
+  const play = /^(?:play|put on|queue up)\s+(?:some\s+|me\s+|the song\s+|the album\s+)?(.{2,80}?)(?:\s+(?:on|in|from)\s+(spotify|apple music|music))?$/i.exec(t);
+  if (play && !/^(the )?(radio|lo-?fi|rain|brown|caf[eé]|soundscape|focus)\b/i.test(play[1]!)) return { kind: "play", query: play[1]!.trim(), ...(play[2] ? { app: /spotify/i.test(play[2]) ? "Spotify" as const : "Music" as const } : {}) };
   const scape = /^(put on|play|start) (the )?(brown|rain|caf[eé]|soundscape)\b/i.exec(t);
   if (scape) {
     const name = scape[3]!.toLowerCase();

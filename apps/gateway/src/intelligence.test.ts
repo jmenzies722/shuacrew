@@ -33,10 +33,11 @@ describe("connected intelligence", () => {
     c.status.signedIn = null;
     expect(selectIntelligence(request, [c], settings, now)).toMatchObject({ runtime: "claude", verification: "unverified" });
   });
-  it("checks images and falls back to explicitly text-only local conversation", () => {
+  it("checks images; Auto never falls back to the local model, which stays explicit-only", () => {
     const c = candidate("claude"); c.capabilities.images = false;
     expect(selectIntelligence({ ...request, images: true }, [c, candidate("codex")], settings, now)).toMatchObject({ runtime: "codex", acceptsImages: true });
-    expect(selectIntelligence({ ...request, images: true }, [candidate("local")], settings, now)).toMatchObject({ runtime: "local", acceptsImages: false });
+    expect(selectIntelligence({ ...request, images: true }, [candidate("local")], settings, now)).toMatchObject({ runtime: null });
+    expect(selectIntelligence({ ...request, mode: "local" }, [candidate("local")], settings, now)).toMatchObject({ runtime: "local", acceptsImages: false });
   });
   it("honors compatible router rules, ignores unknown models, and exposes next retry", () => {
     const s = GatewaySettingsSchema.parse({ router: [{ name: "code", match: "help", runtime: "codex", model: "codex-smart" }] });

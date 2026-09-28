@@ -103,7 +103,10 @@ enum ScreenElements {
                 let appKitY = mainHeight - c.midY
                 let x = (c.midX - f.minX) / f.width, y = (f.maxY - appKitY) / f.height
                 if !name.isEmpty, (0...1).contains(x), (0...1).contains(y) {
-                    out.append(["name": name, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(), "x": (x * 1000).rounded() / 1000, "y": (y * 1000).rounded() / 1000])
+                    // Its size too (fractions), so a highlight can hug the real control instead of the model's guess.
+                    let w = min(1, c.width / f.width), h = min(1, c.height / f.height)
+                    out.append(["name": name, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(), "x": (x * 1000).rounded() / 1000, "y": (y * 1000).rounded() / 1000,
+                                "w": (w * 10000).rounded() / 10000, "h": (h * 10000).rounded() / 10000])
                 }
             }
             var children: CFTypeRef?

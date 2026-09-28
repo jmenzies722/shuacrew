@@ -179,7 +179,7 @@ export function isDesign(question: string) {
 }
 
 /** The frontmost app's real controls, from macOS accessibility: exact names and positions. */
-export interface ScreenContext { app?: string; window?: string; elements?: Array<{ name: string; role: string; x: number; y: number }> }
+export interface ScreenContext { app?: string; window?: string; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
 export function elementsText(ctx: ScreenContext | undefined, max = 120) {
   if (!ctx?.app && !ctx?.elements?.length) return "";
   const rows = (ctx.elements ?? []).slice(0, max).map((e) => `${e.name} [${e.role}] @${e.x.toFixed(3)},${e.y.toFixed(3)}`);

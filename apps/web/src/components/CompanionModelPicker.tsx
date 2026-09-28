@@ -47,13 +47,13 @@ export function CompanionModelPicker({ teaching = false }: { teaching?: boolean 
           saveCompanion({
             ...prefs,
             modelChoice: e.target.value,
-            brain: e.target.value.startsWith("local:") ? "local" : "auto",
+            brain: "auto",
           })
         }
       >
         <option value="">{teaching ? "Auto · Claude visual teaching" : "Auto · connected models"}</option>
         {providers
-          .filter((p) => p.id !== "mock")
+          .filter((p) => p.id !== "mock" && p.id !== "local")
           .map((p) => (
             <optgroup key={p.id} label={p.label}>
               {p.models.map((m) => (

@@ -12,7 +12,8 @@ export function selectIntelligence(request: IntelligenceRequest, candidates: Int
   const rule = request.mode === "auto" ? matchRoute(settings.router, request.ask) : undefined;
   const preferred = rule?.runtime || allowed.find(c => c.models.some(m => m.id === rule?.model))?.id;
   const cloud = allowed.filter(c => c.id !== "local").map(c => c.id);
-  const order = request.mode === "local" ? ["local"] : [...failoverCandidates([...(preferred ? [preferred] : []), ...settings.failoverOrder, "claude", "codex"], cloud, ""), "local"];
+  // Auto is cloud only: the on-Mac fallback answered in up to a minute and couldn't do real work. "local" stays explicit.
+  const order = request.mode === "local" ? ["local"] : [...failoverCandidates([...(preferred ? [preferred] : []), ...settings.failoverOrder, "claude", "codex"], cloud, "")];
   const retries: number[] = [];
   const tiers = ["fast", "balanced", "frontier"];
   for (const id of [...new Set(order)]) {

@@ -32,7 +32,8 @@ it("skips failed provider status and respects local-only without probing cloud a
   for (const id of ["claude", "codex"]) runtimes.get(id)!.status = async () => { cloudChecks++; throw new Error("offline"); };
   const r = await app.inject({ method: "POST", url: "/api/intelligence/select", headers, payload: { ...ask, mode: "local" } });
   expect(r.json().runtime).toBe("local"); expect(cloudChecks).toBe(0);
-  expect((await app.inject({ method: "POST", url: "/api/intelligence/select", headers, payload: ask })).json().runtime).toBe("local");
+  // Auto with every cloud provider down says so rather than quietly dropping to the slow local model.
+  expect((await app.inject({ method: "POST", url: "/api/intelligence/select", headers, payload: ask })).json().runtime).toBeNull();
 });
 it("rejects a stale prepared Spark route instead of silently sending it to another provider", async () => {
   const { app, store } = await world();

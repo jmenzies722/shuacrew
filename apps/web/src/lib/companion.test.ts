@@ -35,9 +35,10 @@ it("speaks English by default and switches to any language when chosen", () => {
   expect(parseCompanion({ language: "klingon" }).language).toBe("en");
 });
 
-it("thinks with Claude by default, falling back to the smart local model", () => {
-  expect(parseCompanion(null)).toMatchObject({ brain: "auto", localModel: "gpt-oss:20b" });
-  expect(parseCompanion({ brain: "local", localModel: "llama3.2:3b" })).toMatchObject({ brain: "local", localModel: "llama3.2:3b" });
+it("always thinks with connected cloud models; a saved on-Mac brain or local model choice becomes Auto", () => {
+  expect(parseCompanion(null)).toMatchObject({ brain: "auto" });
+  expect(parseCompanion({ brain: "local", localModel: "llama3.2:3b" })).toMatchObject({ brain: "auto" });
+  expect(parseCompanion({ modelChoice: "local:gpt-oss:20b" })).toMatchObject({ modelChoice: "" });
   expect(parseCompanion({ brain: "gpt", localModel: "huge" })).toMatchObject({ brain: "auto", localModel: "gpt-oss:20b" });
 });
 

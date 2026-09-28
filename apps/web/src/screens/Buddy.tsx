@@ -11,6 +11,7 @@ import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption } from "../components/NotchCaption";
+import { snapBox } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
@@ -55,6 +56,17 @@ const mine = () => { try { const o = localStorage.getItem(OWNER); return !o || o
 const ctx: WidgetCtx = { go: (path) => post({ type: "buddyOpen", path }) };
 
 /** Ask the Mac for one screenshot of the display you're on (never stored beyond this question's session). */
+/** What Music or Spotify is playing right now (asked of the Mac app; null if neither is open or it doesn't answer fast). */
+function nowPlayingOnce(): Promise<{ app: string; playing: boolean; title: string } | null> {
+  if (!native()) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const on = (e: Event) => { clearTimeout(t); window.removeEventListener("shuacrew:media", on); const d = (e as CustomEvent).detail; resolve(d?.title ? d : null); };
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:media", on); resolve(null); }, 900);
+    window.addEventListener("shuacrew:media", on); post({ type: "buddyNowPlaying" });
+  });
+}
+/** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
+let lastScreen: { text: ScreenLine[]; context?: ScreenContext } | null = null;
 function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
   return new Promise((resolve, reject) => {
     if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
@@ -63,6 +75,7 @@ function capture(): Promise<{ file: File; width: number; height: number; text: S
       clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
       const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
       logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
+      lastScreen = { text: d.text ?? [], context: d.context };
       const bytes = Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0));
       resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
     };
@@ -317,7 +330,6 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     refresh(); const timer = setInterval(refresh, 30_000); window.addEventListener("focus", refresh);
     return () => { alive = false; clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [open, prefs.brain, prefs.modelChoice, prefs.localModel, limited]);
-  useEffect(() => { if (onMac && open) void api("/api/local/warm", { body: { model: prefs.localModel, system: localSys } }).catch(() => {}); }, [onMac, open, prefs.localModel, localSys]);
   const timer = useFocusTimer(), [now, setNow] = useState(Date.now());
   useEffect(() => { if (!timer) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [timer]);
   const [caption, setCaption] = useState<{ text: string; speed: number } | null>(null);
@@ -392,12 +404,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     for (const b of completedBlocks(text)) {
       if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
       seen.add(b.key);
-      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) post({ type: "buddyPoint", ...p, color: accentOf(prefs.color) }); }
+      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const s = snapBox({ x: p.x - 0.015, y: p.y - 0.015, w: 0.03, h: 0.03, label: p.label }, lastScreen); post({ type: "buddyPoint", ...p, x: s.x + s.w / 2, y: s.y + s.h / 2, color: accentOf(prefs.color) }); } }
       else if (b.kind === "draw") { const shapes = parseDraw(b.raw); if (shapes.length) post({ type: "buddyDraw", shapes, color: accentOf(prefs.color) }); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
         if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
-        else if (g) { setGuide(g); post({ type: "buddyGuide", ...g, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
+        else if (g) { const exact = { ...g, ...snapBox(g, lastScreen) }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
       } else if (b.kind === "act") {
         const act = parseAct(b.raw);
         if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
@@ -629,7 +641,38 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
     const move = producerMove(q);
-    if (move && !(convo && status && !["failed", "cancelled"].includes(status))) {
+    // Player commands are unambiguous: they run instantly, every time, mid-conversation or not — no model involved.
+    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
+    if (move && PLAYER) {
+      const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
+      const player = async () => {
+        const [r, m] = await Promise.all([radioNow().catch(() => ({ playing: false } as Awaited<ReturnType<typeof radioNow>>)), nowPlayingOnce()]);
+        return { radioOn: r.playing, media: m };
+      };
+      if (move.kind === "player") {
+        const { radioOn, media: m } = await player();
+        if (move.cmd === "pause") {
+          if (radioOn) { await radioCommand({ cmd: "pause" }); void radioNow().then(setRadio); done("Paused."); return; }
+          if (m?.playing) { const r = await perform({ type: "media", command: "pause", app: m.app }); done(r.ok ? "Paused." : r.message); return; }
+          done("Nothing's playing."); return;
+        }
+        if (move.cmd === "resume") {
+          if (m && !m.playing && m.title) { const r = await perform({ type: "media", command: "play", app: m.app }); done(r.ok ? `Back to ${m.title}.` : r.message); return; }
+          if (m?.playing || radioOn) { done("It's already playing."); return; }
+          const r = await radioCommand({ cmd: getRadio().station ? "resume" : "play" }); done(r.ok ? "Putting the radio on." : r.error); return;
+        }
+        // next / previous: whichever is playing
+        if (radioOn) { await radioCommand({ cmd: move.cmd }); done(move.cmd === "next" ? "Next one." : "Going back."); return; }
+        if (m?.title) { const r = await perform({ type: "media", command: move.cmd, app: m.app }); done(r.ok ? (move.cmd === "next" ? "Next one." : "Going back.") : r.message); return; }
+        done("Nothing's playing."); return;
+      }
+      if (move.kind === "play") {
+        const { media: m } = await player();
+        const r = await perform({ type: "media", command: "play_query", query: move.query, ...(move.app ? { app: move.app } : m?.app ? { app: m.app } : {}) });
+        done(r.ok ? r.message : r.message); return;
+      }
+    }
+    if (move && (PLAYER || !(convo && status && !["failed", "cancelled"].includes(status)))) {
       const set = todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now());
       if (move.kind === "brief") {
         const a = studioAnswer({ track, set, waiting: Object.keys(crew.approvals).length, tokens: crew.today.tokens, costUsd: crew.today.costUsd });

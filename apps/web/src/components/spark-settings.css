@@ -68,3 +68,4 @@
 .spark-voice-studio > summary small { color: var(--text-3); font-size: 12px; }
 .spark-voice-studio[open] > summary { margin-bottom: 14px; }
 .voice-studio .px-5 { padding-inline: 0; }
+.spark-muted { color: var(--text-3); font-size: 12.5px; }
