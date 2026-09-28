@@ -127,6 +127,8 @@ export function Guide() {
               <p><b>It stays with you.</b> Collapsed, it rides just beside your pointer wherever you work (clicks pass straight through it), walks off to point at something, and comes back. Tap <kbd>fn</kbd> for a small card right there instead of the full chat; hold <kbd>fn</kbd> to talk and let go to send.</p>
               <p><b>It finishes jobs.</b> Say <b>“agent:”</b> and a task and it becomes a mission: the crew works on it end to end, and {name} stays with it. If the crew stops to ask something it could decide, or hits a failure, {name} tells it to keep going (up to three times), then tells you out loud when it's done. It never approves anything for you.</p>
               <p><b>It reaches your mail and Notion.</b> It checks, searches, reads and drafts email through the Mac's Mail app, so Gmail works with no Google setup, and it never sends. Anything about your Notion goes to the crew, which uses your Notion connection.</p>
+              <p><b>A chat window that's alive.</b> A pill at the top says what {name} is doing (Ready, Listening, Thinking, Speaking, or the missions it's minding). Open it fresh and it greets you with what's actually going on right now (approvals waiting, missions in progress, crew at work) and suggestions that fit the moment, like “Start my day” in the morning; one tap sends. Under each answer: Tell me more, Make it shorter, Show me on screen, Do it for me. The box grows as you type, and a Latest button brings you back if you scroll up.</p>
+              <p><b>Make the window yours.</b> It's a solid card floating over your work by default. In Settings → {name} → Presence & brain choose Solid or frosted Glass, the tone, the corners, the text size and a gradient header, with a live preview.</p>
               <p><b>It never goes dark.</b> If Claude runs out of usage, it switches to a local model on your Mac (Ollama) and keeps working.</p>
             </div>
             <div className="guide-says" aria-label={`Things you can say to ${name}`}>
@@ -146,6 +148,9 @@ export function Guide() {
             { title: "Missions", where: "“agent: …”", body: "Hand it a task and it stays with it: keeps the crew going when it stalls, brings approvals to you, and tells you when it's finished. A strip in its panel shows what it's minding." },
             { title: "Email & Notion", where: "Mail app · Tools & Skills", body: "Unread, search, read and draft (never send) through Mail. Notion through the crew once you connect it in Tools & Skills. Both show in Settings → Spark." },
             { title: "fn quick card", where: "Tap or hold fn", body: "A small card beside your pointer: your words as you speak, the gist of the answer, or the step you're on with Done, next. Needs the Globe key set to “Do Nothing”." },
+            { title: "A live welcome", where: "Chat window", body: "A greeting for the time of day, a Right now strip from what's really happening, and suggestions that change with it. Tap to ask." },
+            { title: "Quick replies", where: "Under each answer", body: "Tell me more, Make it shorter, Show me on screen, Do it for me: the next step in one tap, without typing." },
+            { title: "Your chat, your look", where: "Settings → Presence & brain", body: "Solid or Glass, Theme / Deep / Accent tone, Round / Soft / Square corners, text size and a gradient header, previewed live." },
           ]} />
         </Section>
 
@@ -228,10 +233,10 @@ export function Guide() {
 
         <Section id="settings" hub="Settings · ⌘," title="Make it yours">
           <ul className="guide-prose guide-list">
-            <li><b>Look:</b> Pristine (default), Frost Black, Graphite, Carbon, Midnight, Paper and Sand palettes. Space Grotesk or SF Pro for the interface, and JetBrains Mono, SF Mono or Menlo for code. Share a theme as a code.</li>
+            <li><b>Look:</b> Pristine (default), Frost Black, Graphite, Carbon, Midnight, Paper and Sand palettes. Space Grotesk or SF Pro for the interface, and JetBrains Mono, SF Mono or Menlo for code. Share a theme as a code. Your accent colour carries through everything: the ShuaCrew logo (in the sidebar, the top bar and on Sessions), gradient buttons, the lit edge on where you are, and a glowing ring around the box you're typing in.</li>
             <li><b>Modes:</b> Deep work, Cost saver and Wind down, which can switch on automatically on a schedule. Also quiet hours and a daily budget.</li>
             <li><b>Crew behavior:</b> engine fallback order, routing rules, session limits, hooks, your own instructions and a prompt inspector.</li>
-            <li><b>{name}:</b> follow my cursor, keep going on its own (missions), fn key, “Hey {name}”, voice, character and colour, plus Email (via Mail), Notion and Spark for Chrome (your pairing key).</li>
+            <li><b>{name}:</b> follow my cursor, keep going on its own (missions), fn key, “Hey {name}”, voice, character and colour, the chat window's look (Solid or Glass, tone, corners, text size, header), plus Email (via Mail), Notion and Spark for Chrome (your pairing key).</li>
             <li><b>Always on:</b> the gateway runs as a background service, with backups, automatic retries and a menu bar item.</li>
             <li><b>Time machine & export:</b> roll back settings, or export and import your whole setup.</li>
           </ul>
@@ -240,7 +245,7 @@ export function Guide() {
 
         <Section id="status" hub="Honest status · 28 Sep 2026" title="Where things stand" intro="ShuaCrew is under active development. Here's what you can rely on today and what isn't finished yet.">
           <div className="guide-status">
-            <div><span className="is-ready">Ready</span><p>Mac app, gateway, crew, sessions, the Board, Library, memory, schedules, policy and audit, voice and actions, and radio, terminal snippets, missions, email through Mail, and Spark for Chrome. Covered by 579 automated tests.</p></div>
+            <div><span className="is-ready">Ready</span><p>Mac app, gateway, crew, sessions, the Board, Library, memory, schedules, policy and audit, voice and actions, and radio, terminal snippets, missions, email through Mail, Spark for Chrome, the live chat window and its look settings, and the themed logo and gradients. Covered by 579 automated tests.</p></div>
             <div><span className="is-partial">Partial</span><p>Follow my cursor and the fn key are built and tested in code but not yet tried with a real key press. fn needs Accessibility access and the Globe key set to “Do Nothing” (System Settings → Keyboard). Email needs your account in the Mail app.</p></div>
             <div><span className="is-partial">Partial</span><p>Spark for Chrome loads unpacked from your ShuaCrew folder; it isn't in the Chrome Web Store.</p></div>
             <div><span className="is-partial">Partial</span><p>Visual teaching uses Claude only; Codex support for teaching isn't connected yet. Voice uses turn-taking with soft interruptions, not true full-duplex conversation.</p></div>
