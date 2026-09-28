@@ -599,3 +599,13 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spark-nook-live small { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #8d8797; }
 .spark-nook-live b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spark-nook-live .spark-nook-bar { margin-top: 4px; }
+.spark-nook-live.is-task { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 16%, #141218), #0c0b0f); }
+.spark-nook-ctl button.is-go { color: #fff; background: var(--accent-grad, var(--amber)); font-weight: 600; }
+/* Next moves: 2–3 things to say next, one tap away. */
+.spark-nook-next { display: flex; flex-wrap: wrap; gap: 6px; }
+.spark-nook-next button { height: 26px; padding: 0 11px; border-radius: 999px; font-size: 11.5px; color: #f1eef5; background: #1d1a22; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, #26222d); }
+.spark-nook-next button:hover { background: color-mix(in srgb, var(--amber) 22%, #1d1a22); }
+/* Voice mode from the notch: one clear pill; on, it shows your live waveform and ends with a tap. */
+.spark-nook-voice { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; flex: none; border-radius: 12px; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent-grad, var(--amber)); box-shadow: 0 6px 16px -8px var(--accent-glow, var(--amber)); }
+.spark-nook-voice.is-on { color: #000; background: #f1eef5; box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 35%, transparent); }
+.shua-island-voice { display: inline-flex; align-items: center; color: #f1eef5; }

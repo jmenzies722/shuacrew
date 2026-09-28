@@ -131,3 +131,10 @@ it("routes each turn to the model it needs", () => {
   expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
   expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });
+import { parseNext } from "./buddy";
+it("reads next moves (2–3 short suggestions) and keeps them out of speech", () => {
+  const reply = 'Done: Night Shift is on.\n```next ["Schedule it for sunset", "Make it warmer", "Quiz me on this", "extra"]```';
+  expect(parseNext(reply)).toEqual(["Schedule it for sunset", "Make it warmer", "Quiz me on this"]);
+  expect(speakable(reply)).toBe("Done: Night Shift is on.");
+  expect(parseNext("no block")).toEqual([]);
+});

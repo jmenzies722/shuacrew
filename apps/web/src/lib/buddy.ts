@@ -315,11 +315,17 @@ const STEP_STYLE = " Reply in ONE short sentence (under 15 words) plus the block
 
 /** What goes back after Spark does a step: what happened, a fresh look, and the ask for the next step. */
 export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }, step: number, max: number) {
-  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
+  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${Number.isFinite(max) && step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
 }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return noEmoji(text).replace(/```(point|do|guide|draw|act)[\s\S]*?(```|$)/gi, "").trim(); }
+export function speakable(text: string) { return noEmoji(text).replace(/```(point|do|guide|draw|act|next)[\s\S]*?(```|$)/gi, "").trim(); }
+/** Next moves: a ```next ["…","…"]``` block of 2–3 short things they could say next (shown as chips; never spoken). */
+export function parseNext(text: string): string[] {
+  const m = /```next\s*([\s\S]*?)```/i.exec(text);
+  if (!m) return [];
+  try { const v = JSON.parse(m[1]!.trim()) as unknown; return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 1).map((x) => x.trim().slice(0, 60)).slice(0, 3) : []; } catch { return []; }
+}
 
 /** Plain words for the voice: no markdown, no code, no link targets. */
 export function spoken(text: string) {
@@ -384,6 +390,8 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     ].join("\n"),
     'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
     "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
+    'NEXT MOVES: when you finish a task, a lesson, a lookup or a workflow, end with ```next ["…","…"]``` — 2 or 3 short, specific things they could ask you next (under 8 words each, phrased as they would say them, e.g. "Quiz me on this", "Set it up on my Mac too"). Skip it for small talk and quick commands.',
+    "RESEARCH: if you don't know, or it depends on current or specific facts, look it up (WebSearch, then WebFetch the best page) before you answer or teach, and name the source in a few words. Then teach it: point, guide or draw on their screen when that makes it clearer.",
     persona.goal || persona.memory?.length ? [
       "WHAT YOU KNOW ABOUT THEM (their memory in ShuaCrew — use it naturally, never recite it):",
       persona.goal ? `- Career goal: ${persona.goal}` : "",

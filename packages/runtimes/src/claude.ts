@@ -241,8 +241,8 @@ export class ClaudeRuntime implements Runtime {
         pathToClaudeCodeExecutable: this.executable,
         // Claude Code's own system prompt, with ShuaCrew's lessons and context appended — or, for a lean
         // conversational turn, a short one of its own (the ask carries the persona and context).
-        systemPrompt: run.lean ? "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Only use the Read tool to look at attached images." : { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
-        ...(run.lean ? { allowedTools: ["Read"], disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"] } : {}),
+        systemPrompt: run.lean ? "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Use Read to look at attached images. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching." : { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
+        ...(run.lean ? { allowedTools: ["Read", "WebSearch", "WebFetch"], disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"] } : {}),
         agents: run.agents,
         ...(run.lean ? {} : { disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined }),
         mcpServers: run.mcpServers,
