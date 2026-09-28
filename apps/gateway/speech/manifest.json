@@ -1,83 +1,110 @@
 {
   "version": 1,
   "models": {
-    "qwen": {
-      "repository": "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit",
-      "revision": "f35faf19b0cc2160865af64ecf0f22f83d335135",
-      "directory": "qwen-custom-4bit",
-      "bytes": 2310000000,
+    "kokoro": {
+      "repository": "mlx-community/Kokoro-82M-bf16",
+      "revision": "a71e4d38b236d968966a2002c4c895dbd12b1c3c",
+      "directory": "kokoro",
+      "bytes": 390000000,
       "license": "Apache-2.0"
-    },
-    "pocket": {
-      "repository": "kyutai/pocket-tts-without-voice-cloning",
-      "revision": "e7205b6ee50e654a5ea19f0e9df2b0813b05e921",
-      "directory": "pocket",
-      "bytes": 650000000,
-      "license": "MIT"
     }
   },
   "voices": [
     {
-      "id": "aiden",
-      "name": "Aiden",
+      "id": "michael",
+      "name": "Michael",
       "accent": "en-US",
-      "description": "American · conversational male",
-      "engine": "qwen",
-      "speaker": "Aiden",
+      "description": "Clear American male \u00b7 calm and friendly",
+      "engine": "kokoro",
+      "speaker": "am_michael",
       "license": "Apache-2.0",
-      "source": "https://github.com/QwenLM/Qwen3-TTS"
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
     },
     {
-      "id": "ryan",
-      "name": "Ryan",
+      "id": "heart",
+      "name": "Heart",
       "accent": "en-US",
-      "description": "American · expressive male",
-      "engine": "qwen",
-      "speaker": "Ryan",
+      "description": "Warm American female \u00b7 the most natural",
+      "engine": "kokoro",
+      "speaker": "af_heart",
       "license": "Apache-2.0",
-      "source": "https://github.com/QwenLM/Qwen3-TTS"
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
     },
     {
-      "id": "charles",
-      "name": "Charles",
+      "id": "puck",
+      "name": "Puck",
+      "accent": "en-US",
+      "description": "Upbeat American male \u00b7 lively",
+      "engine": "kokoro",
+      "speaker": "am_puck",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
+    },
+    {
+      "id": "bella",
+      "name": "Bella",
+      "accent": "en-US",
+      "description": "Bright American female \u00b7 expressive",
+      "engine": "kokoro",
+      "speaker": "af_bella",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
+    },
+    {
+      "id": "fenrir",
+      "name": "Fenrir",
+      "accent": "en-US",
+      "description": "Deep American male \u00b7 confident",
+      "engine": "kokoro",
+      "speaker": "am_fenrir",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
+    },
+    {
+      "id": "emma",
+      "name": "Emma",
       "accent": "en-GB",
-      "description": "British · English male (Surrey)",
-      "engine": "pocket",
-      "speaker": "charles",
-      "license": "CC-BY-4.0",
-      "source": "https://huggingface.co/kyutai/tts-voices",
-      "attribution": "CSTR VCTK Corpus, University of Edinburgh, speaker p254. Enhanced reference distributed by Kyutai. Synthetic speech, not the original speaker."
+      "description": "British female \u00b7 crisp and warm",
+      "engine": "kokoro",
+      "speaker": "bf_emma",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
     },
     {
-      "id": "paul",
-      "name": "Paul",
+      "id": "george",
+      "name": "George",
       "accent": "en-GB",
-      "description": "British · English male (Nottingham)",
-      "engine": "pocket",
-      "speaker": "paul",
-      "license": "CC-BY-4.0",
-      "source": "https://huggingface.co/kyutai/tts-voices",
-      "attribution": "CSTR VCTK Corpus, University of Edinburgh, speaker p259. Enhanced reference distributed by Kyutai. Synthetic speech, not the original speaker."
+      "description": "British male \u00b7 measured",
+      "engine": "kokoro",
+      "speaker": "bm_george",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
     },
     {
-      "id": "serena",
-      "name": "Serena",
-      "accent": "en-US",
-      "description": "Warm, gentle female · expressive",
-      "engine": "qwen",
-      "speaker": "Serena",
+      "id": "daniel",
+      "name": "Daniel",
+      "accent": "en-GB",
+      "description": "British male \u00b7 relaxed",
+      "engine": "kokoro",
+      "speaker": "bm_daniel",
       "license": "Apache-2.0",
-      "source": "https://github.com/QwenLM/Qwen3-TTS"
-    },
-    {
-      "id": "vivian",
-      "name": "Vivian",
-      "accent": "en-US",
-      "description": "Bright, lively female · expressive",
-      "engine": "qwen",
-      "speaker": "Vivian",
-      "license": "Apache-2.0",
-      "source": "https://github.com/QwenLM/Qwen3-TTS"
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "attribution": "Kokoro-82M by hexgrad (Apache-2.0), MLX conversion by mlx-community."
     }
-  ]
+  ],
+  "aliases": {
+    "aiden": "michael",
+    "ryan": "puck",
+    "serena": "heart",
+    "vivian": "bella",
+    "charles": "george",
+    "paul": "daniel"
+  }
 }

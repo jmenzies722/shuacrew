@@ -10,6 +10,9 @@ import sys
 
 MANIFEST = json.loads(Path(__file__).with_name("manifest.json").read_text())
 VOICES = {voice["id"]: voice for voice in MANIFEST["voices"]}
+# Voices that were retired keep working: they speak as their closest successor.
+for old, new in MANIFEST.get("aliases", {}).items():
+    VOICES.setdefault(old, VOICES[new])
 
 def validate_request(raw):
     if not isinstance(raw, dict):
@@ -50,7 +53,11 @@ def main(home):
                     model, states = None, {}
                     import gc
                     gc.collect()
-                    if voice["engine"] == "qwen":
+                    if voice["engine"] == "kokoro":
+                        # Kokoro-82M: clear, and ~15x faster than real time here, so speech never drags under load.
+                        from mlx_audio.tts.utils import load_model
+                        model = load_model(str(home / "models" / MANIFEST["models"]["kokoro"]["directory"]))
+                    elif voice["engine"] == "qwen":
                         from mlx_audio.tts.utils import load_model
                         model = load_model(str(home / "models" / MANIFEST["models"]["qwen"]["directory"]))
                     else:
@@ -64,7 +71,11 @@ def main(home):
                         states[voice["speaker"]] = model.get_state_for_audio_prompt(voice["speaker"])
                     send({"id": request_id, "type": "done"})
                     continue
-                if engine == "qwen":
+                if engine == "kokoro":
+                    path = str(home / "models" / MANIFEST["models"]["kokoro"]["directory"] / "voices" / f'{voice["speaker"]}.safetensors')
+                    lang = "b" if voice["accent"] == "en-GB" else "a"
+                    chunks = ((np.asarray(result.audio).reshape(-1), getattr(result, "sample_rate", 24000)) for result in model.generate(request["text"], voice=path, speed=request["speed"], lang_code=lang))
+                elif engine == "qwen":
                     chunks = ((np.asarray(result.audio), result.sample_rate) for result in model.generate_custom_voice(text=request["text"], speaker=voice["speaker"], language="English", instruct="Speak naturally in a warm, calm conversational tone.", stream=True, streaming_interval=.32))
                 else:
                     if voice["speaker"] not in states:

@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { readSpeechStream } from "./speech-stream";
+import { DEFAULT_VOICE, currentVoice } from "./voices";
 
 /** Spark's voice: on/off and which local voice, shared by the app's Settings and the desktop panel. */
 export interface BuddyVoice { on: boolean; id: string; speed: number }
 const KEY = "shuacrew.buddy.voice";
-const DEFAULT: BuddyVoice = { on: true, id: "aiden", speed: 1 };
-const load = (): BuddyVoice => { try { const v = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<BuddyVoice>; return { on: typeof v.on === "boolean" ? v.on : DEFAULT.on, id: typeof v.id === "string" && /^[a-z0-9_-]{1,40}$/.test(v.id) ? v.id : DEFAULT.id, speed: typeof v.speed === "number" && v.speed >= 0.8 && v.speed <= 1.3 ? v.speed : 1 }; } catch { return DEFAULT; } };
+const DEFAULT: BuddyVoice = { on: true, id: DEFAULT_VOICE, speed: 1 };
+const load = (): BuddyVoice => { try { const v = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<BuddyVoice>; return { on: typeof v.on === "boolean" ? v.on : DEFAULT.on, id: currentVoice(typeof v.id === "string" && /^[a-z0-9_-]{1,40}$/.test(v.id) ? v.id : undefined), speed: typeof v.speed === "number" && v.speed >= 0.8 && v.speed <= 1.3 ? v.speed : 1 }; } catch { return DEFAULT; } };
 let current = load();
 const listeners = new Set<() => void>();
 export function saveBuddyVoice(patch: Partial<BuddyVoice>) { current = { ...current, ...patch }; try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* ignore */ } listeners.forEach((l) => l()); }

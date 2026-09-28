@@ -45,7 +45,8 @@ it("exposes supervised voice sessions and preserves saved voice through crew upd
   const voice = { voiceId: "aiden", speed: 1, personality: "warm" };
   expect((await post("/api/crew", { ...member, voice })).statusCode).toBe(200);
   expect(w.crew.get("shua")?.voice).toEqual(voice);
-  expect((await post("/api/crew", { ...member, voice: { ...voice, voiceId: "daniel" } })).statusCode).toBe(400);
+  expect((await post("/api/crew", { ...member, voice: { ...voice, voiceId: "not-a-voice" } })).statusCode).toBe(400);
+  expect((await post("/api/crew", { ...member, voice: { ...voice, voiceId: "heart" } })).statusCode).toBe(200);
 });
 it("refuses busy, autopilot and wrong-member sessions without changing the log", () => {
   const { sessions, store } = world();

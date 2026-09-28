@@ -9,8 +9,9 @@ import { SpeechInstaller } from "./speech-install.js";
 const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../speech");
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 const modelSchema = z.object({ repository: z.string().regex(/^[\w-]+\/[\w.-]+$/), revision: z.string().regex(/^[a-f0-9]{40}$/), directory: identifier, bytes: z.number().positive(), license: z.string().min(1) });
-const manifestSchema = z.object({ version: z.literal(1), models: z.record(z.string(), modelSchema), voices: z.array(z.object({ id: identifier, name: z.string().min(1), accent: z.enum(["en-US", "en-GB"]), description: z.string(), engine: z.enum(["qwen", "pocket"]), speaker: identifier.or(z.enum(["Aiden", "Ryan", "Serena", "Vivian"])), license: z.string().min(1), source: z.string().url(), attribution: z.string().optional() })).min(1).max(24) }).superRefine((m, ctx) => {
+const manifestSchema = z.object({ version: z.literal(1), models: z.record(z.string(), modelSchema), voices: z.array(z.object({ id: identifier, name: z.string().min(1), accent: z.enum(["en-US", "en-GB"]), description: z.string(), engine: z.enum(["kokoro", "qwen", "pocket"]), speaker: identifier.or(z.enum(["Aiden", "Ryan", "Serena", "Vivian"])).or(z.string().regex(/^[ab][fm]_[a-z]{2,20}$/)), license: z.string().min(1), source: z.string().url(), attribution: z.string().optional() })).min(1).max(24), aliases: z.record(identifier, identifier).optional() }).superRefine((m, ctx) => {
   if (new Set(m.voices.map(v => v.id)).size !== m.voices.length || m.voices.some(v => !m.models[v.engine])) ctx.addIssue({ code: "custom", message: "Duplicate voice or missing model" });
+  if (Object.values(m.aliases ?? {}).some(to => !m.voices.some(v => v.id === to))) ctx.addIssue({ code: "custom", message: "Alias to a missing voice" });
 });
 export type SpeechManifest = z.infer<typeof manifestSchema>;
 export const validateManifest = (input: unknown): SpeechManifest => manifestSchema.parse(input);
@@ -18,7 +19,10 @@ export const speechManifest = validateManifest(JSON.parse(readFileSync(path.join
 const requestSchema = z.object({ id: z.string().regex(/^[\w-]{1,80}$/), generation: z.number().int().min(0), voiceId: identifier, text: z.string().trim().min(1).max(600), speed: z.number().min(0.8).max(1.2) });
 export function validateSpeechRequest(input: unknown, manifest = speechManifest): SpeechRequest {
   const request = requestSchema.parse(input);
-  if (!manifest.voices.some(v => v.id === request.voiceId)) throw new Error("Choose one of the available voices.");
+  // Retired voices keep working: they speak as their closest successor (e.g. Aiden → Michael).
+  const voiceId = manifest.aliases?.[request.voiceId] ?? request.voiceId;
+  if (!manifest.voices.some(v => v.id === voiceId)) throw new Error("Choose one of the available voices.");
+  request.voiceId = voiceId;
   return request;
 }
 export type SpeechChunk = { id: string; generation: number; type: "audio"; data: string } | { id: string; generation: number; type: "done" };

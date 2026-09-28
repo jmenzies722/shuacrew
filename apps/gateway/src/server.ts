@@ -574,7 +574,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.post<{ Body: Partial<MemberInput> }>("/api/crew", async (request, reply) => {
       const b = request.body ?? {};
       try {
-        if (b.voice && !speechManifest.voices.some(v => v.id === b.voice!.voiceId)) throw new Error("Choose an available neural voice.");
+        // A retired voice (e.g. "aiden") is still a valid saved choice: it speaks as its successor.
+        if (b.voice && !speechManifest.voices.some(v => v.id === (speechManifest.aliases?.[b.voice!.voiceId] ?? b.voice!.voiceId))) throw new Error("Choose an available neural voice.");
         return crew.set({
           id: b.id ?? b.name ?? "",
           name: b.name ?? "",

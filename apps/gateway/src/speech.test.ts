@@ -10,9 +10,16 @@ import os from "node:os";
 import path from "node:path";
 
 it("rejects empty, duplicate, foreign-language and unsafe manifests", () => {
-  expect(validateManifest(manifest).voices).toHaveLength(6);
+  expect(validateManifest(manifest).voices).toHaveLength(8);
   for (const voices of [[], [manifest.voices[0], manifest.voices[0]], [{ ...manifest.voices[0], accent: "fr-FR" }]]) expect(() => validateManifest({ ...manifest, voices })).toThrow();
-  expect(() => validateManifest({ ...manifest, models: { ...manifest.models, qwen: { ...manifest.models.qwen, directory: "../bad" } } })).toThrow();
+  expect(() => validateManifest({ ...manifest, models: { ...manifest.models, kokoro: { ...manifest.models.kokoro, directory: "../bad" } } })).toThrow();
+  expect(() => validateManifest({ ...manifest, aliases: { aiden: "nobody" } })).toThrow();
+});
+it("keeps retired voices working as their closest successor", () => {
+  expect(validateSpeechRequest({ id: "a", generation: 1, voiceId: "aiden", text: "Hi", speed: 1 }).voiceId).toBe("michael");
+  expect(validateSpeechRequest({ id: "a", generation: 1, voiceId: "serena", text: "Hi", speed: 1 }).voiceId).toBe("heart");
+  expect(validateSpeechRequest({ id: "a", generation: 1, voiceId: "emma", text: "Hi", speed: 1 }).voiceId).toBe("emma");
+  expect(() => validateSpeechRequest({ id: "a", generation: 1, voiceId: "nobody", text: "Hi", speed: 1 })).toThrow();
 });
 it("protects speech routes and validates requests before starting synthesis", async () => {
   const store = new EventStore(":memory:");

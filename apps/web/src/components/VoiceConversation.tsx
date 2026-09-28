@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { VOICE_CAST, currentVoice } from "../lib/voices";
 import { AudioLines, Mic, MicOff, Square, X, ArrowUpRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -38,7 +39,7 @@ function VoiceConversation({ request, close, switchConversation }: { request: Re
   const [runtimes, setRuntimes] = useState<Runtime[]>([]);
   const [runtime, setRuntime] = useState(request.runtime ?? "");
   const [memberId, setMemberId] = useState(request.memberId || "shua");
-  const [voiceId, setVoiceId] = useState(members[memberId]?.voice?.voiceId ?? "aiden");
+  const [voiceId, setVoiceId] = useState(currentVoice(members[memberId]?.voice?.voiceId));
   const [ready, setReady] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [warm, setWarm] = useState(false);
@@ -171,9 +172,9 @@ function VoiceConversation({ request, close, switchConversation }: { request: Re
       <p className="voice-state-detail">{state.phase === "listening" ? "Microphone on · pause to send, or finish below" : state.phase === "speaking" ? nativeConversation ? voicePreferences.automaticInterruption ? "Microphone on · experimental interruption enabled" : "Microphone on · use Interrupt to stop the reply" : "Microphone off while Shua speaks" : state.phase === "thinking" ? "Your agent is working. You can interrupt at any time." : warm ? "Voice warmed up · ready for conversation" : "Warming the local voice in the background…"}</p>
       <p className="voice-state-detail">{nativeConversation ? "Native audio · echo processing · acoustic testing pending" : "Turn-based microphone · manual interruption"}</p>
       <div className="voice-selectors">
-        <label>Speaking with<select value={memberId} disabled={!editable} onChange={event => { setMemberId(event.target.value); setVoiceId(members[event.target.value]?.voice?.voiceId ?? "aiden"); const provider = members[event.target.value]?.runtime; if (provider) setRuntime(provider); }}><option value="shua">{members.shua?.name ?? "Shua"}</option>{Object.values(members).filter(m => m.id !== "shua").map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
+        <label>Speaking with<select value={memberId} disabled={!editable} onChange={event => { setMemberId(event.target.value); setVoiceId(currentVoice(members[event.target.value]?.voice?.voiceId)); const provider = members[event.target.value]?.runtime; if (provider) setRuntime(provider); }}><option value="shua">{members.shua?.name ?? "Shua"}</option>{Object.values(members).filter(m => m.id !== "shua").map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
         <label>Intelligence<select value={runtime} disabled={!editable} onChange={event => setRuntime(event.target.value)}>{!selectedProviderReady && <option value={runtime}>{runtime || "No provider"} · unavailable</option>}{runtimes.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
-        <label>Voice<select value={voiceId} disabled={!["idle", "muted", "error"].includes(state.phase)} onChange={event => setVoiceId(event.target.value)}><option value="aiden">Aiden · US</option><option value="charles">Charles · UK</option>{!["aiden", "charles"].includes(voiceId) && <option value={voiceId}>Saved voice · choose Aiden or Charles to audition</option>}</select></label>
+        <label>Voice<select value={currentVoice(voiceId)} disabled={!["idle", "muted", "error"].includes(state.phase)} onChange={event => setVoiceId(event.target.value)}>{VOICE_CAST.map(v => <option key={v.id} value={v.id}>{v.name} · {v.accent === "British" ? "UK" : "US"}</option>)}</select></label>
       </div>
       {(setupError || state.error) && <p role="alert" className="voice-error">{setupError || state.error}</p>}
       <div className="voice-actions">

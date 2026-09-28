@@ -49,7 +49,7 @@ export function CrewPage() {
           <Button onClick={() => setEditing({ color: COLORS[list.length % COLORS.length], triggers: [] })}>
             <Plus size={14} /> New member
           </Button>
-          <Button variant="ghost" onClick={() => setEditing({ role: "Personal assistant", persona: SHUA_PERSONA, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "aiden", speed: 1, personality: "calm" } })}>Start from Shua</Button>
+          <Button variant="ghost" onClick={() => setEditing({ role: "Personal assistant", persona: SHUA_PERSONA, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "michael", speed: 1, personality: "calm" } })}>Start from Shua</Button>
         </>} />
 
         {list.length === 0 ? (
@@ -229,7 +229,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
 }
 
 function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMember>; runtimes: Runtime[]; onClose: () => void }) {
-  const [voice, setVoice] = useState<MemberVoice>(member.voice ?? { voiceId: "aiden", speed: 1, personality: "calm" });
+  const [voice, setVoice] = useState<MemberVoice>(member.voice ?? { voiceId: "michael", speed: 1, personality: "calm" });
   const [draft, setDraft] = useState({
     id: member.id ?? "",
     name: member.name ?? "",

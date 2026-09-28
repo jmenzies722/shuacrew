@@ -10,7 +10,7 @@ export class VoiceSessions {
   constructor(private store: EventStore, private supervisor: Supervisor, private crew: Crew, private runtimes: Map<string, Runtime>) {}
   initialize(runtime: string) {
     if (this.runtimes.get(runtime)?.authMode !== "subscription" || this.runtimes.get(runtime)?.id === "mock") throw new Error("Choose a connected subscription runtime.");
-    if (!this.crew.get("shua")) this.crew.set({ id: "shua", name: "Shua", role: "Personal assistant", persona: SHUA_PERSONA, runtime, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "aiden", speed: 1, personality: "calm" } });
+    if (!this.crew.get("shua")) this.crew.set({ id: "shua", name: "Shua", role: "Personal assistant", persona: SHUA_PERSONA, runtime, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "michael", speed: 1, personality: "calm" } });
     return this.crew.get("shua")!;
   }
   submit(input: { requestId: string; runId?: string; memberId: string; runtime: string; text: string }) {
