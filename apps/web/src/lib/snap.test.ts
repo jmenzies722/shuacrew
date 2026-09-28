@@ -1,10 +1,15 @@
 import { expect, it } from "vitest";
-import { nameMatch, snapBox } from "./snap";
+import { locate, nameMatch, shapeOf } from "./snap";
+import { parseDraw, parseGuide, parsePoint } from "./buddy";
 
+// A 16:10 screen with a Save button, a round checkbox, a search field and one OCR text line (centre-based fractions).
 const screen = {
+  aspect: 16 / 10,
   context: { app: "Safari", elements: [
     { name: "Save", role: "button", x: 0.82, y: 0.07, w: 0.05, h: 0.03 },
     { name: "Cancel", role: "button", x: 0.75, y: 0.07, w: 0.05, h: 0.03 },
+    { name: "Remember me", role: "checkbox", x: 0.3, y: 0.5, w: 0.012, h: 0.019 },
+    { name: "Search", role: "searchfield", x: 0.5, y: 0.1, w: 0.2, h: 0.03 },
   ] },
   text: [{ t: "Privacy & Security", x: 0.2, y: 0.4, w: 0.12, h: 0.02 }],
 };
@@ -15,28 +20,34 @@ it("names match by words and by quoted phrases", () => {
   expect(nameMatch("Click Save", "Cancel")).toBe(0);
 });
 
-it("snaps a rough box onto the control its label names", () => {
-  const b = snapBox({ x: 0.78, y: 0.04, w: 0.08, h: 0.06, label: "Click Save" }, screen);
-  expect(b.x).toBeCloseTo(0.82 - 0.025 - 0.004, 3);
-  expect(b.w).toBeCloseTo(0.05 + 0.008, 3);
+it("lands exactly on the named control, centred on it (never shifted by half its size)", () => {
+  const r = locate({ x: 0.79, y: 0.06, w: 0.08, h: 0.06, label: "Click Save" }, screen);
+  expect(r).toMatchObject({ x: 0.82, y: 0.07, w: 0.05, h: 0.03, exact: true, shape: "pill" });
 });
 
-it("snaps onto an exact text line, and leaves the box alone when nothing real is near", () => {
-  const b = snapBox({ x: 0.17, y: 0.38, w: 0.1, h: 0.05, label: "Open Privacy & Security" }, screen);
-  expect(b.y).toBeCloseTo(0.4 - 0.01 - 0.004, 3);
-  const away = { x: 0.4, y: 0.8, w: 0.05, h: 0.05, label: "Click Save" };
-  expect(snapBox(away, screen)).toEqual(away);
-  expect(snapBox(away, null)).toEqual(away);
+it("a picked item wins: '#1' is the first control, 'T0' the first text line", () => {
+  expect(locate({ x: 0.5, y: 0.5, w: 0.04, h: 0.04, label: "", target: "#1" }, screen)).toMatchObject({ x: 0.82, y: 0.07, exact: true });
+  expect(locate({ x: 0.5, y: 0.5, w: 0.04, h: 0.04, label: "", target: "T0" }, screen)).toMatchObject({ x: 0.2, y: 0.4, w: 0.12, shape: "rounded", exact: true });
 });
 
-import { resolveTarget } from "./snap";
-import { parseGuide, parsePoint } from "./buddy";
-it("draws a picked item's exact box: '#2' is the 2nd control, 'T0' the first text line", () => {
+it("takes the shape of the thing: a circle for a checkbox, a pill for a search field, a soft box for text", () => {
+  expect(locate({ x: 0.3, y: 0.5, w: 0.04, h: 0.04, label: "Tick Remember me" }, screen).shape).toBe("circle");
+  expect(locate({ x: 0.5, y: 0.1, w: 0.1, h: 0.04, label: "Type in Search" }, screen).shape).toBe("pill");
+  expect(shapeOf({ w: 0.02, h: 0.032, role: "button" })).toBe("circle"); // a square icon button
+  expect(shapeOf({ w: 0.12, h: 0.02 })).toBe("rounded");                  // a line of text
+});
+
+it("keeps the model's aim (marked inexact) when nothing real is near", () => {
+  const aim = { x: 0.4, y: 0.8, w: 0.05, h: 0.05, label: "Click Save" };
+  expect(locate(aim, screen)).toEqual({ x: 0.4, y: 0.8, w: 0.05, h: 0.05, shape: "rounded", exact: false });
+  expect(locate(aim, null).exact).toBe(false);
+});
+
+it("guide, point and draw blocks carry a picked target", () => {
   const g = parseGuide('```guide {"target":"#1","label":"Click Save","step":1}```');
   expect(g && !g.done && g.target).toBe("#1");
-  expect(resolveTarget("#1", screen)!.x).toBeCloseTo(0.82 - 0.025 - 0.004, 3);
-  expect(resolveTarget("T0", screen)!.y).toBeCloseTo(0.4 - 0.01 - 0.004, 3);
-  expect(resolveTarget("#9", screen)).toBeNull();
   expect(parsePoint('```point {"target":"T0","label":"here"}```')?.target).toBe("T0");
   expect(parseGuide('```guide {"target":"bogus"}```')).toBeNull();
+  expect(parseDraw('```draw [{"shape":"box","target":"#1","label":"save here"},{"shape":"arrow","from":[0.1,0.1],"target":"T0"}]```'))
+    .toMatchObject([{ shape: "box", target: "#1" }, { shape: "arrow", target: "T0" }]);
 });

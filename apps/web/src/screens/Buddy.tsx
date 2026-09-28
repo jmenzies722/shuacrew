@@ -12,7 +12,7 @@ import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption } from "../components/NotchCaption";
 import { Recommendations } from "../components/Recommendations";
-import { resolveTarget, snapBox } from "../lib/snap";
+import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
@@ -25,7 +25,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionBrief, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, actFollowUp, buddyPrompt, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { type Shape, aboutScreen, actFollowUp, buddyPrompt, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
@@ -66,8 +66,19 @@ function nowPlayingOnce(): Promise<{ app: string; playing: boolean; title: strin
     window.addEventListener("shuacrew:media", on); post({ type: "buddyNowPlaying" });
   });
 }
+/** A sketch shape, fitted to the real thing it's about: boxes hug the control (in its shape), circles ring it, arrows land on it. */
+function fitShape(sh: Shape): Shape {
+  if (sh.shape === "box" && (sh.target || sh.label)) { const r = locate({ x: sh.x, y: sh.y, w: sh.w, h: sh.h, label: sh.label ?? "", target: sh.target }, lastScreen); return r.exact ? { ...sh, x: r.x, y: r.y, w: r.w, h: r.h, corner: r.shape } : sh; }
+  if (sh.shape === "circle" && (sh.target || sh.label)) {
+    const r = locate({ x: sh.x, y: sh.y, w: sh.r * 2, h: sh.r * 2 * (lastScreen?.aspect ?? 1.6), label: sh.label ?? "", target: sh.target }, lastScreen);
+    // r is a fraction of the screen's width: ring the whole thing with a little room.
+    return r.exact ? { ...sh, x: r.x, y: r.y, r: Math.min(0.3, (Math.max(r.w, r.h / (lastScreen?.aspect ?? 1.6)) / 2) * 1.25 + 0.004) } : sh;
+  }
+  if (sh.shape === "arrow" && sh.target) { const r = locate({ x: sh.to[0], y: sh.to[1], w: 0.03, h: 0.03, label: sh.label ?? "", target: sh.target }, lastScreen); return { ...sh, to: [r.x, r.y] }; }
+  return sh;
+}
 /** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
-let lastScreen: { text: ScreenLine[]; context?: ScreenContext } | null = null;
+let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number } | null = null;
 function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
   return new Promise((resolve, reject) => {
     if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
@@ -76,7 +87,7 @@ function capture(): Promise<{ file: File; width: number; height: number; text: S
       clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
       const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
       logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
-      lastScreen = { text: d.text ?? [], context: d.context };
+      lastScreen = { text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined };
       const bytes = Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0));
       resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
     };
@@ -426,12 +437,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     for (const b of completedBlocks(text)) {
       if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
       seen.add(b.key);
-      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const s = resolveTarget(p.target, lastScreen) ?? snapBox({ x: p.x - 0.015, y: p.y - 0.015, w: 0.03, h: 0.03, label: p.label }, lastScreen); post({ type: "buddyPoint", ...p, x: s.x + s.w / 2, y: s.y + s.h / 2, color: accentOf(prefs.color) }); } }
-      else if (b.kind === "draw") { const shapes = parseDraw(b.raw); if (shapes.length) queueDraw(key, shapes); }
+      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, lastScreen); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
+      else if (b.kind === "draw") { const shapes = parseDraw(b.raw).map(fitShape); if (shapes.length) queueDraw(key, shapes); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
         if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
-        else if (g) { const exact = { ...g, ...(resolveTarget(g.target, lastScreen) ?? snapBox(g, lastScreen)) }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
+        else if (g) { const r = locate(g, lastScreen), exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
       } else if (b.kind === "act") {
         const act = parseAct(b.raw);
         if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }

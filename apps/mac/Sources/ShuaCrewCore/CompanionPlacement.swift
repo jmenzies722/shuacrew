@@ -64,3 +64,12 @@ public enum NotchIsland {
         CGRect(x: housing.minX - flare, y: housing.minY - drop, width: housing.width + 2 * flare, height: housing.height + drop).insetBy(dx: -14, dy: -14)
     }
 }
+
+/// Where a highlight goes. Spark's pages describe a thing by its CENTRE and size, as fractions of the screen from the
+/// top-left; AppKit draws from the bottom-left in points. One conversion, used by guides and sketches alike, so a
+/// highlight can never be shifted by half its size again.
+public enum Highlight {
+    public static func box(x: Double, y: Double, w: Double, h: Double, in size: CGSize, pad: CGFloat = 0) -> CGRect {
+        CGRect(x: (x - w / 2) * size.width - pad, y: size.height - (y + h / 2) * size.height - pad, width: w * size.width + pad * 2, height: h * size.height + pad * 2)
+    }
+}

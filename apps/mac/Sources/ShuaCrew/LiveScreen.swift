@@ -105,7 +105,7 @@ enum ScreenElements {
                 if !name.isEmpty, (0...1).contains(x), (0...1).contains(y) {
                     // Its size too (fractions), so a highlight can hug the real control instead of the model's guess.
                     let w = min(1, c.width / f.width), h = min(1, c.height / f.height)
-                    out.append(["name": name, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(), "x": (x * 1000).rounded() / 1000, "y": (y * 1000).rounded() / 1000,
+                    out.append(["name": name, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(), "x": (x * 10000).rounded() / 10000, "y": (y * 10000).rounded() / 10000,
                                 "w": (w * 10000).rounded() / 10000, "h": (h * 10000).rounded() / 10000])
                 }
             }

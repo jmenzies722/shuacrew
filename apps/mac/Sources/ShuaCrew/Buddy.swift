@@ -528,7 +528,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                   [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             watchGuideActivity(true)
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
-                          color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true)
+                          color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true,
+                          shape: body["shape"] as? String, exact: body["exact"] as? Bool ?? false)
             // The cursor flies first; then Spark walks over to stand beside the step.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.walk(beside: x, y, w, h, on: screen) }
         case "saveFile":
@@ -1088,24 +1089,40 @@ final class PointerOverlay {
     }
 
     /// One guided step: dim everything but the box, number it, say what to do, and wait for the click.
-    func guide(on screen: NSScreen, x: Double, y: Double, w: Double, h: Double, label: String, step: Int, color hex: String? = nil, from: NSPoint? = nil, waitForClick: Bool) {
+    /// The outline that hugs a thing in its own shape: a circle, a capsule, or a softly rounded box.
+    static func outline(_ box: CGRect, shape: String?) -> CGPath {
+        switch shape {
+        case "circle":
+            let side = max(box.width, box.height)
+            return CGPath(ellipseIn: CGRect(x: box.midX - side / 2, y: box.midY - side / 2, width: side, height: side), transform: nil)
+        case "pill":
+            let r = min(box.height, box.width) / 2
+            return CGPath(roundedRect: box, cornerWidth: r, cornerHeight: r, transform: nil)
+        default:
+            let r = min(8, min(box.height, box.width) / 2)
+            return CGPath(roundedRect: box, cornerWidth: r, cornerHeight: r, transform: nil)
+        }
+    }
+
+    func guide(on screen: NSScreen, x: Double, y: Double, w: Double, h: Double, label: String, step: Int, color hex: String? = nil, from: NSPoint? = nil, waitForClick: Bool, shape: String? = nil, exact: Bool = false) {
         hide()
         let frame = screen.frame, color = Self.color(hex)
         let (panel, root) = makePanel(frame)
-        let pad: CGFloat = 8
-        let box = CGRect(x: (x - w / 2) * frame.width - pad, y: frame.height - (y + h / 2) * frame.height - pad, width: w * frame.width + pad * 2, height: h * frame.height + pad * 2)
+        // Exact (snapped onto the real control): a snug 4 pt ring. A guess: a little more room.
+        let pad: CGFloat = exact ? 4 : 8
+        let box = Highlight.box(x: x, y: y, w: w, h: h, in: frame.size, pad: pad)
         let delay = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: CGPoint(x: box.midX, y: box.midY), color: color)
 
         // The spotlight: a soft dim over the whole screen with the box cut out, so your eye lands on it.
         let dim = CAShapeLayer()
         let path = CGMutablePath()
         path.addRect(CGRect(origin: .zero, size: frame.size))
-        path.addRoundedRect(in: box, cornerWidth: 10, cornerHeight: 10)
+        path.addPath(Self.outline(box, shape: shape))
         dim.path = path
         dim.fillRule = .evenOdd
         dim.fillColor = NSColor.black.withAlphaComponent(0.32).cgColor
         let outline = CAShapeLayer()
-        outline.path = CGPath(roundedRect: box, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        outline.path = Self.outline(box, shape: shape)
         outline.fillColor = NSColor.clear.cgColor
         outline.strokeColor = color.cgColor
         outline.lineWidth = 2.5
@@ -1152,8 +1169,10 @@ final class PointerOverlay {
             switch shape["shape"] as? String {
             case "box":
                 guard let x = num(shape, "x"), let y = num(shape, "y"), let w = num(shape, "w"), let h = num(shape, "h") else { continue }
-                anchor = CGRect(x: (x - w / 2) * W, y: H - (y + h / 2) * H, width: w * W, height: h * H)
-                path.addRoundedRect(in: anchor, cornerWidth: 8, cornerHeight: 8)
+                anchor = Highlight.box(x: x, y: y, w: w, h: h, in: CGSize(width: W, height: H))
+                // Fitted to a real control: a snug ring in its shape. Otherwise the usual soft box.
+                if let corner = shape["corner"] as? String { anchor = anchor.insetBy(dx: -4, dy: -4); path.addPath(Self.outline(anchor, shape: corner)) }
+                else { path.addRoundedRect(in: anchor, cornerWidth: 8, cornerHeight: 8) }
             case "circle":
                 guard let x = num(shape, "x"), let y = num(shape, "y"), let r = num(shape, "r") else { continue }
                 let c = pt(x, y), rr = r * W

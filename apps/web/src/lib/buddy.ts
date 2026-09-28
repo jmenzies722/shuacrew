@@ -8,9 +8,9 @@ export type Guide = GuideStep | { done: true };
 
 /** A shape Spark sketches on your screen (fractions of the screenshot, from the top-left). */
 export type Shape =
-  | { shape: "box"; x: number; y: number; w: number; h: number; label?: string }
-  | { shape: "circle"; x: number; y: number; r: number; label?: string }
-  | { shape: "arrow"; from: [number, number]; to: [number, number]; label?: string }
+  | { shape: "box"; x: number; y: number; w: number; h: number; label?: string; target?: string; corner?: "circle" | "pill" | "rounded" }
+  | { shape: "circle"; x: number; y: number; r: number; label?: string; target?: string }
+  | { shape: "arrow"; from: [number, number]; to: [number, number]; label?: string; target?: string }
   | { shape: "text"; x: number; y: number; text: string };
 
 /** One line of on-device OCR: exact text and its box (fractions, from the top-left). */
@@ -155,8 +155,11 @@ export function parseDraw(text: string): Shape[] {
     const v = JSON.parse(m[1]!.trim()) as unknown, list = Array.isArray(v) ? v : [v], out: Shape[] = [];
     for (const raw of list) {
       const o = raw as Record<string, unknown>;
-      if (o?.shape === "box" && [o.x, o.y, o.w, o.h].every(unit)) out.push({ shape: "box", x: o.x as number, y: o.y as number, w: o.w as number, h: o.h as number, ...lab(o.label) });
-      else if (o?.shape === "circle" && [o.x, o.y, o.r].every(unit)) out.push({ shape: "circle", x: o.x as number, y: o.y as number, r: o.r as number, ...lab(o.label) });
+      // A picked target ("#12" / "T40") can stand in for coordinates: Spark draws around the real thing.
+      const target = targetId(o?.target), tg = target ? { target } : {};
+      if (o?.shape === "box" && ([o.x, o.y, o.w, o.h].every(unit) || target)) out.push({ shape: "box", x: unit(o.x) ? o.x as number : 0.5, y: unit(o.y) ? o.y as number : 0.5, w: unit(o.w) ? o.w as number : 0.04, h: unit(o.h) ? o.h as number : 0.04, ...lab(o.label), ...tg });
+      else if (o?.shape === "circle" && ([o.x, o.y, o.r].every(unit) || target)) out.push({ shape: "circle", x: unit(o.x) ? o.x as number : 0.5, y: unit(o.y) ? o.y as number : 0.5, r: unit(o.r) ? o.r as number : 0.03, ...lab(o.label), ...tg });
+      else if (o?.shape === "arrow" && target && Array.isArray(o.from) && o.from.length === 2 && o.from.every(unit)) out.push({ shape: "arrow", from: o.from as [number, number], to: [0.5, 0.5], ...lab(o.label), target });
       else if (o?.shape === "arrow" && Array.isArray(o.from) && Array.isArray(o.to) && [...o.from, ...o.to].length === 4 && [...o.from, ...o.to].every(unit)) out.push({ shape: "arrow", from: o.from as [number, number], to: o.to as [number, number], ...lab(o.label) });
       else if (o?.shape === "text" && [o.x, o.y].every(unit) && typeof o.text === "string" && o.text.trim()) out.push({ shape: "text", x: o.x as number, y: o.y as number, text: o.text.trim().slice(0, 60) });
     }
@@ -406,7 +409,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       ? [
         `The attached image is the user's screen right now (${screen.width}×${screen.height}). Ground your answer in what is actually visible.`,
         `To show one thing, add: \`\`\`point {"x": 0.0-1.0, "y": 0.0-1.0, "label": "2–5 words"}\`\`\` (x,y = its CENTER as fractions of the image width/height).`,
-        `To SKETCH on their screen (circle a problem, box a region, arrow from cause to effect, a short note), add \`\`\`draw [{"shape":"box","x":0.5,"y":0.4,"w":0.2,"h":0.1,"label":"this total is wrong"},{"shape":"arrow","from":[0.3,0.6],"to":[0.45,0.42],"label":"comes from here"},{"shape":"circle","x":0.7,"y":0.2,"r":0.03},{"shape":"text","x":0.5,"y":0.9,"text":"note"}]\`\`\` (centres/sizes as fractions; up to 12 shapes). It draws itself in live and fades after ~15s.`,
+        `To SKETCH on their screen (circle a problem, box a region, arrow from cause to effect, a short note), add \`\`\`draw [{"shape":"box","x":0.5,"y":0.4,"w":0.2,"h":0.1,"label":"this total is wrong"},{"shape":"arrow","from":[0.3,0.6],"to":[0.45,0.42],"label":"comes from here"},{"shape":"circle","x":0.7,"y":0.2,"r":0.03},{"shape":"text","x":0.5,"y":0.9,"text":"note"}]\`\`\` (centres/sizes as fractions; up to 12 shapes). It draws itself in live and fades after ~15s. When a shape is about a listed control or text line, give its id instead of coordinates — {"shape":"box","target":"#12","label":"…"}, {"shape":"circle","target":"T40"}, {"shape":"arrow","from":[x,y],"target":"#3"} — and Spark draws exactly around it, in its shape.`,
         screen.text?.length ? screenText(screen.text) : "",
         elementsText(screen.context),
         `GUIDE MODE — when they want to be shown how to do something on screen ("how do I…", "show me", "walk me through"), guide ONE step at a time: say just that step in a sentence, then add \`\`\`guide {"x": centre 0-1, "y": centre 0-1, "w": width 0-1, "h": height 0-1, "label": "Click Share", "step": 1}\`\`\` boxing exactly the control to use. Their Mac spotlights it; after an attempt you get a fresh screenshot. A click is not evidence of success. Verify the resulting visible state first. If the attempt is wrong or unclear, keep the same goal, explain what happened gently, and repeat or clarify the current step. Stay with the user until the actual goal is achieved or they stop. If the thing isn't visible yet, guide them to what reveals it (a menu, a tab, scrolling). When the task is complete, say so and add \`\`\`guide {"done": true}\`\`\`.`,

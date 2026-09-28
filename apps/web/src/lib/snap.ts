@@ -1,12 +1,31 @@
 import type { ScreenContext, ScreenLine } from "./buddy";
 
 /**
- * Precise highlights: the model draws its box from a scaled-down screenshot, so it's close but rarely exact. Before
- * Spark shows it, snap it to something real on screen — an accessibility control (exact frame) or an OCR text line
- * (exact box) — preferring the one its label names, nearest to where the model aimed. No good match: keep the model's.
+ * Precise highlights. The model aims from a scaled-down screenshot, so its box is close but rarely exact. Before
+ * Spark shows anything, `locate` turns the aim into the real thing on screen — a numbered item it picked ("#12", "T40"),
+ * else the control or text line its label names nearest the aim — and says what shape that thing is, so the
+ * highlight hugs it: a circle for toggles and round icons, a pill for buttons and fields, a soft box for text.
+ *
+ * Everything here is CENTRE-based (x,y = centre, w,h = size, as fractions of the screen), like the drawing code on
+ * the Mac side. Mixing centre and top-left once shifted every highlight by half its size.
  */
-export interface Box { x: number; y: number; w: number; h: number }
-type Candidate = Box & { name: string; control: boolean };
+export type RegionShape = "circle" | "pill" | "rounded";
+export interface Region { x: number; y: number; w: number; h: number; shape: RegionShape; exact: boolean }
+export interface Aim { x: number; y: number; w: number; h: number; label: string; target?: string }
+export interface ScreenFacts { text?: ScreenLine[]; context?: ScreenContext; aspect?: number }
+type Candidate = { x: number; y: number; w: number; h: number; name: string; role?: string };
+
+const ROUND_ROLES = new Set(["checkbox", "radiobutton", "switch", "disclosuretriangle", "colorwell"]);
+const PILL_ROLES = new Set(["button", "popupbutton", "menubutton", "searchfield", "textfield", "combobox", "tab", "link", "menubaritem", "slider"]);
+
+/** What a highlight around this thing should look like: its shape, from its role and its real proportions. */
+export function shapeOf(c: { w: number; h: number; role?: string }, aspect = 16 / 10): RegionShape {
+  const ratio = (c.w * aspect) / c.h; // width ÷ height in real pixels
+  if (c.role && ROUND_ROLES.has(c.role)) return "circle";
+  if (c.role && ratio > 0.75 && ratio < 1.33 && c.h < 0.06) return "circle";   // a round or square icon button
+  if (c.role && (PILL_ROLES.has(c.role) || ratio > 2.2)) return "pill";
+  return "rounded";                                                          // text, regions, anything else
+}
 
 const words = (s: string) => s.toLowerCase().replace(/[“”"'‘’]/g, "").match(/[\p{L}\p{N}]+/gu) ?? [];
 const STOP = new Set(["click", "tap", "press", "the", "a", "an", "on", "in", "to", "here", "button", "this", "that", "then", "and", "open", "select", "choose", "go", "at", "of", "for", "your", "it", "field", "menu", "icon", "link", "tab"]);
@@ -21,34 +40,40 @@ export function nameMatch(label: string, name: string): number {
   return nw.filter((w) => lw.has(w)).length / Math.max(nw.length, Math.min(lw.size, 4));
 }
 
-export function snapBox(target: Box & { label: string }, screen: { text?: ScreenLine[]; context?: ScreenContext } | null): Box {
-  if (!screen) return target;
-  const cands: Candidate[] = [
-    ...(screen.context?.elements ?? []).filter((e) => e.w && e.h).map((e) => ({ name: e.name, control: true, x: e.x - e.w! / 2, y: e.y - e.h! / 2, w: e.w!, h: e.h! })),
-    ...(screen.text ?? []).map((l) => ({ name: l.t, control: false, x: l.x - l.w / 2, y: l.y - l.h / 2, w: l.w, h: l.h })),
+function candidates(screen: ScreenFacts): Candidate[] {
+  return [
+    ...(screen.context?.elements ?? []).filter((e) => e.w && e.h).map((e) => ({ x: e.x, y: e.y, w: e.w!, h: e.h!, name: e.name, role: e.role })),
+    ...(screen.text ?? []).map((l) => ({ x: l.x, y: l.y, w: l.w, h: l.h, name: l.t })),
   ].filter((c) => c.w > 0 && c.h > 0 && c.w < 0.6 && c.h < 0.4);
-  const cx = target.x + target.w / 2, cy = target.y + target.h / 2;
-  let best: { c: Candidate; score: number } | null = null;
-  for (const c of cands) {
-    const d = Math.hypot(c.x + c.w / 2 - cx, c.y + c.h / 2 - cy);
-    if (d > 0.3) continue;                                               // far from where the model aimed: not it
-    const m = nameMatch(target.label, c.name);
-    const inside = cx >= c.x && cx <= c.x + c.w && cy >= c.y && cy <= c.y + c.h;
-    const score = m * 3 + (inside ? 1 : 0) + (c.control ? 0.25 : 0) - d * 4;
-    if (m === 0 && !inside) continue;                                    // neither named nor under the aim
-    if (!best || score > best.score) best = { c, score };
-  }
-  if (!best) return target;
-  const pad = 0.004;
-  return { x: Math.max(0, best.c.x - pad), y: Math.max(0, best.c.y - pad), w: Math.min(1, best.c.w + pad * 2), h: Math.min(1, best.c.h + pad * 2) };
 }
 
-/** The exact box of a picked item ("#12" → the 12th control, "T40" → text line 40), or null if it isn't on that screen. */
-export function resolveTarget(target: string | undefined, screen: { text?: ScreenLine[]; context?: ScreenContext } | null): Box | null {
-  if (!target || !screen) return null;
-  const n = Number(target.slice(1)), pad = 0.004;
-  const box = target.startsWith("#")
-    ? (() => { const e = screen.context?.elements?.[n - 1]; return e?.w && e.h ? { x: e.x - e.w / 2, y: e.y - e.h / 2, w: e.w, h: e.h } : e ? { x: e.x - 0.02, y: e.y - 0.015, w: 0.04, h: 0.03 } : null; })()
-    : (() => { const l = screen.text?.[n]; return l ? { x: l.x - l.w / 2, y: l.y - l.h / 2, w: l.w, h: l.h } : null; })();
-  return box ? { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), w: Math.min(1, box.w + pad * 2), h: Math.min(1, box.h + pad * 2) } : null;
+/** A picked item: "#12" is the 12th control, "T40" is text line 40 (from the numbered lists Spark was given). */
+function picked(target: string | undefined, screen: ScreenFacts): Candidate | null {
+  if (!target) return null;
+  const n = Number(target.slice(1));
+  if (target.startsWith("#")) {
+    const e = screen.context?.elements?.[n - 1];
+    return e ? { x: e.x, y: e.y, w: e.w ?? 0.04, h: e.h ?? 0.03, name: e.name, role: e.role } : null;
+  }
+  const l = screen.text?.[n];
+  return l ? { x: l.x, y: l.y, w: l.w, h: l.h, name: l.t } : null;
+}
+
+/** Turn where Spark aimed into the exact thing on screen, and its shape. Nothing real nearby: keep the aim, softly. */
+export function locate(aim: Aim, screen: ScreenFacts | null): Region {
+  const guess: Region = { x: aim.x, y: aim.y, w: aim.w, h: aim.h, shape: "rounded", exact: false };
+  if (!screen) return guess;
+  const aspect = screen.aspect ?? 16 / 10, found = picked(aim.target, screen);
+  if (found) return { x: found.x, y: found.y, w: found.w, h: found.h, shape: shapeOf(found, aspect), exact: true };
+  let best: { c: Candidate; score: number } | null = null;
+  for (const c of candidates(screen)) {
+    const d = Math.hypot(c.x - aim.x, c.y - aim.y);
+    if (d > 0.3) continue;                                               // far from where it aimed: not it
+    const m = nameMatch(aim.label, c.name);
+    const inside = Math.abs(aim.x - c.x) <= c.w / 2 && Math.abs(aim.y - c.y) <= c.h / 2;
+    if (m === 0 && !inside) continue;                                    // neither named nor under the aim
+    const score = m * 3 + (inside ? 1 : 0) + (c.role ? 0.25 : 0) - d * 4;
+    if (!best || score > best.score) best = { c, score };
+  }
+  return best ? { x: best.c.x, y: best.c.y, w: best.c.w, h: best.c.h, shape: shapeOf(best.c, aspect), exact: true } : guess;
 }

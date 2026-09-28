@@ -69,3 +69,14 @@ import Testing
     let edge = NotchIsland.chat(size: CGSize(width: 440, height: 640), housing: CGRect(x: 1700, y: 1079, width: 20, height: 38), screen: screen)
     #expect(edge.maxX <= screen.maxX)                        // kept on screen
 }
+@Test func highlightsAreCentredOnWhatTheyDescribe() {
+    // A 0.1 × 0.1 thing centred mid-screen on a 1000 × 800 point display: its box is centred there too (AppKit's y is flipped).
+    let box = Highlight.box(x: 0.5, y: 0.5, w: 0.1, h: 0.1, in: CGSize(width: 1000, height: 800))
+    let near = { (a: CGFloat, b: CGFloat) in abs(a - b) < 0.001 }
+    #expect(near(box.minX, 450) && near(box.minY, 360) && near(box.width, 100) && near(box.height, 80))
+    #expect(near(box.midX, 500) && near(box.midY, 400))
+    // Near the top-left of the screen = high y in AppKit; padding grows it evenly on every side.
+    let top = Highlight.box(x: 0.1, y: 0.05, w: 0.02, h: 0.025, in: CGSize(width: 1000, height: 800), pad: 4)
+    #expect(abs(top.midX - 100) < 0.001 && abs(top.midY - 760) < 0.001)
+    #expect(top.width == 28 && top.height == 28)
+}
