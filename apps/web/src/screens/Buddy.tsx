@@ -78,6 +78,25 @@ function fitShape(sh: Shape): Shape {
   if (sh.shape === "arrow" && sh.target) { const r = locate({ x: sh.to[0], y: sh.to[1], w: 0.03, h: 0.03, label: sh.label ?? "", target: sh.target }, lastScreen); return { ...sh, to: [r.x, r.y] }; }
   return sh;
 }
+/**
+ * Personal context for every question: where you're working, what's next on your calendar, what's due, what you just
+ * worked on, anything that needs attention. Read on this Mac, cached for a minute, and never allowed to slow a reply.
+ */
+let contextCache: { at: number; text: string } | null = null;
+function macContext(): Promise<string> {
+  if (!native()) return Promise.resolve("");
+  if (contextCache && Date.now() - contextCache.at < 60_000) return Promise.resolve(contextCache.text);
+  return new Promise((resolve) => {
+    const id = crypto.randomUUID();
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve(contextCache?.text ?? ""); }, 1500);
+    const on = (e: CustomEvent<{ id: string; output?: string }>) => {
+      if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener);
+      contextCache = { at: Date.now(), text: e.detail.output ?? "" }; resolve(contextCache.text);
+    };
+    window.addEventListener("shuacrew:did", on as EventListener);
+    post({ type: "buddyDo", id, action: { type: "mac", op: "context" } });
+  });
+}
 /** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
 let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number } | null = null;
 function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
@@ -810,7 +829,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
-      const selected = await selectIntelligence(intelligence); if (stale()) return; setChoice(selected); setChoiceError("");
+      const [selected, personal] = await Promise.all([selectIntelligence(intelligence), macContext()]); if (stale()) return; setChoice(selected); setChoiceError("");
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
@@ -831,7 +850,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       });
       const earlier = earlierToday(); rememberAsk(q);
       const language = prefs.language === "auto" ? "LANGUAGE: answer in the same language the user wrote or spoke (your voice can speak it)." : "";
-      const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}`;
+      const rightNow = personal ? `\nRIGHT NOW ON THEIR MAC (use it when it helps: mention a meeting that's coming up, the file they just worked on, a heads-up; never recite it):\n${personal}` : "";
+      const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}${rightNow}`;
       const appNow = [appNowBase, identity, remembered, earlier, language].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";

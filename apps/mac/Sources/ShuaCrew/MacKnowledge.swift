@@ -31,6 +31,7 @@ enum MacKnowledge {
             case "notes": notes(a, done)
             case "contacts": contacts(a, done)
             case "status": done(true, "Checked your Mac", status())
+            case "context": done(true, "", context())
             default: done(false, "Spark can't look that up.", "")
             }
         }
@@ -70,10 +71,19 @@ enum MacKnowledge {
         for path in named + mentions where seen.insert(path).inserted && hits.count < 25 { hits.append(path) }
         done(true, hits.isEmpty ? "Nothing found for “\(q)”" : "Found \(hits.count) for “\(q)”", hits.isEmpty ? "No files matched “\(q)”." : "Files matching “\(q)” (newest info first where known):\n" + hits.map(describe).joined(separator: "\n"))
     }
+    /// Files you changed lately, newest first ("last used" isn't recorded for most files; "last changed" is), skipping
+    /// hidden folders (app data, caches) and build output.
+    private static func recentlyChanged(days: Int, limit: Int) -> [String] {
+        let hits = spotlight(["-onlyin", home, "kMDItemFSContentChangeDate >= $time.today(-\(days)) && kMDItemContentTypeTree != 'public.folder' && kMDItemContentTypeTree != 'com.apple.application'"], limit: 400)
+            .filter { !$0.dropFirst(home.count).split(separator: "/").contains { $0.hasPrefix(".") } }
+            .filter { path in !["tsbuildinfo", "log", "lock", "map", "pyc", "db-wal", "db-shm", "sqlite-wal", "tmp", "swp"].contains((path as NSString).pathExtension.lowercased()) && !path.hasSuffix("lock.json") && !path.hasSuffix(".lock.yaml") }
+        let dated = hits.map { ($0, (try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date) ?? .distantPast) }
+        return dated.sorted { $0.1 > $1.1 }.prefix(limit).map(\.0)
+    }
     private static func recent(_ a: [String: Any], _ done: Done) {
         let days = min(14, max(1, a["days"] as? Int ?? 3))
-        let hits = spotlight(["-onlyin", home, "kMDItemLastUsedDate >= $time.today(-\(days)) && kMDItemContentTypeTree != 'public.folder'"], limit: 30)
-        done(true, "Your recent files", hits.isEmpty ? "No files used in the last \(days) days." : "Files you used in the last \(days) days:\n" + hits.map(describe).joined(separator: "\n"))
+        let hits = recentlyChanged(days: days, limit: 30)
+        done(true, "Your recent files", hits.isEmpty ? "No files used in the last \(days) days." : "Files you changed in the last \(days) days, newest first:\n" + hits.map(describe).joined(separator: "\n"))
     }
     private static func read(_ a: [String: Any], _ done: Done) {
         guard let raw = a["path"] as? String, let path = allowed(raw) else { done(false, "That file is off-limits to Spark.", ""); return }
@@ -179,6 +189,40 @@ enum MacKnowledge {
         let result = NSAppleScript(source: script)?.executeAndReturnError(&error).stringValue
         if error != nil { done(false, "Notes didn't answer. If macOS asks, allow ShuaCrew to control Notes.", ""); return }
         done(true, "Checked your notes", (result ?? "").isEmpty ? "No notes\(q.isEmpty ? "" : " mention “\(q)”")." : result!)
+    }
+
+    // MARK: personal context, for every question
+
+    /// A compact picture of right now, so Spark answers with your context like a real assistant would: where you are,
+    /// what's next, what's due, what's playing, what you just worked on, and anything that needs attention. Uses only
+    /// permissions you've already granted (never prompts), and stays short.
+    static func context() -> String {
+        var lines: [String] = []
+        if let front = NSWorkspace.shared.frontmostApplication {
+            let title = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]])?
+                .first { ($0[kCGWindowOwnerPID as String] as? pid_t) == front.processIdentifier && ($0[kCGWindowLayer as String] as? Int) == 0 }?[kCGWindowName as String] as? String
+            lines.append("Working in: \(front.localizedName ?? "?")\(title.map { $0.isEmpty ? "" : " — “\($0.prefix(80))”" } ?? "")")
+        }
+        if EKEventStore.authorizationStatus(for: .event) == .fullAccess {
+            let now = Date(), end = Calendar.current.startOfDay(for: now).addingTimeInterval(2 * 86_400)
+            let next = events.events(matching: events.predicateForEvents(withStart: now, end: end, calendars: nil)).filter { !$0.isAllDay }.sorted { $0.startDate < $1.startDate }.prefix(3)
+            if !next.isEmpty { lines.append("Next on the calendar: " + next.map { "\(when.string(from: $0.startDate)) \($0.title ?? "Untitled")" }.joined(separator: "; ")) }
+        }
+        if EKEventStore.authorizationStatus(for: .reminder) == .fullAccess {
+            let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var due: [EKReminder] = []
+            let endOfToday = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
+            events.fetchReminders(matching: events.predicateForIncompleteReminders(withDueDateStarting: nil, ending: endOfToday, calendars: nil)) { found in due = found ?? []; wait.signal() }
+            _ = wait.wait(timeout: .now() + 2)
+            if !due.isEmpty { lines.append("Due today: " + due.prefix(3).compactMap(\.title).joined(separator: "; ") + (due.count > 3 ? " (+\(due.count - 3) more)" : "")) }
+        }
+        let recent = recentlyChanged(days: 1, limit: 4)
+        if !recent.isEmpty { lines.append("Just worked on: " + recent.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")) }
+        if let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(), let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef],
+           let d = list.first.flatMap({ IOPSGetPowerSourceDescription(info, $0)?.takeUnretainedValue() as? [String: Any] }), let pct = d[kIOPSCurrentCapacityKey] as? Int,
+           pct <= 20, (d[kIOPSPowerSourceStateKey] as? String) != kIOPSACPowerValue { lines.append("Heads-up: battery at \(pct)%") }
+        if let free = try? URL(fileURLWithPath: home).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
+           free < 15_000_000_000 { lines.append("Heads-up: only \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) of disk space left") }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: this Mac, right now
