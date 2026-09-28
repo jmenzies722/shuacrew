@@ -10,6 +10,7 @@ import { useCompanion } from "../lib/companion";
 import { sparkVars } from "../lib/spark-color";
 import { toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
 import { SparkCharacter } from "../components/SparkCharacter";
+import { LogoMark } from "../lib/motion";
 import "./hub-nav.css";
 
 const PAGE_ICON: Record<string, typeof House> = {
@@ -124,7 +125,7 @@ export function HubSidebar() {
   const name = prefs.nickname || "Spark";
   return <nav className="side" aria-label="Sidebar">
     <div className="side-brand">
-      <span className="side-logo" aria-hidden><svg viewBox="0 0 32 32" width="22" height="22" fill="none"><circle cx="16" cy="16" r="10" stroke="currentColor" strokeOpacity=".35" strokeWidth=".9"/><circle className="side-logo-core" cx="16" cy="16" r="4.8" strokeWidth="2.4"/><g className="side-logo-crew"><circle cx="16" cy="6" r="2.3"/><circle cx="24.7" cy="21" r="2.3"/><circle cx="7.3" cy="21" r="2.3"/></g></svg></span>
+      <span className="side-logo" aria-hidden><LogoMark size={24} bare /></span>
       <span className="side-brand-text"><b>Shua <em>Crew</em></b><small className={`is-${connection}`}><i />{connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting" : "Gateway offline"}</small></span>
       <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
     </div>

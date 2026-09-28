@@ -1,0 +1,101 @@
+/*
+ * Alive: one accent gradient derived from the theme's own accent, and a handful of quiet touches that make the
+ * app feel lit and responsive. Every colour comes from --amber (the palette accent), so it matches every theme
+ * and accent choice. Motion stands down with the Mac's Reduce motion and the app's own Motion setting.
+ */
+:root {
+  /* A second tint, a step round the colour wheel from the accent, for gradients. */
+  --accent-2: color-mix(in oklch, var(--amber) 62%, #ff4fa3);
+  --accent-3: color-mix(in oklch, var(--amber) 70%, #4fc3ff);
+  --accent-grad: linear-gradient(135deg, var(--amber), var(--accent-2));
+  --accent-grad-soft: linear-gradient(135deg, color-mix(in srgb, var(--amber) 16%, transparent), color-mix(in srgb, var(--accent-2) 12%, transparent));
+  --accent-glow: color-mix(in srgb, var(--amber) 45%, transparent);
+  /* The logo's own tokens (LogoMark): a tile of the palette's inks, lit by the accent. */
+  --logo-hi: color-mix(in srgb, var(--amber) 38%, #fff);
+  --logo-tile-a: color-mix(in srgb, var(--amber) 16%, var(--raised));
+  --logo-tile-b: color-mix(in srgb, var(--amber) 6%, var(--ink));
+  --logo-tile-c: color-mix(in srgb, var(--amber) 4%, var(--sunken));
+}
+:root[data-theme="light"] {
+  --logo-hi: color-mix(in srgb, var(--amber) 55%, #fff);
+  --logo-tile-a: color-mix(in srgb, var(--amber) 22%, #2a2433);
+  --logo-tile-b: #1d1922;
+  --logo-tile-c: #120f16;
+}
+
+/* ── The mark, everywhere ──────────────────────────────────────────────────────────────────── */
+.logo-mark .logo-core { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--amber) 60%, transparent)); }
+.side-logo { background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--amber) 22%, transparent), transparent 70%), linear-gradient(180deg, color-mix(in srgb, var(--amber) 12%, var(--raised)), var(--sunken)); }
+.side-logo .logo-mark.is-live .logo-orbit { animation-duration: 48s; }
+/* Top-bar mark only outside the Mac app (there, the window's traffic lights sit in that corner). */
+.tb-logo { display: none; place-items: center; width: 26px; height: 26px; }
+:root:not([data-shell="mac"]) .tb-logo { display: inline-grid; }
+.hero-mark { filter: drop-shadow(0 14px 28px color-mix(in srgb, var(--amber) 28%, transparent)); }
+/* The wordmark picks up the gradient on "Crew". */
+.side-brand-text b em { background: var(--accent-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* ── Primary actions wear the gradient ─────────────────────────────────────────────────────── */
+:is(.ui-btn[data-variant="primary"], .side-new, .guide-ask, .spark-reach-go, .term-suggest .term-suggest-go, .spk-mini-step button.is-go, .term-block-actions .is-run):not(:disabled) {
+  background-image: var(--accent-grad) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent), 0 6px 18px -8px var(--accent-glow);
+  transition: box-shadow .2s, transform .2s, filter .2s;
+}
+:is(.ui-btn[data-variant="primary"], .side-new, .guide-ask, .spark-reach-go):not(:disabled):hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent), 0 10px 26px -8px var(--accent-glow); }
+.buddy-send:not(:disabled), .composer-box button[type="submit"]:not(:disabled) { background-image: var(--accent-grad); color: var(--on-accent, #fff); box-shadow: 0 6px 16px -6px var(--accent-glow); }
+
+/* ── Where you are: the active row gets a lit gradient edge ────────────────────────────────── */
+.side-hub-on { background: var(--accent-grad-soft) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 38%, transparent) !important; }
+.side-hub-on::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 3px; background: var(--accent-grad); box-shadow: 0 0 10px var(--accent-glow); }
+.side-row.is-on .side-ico { color: var(--accent-text, var(--amber)); }
+.hub-tab-on { background: var(--accent-grad-soft) !important; }
+
+/* ── The page card is lit from above ───────────────────────────────────────────────────────── */
+.workspace-card { position: relative; isolation: isolate; }
+.workspace-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 340px; z-index: -1; pointer-events: none;
+  background: radial-gradient(60% 100% at 30% 0%, color-mix(in srgb, var(--amber) 9%, transparent), transparent 70%), radial-gradient(45% 80% at 85% 0%, color-mix(in srgb, var(--accent-2) 7%, transparent), transparent 70%); }
+.workspace-card::after { content: ""; position: absolute; inset: 0 0 auto 0; height: 1px; z-index: 2; pointer-events: none; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--amber) 55%, transparent), color-mix(in srgb, var(--accent-2) 45%, transparent), transparent); opacity: .7; }
+
+/* ── Headings with a whisper of the accent ─────────────────────────────────────────────────── */
+:is(.hero-title, .guide-hero h1, .spk-hello h2) { background: linear-gradient(100deg, var(--text) 30%, color-mix(in srgb, var(--text) 55%, var(--accent-2)) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.guide-hero h1 em { background: var(--accent-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* ── The composer glows while you write: a slow gradient ring ──────────────────────────────── */
+@property --ring { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+:is(.hero-sheet .composer-box, .spk .chat-composer, .terminal-ask):focus-within {
+  border-color: transparent !important;
+  background:
+    linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
+    conic-gradient(from var(--ring), var(--amber), var(--accent-2), var(--accent-3), var(--amber)) border-box !important;
+  border: 1.5px solid transparent !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 12%, transparent), 0 12px 32px -14px var(--accent-glow) !important;
+  animation: ring-turn 6s linear infinite;
+}
+.spk .chat-composer { --composer-fill: var(--sunken); }
+.terminal-ask { --composer-fill: var(--term-bg); }
+@keyframes ring-turn { to { --ring: 360deg; } }
+
+/* ── Cards lift and pick up the gradient edge ──────────────────────────────────────────────── */
+.workspace-frame :is(.vn-card, .pb-card, .member-card, .art-card, .guide-card, .settings-link-card):hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 42%, var(--line-strong)), 0 16px 36px -22px var(--accent-glow) !important;
+}
+.guide-card { transition: background .2s; }
+.guide-card:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 6%, var(--panel)), var(--panel)); }
+
+/* ── Working things shimmer ────────────────────────────────────────────────────────────────── */
+:is(.hub-badge.is-live, .side-row em.is-live) { background-image: linear-gradient(110deg, var(--amber) 30%, color-mix(in srgb, var(--accent-2) 70%, #fff) 50%, var(--amber) 70%) !important; background-size: 220% 100%; animation: live-shimmer 2.4s linear infinite; }
+@keyframes live-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.spk-dot.is-busy, .spk-now .is-live i { background: var(--accent-grad); }
+
+/* ── Small things ──────────────────────────────────────────────────────────────────────────── */
+::selection { background: color-mix(in srgb, var(--amber) 32%, transparent); }
+:focus-visible { outline-color: var(--amber); }
+.spk-avatar.is-speaking, .spk-avatar.is-thinking { box-shadow: 0 0 0 2px transparent, 0 0 0 2px color-mix(in srgb, var(--amber) 60%, transparent), 0 0 18px -2px var(--accent-glow); border-radius: 12px; }
+.spk .buddy-msg.is-you { background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 26%, var(--raised)), color-mix(in srgb, var(--accent-2) 18%, var(--raised))) !important; }
+
+/* Stand down with Reduce motion (the Mac's, or ShuaCrew's own Motion setting). */
+@media (prefers-reduced-motion: reduce) {
+  :is(.hero-sheet .composer-box, .spk .chat-composer, .terminal-ask):focus-within, :is(.hub-badge.is-live, .side-row em.is-live) { animation: none; }
+  :is(.ui-btn[data-variant="primary"], .side-new, .guide-ask, .spark-reach-go):hover { transform: none; }
+}
+:root[data-motion="reduced"] :is(.hero-sheet .composer-box, .spk .chat-composer, .terminal-ask):focus-within,
+:root[data-motion="reduced"] :is(.hub-badge.is-live, .side-row em.is-live, .logo-mark .logo-orbit, .logo-mark .logo-core) { animation: none !important; }

@@ -37,6 +37,7 @@ import { playScape, stopScape } from "../lib/soundscape";
 import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
+import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
 
 type Native = { postMessage(m: unknown): void };
 const native = (): Native | undefined => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;

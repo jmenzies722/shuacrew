@@ -4,45 +4,38 @@
  */
 import { Flag, Globe2, Rocket, Trophy, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useLive } from "./live";
 
 export const reduced = () => typeof document !== "undefined" && document.documentElement.dataset.motion === "reduced";
 
 /** The ShuaCrew mark, alive: the three agents drift around their orbit and the core breathes. */
-export function LogoMark({ size = 56, spin = true }: { size?: number; spin?: boolean }) {
+/**
+ * The ShuaCrew mark — a lit core, an orbit, three crew — drawn in the theme's own accent (and a second
+ * tint derived from it), so it matches every palette. `bare` drops the tile for inline use (sidebar, top
+ * bar); `spin` lets the crew orbit and the core breathe.
+ */
+export function LogoMark({ size = 56, spin = true, bare = false }: { size?: number; spin?: boolean; bare?: boolean }) {
+  const id = useId().replace(/:/g, "");
+  const stop = (offset: string, color: string, opacity?: number) => <stop offset={offset} style={{ stopColor: color, ...(opacity === undefined ? {} : { stopOpacity: opacity }) }} />;
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" className={`logo-mark ${spin ? "is-live" : ""}`} aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 64 64" className={`logo-mark ${spin ? "is-live" : ""} ${bare ? "is-bare" : ""}`} aria-hidden>
       <defs>
-        <linearGradient id="lm-tile" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#26262a" />
-          <stop offset=".45" stopColor="#0d0d0e" />
-          <stop offset="1" stopColor="#000" />
-        </linearGradient>
-        <linearGradient id="lm-rim" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity=".34" />
-          <stop offset=".6" stopColor="#fff" stopOpacity=".06" />
-          <stop offset="1" stopColor="#fff" stopOpacity=".12" />
-        </linearGradient>
-        <linearGradient id="lm-silver" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" />
-          <stop offset=".55" stopColor="#d1d3db" />
-          <stop offset="1" stopColor="#8f919b" />
-        </linearGradient>
-        <radialGradient id="lm-glow" cx=".5" cy=".46" r=".5">
-          <stop offset="0" stopColor="#fff" stopOpacity=".16" />
-          <stop offset="1" stopColor="#fff" stopOpacity="0" />
-        </radialGradient>
+        <linearGradient id={`${id}-tile`} x1="0" y1="0" x2="0" y2="1">{stop("0", "var(--logo-tile-a)")}{stop(".5", "var(--logo-tile-b)")}{stop("1", "var(--logo-tile-c)")}</linearGradient>
+        <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)", 0.55)}{stop(".55", "var(--amber)", 0.12)}{stop("1", "var(--accent-2)", 0.35)}</linearGradient>
+        <linearGradient id={`${id}-core`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)")}{stop(".5", "var(--amber)")}{stop("1", "var(--accent-2)")}</linearGradient>
+        <linearGradient id={`${id}-crew`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fff")}{stop("1", "var(--logo-hi)")}</linearGradient>
+        <radialGradient id={`${id}-glow`} cx=".5" cy=".5" r=".5">{stop("0", "var(--amber)", 0.42)}{stop("1", "var(--amber)", 0)}</radialGradient>
       </defs>
-      <rect width="64" height="64" rx="15" fill="url(#lm-rim)" />
-      <rect x=".6" y=".6" width="62.8" height="62.8" rx="14.4" fill="url(#lm-tile)" />
-      <circle cx="32" cy="32" r="24" fill="url(#lm-glow)" />
-      <circle cx="32" cy="32" r="16" fill="none" stroke="#fff" strokeOpacity=".2" strokeWidth=".9" />
-      <circle className="logo-core" cx="32" cy="32" r="7.7" fill="none" stroke="url(#lm-silver)" strokeWidth="3.4" />
+      {!bare && <rect width="64" height="64" rx="15" fill={`url(#${id}-rim)`} />}
+      {!bare && <rect x=".8" y=".8" width="62.4" height="62.4" rx="14.2" fill={`url(#${id}-tile)`} />}
+      <circle cx="32" cy="32" r={bare ? 30 : 24} fill={`url(#${id}-glow)`} />
+      <circle cx="32" cy="32" r="16" fill="none" stroke="var(--logo-hi)" strokeOpacity=".32" strokeWidth={bare ? 1.6 : 0.9} />
+      <circle className="logo-core" cx="32" cy="32" r="7.7" fill="none" stroke={`url(#${id}-core)`} strokeWidth={bare ? 4.4 : 3.4} />
       <g className="logo-orbit">
-        <circle cx="32" cy="16" r="3.3" fill="url(#lm-silver)" />
-        <circle cx="45.9" cy="40" r="3.3" fill="url(#lm-silver)" />
-        <circle cx="18.1" cy="40" r="3.3" fill="url(#lm-silver)" />
+        <circle cx="32" cy="16" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
+        <circle cx="45.9" cy="40" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
+        <circle cx="18.1" cy="40" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
       </g>
     </svg>
   );

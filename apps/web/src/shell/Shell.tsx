@@ -7,7 +7,7 @@ import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSq
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Milestones, useSpotlight } from "../lib/motion";
+import { LogoMark, Milestones, useSpotlight } from "../lib/motion";
 import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
@@ -38,6 +38,7 @@ import { RadioHost } from "../components/NowPlaying";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../components/surfaces.css";
+import "../alive.css"; // last: the accent gradient and the touches that make it feel lit
 import "../lib/look";
 
 export const NAV = [
@@ -145,7 +146,7 @@ function TopBar() {
 
   return (
     <header ref={bar} className="relative col-span-2 flex items-center gap-3 px-3 [[data-shell=mac]_&]:pl-[84px]" aria-label="Top bar">
-      <img src="/icon.svg" alt="ShuaCrew" className="h-6 w-6 [[data-shell=mac]_&]:hidden" />
+      <span className="tb-logo [[data-shell=mac]_&]:hidden" role="img" aria-label="ShuaCrew"><LogoMark size={24} spin={false} /></span>
       <span className="flex h-7 items-center gap-1.5 rounded-[8px] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] px-2.5 text-[12px] font-medium text-fg-2" data-no-drag>
         <House size={13} className="text-fg-3" /> Local
       </span>
