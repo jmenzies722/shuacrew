@@ -589,7 +589,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     } catch (e) { setError((e as Error).message); } finally { checkingGuide.current = false; setBusy(""); }
   };
   const advanceRef = useRef(advance); advanceRef.current = advance;
-  useEffect(() => { const on = () => void advanceRef.current(); window.addEventListener("shuacrew:guideClick", on); return () => window.removeEventListener("shuacrew:guideClick", on); }, []);
+  // The step's spot was clicked, or you did anything else (clicked elsewhere, pressed Return, typed and paused): look again.
+  useEffect(() => {
+    const on = () => void advanceRef.current();
+    window.addEventListener("shuacrew:guideClick", on); window.addEventListener("shuacrew:guideActivity", on);
+    return () => { window.removeEventListener("shuacrew:guideClick", on); window.removeEventListener("shuacrew:guideActivity", on); };
+  }, []);
   const MAX_STEPS = 25;
   const stopTask = (why = "") => {
     setTask(null); setPending(null); setAutoTask(false); post({ type: "buddyStopWatch" }); speech.current.stop();

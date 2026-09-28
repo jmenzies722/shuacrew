@@ -508,6 +508,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             guideTarget = sender
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
                   [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+            watchGuideActivity(true)
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
                           color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true)
             // The cursor flies first; then Spark walks over to stand beside the step.
@@ -530,6 +531,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyGuideStop":
             pointer.hide()
             walkHome()
+            watchGuideActivity(false)
         case "buddyOnTop":
             let on = body["on"] as? Bool ?? false
             staysOnTop = on
@@ -604,6 +606,30 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var stopWatch: Any?
     /// The web view that started the current guided walkthrough.
     private var guideTarget: WKWebView?
+    /// Staying with you: while a step is showing, any action of yours (a click anywhere, Return, a pause after typing)
+    /// makes Spark look again and give the next step — not only a click on the exact highlighted spot.
+    private var guideMonitors: [Any] = []
+    private var guideSettle: DispatchWorkItem?
+    private func watchGuideActivity(_ on: Bool) {
+        for m in guideMonitors { NSEvent.removeMonitor(m) }
+        guideMonitors = []; guideSettle?.cancel(); guideSettle = nil
+        guard on else { return }
+        let seen: @Sendable (NSEvent) -> Void = { [weak self] event in
+            let click = event.type == .leftMouseUp, key = event.type == .keyDown ? event.keyCode : 0
+            Task { @MainActor in
+                guard let self else { return }
+                // Return / Enter / Tab settle quickly; other keys wait for you to stop typing.
+                let delay = click ? 1.2 : [36, 76, 48].contains(key) ? 1.2 : 2.0
+                self.guideSettle?.cancel()
+                let work = DispatchWorkItem { [weak self] in
+                    (self?.guideTarget ?? self?.web)?.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:guideActivity'))")
+                }
+                self.guideSettle = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            }
+        }
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .keyDown], handler: seen) { guideMonitors.append(m) }
+    }
     /// The app window's web view: Esc-stops go to both places Spark can be working from.
     weak var appWeb: WKWebView?
     private func watchForStop() {
