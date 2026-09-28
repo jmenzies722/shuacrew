@@ -15,7 +15,10 @@ import { Buddy } from "./screens/Buddy";
 
 applyTheme(useLive.getState().theme);
 // While ShuaCrew isn't the app in front, its purely decorative motion rests (see alive.css); it resumes on return.
-const idle = () => { if (document.hasFocus() && document.visibilityState === "visible") delete document.documentElement.dataset.idle; else document.documentElement.dataset.idle = ""; };
+// The Mac app says when ShuaCrew itself is active (the notch panel never takes focus, so it can't tell on its own).
+let appActive: boolean | null = null;
+(window as unknown as { __appActive: (on: boolean) => void }).__appActive = (on) => { appActive = on; idle(); };
+const idle = () => { if ((appActive ?? document.hasFocus()) && document.visibilityState === "visible") delete document.documentElement.dataset.idle; else document.documentElement.dataset.idle = ""; };
 window.addEventListener("focus", idle); window.addEventListener("blur", idle); document.addEventListener("visibilitychange", idle); idle();
 // Resolve the preferred landing page once. Explicit links keep their destination.
 if (location.pathname === "/" && !location.search && !location.hash) {

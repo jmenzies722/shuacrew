@@ -122,9 +122,17 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         config.userContentController.add(WeakHandler(self), name: "shuacrew")
         place(size: closed)
         NotificationCenter.default.addObserver(self, selector: #selector(displaysChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appActivity), name: NSApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appActivity), name: NSApplication.didResignActiveNotification, object: nil)
     }
 
     @objc private func displaysChanged() { place(size: requestedSize) }
+    /// Tell the pages whether ShuaCrew is the app in front: decorative motion (blinks, orbits, the aurora) rests while
+    /// you're elsewhere. The notch panel never takes focus, so it can't work this out on its own.
+    @objc private func appActivity() {
+        let js = "window.__appActive && window.__appActive(\(NSApp.isActive))"
+        for w in [web, appWeb].compactMap({ $0 }) { w.evaluateJavaScript(js) }
+    }
 
     // MARK: showing
 

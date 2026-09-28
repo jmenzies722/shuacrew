@@ -95,8 +95,12 @@ function Visualizer({ on }: { on: boolean }) {
     const g = c.getContext("2d"); if (!g) return;
     const bins = new Uint8Array(64); let raf = 0, t = 0;
     const accent = getComputedStyle(document.documentElement).getPropertyValue("--amber").trim() || "#8e48ff";
+    // Size the canvas only when it changes (resetting width every frame re-laid-out the page and cleared the buffer
+    // 60 times a second), draw once and stop when nothing's playing, and rest while ShuaCrew isn't in front.
+    let w = 0, h = 0;
+    const fit = () => { const nw = Math.round(c.clientWidth * devicePixelRatio), nh = Math.round(c.clientHeight * devicePixelRatio); if (nw !== w || nh !== h) { w = c.width = nw; h = c.height = nh; } };
+    const ro = new ResizeObserver(() => { fit(); if (!on) draw(); }); ro.observe(c); fit();
     const draw = () => {
-      const w = (c.width = c.clientWidth * devicePixelRatio), h = (c.height = c.clientHeight * devicePixelRatio);
       g.clearRect(0, 0, w, h);
       const live = on && levels(bins); t += 0.04;
       const n = 40, gap = 3 * devicePixelRatio, bw = (w - gap * (n - 1)) / n;
@@ -107,10 +111,11 @@ function Visualizer({ on }: { on: boolean }) {
         g.globalAlpha = 0.35 + v * 0.65;
         g.fillRect(i * (bw + gap), (h - bh) / 2, bw, bh);
       }
-      raf = requestAnimationFrame(draw);
+      if (on && !("idle" in document.documentElement.dataset)) raf = requestAnimationFrame(draw);
+      else if (on) raf = window.setTimeout(draw, 500) as unknown as number; // resting: check back, don't spin
     };
     draw();
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); clearTimeout(raf); ro.disconnect(); };
   }, [on]);
   return <canvas ref={canvas} className="radio-viz" aria-hidden="true" />;
 }

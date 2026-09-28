@@ -116,6 +116,6 @@
 .spk-full-toggle[aria-pressed="true"] { color: var(--amber); }
 
 /* ── Rest when you're elsewhere: decorative motion pauses while ShuaCrew isn't the app in front ─────────────── */
-:root[data-idle] :is(.living-bg i, .logo-mark .logo-orbit, .logo-mark .logo-core, .hub-badge.is-live, .side-row em.is-live) { animation-play-state: paused !important; }
+:root[data-idle] :is(.living-bg i, .logo-mark .logo-orbit, .logo-mark .logo-core, .hub-badge.is-live, .side-row em.is-live, .robot-eyes, .needs-dot, .buddy-spark) { animation-play-state: paused !important; }
 /* Sessions: your day sits right under what needs you, as one group, with room before the logo. */
 .hero-core > .brief { margin: 10px 0 28px !important; width: 100%; }
