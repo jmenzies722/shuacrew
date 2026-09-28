@@ -941,10 +941,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Hover in/out of the notch (from the page, or the Mac app watching the pointer): open now, tuck away shortly after
   // you leave — unless you're typing in it or Spark is mid-answer.
   const nookHover = useRef((_: boolean) => {});
+  // Tuck in once you've moved away. If you're mid-typing or Spark is mid-reply, keep checking (not just once) and
+  // tuck in the moment that's over, so it never stays stuck open. An empty, focused ask box doesn't hold it open.
+  const pointerInside = useRef(false), holdOpen = useRef<() => boolean>(() => false);
+  holdOpen.current = () => !!nookDraft.trim() || !!busy || working || !!pending;
   nookHover.current = (inside: boolean) => {
-    clearTimeout(nookTimer.current);
+    clearTimeout(nookTimer.current); pointerInside.current = inside;
     if (inside) { if (!open && prefs.desktopPlacement === "notch") setNook(true); return; }
-    nookTimer.current = setTimeout(() => { if (!nookFocus.current && !nookDraft.trim() && !busy && !working) setNook(false); }, 450);
+    const tryClose = () => {
+      if (pointerInside.current) return;
+      if (holdOpen.current()) { nookTimer.current = setTimeout(tryClose, 400); return; }
+      nookFocus.current = false; (document.activeElement as HTMLElement | null)?.blur?.(); setNook(false);
+    };
+    nookTimer.current = setTimeout(tryClose, 450);
   };
   const nextMoves = lastSpark && !working && !busy ? parseNext(messages.at(-1)!.text) : [];
   const quick = nextMoves.length ? nextMoves : lastSpark && !working && !busy ? ["Tell me more", "Make it shorter", ...(see ? ["Show me on screen"] : []), ...(prefs.control !== "off" && see ? ["Do it for me"] : [])] : [];

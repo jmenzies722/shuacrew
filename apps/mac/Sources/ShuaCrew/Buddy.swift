@@ -399,8 +399,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if open && !isOpen && following && !docked && !isMini { rememberCorner() }
             isMini = !open && (body["mini"] as? Bool ?? false)
             isNook = docked && !open && (body["nook"] as? Bool ?? false)
-            updateNookWatch()
+            // Record open/closed BEFORE re-checking the hover watch: checking first saw the chat as still open when it
+            // closed, stopped watching, and nothing restarted it, so hovering the notch did nothing after a click.
             isOpen = open
+            updateNookWatch()
             place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : isMini ? Self.mini : peek ? Self.peek : closed)
             updateFollow()
             if !open, panel.isKeyWindow {
