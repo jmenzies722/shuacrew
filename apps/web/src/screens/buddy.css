@@ -589,3 +589,13 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spark-nook-mission span { display: grid; min-width: 0; } .spark-nook-mission small { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: #8d8797; }
 .spark-nook-mission b { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .spark-nook-mission em { font-style: normal; font-size: 11px; color: #a39cae; }
 .shua-island-ear em.is-focus { min-width: 26px; color: #000; background: #f1eef5; }
+/* A live activity: one compact row per thing that's happening now. */
+.spark-nook-live { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 10px 7px 8px; border-radius: 14px; background: linear-gradient(180deg, #141218, #0c0b0f); box-shadow: inset 0 0 0 1px #221f28; }
+.spark-nook-live > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; font-style: normal; font-size: 13px; font-weight: 700; color: #fff; background: #1d1a22; }
+.spark-nook-live > i.is-radio, .spark-nook-live > i.is-crew { background: var(--accent-grad, var(--amber)); }
+.spark-nook-live > i.is-focus { color: #000; background: #f1eef5; }
+.spark-nook-live > i.is-wait { color: #000; background: #ff9f0a; }
+.spark-nook-live > span { display: grid; gap: 1px; min-width: 0; }
+.spark-nook-live small { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #8d8797; }
+.spark-nook-live b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spark-nook-live .spark-nook-bar { margin-top: 4px; }

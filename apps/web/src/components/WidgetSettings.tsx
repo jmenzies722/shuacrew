@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Monitor, PanelTop, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Monitor, Sparkles } from "lucide-react";
 import { moveWidget, saveWidgets, toggleWidget, useWidgets, WIDGET_INFO, DEFAULT_WIDGETS, type WidgetId } from "../lib/widgets";
 import { WidgetTile } from "./TopBarWidgets";
 import { Switch } from "./SettingControls";
@@ -10,10 +10,10 @@ export function WidgetSettings() {
   const prefs = useWidgets(), navigate = useNavigate();
   const ctx = { go: (path: string) => void navigate({ to: path }) };
   return <div className="settings-card wgs">
-    <p className="power-hint" style={{ padding: "0 0 8px" }}>All widgets use real data from this Mac and your crew. Changes reach the top bar, Spark and the notch instantly.</p>
+    <p className="power-hint" style={{ padding: "0 0 8px" }}>All widgets use real data from this Mac and your crew. Changes reach the top bar and Spark instantly.</p>
     <ol className="wgs-list">{prefs.order.map((id: WidgetId, i) => {
-      const top = prefs.topbar.includes(id), spark = prefs.spark.includes(id), notch = prefs.notch.includes(id);
-      return <li key={id} className={top || spark || notch ? "is-on" : ""}>
+      const top = prefs.topbar.includes(id), spark = prefs.spark.includes(id);
+      return <li key={id} className={top || spark ? "is-on" : ""}>
         <div className="wgs-order">
           <button type="button" aria-label={`Move ${WIDGET_INFO[id].name} up`} disabled={i === 0} onClick={() => saveWidgets({ order: moveWidget(prefs.order, id, -1) })}><ChevronUp size={13} /></button>
           <button type="button" aria-label={`Move ${WIDGET_INFO[id].name} down`} disabled={i === prefs.order.length - 1} onClick={() => saveWidgets({ order: moveWidget(prefs.order, id, 1) })}><ChevronDown size={13} /></button>
@@ -21,8 +21,7 @@ export function WidgetSettings() {
         <div className="wgs-text"><strong>{WIDGET_INFO[id].name}</strong><small>{WIDGET_INFO[id].blurb}</small></div>
         <label className="wgs-place" title="Show in the top bar"><Monitor size={12} /><span>Top bar</span><Switch label={`${WIDGET_INFO[id].name} in the top bar`} on={top} onChange={(on) => toggleWidget(id, "topbar", on)} /></label>
         <label className="wgs-place" title="Show in Spark's Widgets tab"><Sparkles size={12} /><span>Spark</span><Switch label={`${WIDGET_INFO[id].name} in Spark`} on={spark} onChange={(on) => toggleWidget(id, "spark", on)} /></label>
-        <label className="wgs-place" title="A live activity in the MacBook notch"><PanelTop size={12} /><span>Notch</span><Switch label={`${WIDGET_INFO[id].name} in the notch`} on={notch} onChange={(on) => toggleWidget(id, "notch", on)} /></label>
-        {(top || spark || notch) && <details className="wgs-preview"><summary>Preview &amp; options</summary><div className="wg-tile"><WidgetTile id={id} ctx={ctx} /></div></details>}
+        {(top || spark) && <details className="wgs-preview"><summary>Preview &amp; options</summary><div className="wg-tile"><WidgetTile id={id} ctx={ctx} /></div></details>}
       </li>;
     })}</ol>
     <div className="wgs-foot"><button type="button" className="tb-btn" onClick={() => saveWidgets({ ...DEFAULT_WIDGETS, zones: prefs.zones, countdown: prefs.countdown })}>Reset layout</button></div>

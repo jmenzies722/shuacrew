@@ -33,7 +33,7 @@ import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../li
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
-import { NotchWidgets, SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
+import { SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
 import { useNowPlaying } from "../components/NowPlaying";
 import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/studio";
 import { playScape, stopScape } from "../lib/soundscape";
@@ -1086,7 +1086,18 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </div>}
           {activeMissions.length > 0 && <button type="button" className="spark-nook-mission" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: `/sessions/${activeMissions.at(-1)!.run}` })}>
             <i className="is-live" /><span><small>Mission</small><b>{crew.runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task}</b></span><em>{crew.runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</em></button>}
-          <NotchWidgets ctx={ctx} tab={islandOpen ? 0 : -1} />
+          {/* Live activities: only what's happening right now; each one leaves when it ends. */}
+          {radio.playing && !(showMedia && media?.playing) && <div className="spark-nook-live">
+            <i className="is-radio"><AudioLines size={14} /></i><span><small>Radio</small><b>{radio.title ?? radio.station ?? "ShuaCrew Radio"}</b></span>
+            <div className="spark-nook-ctl is-media"><button type="button" tabIndex={islandOpen ? 0 : -1} className="is-main" onClick={() => void radioCommand({ cmd: "pause" }).then(() => radioNow().then(setRadio))} aria-label="Pause radio"><Pause size={13} /></button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void radioCommand({ cmd: "next" })} aria-label="Next station track"><SkipForward size={12} /></button></div></div>}
+          {timer && <div className="spark-nook-live">
+            <i className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}</i><span><small>Focus</small><b>{Math.ceil(remainingFocusMs(timer, now) / 60000)} min left</b><span className="spark-nook-bar"><i style={{ width: `${focusPct * 100}%` }} /></span></span>
+            <div className="spark-nook-ctl"><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => setFocus(null)}>End</button></div></div>}
+          {(workingRuns.length > 0 || approvals > 0) && <div className="spark-nook-live">
+            <i className={approvals ? "is-wait" : "is-crew"}>{approvals || workingRuns.length}</i><span><small>{approvals ? "Needs you" : "Crew working"}</small><b>{approvals ? `${approvals} decision${approvals === 1 ? "" : "s"} waiting` : workingRuns.at(-1)!.title || `${workingRuns.length} sessions`}</b></span>
+            <div className="spark-nook-ctl">{approvals ? <button type="button" className="is-wait" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: "/activity" })}>Review</button>
+              : <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: `/sessions/${workingRuns.at(-1)!.id}` })}>Open</button>}</div></div>}
           <footer><button type="button" onClick={() => { setNook(false); setOpen(true); }}>Open chat</button><span>Move away to tuck it in</span></footer>
         </div>
       </div>
