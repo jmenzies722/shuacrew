@@ -197,7 +197,7 @@ export function screenText(lines: ScreenLine[] | undefined, max = 9000) {
   const rows = [...lines].sort((a, b) => (Math.abs(a.y - b.y) < 0.006 ? a.x - b.x : a.y - b.y)).map((l) => `${l.t} @${l.x.toFixed(3)},${l.y.toFixed(3)}`);
   let out = "", n = 0;
   for (const r of rows) { if (out.length + r.length > max) break; out += r + "\n"; n++; }
-  return `SCREEN TEXT — exact, from on-device OCR of the full-resolution screen (${n}${n < rows.length ? ` of ${rows.length}` : ""} lines; "text @x,y" = centre as fractions from the top-left). Quote numbers and names from here, not from the image; use these positions to point precisely:\n${out}`;
+  return `SCREEN TEXT — read off their screen by on-device OCR, not typed by the user (never quote or comment on stray lines unless asked); exact, from the full-resolution screen (${n}${n < rows.length ? ` of ${rows.length}` : ""} lines; "text @x,y" = centre as fractions from the top-left). Quote numbers and names from here, not from the image; use these positions to point precisely:\n${out}`;
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
@@ -292,9 +292,12 @@ export function describeAct(a: Act): string {
   }
 }
 
+/** During a walkthrough every reply is one short line: say the step, never narrate or quote the screen text. */
+const STEP_STYLE = " Reply in ONE short sentence (under 15 words) plus the block — no recap, no commentary. The screen text below is read off their screen by OCR, not typed by them: never quote it or comment on stray lines in it.";
+
 /** What goes back after Spark does a step: what happened, a fresh look, and the ask for the next step. */
 export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }, step: number, max: number) {
-  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}`;
+  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
 }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
@@ -388,7 +391,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
 
 /** What goes back after they do a guided step: a fresh look, and the ask for what's next. */
 export function guideFollowUp(label: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }) {
-  return `[guide] Done — I did “${label}”. A fresh screenshot is attached (${screen.width}×${screen.height}). What's the next step? Use one guide block, or guide {"done": true} if we're finished.${screen.text?.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}`;
+  return `[guide] Done — I did “${label}”. A fresh screenshot is attached (${screen.width}×${screen.height}). What's the next step? Use one guide block, or guide {"done": true} if we're finished.${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
 }
 
 /**

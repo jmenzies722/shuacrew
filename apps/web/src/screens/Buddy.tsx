@@ -255,6 +255,8 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     const out: Array<{ who: "you" | "spark"; text: string; live?: boolean; id?: number }> = convo ? [{ who: "you", text: convo.first }] : [];
     let streaming = "";
     for (const e of (events ?? []) as AnyEvent[]) {
+      // Spark's own step reports ([guide]/[act]) are bookkeeping, not something you said: keep them out of the chat.
+      if (e.kind === "run.followup" && /^\[(guide|act)\]/.test((e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, ""))) { streaming = ""; continue; }
       if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, "").split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]!.split("\n\n[app]")[0]! }); streaming = ""; }
       else if (e.kind === "agent.delta") streaming += e.body.text;
       else if (e.kind === "agent.message") { out.push({ who: "spark", text: e.body.text, id: e.seq }); streaming = ""; }
