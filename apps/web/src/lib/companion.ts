@@ -23,6 +23,8 @@ export interface CompanionPreferences {
   brain: "auto" | "local";
   /** Which local model: smart (gpt-oss 20B) or fast (Llama 3.2 3B). */
   localModel: "gpt-oss:20b" | "llama3.2:3b";
+  /** Keep going on its own: work handed to the crew becomes a mission Spark stays with to the end (on by default). */
+  persist: boolean;
 }
 export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const;
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
@@ -41,7 +43,8 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
     listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
-    brain: choice("brain", ["auto", "local"], "auto"), localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b") };
+    brain: choice("brain", ["auto", "local"], "auto"), localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
+    persist: v.persist !== false };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

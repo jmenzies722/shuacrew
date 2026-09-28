@@ -13,13 +13,15 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import { api, followUp, launchRun } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
+import { conversation } from "../lib/conversation";
+import { addMission, missionBrief, missionTask, nextMove, readMissions, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
 import { aboutScreen, actFollowUp, buddyPrompt, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
 import { saveNote, useNote } from "../lib/widgets";
-import { parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
+import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
@@ -119,7 +121,12 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
   if (a.type === "note") { const n = localStorage.getItem("shuacrew.widgets.note") ?? ""; saveNote(n ? `${n}\n${a.text}` : a.text); return Promise.resolve({ ok: true, message: "Added to your note" }); }
-  if (a.type === "crew") return launchRun({ ask: a.ask }).then((r) => ({ ok: true, message: "The crew is on it", run: r.id }), (e: Error) => ({ ok: false, message: e.message }));
+  // A hand-off is a mission: an end-to-end brief, and Spark stays with it until it's finished (see lib/missions).
+  if (a.type === "crew") {
+    const persist = getCompanion().persist;
+    return launchRun({ ask: persist ? missionBrief(a.ask) : a.ask, title: a.ask.split("\n")[0]!.slice(0, 80), ...(persist ? { labels: ["mission"] } : {}) })
+      .then((r) => { if (persist) addMission(r.id, a.ask); return { ok: true, message: persist ? "The crew is on it. I'll stay with it" : "The crew is on it", run: r.id }; }, (e: Error) => ({ ok: false, message: e.message }));
+  }
   return new Promise((resolve) => {
     if (!native()) { resolve({ ok: false, message: "Only in the Mac app" }); return; }
     const id = crypto.randomUUID();
@@ -319,7 +326,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const seen = useRef<Record<string, string> | null>(null);
   const approvals = Object.keys(crew.approvals).length;
   useEffect(() => {
-    const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs));
+    const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("mission"));
     const prev = seen.current; seen.current = Object.fromEntries(work.map((r) => [r.id, r.status]));
     if (!prev || embedded) return; // crew news is the desktop Spark's to announce, once
     for (const r of work) {
@@ -332,6 +339,49 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     }
   }, [crew.runs, crew.members]);
   useEffect(() => { if (!bubble) return; const t = setTimeout(() => setBubble(null), 9000); return () => clearTimeout(t); }, [bubble]);
+
+  // Missions: Spark stays with work it handed off. When the crew stops early (a question it could answer
+  // itself, or a failure) Spark tells it to keep going, a few rounds at most; a finish or a needed OK is
+  // said out loud. Only the desktop Spark acts, so nothing is sent twice.
+  const [missions, setMissions] = useState<Mission[]>(readMissions);
+  useEffect(() => { const on = () => setMissions(readMissions()); window.addEventListener("shuacrew:missions", on); window.addEventListener("storage", on); return () => { window.removeEventListener("shuacrew:missions", on); window.removeEventListener("storage", on); }; }, []);
+  const minding = useRef(new Set<string>());
+  useEffect(() => {
+    if (embedded) return;
+    for (const m of readMissions()) {
+      const run = crew.runs[m.run];
+      if (m.done || !run || run.status === m.status || minding.current.has(m.run)) continue;
+      minding.current.add(m.run);
+      void (async () => {
+        try {
+          let lastText = "";
+          if (["done", "merged", "failed"].includes(run.status)) {
+            await useLive.getState().loadRun(m.run).catch(() => undefined);
+            const items = conversation((useLive.getState().runEvents[m.run] ?? []) as AnyEvent[]);
+            const last = [...items].reverse().find((i) => i.kind === "prose");
+            lastText = last?.kind === "prose" ? last.text : "";
+          }
+          const title = run.title || m.task.slice(0, 60);
+          const move = nextMove({ status: run.status, lastText, rounds: m.rounds, title });
+          const update = (patch: Partial<Mission>) => writeMissions(readMissions().map((x) => (x.run === m.run ? { ...x, status: run.status, ...patch } : x)));
+          if (move.kind === "wait") return update({});
+          if (move.kind === "continue" && getCompanion().persist) {
+            await followUp(m.run, move.message);
+            update({ rounds: m.rounds + 1, status: "running" });
+            setBubble({ text: move.say, path: `/sessions/${m.run}` }); speech.current.say(move.say);
+            return;
+          }
+          if (move.kind === "needs-you") { feel("concerned"); update({}); setBubble({ text: move.say, path: `/sessions/${m.run}` }); speech.current.say(move.say); post({ type: "buddyRaise" }); return; }
+          const say = move.kind === "report" ? move.say : `“${title}” stopped with a question. It needs you.`;
+          const ok = move.kind === "report" && move.ok;
+          feel(ok ? "happy" : "concerned");
+          update({ done: true });
+          setBubble({ text: say, path: `/sessions/${m.run}` }); speech.current.say(say); post({ type: "buddyRaise" });
+        } catch { /* the next status change tries again */ } finally { minding.current.delete(m.run); }
+      })();
+    }
+  }, [crew.runs, embedded]);
+  const activeMissions = missions.filter((m) => !m.done && crew.runs[m.run]);
   useEffect(() => {
     if (embedded) return;
     const check = () => {
@@ -416,6 +466,13 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     claim();
     speech.current.unlock(); speech.current.stop();
     setError(""); setTab("chat");
+    // "agent: …" (Clicky's "clicky agent"): hand it to the crew as a mission and stay with it.
+    const mission = missionTask(q, prefs.nickname);
+    if (mission) {
+      const r = await perform({ type: "crew", ask: mission });
+      const a = r.ok ? (prefs.persist ? "On it. The crew is working on it and I'll stay with it until it's done." : "On it. The crew is working on it.") : `I couldn't start that: ${r.message}`;
+      setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
+    }
     const move = producerMove(q);
     if (move && !(convo && status && !["failed", "cancelled"].includes(status))) {
       const set = todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now());
@@ -630,6 +687,11 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
         </div>
         {error && <p className="buddy-error">{error}</p>}
       </>}
+      {activeMissions.length > 0 && <div className="spk-missions" aria-label="Missions I'm staying with">
+        {activeMissions.slice(-3).map((m) => { const r = crew.runs[m.run]!; return <button key={m.run} type="button" className={`spk-mission is-${r.status}`} title={m.task}
+          onClick={() => (embedded ? window.shuacrew?.navigate(`/sessions/${m.run}`) : post({ type: "buddyOpen", path: `/sessions/${m.run}` }))}>
+          <i /><span>{r.title || m.task}</span><small>{r.status === "awaiting_approval" ? "needs you" : r.status.replace("_", " ")}{m.rounds ? ` · pushed ${m.rounds}×` : ""}</small></button>; })}
+      </div>}
       {asking && <div className="buddy-task is-run"><Hand size={14} /><span><b>Run this?</b> <code>{asking.command}</code>{asking.why && <small> · {asking.why}</small>}</span>
         <button type="button" onClick={() => asking.answer(true)}>Run</button><button type="button" onClick={() => asking.answer(false)}>Cancel</button></div>}
       {task && <div className="buddy-task"><Hand size={14} /><span><b>Working on your Mac</b> step {task.step} · <kbd>Esc</kbd> stops</span>
