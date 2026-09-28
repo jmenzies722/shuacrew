@@ -464,6 +464,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "shortcut":
                 Task { let r = await SparkHands.shortcut(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+            case "mac":
+                // Your files, calendar, reminders, notes, contacts and this Mac's state (see MacKnowledge): off the main thread.
+                MacKnowledge.run(action) { [weak self] ok, message, output in
+                    Task { @MainActor in self?.did(["id": id, "ok": ok, "message": message, "output": output], to: sender) }
+                }
             case "mail":
                 // Your mail, through the Mail app: read and draft only, never send (see MailBridge).
                 MailBridge.run(action) { [weak self] ok, message, output in
@@ -602,7 +607,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil { onOpen?("/sessions/\(run)") }
             else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }
         case "buddySelfTest":
-            let line = "SPARK SELFTEST ok=\(body["ok"] as? Bool ?? false) message=\(body["message"] as? String ?? "")\n"
+            let line = "SPARK SELFTEST ok=\(body["ok"] as? Bool ?? false) message=\(body["message"] as? String ?? "")\n\(body["output"] as? String ?? "")\n"
             try? line.write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
         case "notify":
             guard let title = body["title"] as? String else { return }

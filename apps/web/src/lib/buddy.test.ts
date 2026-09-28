@@ -155,3 +155,9 @@ it("catches 'switched it' with nothing actually done", () => {
   expect(claimsWithoutAction("Kubernetes opened a new era of deployment tooling.")).toBe(false);
   expect(claimsWithoutAction("The weather in Austin is 78 and sunny.")).toBe(false);
 });
+it("reads Mac lookups: files, calendar, reminders, notes, contacts, status", () => {
+  expect(parseActions('```do [{"type":"mac","op":"find","query":"lease","kind":"pdf"}]```')).toEqual([{ type: "mac", op: "find", query: "lease", kind: "pdf" }]);
+  expect(parseActions('```do [{"type":"mac","op":"calendar","days":2},{"type":"mac","op":"status"}]```')).toEqual([{ type: "mac", op: "calendar", days: 2 }, { type: "mac", op: "status" }]);
+  expect(parseActions('```do [{"type":"mac","op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"}]```')).toEqual([{ type: "mac", op: "add_reminder", title: "Call the dentist", due: "2026-10-01T09:00" }]);
+  expect(parseActions('```do [{"type":"mac","op":"delete_everything"},{"type":"mac","op":"find"}]```')).toEqual([]);
+});

@@ -290,7 +290,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         if let spec = ProcessInfo.processInfo.environment["SHUACREW_APP_SELFTEST"], spec.hasPrefix("{") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                 self?.web.evaluateJavaScript("""
-                window.addEventListener('shuacrew:did', e => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: e.detail.ok, message: 'app window: ' + e.detail.message }), { once: true });
+                window.addEventListener('shuacrew:did', e => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: e.detail.ok, message: 'app window: ' + e.detail.message, output: (e.detail.output || '').slice(0, 600) }), { once: true });
                 window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDo', id: 'selftest', action: \(spec) });
                 """)
             }

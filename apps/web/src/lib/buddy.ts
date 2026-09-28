@@ -36,7 +36,8 @@ export type Action =
   | { type: "go"; path: string }
   | { type: "card"; front: string; back: string }
   | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
-  | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number };
+  | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
+  | { type: "mac"; op: "find" | "read" | "recent" | "calendar" | "reminders" | "add_reminder" | "notes" | "contacts" | "status"; query?: string; path?: string; kind?: string; days?: number; title?: string; due?: string };
 /** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
   { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky" },
@@ -230,6 +231,18 @@ function toAction(v: unknown): Action | null {
       const to = str(o.to, 200) ?? "", subject = str(o.subject, 300) ?? "", body = str(o.body, 20_000) ?? "";
       return (to === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) && (subject || body) ? { type: "mail", op, to, subject, body } : null;
     }
+    case "mac": {
+      // Your Mac, read on this Mac: files (Spotlight), calendar, reminders, notes, contacts, status. The Mac app checks again.
+      const op = (["find", "read", "recent", "calendar", "reminders", "add_reminder", "notes", "contacts", "status"] as const).find((x) => x === o.op);
+      if (!op) return null;
+      const days = Number.isInteger(o.days) && (o.days as number) >= 1 && (o.days as number) <= 30 ? { days: o.days as number } : {};
+      if (op === "find") { const query = str(o.query, 120); const kind = ["pdf", "images", "apps", "folders", "documents"].includes(o.kind as string) ? { kind: o.kind as string } : {}; return query ? { type: "mac", op, query, ...kind } : null; }
+      if (op === "read") { const path = str(o.path, 500); return path ? { type: "mac", op, path } : null; }
+      if (op === "contacts") { const query = str(o.query, 80); return query ? { type: "mac", op, query } : null; }
+      if (op === "notes") { const query = str(o.query, 80); return { type: "mac", op, ...(query ? { query } : {}) }; }
+      if (op === "add_reminder") { const title = str(o.title, 200); const due = str(o.due, 40); return title ? { type: "mac", op, title, ...(due ? { due } : {}) } : null; }
+      return { type: "mac", op, ...days };
+    }
     case "note": { const text = str(o.text, 2000); return text ? { type: "note", text } : null; }
     case "media": {
       const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "open_query", "volume", "volume_up", "volume_down", "mute"] as const;
@@ -268,6 +281,7 @@ export function describeAction(a: Action): string {
     case "focus": return `${a.minutes}-minute focus`;
     case "crew": return "Hand to the crew";
     case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
+    case "mac": return a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : "Check your Mac";
     case "note": return "Add to your note";
     case "media": return a.command === "play_query" ? `Play “${a.query}”` : `Music: ${a.command.replace("_", " ")}`;
     case "system": return a.what === "dark_mode" ? "Dark mode" : "Sleep display";
@@ -409,6 +423,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Building software, writing code in a repo, or long research reports: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
       "YOU STAY WITH THEM. When they want to learn, find, set up or do something on their Mac or a website, YOU walk them through it yourself, live, one step at a time (guide), or do it for them (act) when they ask you to: never hand that to the crew, never say you can't, never stop after one step. After each step you'll get a fresh screenshot automatically; give the next step until it's done, then the done block. If something unexpected shows up, adapt and keep going.",
       'Their email (Gmail or any account in the Mac Mail app), read and draft only, NEVER send: unread ```do [{"type":"mail","op":"unread"}]``` · search ```do [{"type":"mail","op":"search","query":"invoice"}]``` · read one (id from a list) ```do [{"type":"mail","op":"read","id":123}]``` · draft a reply ```do [{"type":"mail","op":"draft","to":"a@b.com","subject":"…","body":"…"}]``` (it opens in Mail for them to send). You get the results back; then say the gist in a sentence or two.',
+      'THEIR MAC — look before you guess (read on this Mac): find files ```do [{"type":"mac","op":"find","query":"lease agreement","kind":"pdf"}]``` (kind?: pdf|images|documents|folders|apps) · read a file or folder ```do [{"type":"mac","op":"read","path":"~/Documents/plan.md"}]``` · recent files {"op":"recent","days":3} · calendar {"op":"calendar","days":2} · reminders {"op":"reminders"} · add a reminder {"op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"} · Apple Notes {"op":"notes","query":"passport"} · contacts {"op":"contacts","query":"Sam"} · this Mac now (apps, battery, storage, Wi-Fi) {"op":"status"}. You get the result back; answer from it with the specifics. Use these whenever the answer lives on their Mac (their files, schedule, people, notes) instead of saying you don\'t know.',
       'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
       'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media (play, pause, next, play_query). Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',

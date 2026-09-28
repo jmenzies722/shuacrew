@@ -111,6 +111,7 @@ let confirmRun: ((command: string, why: string) => Promise<boolean>) | null = nu
 /** A command's output, for Spark to read back to you. */
 let onRanOutput: ((command: string, ok: boolean, output: string) => void) | null = null;
 let onMailOutput: ((what: string, output: string) => void) | null = null;
+let onMacOutput: ((what: string, output: string) => void) | null = null;
 
 /** Every action, logged with whether it worked. */
 function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
@@ -149,6 +150,19 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
     onRanOutput?.(a.command, r.ok, r.output ?? "");
     return { ok: r.ok, message: r.message };
   })();
+  if (a.type === "mac") return new Promise((resolve) => {
+    // Your files, calendar, reminders, notes, contacts and Mac status, read on this Mac; the result goes back to Spark.
+    if (!native()) { resolve({ ok: false, message: "This works in the ShuaCrew Mac app" }); return; }
+    const id = crypto.randomUUID();
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "Your Mac didn't answer in time" }); }, 75_000);
+    const on = (e: CustomEvent<{ id: string; ok: boolean; message: string; output?: string }>) => {
+      if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener);
+      if (e.detail.ok && e.detail.output) onMacOutput?.(describeAction(a), e.detail.output);
+      resolve({ ok: e.detail.ok, message: e.detail.message });
+    };
+    window.addEventListener("shuacrew:did", on as EventListener);
+    post({ type: "buddyDo", id, action: a });
+  });
   if (a.type === "mail") return new Promise((resolve) => {
     // Through the Mail app on this Mac (so Gmail works with no Google setup); read and draft only.
     if (!native()) { resolve({ ok: false, message: "Mail works in the ShuaCrew Mac app" }); return; }
@@ -286,7 +300,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const run = convoRef.current?.run; if (!run) return;
       void followUp(run, `[mail] ${what}:\n\n[screen]\n${output.slice(0, 6000)}\n\nSay the gist in one or two spoken sentences (who and what matters), not the whole list. Offer a next step if there's an obvious one.`).catch(() => {});
     };
-    return () => { confirmRun = null; onRanOutput = null; onMailOutput = null; };
+    // What Spark looked up on your Mac goes back to it to answer from, with the specifics; raw lists stay out of the chat.
+    onMacOutput = (what, output) => {
+      const run = convoRef.current?.run; if (!run) return;
+      void followUp(run, `[mac] ${what}:\n\n[screen]\n${output.slice(0, 9000)}\n\nAnswer their question from this with the specifics (names, dates, times, where the file is), in a few spoken sentences. If a file looks like the one they meant, offer to open or read it. Don't list everything.`).catch(() => {});
+    };
+    return () => { confirmRun = null; onRanOutput = null; onMailOutput = null; onMacOutput = null; };
   }, []);
   // Live: Spark watches your screen as a real stream (one frame a second, in memory only) while this is on.
   const [liveOn, setLiveOn] = useState(false), [liveBusy, setLiveBusy] = useState(false);

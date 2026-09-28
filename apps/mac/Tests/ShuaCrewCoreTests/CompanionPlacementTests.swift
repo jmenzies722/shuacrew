@@ -80,3 +80,17 @@ import Testing
     #expect(abs(top.midX - 100) < 0.001 && abs(top.midY - 760) < 0.001)
     #expect(top.width == 28 && top.height == 28)
 }
+@Test func sparkOnlyReadsWhatItShould() {
+    let home = "/Users/me"
+    #expect(MacPaths.allowed("~/Documents/plan.pdf", home: home) == "/Users/me/Documents/plan.pdf")
+    #expect(MacPaths.allowed("/Users/me/Developer/projects/app/README.md", home: home) != nil)
+    // Sealed work folders, secrets, and escapes are refused.
+    #expect(MacPaths.allowed("~/Nectar-Work/notes.txt", home: home) == nil)
+    #expect(MacPaths.allowed("~/Developer/work/infra/main.tf", home: home) == nil)
+    #expect(MacPaths.allowed("~/Developer/projects/../work/x", home: home) == nil)
+    #expect(MacPaths.allowed("~/.ssh/id_ed25519", home: home) == nil)
+    #expect(MacPaths.allowed("~/Developer/projects/app/.env", home: home) == nil)
+    #expect(MacPaths.allowed("~/Library/Keychains/login.keychain-db", home: home) == nil)
+    #expect(MacPaths.allowed("/etc/passwd", home: home) == nil)
+    #expect(MacPaths.allowed("/Users/me2/secret.txt", home: home) == nil)
+}
