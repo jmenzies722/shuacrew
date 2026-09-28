@@ -998,3 +998,70 @@ button, a { -webkit-tap-highlight-color: transparent; }
 :root[data-chat-style="document"] .rx-msg.is-you { justify-content: flex-start; }
 :root[data-chat-style="document"] .rx-msg.is-you .rx-msg-body { max-width: 100%; align-items: flex-start; }
 :root[data-timestamps="always"] .rx-msg-tools { opacity: 1; }
+
+/* ── The terminal, refined ─────────────────────────────────────────────────────────────────
+   Flush inside the page card; tabs, tools, status and the ask bar share one quiet chrome with the
+   accent reserved for what's active. Status is encoded as chips (folder, branch, last exit). */
+.terminal-page .terminal-drawer { border-radius: 0; }
+.terminal-bar { height: 42px; gap: 6px; padding: 0 8px 0 10px; background: linear-gradient(180deg, color-mix(in srgb, var(--term-head) 100%, transparent), color-mix(in srgb, var(--term-head) 70%, var(--term-bg))); }
+.terminal-tab { height: 28px; gap: 6px; padding: 0 4px 0 10px; border-radius: 8px; max-width: 260px; transition: background .15s, color .15s; }
+.terminal-tab.is-active { background: color-mix(in srgb, var(--amber) 12%, rgba(255,255,255,.04)); color: var(--term-fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent); }
+.terminal-tab-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--ok, #4ade80); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #4ade80) 18%, transparent); }
+.terminal-tab-dot.is-off { background: var(--term-dim); box-shadow: none; }
+.terminal-tab-branch { display: inline-flex; align-items: center; gap: 3px; max-width: 110px; font-size: 10.5px; color: var(--term-dim); }
+.terminal-action { width: 28px; height: 28px; border-radius: 8px; transition: background .15s, color .15s; }
+.terminal-action.is-on { background: color-mix(in srgb, var(--amber) 14%, transparent); color: var(--accent-text, var(--amber)); }
+.term-tools { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px var(--term-line); }
+.term-new { position: relative; display: flex; align-items: center; margin-left: 2px; }
+.term-new .term-new-more { width: 22px; margin-left: -2px; }
+.term-folders { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: grid; gap: 1px; width: 300px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: 12px; background: var(--float, var(--term-head)); box-shadow: 0 0 0 1px var(--line-strong, var(--term-line)), 0 18px 44px rgba(0,0,0,.5); }
+.term-folders-head { padding: 4px 8px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--term-dim); }
+.term-folders button { display: grid; grid-template-columns: 16px auto 1fr; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; text-align: left; font-size: 12.5px; color: var(--term-fg); }
+.term-folders button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 10.5px; color: var(--term-dim); }
+.term-folders button:hover, .term-folders button:focus-visible { background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.term-folders p { margin: 4px 8px 6px; font-size: 11.5px; color: var(--term-dim); }
+.terminal-host { padding: 12px 8px 8px 18px; }
+
+/* Side panel: History | Snippets, with a filter. */
+.term-side { background: color-mix(in srgb, var(--term-head) 70%, var(--term-bg)); }
+.term-side-tabs { display: flex; gap: 2px; margin: 8px 8px 0; padding: 2px; border-radius: 10px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px var(--term-line); }
+.term-side-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border-radius: 8px; font-size: 12px; color: var(--term-dim); transition: background .15s, color .15s; }
+.term-side-tabs button em { font-style: normal; font-size: 10.5px; opacity: .7; font-variant-numeric: tabular-nums; }
+.term-side-tabs button.is-on { color: var(--term-fg); background: rgba(255,255,255,.08); box-shadow: 0 1px 0 rgba(255,255,255,.05) inset; }
+.term-filter { display: flex; align-items: center; gap: 7px; height: 32px; margin: 8px 8px 2px; padding: 0 10px; border-radius: 9px; color: var(--term-dim); background: rgba(255,255,255,.035); box-shadow: inset 0 0 0 1px var(--term-line); }
+.term-filter:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 55%, transparent); }
+.term-filter input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 12px; color: var(--term-fg); }
+.term-filter button { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; }
+.term-empty { margin: 6px; padding: 14px; border-radius: 10px; font-size: 12px; line-height: 1.55; color: var(--term-dim); background: rgba(255,255,255,.02); box-shadow: inset 0 0 0 1px var(--term-line); }
+.term-empty b { color: var(--term-fg); font-weight: 600; }
+.term-block { padding: 9px 8px 9px 10px; border-radius: 10px; }
+.term-block-icon.is-star { color: var(--accent-text, var(--amber)); background: var(--amber-soft); }
+.term-block-actions .is-saved { color: var(--accent-text, var(--amber)); }
+.term-block-actions .is-saved svg { fill: currentColor; }
+.term-block-actions .is-run { color: var(--on-accent, #fff); background: var(--amber); font-weight: 600; padding: 0 8px; }
+.term-block-actions .is-run:hover { background: var(--amber); filter: brightness(1.1); color: var(--on-accent, #fff); }
+.term-snippet .term-block-actions { opacity: 1; }
+
+/* Status line: chips, so folder, branch and the last result read at a glance. */
+.term-status { height: 30px; gap: 6px; padding: 0 10px; background: color-mix(in srgb, var(--term-head) 55%, var(--term-bg)); }
+.term-chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; color: var(--term-dim); background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px var(--term-line); overflow: hidden; }
+.term-chip.is-ok { color: #4ade80; background: rgba(74,222,128,.08); box-shadow: inset 0 0 0 1px rgba(74,222,128,.22); }
+.term-chip.is-bad { color: #ff8a8a; background: rgba(255,107,107,.09); box-shadow: inset 0 0 0 1px rgba(255,107,107,.28); }
+.term-chip.is-running { color: var(--term-fg); }
+
+/* The ask bar: a composer, not a strip. */
+.terminal-ask-wrap { padding: 8px 10px 10px; background: color-mix(in srgb, var(--term-head) 55%, var(--term-bg)); }
+.terminal-ask { height: 44px; gap: 10px; padding: 0 8px 0 6px; border-top: 0; border-radius: 12px; background: var(--term-bg); box-shadow: inset 0 0 0 1px var(--term-line), 0 1px 0 rgba(255,255,255,.03); transition: box-shadow .15s; }
+.terminal-ask:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 60%, transparent), 0 0 0 4px color-mix(in srgb, var(--amber) 12%, transparent); }
+.terminal-ask input { font-size: 13px; }
+.term-mode { border-radius: 9px; }
+.term-mode button { height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11.5px; }
+.term-mode button.is-on { color: var(--accent-text, var(--amber)); background: color-mix(in srgb, var(--amber) 16%, transparent); }
+.term-hint { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--term-dim); white-space: nowrap; }
+.term-hint kbd { padding: 0 5px; border-radius: 5px; font-family: var(--font-mono); font-size: 10.5px; box-shadow: inset 0 0 0 1px var(--term-line); }
+.term-suggest { left: 10px; right: 10px; bottom: calc(100% + 2px); }
+.term-suggest .is-saved { color: var(--accent-text, var(--amber)); }
+@media (prefers-reduced-motion: reduce) { .terminal-tab, .terminal-action, .terminal-ask, .term-side-tabs button { transition: none; } }
+/* xterm paints a bright edge down the ruler canvas; crop it, keep the block marks. */
+.terminal-host .xterm-decoration-overview-ruler { clip-path: inset(0 0 0 3px); }
+.term-new { flex-shrink: 0; }
