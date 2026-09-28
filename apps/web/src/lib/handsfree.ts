@@ -13,15 +13,17 @@ export const vadStart = (): VadState => ({ noise: 0.008, speaking: false, voiced
  * after `startMs` above it, ends it after `endMs` of quiet. `strict` (while Spark talks) needs a louder voice,
  * so its own speech leaking past echo cancellation doesn't count as you.
  */
-export function vadStep(s: VadState, rms: number, dt: number, o: VadOptions = VAD, strict = false): { state: VadState; event?: "start" | "end" | "discard" } {
-  // While Spark talks, its own voice leaks back through the speakers: only a clearly louder, sustained voice (half a
-  // second) counts as you interrupting — so echo never makes Spark cut in and out.
-  const threshold = Math.max(o.floor, s.noise * o.ratio) * (strict ? 3.2 : 1);
+export function vadStep(s: VadState, rms: number, dt: number, o: VadOptions = VAD, strict = false, echo?: number): { state: VadState; event?: "start" | "end" | "discard" } {
+  // While Spark talks, its own voice leaks back through the speakers. With a measured `echo` (how loud Spark's voice
+  // arrives at the mic right now) you only have to be clearly above that — a natural interruption, a quarter second.
+  // Without one, fall back to "clearly louder and sustained" so echo never makes Spark cut in and out.
+  const adaptive = strict && echo !== undefined;
+  const threshold = adaptive ? Math.max(o.floor, s.noise * o.ratio, echo * 1.8) : Math.max(o.floor, s.noise * o.ratio) * (strict ? 3.2 : 1);
   const loud = rms > threshold;
   if (!s.speaking) {
     const noise = loud || strict ? s.noise : s.noise * 0.97 + rms * 0.03; // don't learn Spark's voice as "room noise"
     const voiced = loud ? s.voiced + dt : 0;
-    if (voiced >= (strict ? Math.max(o.startMs, 500) : o.startMs)) return { state: { noise, speaking: true, voiced, quiet: 0, spoke: voiced }, event: "start" };
+    if (voiced >= (adaptive ? Math.max(o.startMs, 260) : strict ? Math.max(o.startMs, 500) : o.startMs)) return { state: { noise, speaking: true, voiced, quiet: 0, spoke: voiced }, event: "start" };
     return { state: { ...s, noise, voiced } };
   }
   const quiet = loud ? 0 : s.quiet + dt, spoke = s.spoke + dt;
@@ -31,6 +33,18 @@ export function vadStep(s: VadState, rms: number, dt: number, o: VadOptions = VA
   }
   return { state: { ...s, quiet, spoke } };
 }
+
+/**
+ * How much of Spark's own voice reaches the mic, learned while Spark talks and you don't: the ratio of mic level to
+ * output level, smoothed. Starts cautious (as if the speakers were loud) and settles to your room and volume.
+ */
+export function learnCoupling(coupling: number, mic: number, out: number): number {
+  if (out < 0.01) return coupling;                                 // Spark is between words: nothing to learn
+  const ratio = Math.min(2, Math.max(0.02, mic / out));
+  return coupling * 0.96 + ratio * 0.04;
+}
+/** A sentence that sounds finished lets the turn end sooner (0.75 s instead of 1.1 s). */
+export const endsSentence = (caption: string) => /[.?!]["')\]]?\s*$/.test(caption.trim());
 
 /** Whisper invents words from silence and breath; these aren't turns. */
 export function meaningful(text: string) {
@@ -83,8 +97,18 @@ export class HandsFree {
   /** Your words so far, while you're still talking ("" when a turn starts or ends). */
   onPartial?: (text: string) => void;
   onBargeIn?: () => void;
+  /** You kept talking over Spark (about 0.7 s): it should stop now, without waiting for the transcript. */
+  onYield?: () => void;
   /** What sounded like a start wasn't words (a cough, the speakers, noise): whatever reacted to it can carry on. */
   onDropped?: () => void;
+  /** How loud Spark's own voice is playing right now (0–1), for echo-aware listening. */
+  outputLevel?: () => number;
+  private coupling = 0.6;
+  private yielded = false;
+  private lastCaption = "";
+  /** Turns already transcribed but not yet sent: if you pause and carry on, they go as one message. */
+  private pending: string[] = [];
+  private inflight = 0;
 
   get active() { return !!this.stream; }
 
@@ -107,9 +131,15 @@ export class HandsFree {
       if (this.paused) return;
       if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > keep) this.preroll.shift(); }
       if (this.mode === "hold") { if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption(); return; }
-      const r = vadStep(this.state, rms, frameMs, VAD, this.speaking);
+      // Echo-aware while Spark talks: learn how much of its voice reaches the mic, and only count you above that.
+      const out = this.speaking && this.outputLevel ? this.outputLevel() : 0;
+      if (this.speaking && out && !this.state.speaking) this.coupling = learnCoupling(this.coupling, rms, out);
+      const echo = this.speaking && this.outputLevel ? out * this.coupling : undefined;
+      const r = vadStep(this.state, rms, frameMs, endsSentence(this.lastCaption) ? { ...VAD, endMs: 750 } : VAD, this.speaking, echo);
       this.state = r.state;
-      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
+      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
+      // Still talking over Spark after ~0.7 s: that's a real interruption — Spark stops, like a person would.
+      if (this.turn && this.speaking && !this.yielded && this.state.spoke >= 700) { this.yielded = true; this.onYield?.(); }
       else if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption();
       else if (r.event === "end") void this.finish(true);
       else if (r.event === "discard") void this.finish(false);
@@ -153,24 +183,32 @@ export class HandsFree {
     try {
       const r = await fetch("/api/transcribe?voice=1&fast=1&name=live.wav", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(audio, this.ctx.sampleRate) });
       const { text = "" } = await r.json() as { text?: string };
-      if (id === this.turnId && this.turn && meaningful(text)) this.onPartial?.(text.trim());
+      if (id === this.turnId && this.turn && meaningful(text)) { this.lastCaption = text.trim(); this.onPartial?.(text.trim()); }
     } catch { /* a missed caption is fine; the final transcript is what counts */ }
     finally { this.captionBusy = false; }
   }
 
   private async finish(keep: boolean) {
-    const turn = this.turn; this.turn = null; this.turnId++;
-    if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); this.onPhase?.("listening"); return; }
-    this.paused = true; this.onPhase?.("transcribing");
+    const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = "";
+    if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); if (!this.inflight) this.onPhase?.("listening"); return; }
+    // Push-to-talk still pauses while it transcribes; open mic keeps listening, so you can carry on talking.
+    if (this.mode === "hold") this.paused = true;
+    this.inflight++; this.onPhase?.("transcribing");
     try {
       const r = await fetch(`/api/transcribe?voice=1&name=turn.wav&lang=${this.lang}`, { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, this.ctx.sampleRate) });
       const { text = "", error } = await r.json() as { text?: string; error?: string };
       if (error) this.onPhase?.("error", error);
-      else if (meaningful(text)) this.onTurn?.(text.trim());
+      else if (meaningful(text)) this.pending.push(text.trim());
       else this.onDropped?.();
       this.onPartial?.("");
     } catch { this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
-    finally { this.paused = false; if (this.stream) this.onPhase?.("listening"); }
+    finally { this.inflight--; this.paused = false; this.deliver(); if (this.stream && !this.turn && !this.inflight) this.onPhase?.("listening"); }
+  }
+  /** Send what you said once you've really finished: nothing still transcribing and you're not mid-sentence again. */
+  private deliver() {
+    if (this.inflight || this.turn || !this.pending.length) return;
+    const text = this.pending.join(" "); this.pending = [];
+    this.onTurn?.(text);
   }
 
   stop() {

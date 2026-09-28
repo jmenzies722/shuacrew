@@ -37,8 +37,23 @@ export class SpeechQueue {
   onSpeaking?: (speaking: boolean) => void;
 
   private master?: GainNode;
+  /** Measures what Spark is actually playing (after ducking), so the mic can tell its echo from you. */
+  private analyser?: AnalyserNode;
+  private levelBuf?: Float32Array<ArrayBuffer>;
   private ctx() { this.context ??= new AudioContext({ latencyHint: "interactive" }); if (this.context.state === "suspended") void this.context.resume().catch(() => {}); return this.context; }
-  private out() { const c = this.ctx(); if (!this.master) { this.master = c.createGain(); this.master.connect(c.destination); } return this.master; }
+  private out() {
+    const c = this.ctx();
+    if (!this.master) { this.master = c.createGain(); this.master.connect(c.destination); this.analyser = c.createAnalyser(); this.analyser.fftSize = 1024; this.master.connect(this.analyser); }
+    return this.master;
+  }
+  /** How loud Spark's voice is right now (RMS, 0–1); 0 when it's quiet or not talking. */
+  level(): number {
+    if (!this.speaking || !this.analyser) return 0;
+    this.levelBuf ??= new Float32Array(this.analyser.fftSize);
+    this.analyser.getFloatTimeDomainData(this.levelBuf);
+    let sum = 0; for (const v of this.levelBuf) sum += v * v;
+    return Math.sqrt(sum / this.levelBuf.length);
+  }
   /** Soft barge-in: drop to a murmur while we find out whether you're really talking; stop() if you are. */
   duck(on: boolean) { const g = this.out().gain, t = this.ctx().currentTime; g.cancelScheduledValues(t); g.setTargetAtTime(on ? 0.45 : 1, t, 0.08); }
 

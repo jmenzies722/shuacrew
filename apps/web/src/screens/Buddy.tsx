@@ -690,7 +690,10 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       if (wakeTurn.current) { wakeTurn.current = false; m.mode = prefsRef.current.listen; if (!prefsRef.current.conversation && prefsRef.current.listen !== "hold") m.stop(); }
       logSense("heard", "Heard you", t); if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
+    // You kept talking over Spark: it stops now, like a person would, instead of waiting for the transcript.
+    m.onYield = () => { if (prefsRef.current.interrupt) { logSense("heard", "Interrupted", ""); speech.current.stop(); } };
     m.onDropped = () => speech.current.duck(false);
+    m.outputLevel = () => speech.current.level();
     m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
     const wanted = (prefs.listen !== "hold" && prefs.conversation) || wakeTurn.current;
     if (wanted && tab !== "teach" && open && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
