@@ -89,9 +89,12 @@
 .side { width: 244px; margin: 8px 0 8px 8px; padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
   background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
 .side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
-.side-logo { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; background: var(--amber); }
-.side-logo i { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #fff; }
-.side-logo i:nth-child(1) { transform: translate(-6px, 4px); } .side-logo i:nth-child(2) { transform: translate(0, -5px); } .side-logo i:nth-child(3) { transform: translate(6px, 4px); opacity: .7; }
+/* The ShuaCrew mark (same as the app icon): a lit core with three crew on an orbit, drawn in the theme's accent. */
+.side-logo { display:grid; place-items:center; width:32px; height:32px; border-radius:10px; flex-shrink:0; color:var(--amber);
+  background:radial-gradient(circle at 50% 50%, color-mix(in srgb,var(--amber) 26%,transparent), transparent 70%), linear-gradient(180deg, color-mix(in srgb,var(--amber) 10%,var(--raised)), var(--sunken));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--amber) 30%,var(--line-strong)), inset 0 1px 0 color-mix(in srgb,#fff 8%,transparent); }
+.side-logo-core { stroke:var(--amber); filter:drop-shadow(0 0 3px color-mix(in srgb,var(--amber) 70%,transparent)); }
+.side-logo-crew { fill:color-mix(in srgb,var(--amber) 35%,#fff); }
 .side-brand-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .side-brand-text b { font-size: 13px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--text-2); }
 .side-brand-text b em { font-style: normal; color: var(--amber); }
