@@ -449,3 +449,37 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spark-nook-wrap .spark-dock > strong { flex: none; }
 /* While the nook is open it is the whole show: other bubbles wait. */
 .buddy:has(.spark-nook-wrap.is-open) .buddy-bubble { display: none; }
+
+/* ── Notch island (after Knurl): one black shape grown out of the camera housing ─────────────────────────── */
+.buddy.is-docked:not(.is-open) { display: block; padding: 0; background: transparent; }
+.buddy.is-docked:not(.is-open) > :not(.shua-island) { display: none; }
+.shua-island { position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; pointer-events: none; }
+.shua-island-shape { --r: 12px; position: relative; width: calc(var(--hw) + 2 * var(--flare)); height: calc(var(--hh) + var(--drop)); overflow: hidden; pointer-events: auto;
+  background: #000; border-radius: 0 0 var(--r) var(--r);
+  transition: width .38s cubic-bezier(.2,.9,.25,1.06), height .38s cubic-bezier(.2,.9,.25,1.06), border-radius .38s, box-shadow .38s; }
+.shua-island.is-open .shua-island-shape { --r: 34px; box-shadow: 0 24px 60px -22px rgba(0,0,0,.9), inset 0 -1px 0 color-mix(in srgb, var(--amber) 40%, transparent); }
+/* Concave shoulders: the shape meets the top edge of the screen in a smooth inward curve, not a corner. */
+.shua-island::before, .shua-island::after { content: ""; position: absolute; top: 0; width: 10px; height: 10px; pointer-events: none; }
+.shua-island::before { right: 100%; background: radial-gradient(circle at 0 100%, transparent 9.5px, #000 10px); }
+.shua-island::after { left: 100%; background: radial-gradient(circle at 100% 100%, transparent 9.5px, #000 10px); }
+/* Ears: either side of the camera, exactly as tall as the cutout. */
+.shua-island-ears { display: grid; grid-template-columns: 1fr var(--hw) 1fr; align-items: center; height: var(--hh); }
+.shua-island-ear { display: flex; align-items: center; gap: 7px; min-width: 0; height: 100%; padding: 0 12px; color: #f2eff6; }
+.shua-island-ear.is-face { justify-content: flex-start; }
+.shua-island-ear.is-live { justify-content: flex-end; }
+.shua-island-ear strong { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.shua-island-ear small { font-size: 11px; color: #a39cae; white-space: nowrap; }
+.shua-island-face { display: grid; place-items: center; width: 22px; height: 22px; flex: none; overflow: hidden; border-radius: 7px; font-style: normal; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--amber) 55%, transparent); }
+.shua-island-face.is-busy, .shua-island-face.is-speaking { box-shadow: 0 0 0 1.5px var(--amber), 0 0 10px color-mix(in srgb, var(--amber) 70%, transparent); }
+.shua-island-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok, #30d158); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #30d158) 20%, transparent); }
+.shua-island-dot.is-busy { background: var(--amber); animation: spk-breathe 1.2s ease-in-out infinite; }
+.shua-island-ear em { min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 700; }
+.shua-island-ear em.is-wait { color: #000; background: #ff9f0a; }
+.shua-island-ear em.is-live { color: #fff; background: var(--accent-grad, var(--amber)); }
+/* The body pours in after the shape has started to grow. */
+.shua-island-body { display: grid; gap: 10px; padding: 6px 16px 14px; opacity: 0; transform: translateY(-6px); transition: opacity .18s, transform .28s; }
+.shua-island.is-open .shua-island-body { opacity: 1; transform: none; transition-delay: .08s; }
+.shua-island.is-rest .shua-island-body { pointer-events: none; }
+.shua-island .spark-nook-tile b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+.shua-island .spark-nook-say { -webkit-line-clamp: 3; }
+@media (prefers-reduced-motion: reduce) { .shua-island-shape, .shua-island-body { transition: none; } }

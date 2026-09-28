@@ -25,6 +25,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// The notch nook: what the pill opens into when you hover it.
     private static let nookSize = NSSize(width: 520, height: 250)
     private var isNook = false
+    /// Notch island (after Knurl): the camera housing it grows from, and how far the page's shape currently reaches.
+    private var notchHousing: CGRect?
+    private var islandFlare: CGFloat = 130, islandDrop: CGFloat = 250
     private static let open = NSSize(width: 420, height: 620)
     /// A canvas for diagrams: system designs need room.
     private static let wide = NSSize(width: 940, height: 720)
@@ -161,7 +164,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var followTimer: Timer?
     private func updateFollow() {
         let active = following && !isOpen && !guiding && !docked && !isMini
-        panel.ignoresMouseEvents = active
+        panel.ignoresMouseEvents = active || (docked && !isOpen && !isNook)
         guard active else { followTimer?.invalidate(); followTimer = nil; return }
         guard followTimer == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
@@ -182,7 +185,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let inside = self.panel.frame.insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
+                guard let housing = self.notchHousing else { return }
+                let target = self.isNook ? NotchIsland.openTarget(housing: housing, flare: self.islandFlare, drop: self.islandDrop) : NotchIsland.hoverTarget(housing: housing)
+                let inside = target.contains(NSEvent.mouseLocation)
                 guard inside != self.pointerInNook else { return }
                 self.pointerInNook = inside
                 self.web.evaluateJavaScript("window.buddy && window.buddy.nook && window.buddy.nook(\(inside))")
@@ -308,6 +313,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             ? (NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? primary)
             : (NSScreen.screens.first(where: { $0.frame.contains(corner) }) ?? primary)
         let actual = docked && !isOpen ? (isNook ? Self.nookSize : size == Self.peek ? NSSize(width: 360, height: 240) : Self.dockSize) : size
+        // Notch mode, collapsed or hovering: one fixed canvas flush with the top of the screen; the page draws the island
+        // shape inside it and grows it in place, so the window never resizes and nothing is clipped. Clicks pass through
+        // everywhere except the open nook, so the menu bar stays yours.
+        if docked && !isOpen {
+            let housing = NotchIsland.housing(screen: screen.frame, leftAux: screen.auxiliaryTopLeftArea, rightAux: screen.auxiliaryTopRightArea, safeAreaTop: screen.safeAreaInsets.top)
+                ?? NotchIsland.virtualHousing(screen: screen.frame, menuBar: screen.frame.maxY - screen.visibleFrame.maxY)
+            notchHousing = housing
+            grip.isHidden = true
+            panel.level = .statusBar
+            panel.ignoresMouseEvents = !isNook
+            let canvas = NotchIsland.canvas(housing: housing, screen: screen.frame)
+            if panel.frame != canvas { panel.setFrame(canvas, display: true, animate: false) }
+            web.evaluateJavaScript("window.buddy && window.buddy.notch && window.buddy.notch({ w: \(Int(housing.width)), h: \(Int(housing.height)), real: \(screen.safeAreaInsets.top > 10) })")
+            return
+        }
+        panel.ignoresMouseEvents = false
         let pointer = NSEvent.mouseLocation, pointerScreen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? primary
         let frame = isMini && !isOpen
             ? CompanionPlacement.follow(cursor: pointer, size: size, visible: pointerScreen.visibleFrame)   // the fn card opens beside your pointer
@@ -317,7 +338,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // Dock mode uses real web buttons; the free-placement character keeps its native drag grip.
         grip.isHidden = docked || isOpen
         panel.level = docked || staysOnTop || isMini ? .floating : .normal
-        panel.setFrame(frame, display: true, animate: docked && !isOpen && panel.isVisible) // the notch pill grows into the nook smoothly
+        panel.setFrame(frame, display: true, animate: false)
         if isMini { raise() }
     }
 
@@ -506,6 +527,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let on = body["on"] as? Bool { fnEnabled = on; UserDefaults.standard.set(on, forKey: "buddyFnKey"); startFnKey() }
             // 0 = Do Nothing; 1 input source, 2 emoji, 3 dictation — those also fire when fn is pressed.
             send("shuacrew:fnKey", ["on": fnEnabled, "globe": globeKeyUse(), "trusted": SparkHands.trusted], to: sender)
+        case "buddyIsland":
+            // The page measured its open island: keep the hover area matched to what you actually see.
+            if let f = body["flare"] as? Double { islandFlare = CGFloat(f) }
+            if let d = body["drop"] as? Double { islandDrop = CGFloat(d) }
         case "buddyNookFocus":
             // You clicked into the nook's Ask box: let it take the keyboard so you can type.
             NSApp.activate(); panel.makeKey()

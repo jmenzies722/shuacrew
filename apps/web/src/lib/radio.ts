@@ -27,7 +27,9 @@ export function onAir(l: (e: OnAir) => void) { onAirListeners.add(l); return () 
 /** Dip the music under a voice (0–1 of your volume), without pausing it. */
 export function dip(level: number) { const v = state.volume * level; if (audio) audio.volume = v; ytSend("setVolume", [Math.round(v * 100)]); }
 const set = (patch: Partial<RadioState>) => {
+  const before = state;
   state = { ...state, ...patch }; listeners.forEach((l) => l());
+  if (owner && (before.playing !== state.playing || before.track !== state.track || before.live !== state.live)) report();
   try { localStorage.setItem(KEY, JSON.stringify({ station: state.station, volume: state.volume })); } catch { /* ignore */ }
 };
 export const getRadio = () => state;
@@ -187,10 +189,25 @@ export async function addYoutube(url: string): Promise<string> {
 }
 export async function removeYoutube(id: string) { await fetch(`/api/radio/youtube/${id}`, { method: "DELETE", headers: { "X-ShuaCrew": "1" } }); if (state.live?.id === id) stop(); await loadRadio(); }
 
+/** The window that owns the player tells the gateway what's really playing (on every change, and every 30 s). */
+let owner = false, heartbeat: ReturnType<typeof setInterval> | undefined;
+function report() {
+  void fetch("/api/radio/status", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/json" },
+    body: JSON.stringify({ playing: state.playing, title: state.live?.name ?? state.track?.title ?? null, station: state.live?.name ?? state.stations.find((s) => s.id === state.station)?.name ?? null }) }).catch(() => {});
+}
+/** What's really playing, from any window (Spark's desktop panel included): the player's own report, via the gateway. */
+export interface RadioNow { playing: boolean; title: string | null; station: string | null }
+export async function radioNow(): Promise<RadioNow> {
+  if (owner) return { playing: state.playing, title: state.live?.name ?? state.track?.title ?? null, station: state.live?.name ?? null };
+  try { const r = await fetch("/api/radio/status"); const s = await r.json() as RadioNow; return { playing: !!s.playing, title: s.title ?? null, station: s.station ?? null }; } catch { return { playing: false, title: null, station: null }; }
+}
+
 /** Commands from Spark, agents and the terminal. One subscription per window. */
 let events: EventSource | null = null;
 export function listenForCommands() {
   if (events || typeof EventSource === "undefined") return;
+  owner = true; report();
+  heartbeat ??= setInterval(() => { if (state.playing) report(); }, 30_000);
   events = new EventSource("/api/radio/events");
   events.onmessage = (e) => {
     let c: { cmd: string; station?: string; track?: string; value?: number };

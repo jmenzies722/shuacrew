@@ -223,6 +223,16 @@ export function radioRoutes(app: FastifyInstance, radio = new Radio(), fetcher: 
     if (!t) return reply.code(404).send({ error: "no such track" });
     return stream(reply, t.file, req.headers.range);
   });
+  // What is really playing, as reported by the player in the app (it's the only one that knows). Spark, the notch and
+  // agents read this instead of guessing, so "pause the radio" matches reality. A report older than 75 s (the app
+  // closed, or it stopped heartbeating) counts as off.
+  let playing: { playing: boolean; title: string | null; station: string | null; at: number } = { playing: false, title: null, station: null, at: 0 };
+  app.post<{ Body: { playing?: unknown; title?: unknown; station?: unknown } }>("/api/radio/status", async (req) => {
+    const b = req.body ?? {};
+    playing = { playing: b.playing === true, title: typeof b.title === "string" ? b.title.slice(0, 200) : null, station: typeof b.station === "string" ? b.station.slice(0, 200) : null, at: Date.now() };
+    return { ok: true };
+  });
+  app.get("/api/radio/status", async () => (Date.now() - playing.at > 75_000 ? { playing: false, title: null, station: null, fresh: false } : { ...playing, fresh: true }));
   // Commands: Spark, agents (via the radio skill) and the terminal drive the player that's open in the app.
   app.post("/api/radio/command", async (req, reply) => {
     const c = parseCommand(req.body);

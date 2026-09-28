@@ -43,3 +43,19 @@ import Testing
     #expect(abs(p.x - 100) < 0.1 && abs(p.y + 50) < 0.1)
     #expect(CompanionPlacement.ease(from: .zero, to: CGPoint(x: 100, y: 0)).x < 100)
 }
+@Test func notchIslandFindsTheHousingAndAFlushCanvas() {
+    let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let housing = NotchIsland.housing(screen: screen, leftAux: CGRect(x: 0, y: 1079, width: 754, height: 38), rightAux: CGRect(x: 974, y: 1079, width: 754, height: 38), safeAreaTop: 38)
+    #expect(housing == CGRect(x: 754, y: 1079, width: 220, height: 38))
+    let canvas = NotchIsland.canvas(housing: housing!, screen: screen)
+    #expect(canvas.maxY == screen.maxY)                    // flush with the top edge
+    #expect(abs(canvas.midX - housing!.midX) < 0.001)      // centred on the camera
+    #expect(canvas.width >= housing!.width + 2 * NotchIsland.maxFlare)
+    #expect(NotchIsland.hoverTarget(housing: housing!).contains(CGPoint(x: 754 - 20, y: 1100)))   // just off the cutout's edge still opens it
+    #expect(!NotchIsland.hoverTarget(housing: housing!).contains(CGPoint(x: 400, y: 1100)))      // the File menu does not
+}
+@Test func notchIslandIsNilWithoutANotch() {
+    #expect(NotchIsland.housing(screen: CGRect(x: 0, y: 0, width: 1920, height: 1080), leftAux: nil, rightAux: nil, safeAreaTop: 0) == nil)
+    let v = NotchIsland.virtualHousing(screen: CGRect(x: 0, y: 0, width: 1920, height: 1080), menuBar: 25)
+    #expect(v.midX == 960 && v.maxY == 1080)
+}

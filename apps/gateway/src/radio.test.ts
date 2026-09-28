@@ -70,3 +70,13 @@ it("reads YouTube video ids from every link shape and nothing else", () => {
   expect(youtubeId("https://evil.example/watch?v=jfKfPfyJRdk")).toBeNull();
   expect(youtubeId("https://www.youtube.com/watch?v=short")).toBeNull();
 });
+
+
+it("reports what the player says is playing, and treats a silent player as off", async () => {
+  const app = Fastify();
+  radioRoutes(app, new Radio(path.join(tmp(), "Radio")));
+  expect((await app.inject("/api/radio/status")).json()).toMatchObject({ playing: false, fresh: false });
+  await app.inject({ method: "POST", url: "/api/radio/status", payload: { playing: true, title: "Lofi Girl", station: "Lofi Girl" } });
+  expect((await app.inject("/api/radio/status")).json()).toMatchObject({ playing: true, title: "Lofi Girl", fresh: true });
+  await app.close();
+});

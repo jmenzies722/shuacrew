@@ -9,7 +9,7 @@ import { earlierToday, rememberAsk } from "../lib/spark-day";
 import { logAction } from "../lib/spark-log";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
-import { getRadio, loadRadio, radioCommand, useRadio } from "../lib/radio";
+import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -158,6 +158,8 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
 }
 
 type Done = { label: string; ok: boolean; message: string; run?: string };
+/** How far the open notch island widens past the camera housing, each side. */
+const ISLAND_FLARE = 130;
 
 /** The fn quick card: just what matters right now, beside your pointer. Idle for a while, it tucks itself away. */
 function MiniCard({ name, prefs, mood, state, heard, guide, reply, onCheck, onStopGuide, onOpen, onClose }: {
@@ -272,6 +274,12 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const [mini, setMini] = useState(false);
   // Notch mode: hover the pill and it opens into the nook (quick ask, now playing, crew, missions); it tucks away when you leave.
   const [nook, setNook] = useState(false), [nookDraft, setNookDraft] = useState(""), nookTimer = useRef<ReturnType<typeof setTimeout>>(undefined), nookFocus = useRef(false);
+  // The notch island's geometry (from the Mac app: the camera housing's real size) and the open body's measured height.
+  const [notchGeo, setNotchGeo] = useState<{ w: number; h: number; real: boolean }>({ w: 200, h: 32, real: false });
+  const [islandDrop, setIslandDrop] = useState(250), islandBody = useRef<HTMLDivElement>(null);
+  // What's really playing: the player lives in the main app window, so ask it (via the gateway) rather than this page's copy.
+  const [radio, setRadio] = useState<RadioNow>({ playing: false, title: null, station: null });
+  useEffect(() => { const tick = () => void radioNow().then(setRadio); tick(); const t = setInterval(tick, 5000); return () => clearInterval(t); }, []);
   // Inside the app, the mic is only live while the app window is in front (the desktop panel covers the rest).
   const [focused, setFocused] = useState(() => typeof document !== "undefined" && document.hasFocus());
   // A live mic never starts just because the app opened: inside the app it waits until you engage the panel this session.
@@ -332,6 +340,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     (window as unknown as { buddy: unknown }).buddy = { perform, toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTimeout(() => input.current?.focus(), 80); },
       ask: (text: string) => { speech.current.unlock(); setOpen(true); setTab("chat"); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
+      notch: (g: { w: number; h: number; real: boolean }) => setNotchGeo((cur) => (cur.w === g.w && cur.h === g.h && cur.real === g.real ? cur : g)),
       // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release".
       fn: (kind: "tap" | "hold" | "release") => {
         if (kind === "tap") { setMini((m) => !m); return; }
@@ -637,12 +646,13 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       if ((see || liveOn) && (!localNow || aboutScreen(q))) { const shot = await capture(); if (!localNow) atts = [await upload(shot.file)]; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length);
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
+      const playingNow = await radioNow(); setRadio(playingNow);
       const remembered = asksAboutEarlier(q) ? await recall(q) : "";
       if (remembered) logSense("saw", "Checked your screen memory", q);
       const appNowBase = shuacrewNow({
         members: Object.values(crew.members).map((m) => ({ name: m.name, role: (m as { role?: string }).role })),
         ventures: Object.values(crew.ventures ?? {}).map((v) => (v as { name: string }).name),
-        radio: { on: rs.playing ? rs.live?.name ?? rs.track?.title ?? null : null, stations: [...rs.stations.filter((x) => x.tracks.length).map((x) => x.name), ...rs.youtube.map((x) => x.name)] },
+        radio: { on: playingNow.playing ? playingNow.title ?? playingNow.station ?? "a station" : null, stations: [...rs.stations.filter((x) => x.tracks.length).map((x) => x.name), ...rs.youtube.map((x) => x.name)] },
       });
       const earlier = earlierToday(); rememberAsk(q);
       const language = prefs.language === "auto" ? "LANGUAGE: answer in the same language the user wrote or spoke (your voice can speak it)." : "";
@@ -653,7 +663,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       const screenLines = screen?.text.length ? screenText(screen.text, 2500) : "";
       // Keep the live part tiny (it's what the local model must read fresh): earlier-today only when you refer back.
       const runningNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
-      const liveStatus = `radio ${rs.playing ? `playing ${rs.live?.name ?? rs.track?.title ?? "a station"}` : "off"} · ${runningNow} crew session${runningNow === 1 ? "" : "s"} working · ${Object.keys(crew.approvals).length} decision${Object.keys(crew.approvals).length === 1 ? "" : "s"} waiting`;
+      const liveStatus = `radio ${playingNow.playing ? `playing ${playingNow.title ?? playingNow.station ?? "a station"}` : "off"} · ${runningNow} crew session${runningNow === 1 ? "" : "s"} working · ${Object.keys(crew.approvals).length} decision${Object.keys(crew.approvals).length === 1 ? "" : "s"} waiting`;
       const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [appNowBase, identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (you were on another model; carry on naturally):\n${recap}` : ""] });
       // A replaced paused Spark turn must not wake later and repeat the same actions.
       if (convo && status === "paused" && disposition === "new") await cancelRun(convo.run);
@@ -751,7 +761,6 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const statusLive = speaking || phase === "hearing" || (prefs.conversation && phase === "listening");
   // A live welcome: the time of day, what's actually going on, and suggestions that fit this moment.
   const hour = new Date().getHours();
-  const radio = useRadio();
   const greeting = hour < 5 ? "Up late?" : hour < 12 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
   const workingNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
   const now$ = [
@@ -767,6 +776,14 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   ].filter(Boolean).slice(0, 4) as string[];
   const lastSpark = messages.at(-1)?.who === "spark" && !messages.at(-1)?.live;
   const lastSparkText = [...messages].reverse().find((m) => m.who === "spark" && !m.live)?.text ?? "";
+  const islandOpen = nook && !open && prefs.desktopPlacement === "notch";
+  // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
+  // how big it is so the hover area matches what you see.
+  useEffect(() => {
+    const el = islandBody.current; if (!el || !islandOpen) return;
+    const measure = () => { const d = Math.min(320, Math.ceil(el.scrollHeight) + 14); setIslandDrop(d); post({ type: "buddyIsland", flare: ISLAND_FLARE, drop: d }); };
+    measure(); const ro = new ResizeObserver(measure); ro.observe(el); return () => ro.disconnect();
+  }, [islandOpen]);
   // Hover in/out of the notch (from the page, or the Mac app watching the pointer): open now, tuck away shortly after
   // you leave — unless you're typing in it or Spark is mid-answer.
   const nookHover = useRef((_: boolean) => {});
@@ -893,32 +910,40 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     {!open && !mini && !practicing && !guide && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`spark-nook-wrap ${nook && !open ? "is-open" : ""}`}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : "is-rest"}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : 46}px`, "--drop": `${islandOpen ? islandDrop : 0}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
-      <button type="button" className="spark-dock" aria-label={open ? "Collapse Spark" : `Open ${prefs.nickname || "Spark"}`} onClick={() => { speech.current.unlock(); setNook(false); setOpen(v => !v); }}>
-        <i className="spark-dock-face"><SparkCharacter preferences={prefs} mood={mood} size={28} crop="portrait" /></i><strong>{prefs.nickname || "Spark"}</strong>
-        <span className="spark-dock-live">{approvals > 0 && <em className="is-wait">{approvals}</em>}{workingNow > 0 && <em className="is-live">{workingNow}</em>}{radio.playing && <VoiceBars level={0.5} active />}</span>
-        <i className={working || busy ? "is-busy" : ""} />
-      </button>
-      <AnimatePresence>{nook && !open && <motion.div className="spark-nook" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.98 }} transition={{ type: "spring", stiffness: 420, damping: 34 }}>
-        <form className="spark-nook-ask" onSubmit={(e) => { e.preventDefault(); const t = nookDraft.trim(); if (!t) return; setNookDraft(""); void ask(t); }}>
-          <input value={nookDraft} onChange={(e) => setNookDraft(e.target.value)} onFocus={() => { nookFocus.current = true; post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} placeholder={`Ask ${prefs.nickname || "Spark"} anything…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
-          <button type="submit" disabled={!nookDraft.trim() || !!busy} aria-label="Send"><ArrowUp size={14} /></button>
-        </form>
-        {(busy || working || phase === "hearing" || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{phase === "hearing" ? heard || "Listening…" : busy || working ? "Thinking…" : gist(lastSparkText)}</p>}
-        <div className="spark-nook-tiles">
-          <div className="spark-nook-tile"><small>Now playing</small><b>{radio.playing ? (radio.live?.name ?? radio.track?.title ?? "Radio") : "Nothing playing"}</b>
-            <div className="spark-nook-ctl">{radio.playing
-              ? <><button type="button" onClick={() => void radioCommand({ cmd: "pause" })} aria-label="Pause"><Square size={11} /></button><button type="button" onClick={() => void radioCommand({ cmd: "next" })} aria-label="Next"><ChevronRight size={13} /></button></>
-              : <button type="button" onClick={() => void radioCommand({ cmd: getRadio().station ? "resume" : "play" })}>Play radio</button>}</div></div>
-          <div className="spark-nook-tile"><small>Crew</small><b>{workingNow ? `${workingNow} working` : "All quiet"}</b>
-            <div className="spark-nook-ctl">{approvals > 0 ? <button type="button" className="is-wait" onClick={() => post({ type: "buddyOpen", path: "/activity" })}>Review {approvals}</button> : <span>Nothing needs you</span>}</div></div>
-          <div className="spark-nook-tile"><small>{activeMissions.length ? "Mission" : timer ? "Focus" : "Up next"}</small>
-            <b>{activeMissions.length ? (crew.runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task) : timer ? `${Math.ceil(remainingFocusMs(timer, now) / 60000)} min left` : hour < 12 ? "Start your day" : "Plan what's next"}</b>
-            <div className="spark-nook-ctl">{activeMissions.length ? <span>{crew.runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</span> : <button type="button" onClick={() => void ask(hour < 12 ? "Start my day" : "What should I focus on next?")}>Ask</button>}</div></div>
+      <div className="shua-island-shape">
+        <div className="shua-island-ears">
+          <button type="button" className="shua-island-ear is-face" aria-label={`Open ${prefs.nickname || "Spark"}`} onClick={() => { speech.current.unlock(); setNook(false); setOpen(true); }}>
+            <i className={`shua-island-face ${working || busy ? "is-busy" : ""} ${speaking ? "is-speaking" : ""}`}><SparkCharacter preferences={prefs} mood={mood} size={20} crop="portrait" /></i>
+            {islandOpen && <strong>{prefs.nickname || "Spark"}</strong>}
+          </button>
+          <span className="shua-island-cam" aria-hidden />
+          <span className="shua-island-ear is-live">
+            {approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : radio.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
+            {islandOpen && <small>{statusLabel}</small>}
+          </span>
         </div>
-        <footer><button type="button" onClick={() => { setNook(false); setOpen(true); }}>Open chat</button><span>Hover to open · move away to tuck it in</span></footer>
-      </motion.div>}</AnimatePresence>
+        <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
+          <form className="spark-nook-ask" onSubmit={(e) => { e.preventDefault(); const t = nookDraft.trim(); if (!t) return; setNookDraft(""); void ask(t); }}>
+            <input value={nookDraft} tabIndex={islandOpen ? 0 : -1} onChange={(e) => setNookDraft(e.target.value)} onFocus={() => { nookFocus.current = true; post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} placeholder={`Ask ${prefs.nickname || "Spark"} anything…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
+            <button type="submit" tabIndex={islandOpen ? 0 : -1} disabled={!nookDraft.trim() || !!busy} aria-label="Send"><ArrowUp size={14} /></button>
+          </form>
+          {(busy || working || phase === "hearing" || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{phase === "hearing" ? heard || "Listening…" : busy || working ? "Thinking…" : gist(lastSparkText)}</p>}
+          <div className="spark-nook-tiles">
+            <div className="spark-nook-tile"><small>Now playing</small><b>{radio.playing ? (radio.title ?? radio.station ?? "Radio") : "Nothing playing"}</b>
+              <div className="spark-nook-ctl">{radio.playing
+                ? <><button type="button" onClick={() => void radioCommand({ cmd: "pause" }).then(() => radioNow().then(setRadio))} aria-label="Pause"><Square size={11} /></button><button type="button" onClick={() => void radioCommand({ cmd: "next" })} aria-label="Next"><ChevronRight size={13} /></button></>
+                : <button type="button" onClick={() => void radioCommand({ cmd: getRadio().station ? "resume" : "play" })}>Play radio</button>}</div></div>
+            <div className="spark-nook-tile"><small>Crew</small><b>{workingNow ? `${workingNow} working` : "All quiet"}</b>
+              <div className="spark-nook-ctl">{approvals > 0 ? <button type="button" className="is-wait" onClick={() => post({ type: "buddyOpen", path: "/activity" })}>Review {approvals}</button> : <span>Nothing needs you</span>}</div></div>
+            <div className="spark-nook-tile"><small>{activeMissions.length ? "Mission" : timer ? "Focus" : "Up next"}</small>
+              <b>{activeMissions.length ? (crew.runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task) : timer ? `${Math.ceil(remainingFocusMs(timer, now) / 60000)} min left` : hour < 12 ? "Start your day" : "Plan what's next"}</b>
+              <div className="spark-nook-ctl">{activeMissions.length ? <span>{crew.runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</span> : <button type="button" onClick={() => void ask(hour < 12 ? "Start my day" : "What should I focus on next?")}>Ask</button>}</div></div>
+          </div>
+          <footer><button type="button" onClick={() => { setNook(false); setOpen(true); }}>Open chat</button><span>Move away to tuck it in</span></footer>
+        </div>
+      </div>
     </div> : <div className={`buddy-spark size-${prefs.size} ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
       {timer && <svg className="buddy-focus" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" /><circle cx="50" cy="50" r="46" className="fill" style={{ strokeDashoffset: `${289 * (1 - focusPct)}` }} /></svg>}
       <SparkCharacter preferences={prefs} mood={mood} /><i className="buddy-shadow" />

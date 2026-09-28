@@ -25,3 +25,37 @@ public enum CompanionPlacement {
         return clamp(CGRect(x: screen.midX - size.width / 2, y: top - size.height, width: size.width, height: size.height), to: visible)
     }
 }
+
+/// Spark's notch island (after Knurl's notch): one black shape that grows out of the camera housing, drawn in a
+/// fixed transparent canvas flush with the top of the screen. The window never resizes — only the shape does —
+/// so nothing inside it is ever clipped mid-animation.
+public enum NotchIsland {
+    /// The widest the island grows past the housing, each side; the deepest it drops below it.
+    public static let maxFlare: CGFloat = 150
+    public static let maxDrop: CGFloat = 320
+
+    /// The camera housing, from the menu-bar strips either side of it and the safe-area inset (the cutout's real
+    /// height, which can differ from the menu bar's by a point). Nil on a display without a notch.
+    public static func housing(screen: CGRect, leftAux: CGRect?, rightAux: CGRect?, safeAreaTop: CGFloat) -> CGRect? {
+        guard let left = leftAux, let right = rightAux, right.minX > left.maxX + 24, safeAreaTop > 10 else { return nil }
+        return CGRect(x: left.maxX, y: screen.maxY - safeAreaTop, width: right.minX - left.maxX, height: safeAreaTop)
+    }
+    /// A stand-in housing for a display without a notch: a slim pill's worth at the top centre.
+    public static func virtualHousing(screen: CGRect, menuBar: CGFloat) -> CGRect {
+        let h = max(24, menuBar)
+        return CGRect(x: screen.midX - 100, y: screen.maxY - h, width: 200, height: h)
+    }
+    /// The fixed canvas: centred on the housing, flush with the top edge, big enough for the fullest island.
+    public static func canvas(housing: CGRect, screen: CGRect) -> CGRect {
+        let width = housing.width + 2 * maxFlare + 20, height = housing.height + maxDrop + 24
+        return CGRect(x: housing.midX - width / 2, y: screen.maxY - height, width: width, height: height)
+    }
+    /// Where the pointer opens it: generous sideways (the cutout's edges are easy to overshoot), a little below.
+    public static func hoverTarget(housing: CGRect) -> CGRect {
+        CGRect(x: housing.minX - 28, y: housing.minY - 12, width: housing.width + 56, height: housing.height + 12)
+    }
+    /// While open, the island itself (plus a small margin) keeps it open.
+    public static func openTarget(housing: CGRect, flare: CGFloat, drop: CGFloat) -> CGRect {
+        CGRect(x: housing.minX - flare, y: housing.minY - drop, width: housing.width + 2 * flare, height: housing.height + drop).insetBy(dx: -14, dy: -14)
+    }
+}
