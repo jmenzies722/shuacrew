@@ -900,9 +900,9 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 
 /* ══ Motion ══════════════════════════════════════════════════════════ */
 /* The live logo: agents orbit, the core breathes. */
-.logo-mark .logo-orbit { transform-origin: 32px 32px; }
+.logo-mark :is(.logo-orbit, .logo-core) { display: block; transform-origin: 50% 50%; will-change: transform; }
 .logo-mark.is-live .logo-orbit { animation: logo-orbit 36s linear infinite; }
-.logo-mark.is-live .logo-core { transform-origin: 32px 32px; animation: logo-breathe 4.8s ease-in-out infinite; }
+.logo-mark.is-live .logo-core { animation: logo-breathe 4.8s ease-in-out infinite; }
 @keyframes logo-orbit { to { transform: rotate(360deg); } }
 @keyframes logo-breathe { 50% { transform: scale(1.07); opacity: .88; } }
 .hero-mark { transition: transform .5s cubic-bezier(.2,.8,.2,1); }

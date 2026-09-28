@@ -18,26 +18,33 @@ export const reduced = () => typeof document !== "undefined" && document.documen
 export function LogoMark({ size = 56, spin = true, bare = false }: { size?: number; spin?: boolean; bare?: boolean }) {
   const id = useId().replace(/:/g, "");
   const stop = (offset: string, color: string, opacity?: number) => <stop offset={offset} style={{ stopColor: color, ...(opacity === undefined ? {} : { stopOpacity: opacity }) }} />;
+  // Three stacked layers of one drawing: the moving parts (core, orbit) live in their own HTML boxes, so the browser
+  // spins and breathes them on the GPU. Animating shapes inside one SVG re-laid-out the page every frame.
+  const layer = { position: "absolute", inset: 0, width: size, height: size } as const;
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" className={`logo-mark ${spin ? "is-live" : ""} ${bare ? "is-bare" : ""}`} aria-hidden>
-      <defs>
-        <linearGradient id={`${id}-tile`} x1="0" y1="0" x2="0" y2="1">{stop("0", "var(--logo-tile-a)")}{stop(".5", "var(--logo-tile-b)")}{stop("1", "var(--logo-tile-c)")}</linearGradient>
-        <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)", 0.55)}{stop(".55", "var(--amber)", 0.12)}{stop("1", "var(--accent-2)", 0.35)}</linearGradient>
-        <linearGradient id={`${id}-core`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)")}{stop(".5", "var(--amber)")}{stop("1", "var(--accent-2)")}</linearGradient>
-        <linearGradient id={`${id}-crew`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fff")}{stop("1", "var(--logo-hi)")}</linearGradient>
-        <radialGradient id={`${id}-glow`} cx=".5" cy=".5" r=".5">{stop("0", "var(--amber)", 0.42)}{stop("1", "var(--amber)", 0)}</radialGradient>
-      </defs>
-      {!bare && <rect width="64" height="64" rx="15" fill={`url(#${id}-rim)`} />}
-      {!bare && <rect x=".8" y=".8" width="62.4" height="62.4" rx="14.2" fill={`url(#${id}-tile)`} />}
-      <circle cx="32" cy="32" r={bare ? 30 : 24} fill={`url(#${id}-glow)`} />
-      <circle cx="32" cy="32" r="16" fill="none" stroke="var(--logo-hi)" strokeOpacity=".32" strokeWidth={bare ? 1.6 : 0.9} />
-      <circle className="logo-core" cx="32" cy="32" r="7.7" fill="none" stroke={`url(#${id}-core)`} strokeWidth={bare ? 4.4 : 3.4} />
-      <g className="logo-orbit">
+    <span className={`logo-mark ${spin ? "is-live" : ""} ${bare ? "is-bare" : ""}`} style={{ position: "relative", display: "inline-block", width: size, height: size, flex: "none" }} aria-hidden>
+      <svg width={size} height={size} viewBox="0 0 64 64" style={layer}>
+        <defs>
+          <linearGradient id={`${id}-tile`} x1="0" y1="0" x2="0" y2="1">{stop("0", "var(--logo-tile-a)")}{stop(".5", "var(--logo-tile-b)")}{stop("1", "var(--logo-tile-c)")}</linearGradient>
+          <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)", 0.55)}{stop(".55", "var(--amber)", 0.12)}{stop("1", "var(--accent-2)", 0.35)}</linearGradient>
+          <linearGradient id={`${id}-core`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)")}{stop(".5", "var(--amber)")}{stop("1", "var(--accent-2)")}</linearGradient>
+          <linearGradient id={`${id}-crew`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fff")}{stop("1", "var(--logo-hi)")}</linearGradient>
+          <radialGradient id={`${id}-glow`} cx=".5" cy=".5" r=".5">{stop("0", "var(--amber)", 0.42)}{stop("1", "var(--amber)", 0)}</radialGradient>
+        </defs>
+        {!bare && <rect width="64" height="64" rx="15" fill={`url(#${id}-rim)`} />}
+        {!bare && <rect x=".8" y=".8" width="62.4" height="62.4" rx="14.2" fill={`url(#${id}-tile)`} />}
+        <circle cx="32" cy="32" r={bare ? 30 : 24} fill={`url(#${id}-glow)`} />
+        <circle cx="32" cy="32" r="16" fill="none" stroke="var(--logo-hi)" strokeOpacity=".32" strokeWidth={bare ? 1.6 : 0.9} />
+      </svg>
+      <span className="logo-core" style={layer}><svg width={size} height={size} viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="7.7" fill="none" stroke={`url(#${id}-core)`} strokeWidth={bare ? 4.4 : 3.4} />
+      </svg></span>
+      <span className="logo-orbit" style={layer}><svg width={size} height={size} viewBox="0 0 64 64">
         <circle cx="32" cy="16" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
         <circle cx="45.9" cy="40" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
         <circle cx="18.1" cy="40" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
-      </g>
-    </svg>
+      </svg></span>
+    </span>
   );
 }
 
