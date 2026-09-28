@@ -570,3 +570,6 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spark-nook-stuck small { font-size: 11px; color: #a39cae; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spark-nook-stuck button { height: 26px; padding: 0 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; color: #e8e4ee; background: #1d1a22; }
 .spark-nook-stuck button.is-go { color: #fff; background: var(--accent-grad, var(--amber)); }
+/* Stop while Spark thinks or talks (ChatGPT-style): the send button turns into a stop square. */
+.buddy-send.is-stop { color: var(--text); background: color-mix(in srgb, var(--text) 12%, var(--raised)) !important; background-image: none !important; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spark-nook-ask button.is-stop { color: #000; background: #f1eef5; }

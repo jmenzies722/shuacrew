@@ -110,7 +110,9 @@ export class LocalRuntime implements Runtime {
         }
       }
       history.push({ role: "assistant", content: text });
-      if (history.length > 41) this.conversations.set(session, [history[0]!, ...history.slice(-40)]); // keep it bounded
+      // Keep it short: the instructions plus the last 8 exchanges. Every turn re-reads the whole conversation on this
+      // Mac, so a long tail made simple questions take most of a minute.
+      if (history.length > 17) this.conversations.set(session, [history[0]!, ...history.slice(-16)]);
       yield { type: "usage", inputTokens: inTokens, outputTokens: outTokens, costUsd: 0 };
       yield { type: "done", text, durationMs: Date.now() - started };
     } catch (e) {

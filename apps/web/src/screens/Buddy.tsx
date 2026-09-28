@@ -600,9 +600,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const runActRef = useRef(runAct); runActRef.current = runAct;
   useEffect(() => { const on = () => stopTask("Stopped. Nothing else will be clicked."); window.addEventListener("shuacrew:actStop", on); return () => window.removeEventListener("shuacrew:actStop", on); }, []);
   const stopGuide = () => { setGuide(null); post({ type: "buddyGuideStop" }); speech.current.stop(); };
+  /**
+   * Stop whatever Spark is doing right now: its voice, a turn still getting ready (the generation counter makes any
+   * pending screenshot/upload/model pick give up), and a turn the model is working on. Like ChatGPT's stop button.
+   */
+  const askGen = useRef(0);
+  const interrupt = async () => {
+    askGen.current++; speech.current.stop(); setBusy("");
+    if (convo && (status === "running" || status === "planning" || status === "queued")) await cancelRun(convo.run).catch(() => {});
+  };
+  const interruptRef = useRef(interrupt); interruptRef.current = interrupt;
   const ask = async (text = draft, opt: { look?: boolean } = {}) => {
-    const q = text.trim(); if (!q || busy) return;
-    if (working || status === "awaiting_approval") { setError("Let this turn finish or stop it before starting another."); return; }
+    const q = text.trim(); if (!q) return;
+    if (status === "awaiting_approval") { setError("Approve or decline the waiting step first."); return; }
+    // Asking while Spark is still thinking or talking: stop that and take the new question (talk or type over it).
+    if (busy || working) await interrupt();
+    const gen = ++askGen.current, stale = () => gen !== askGen.current;
     setDraft(q);
     followBottom.current = true;
     claim();
@@ -653,7 +666,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
-      const selected = await selectIntelligence(intelligence); setChoice(selected); setChoiceError("");
+      const selected = await selectIntelligence(intelligence); if (stale()) return; setChoice(selected); setChoiceError("");
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
@@ -661,7 +674,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
-      if (look && (!localNow || aboutScreen(q) || opt.look)) { const shot = await capture(); if (!localNow) atts = [await upload(shot.file)]; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
+      if (look && (!localNow || aboutScreen(q) || opt.look)) { const shot = await capture(); if (stale()) return; if (!localNow) atts = [await upload(shot.file)]; if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length);
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
       const playingNow = await radioNow(); setRadio(playingNow);
@@ -682,16 +695,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Keep the live part tiny (it's what the local model must read fresh): earlier-today only when you refer back.
       const runningNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
       const liveStatus = `radio ${playingNow.playing ? `playing ${playingNow.title ?? playingNow.station ?? "a station"}` : "off"} · ${runningNow} crew session${runningNow === 1 ? "" : "s"} working · ${Object.keys(crew.approvals).length} decision${Object.keys(crew.approvals).length === 1 ? "" : "s"} waiting`;
-      const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [appNowBase, identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (you were on another model; carry on naturally):\n${recap}` : ""] });
+      const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (you were on another model; carry on naturally):\n${recap}` : ""] });
       // A replaced paused Spark turn must not wake later and repeat the same actions.
       if (convo && status === "paused" && disposition === "new") await cancelRun(convo.run);
       if (wantLocal && disposition === "new") {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: `<spark-system>\n${localSys}\n</spark-system>\n${liveLocal}`, title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "local", model: selected.model, intelligence, labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: `<spark-system>\n${localSys}\n\n${appNowBase}\n</spark-system>\n${liveLocal}`, title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "local", model: selected.model, intelligence, labels: ["buddy"] } });
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: "local", model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
         setDraft(""); return;
       }
-      if (wantLocal) { await followSelected(convo!.run, `<spark-system>\n${localSys}\n</spark-system>\n${liveLocal}`); setDraft(""); return; }
+      if (wantLocal) { await followSelected(convo!.run, `<spark-system>\n${localSys}\n\n${appNowBase}\n</spark-system>\n${liveLocal}`); setDraft(""); return; }
       if (convo && disposition === "resume") {
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
@@ -703,7 +716,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
-    } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); }
+    } catch (e) { if (!stale()) setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { if (!stale()) setBusy(""); }
   };
   // Open mic: every turn you speak is a message; talking over Spark stops it.
   const askRef = useRef(ask); askRef.current = ask;
@@ -939,13 +952,15 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       {tab !== "teach" && <form className="buddy-input spk-input chat-composer" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
         <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => { const next = !v; try { localStorage.setItem(SEE, next ? "1" : "0"); } catch { /* ignore */ } return next; })}>{see ? <Eye size={15} /> : <EyeOff size={15} />}</button>
         <textarea ref={input} rows={1} value={draft} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") { e.preventDefault(); if (full) setSparkFull(false); else close(); } }} aria-label="Message" />
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") { e.preventDefault(); if (busy || working || speaking) void interrupt(); else if (full) setSparkFull(false); else close(); } }} aria-label="Message" />
         {prefs.listen === "hold"
           ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" style={{ "--lvl": level } as CSSProperties}
               onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.mode = "hold"; void mic.current.press(); }}
               onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
           : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={15} /></button>}
-        <motion.button className="buddy-send" disabled={!!busy || working || !draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>
+        {(busy || working || speaking) && !draft.trim()
+          ? <motion.button type="button" className="buddy-send is-stop" aria-label="Stop" title="Stop (Esc)" onClick={() => void interrupt()} whileTap={{ scale: 0.88 }}><Square size={13} fill="currentColor" /></motion.button>
+          : <motion.button className="buddy-send" disabled={!draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>}
       </form>}
     </section>;
   if (embedded) return <div className="buddy is-open is-embedded" style={sparkVars(prefs.color)}>{card}</div>;
@@ -998,7 +1013,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           <div className="spark-nook-row">
             <form className="spark-nook-ask" onSubmit={(e) => { e.preventDefault(); const t = nookDraft.trim(); if (!t) return; setNookDraft(""); void ask(t); }}>
               <input value={nookDraft} tabIndex={islandOpen ? 0 : -1} onChange={(e) => setNookDraft(e.target.value)} onFocus={() => { nookFocus.current = true; post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} placeholder={`Ask ${prefs.nickname || "Spark"} anything…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
-              <button type="submit" tabIndex={islandOpen ? 0 : -1} disabled={!nookDraft.trim() || !!busy} aria-label="Send"><ArrowUp size={14} /></button>
+              {(busy || working || speaking) && !nookDraft.trim()
+                ? <button type="button" className="is-stop" tabIndex={islandOpen ? 0 : -1} aria-label="Stop" onClick={() => void interrupt()}><Square size={11} fill="currentColor" /></button>
+                : <button type="submit" tabIndex={islandOpen ? 0 : -1} disabled={!nookDraft.trim()} aria-label="Send"><ArrowUp size={14} /></button>}
             </form>
             {prefs.notchControls && <>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-toggle ${prefs.conversation ? "is-on" : ""}`} aria-pressed={prefs.conversation} onClick={toggleTalk} title={prefs.conversation ? "Mic on: tap to stop listening" : "Talk to Spark"} aria-label="Microphone">{prefs.conversation ? <Mic size={14} /> : <MicOff size={14} />}</button>

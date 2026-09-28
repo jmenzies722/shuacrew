@@ -80,6 +80,9 @@ function load() {
     if (localStorage.getItem("shuacrew.companion.design") !== "pristine") { if (p.color === "#f5b544") p.color = "#8e48ff"; localStorage.setItem("shuacrew.companion.design", "pristine"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
     // The Kiro redesign, once: the companion follows the theme's accent. Any colour picked after this stays.
     if (localStorage.getItem("shuacrew.companion.theme") !== "1") { p.color = "theme"; localStorage.setItem("shuacrew.companion.theme", "1"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
+    // Fast by default, once: "This Mac only" read ~15k tokens per turn on a 20B model (up to a minute a reply). Auto sends
+    // quick questions to a fast cloud model and still falls back to this Mac when the cloud is out. Picking it again sticks.
+    if (localStorage.getItem("shuacrew.companion.brain") !== "auto-1") { if (p.brain === "local") p.brain = "auto"; localStorage.setItem("shuacrew.companion.brain", "auto-1"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
     return p;
   } catch { return parseCompanion(null); }
 }
