@@ -10,6 +10,26 @@ import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
 import { summary, useSparkLog } from "../lib/spark-log";
 import { resetWelcome } from "./Welcome";
+
+/** Where Spark reaches your mail and Notion: Mail on this Mac (read and draft only), Notion through the crew. */
+function SparkReach({ name }: { name: string }) {
+  const [notion, setNotion] = useState<boolean | null>(null);
+  useEffect(() => {
+    void api<Array<{ name?: string; url?: string }>>("/api/mcp")
+      .then((servers) => setNotion(servers.some((s) => s.name === "notion" || (s.url ?? "").includes("mcp.notion.com"))))
+      .catch(() => setNotion(null));
+  }, []);
+  const go = (path: string) => window.shuacrew?.navigate(path);
+  return <>
+    <SettingRow name="Email" detail={`${name} checks, searches, reads and drafts your mail through the Mail app on this Mac, so Gmail (or any account you've added to Mail) works with no Google setup. It never sends: drafts open in Mail for you. macOS asks once to let ShuaCrew use Mail.`}>
+      <span className="spark-reach-state">Via Mail</span>
+    </SettingRow>
+    <SettingRow name="Notion" detail={`Ask ${name} about your Notion and it hands the job to the crew, which reads and writes your pages once Notion is connected.`}>
+      {notion ? <span className="spark-reach-state is-on"><Check size={12} /> Connected</span>
+        : <button type="button" className="spark-reach-go" onClick={() => go("/integrations")}>{notion === false ? "Connect Notion" : "Open Tools & Skills"}</button>}
+    </SettingRow>
+  </>;
+}
 const swatchBg = (f: string) => { if (f === "theme") return "var(--amber)"; const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
 type Native = { postMessage(m: unknown): void };
@@ -73,6 +93,7 @@ export function SparkSettings() {
       <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
       <SettingRow name="Stay on top" detail={`Off: ${name} sits on your desktop like any window — it won't cover your work, and comes forward when you call it, when it talks, and while it's teaching. Drag it anywhere; it stays there.`} modified={prefs.onTop}><Switch label="Stay on top" on={prefs.onTop} onChange={(onTop) => set({ onTop })} /></SettingRow>
+      <SparkReach name={name} />
       <SettingRow name="Keep going on its own" detail={`Say “agent:” and a task (or let ${name} hand work to the crew) and it becomes a mission: ${name} stays with it, tells the crew to keep going when it stops early to ask or hits a failure (up to 3 times), and tells you when it's done. It never approves anything for you.`} modified={!prefs.persist}><Switch label="Keep going on its own" on={prefs.persist} onChange={(persist) => set({ persist })} /></SettingRow>
       <SettingRow name="Size on the desktop" modified={prefs.size !== "m"}><Segmented label="Size" value={prefs.size} onChange={(size) => set({ size })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} /></SettingRow>
       {prefs.character === "spark" && <>

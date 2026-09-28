@@ -35,7 +35,8 @@ export type Action =
   | { type: "run"; command: string }
   | { type: "go"; path: string }
   | { type: "card"; front: string; back: string }
-  | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string };
+  | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
+  | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number };
 /** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
   { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky" },
@@ -210,6 +211,17 @@ function toAction(v: unknown): Action | null {
     case "open_path": { const path = str(o.path, 500); return path && /^~?\//.test(path) && !path.split("/").includes("..") ? { type: "open_path", path } : null; }
     case "focus": { const minutes = Number(o.minutes); return [5, 10, 15, 25, 45, 50, 60, 90].includes(minutes) ? { type: "focus", minutes } : null; }
     case "crew": { const ask = str(o.ask, 4000); return ask ? { type: "crew", ask } : null; }
+    case "mail": {
+      // Their mail through the Mail app: read and draft only. The Mac app checks every field again.
+      const op = (["unread", "search", "read", "draft"] as const).find((x) => x === o.op);
+      if (!op) return null;
+      const limit = Number.isInteger(o.limit) && (o.limit as number) >= 1 && (o.limit as number) <= 25 ? (o.limit as number) : undefined;
+      if (op === "unread") return { type: "mail", op, ...(limit ? { limit } : {}) };
+      if (op === "search") { const query = str(o.query, 120); return query ? { type: "mail", op, query, ...(limit ? { limit } : {}) } : null; }
+      if (op === "read") return Number.isInteger(o.id) && (o.id as number) > 0 ? { type: "mail", op, id: o.id as number } : null;
+      const to = str(o.to, 200) ?? "", subject = str(o.subject, 300) ?? "", body = str(o.body, 20_000) ?? "";
+      return (to === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) && (subject || body) ? { type: "mail", op, to, subject, body } : null;
+    }
     case "note": { const text = str(o.text, 2000); return text ? { type: "note", text } : null; }
     case "media": {
       const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "volume", "volume_up", "volume_down", "mute"] as const;
@@ -247,6 +259,7 @@ export function describeAction(a: Action): string {
     case "open_path": return `Open ${a.path.split("/").filter(Boolean).at(-1) ?? a.path}`;
     case "focus": return `${a.minutes}-minute focus`;
     case "crew": return "Hand to the crew";
+    case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
     case "note": return "Add to your note";
     case "media": return a.command === "play_query" ? `Play “${a.query}”` : `Music: ${a.command.replace("_", " ")}`;
     case "system": return a.what === "dark_mode" ? "Dark mode" : "Sleep display";
@@ -355,6 +368,8 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Build, code, research, anything multi-step: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```',
+      'Their email (Gmail or any account in the Mac Mail app), read and draft only, NEVER send: unread ```do [{"type":"mail","op":"unread"}]``` · search ```do [{"type":"mail","op":"search","query":"invoice"}]``` · read one (id from a list) ```do [{"type":"mail","op":"read","id":123}]``` · draft a reply ```do [{"type":"mail","op":"draft","to":"a@b.com","subject":"…","body":"…"}]``` (it opens in Mail for them to send). You get the results back; then say the gist in a sentence or two.',
+      'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
       'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media (play, pause, next, play_query). Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
       'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',

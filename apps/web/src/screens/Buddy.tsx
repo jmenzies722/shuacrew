@@ -77,6 +77,7 @@ function applyChanges(c: SparkChanges) {
 let confirmRun: ((command: string, why: string) => Promise<boolean>) | null = null;
 /** A command's output, for Spark to read back to you. */
 let onRanOutput: ((command: string, ok: boolean, output: string) => void) | null = null;
+let onMailOutput: ((what: string, output: string) => void) | null = null;
 
 /** Every action, logged with whether it worked. */
 function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
@@ -115,6 +116,19 @@ function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boole
     onRanOutput?.(a.command, r.ok, r.output ?? "");
     return { ok: r.ok, message: r.message };
   })();
+  if (a.type === "mail") return new Promise((resolve) => {
+    // Through the Mail app on this Mac (so Gmail works with no Google setup); read and draft only.
+    if (!native()) { resolve({ ok: false, message: "Mail works in the ShuaCrew Mac app" }); return; }
+    const id = crypto.randomUUID();
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "Mail didn't answer in time" }); }, 40_000);
+    const on = (e: CustomEvent<{ id: string; ok: boolean; message: string; output?: string }>) => {
+      if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener);
+      if (e.detail.ok && e.detail.output && a.op !== "draft") onMailOutput?.(describeAction(a), e.detail.output);
+      resolve({ ok: e.detail.ok, message: e.detail.message });
+    };
+    window.addEventListener("shuacrew:did", on as EventListener);
+    post({ type: "buddyDo", id, action: a });
+  });
   if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: describeAction(a) }); }
   if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
@@ -194,7 +208,12 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
       const run = convoRef.current?.run; if (!run || !output.trim()) return;
       void followUp(run, `[ran] \`${command}\` ${ok ? "succeeded" : "failed"}. Output:\n\`\`\`\n${output.slice(-3000)}\n\`\`\`\nTell me in a sentence or two what this means (no need to repeat it all).`).catch(() => {});
     };
-    return () => { confirmRun = null; onRanOutput = null; };
+    // Mail results go back to Spark to sum up; the raw list stays out of the chat.
+    onMailOutput = (what, output) => {
+      const run = convoRef.current?.run; if (!run) return;
+      void followUp(run, `[mail] ${what}:\n\n[screen]\n${output.slice(0, 6000)}\n\nSay the gist in one or two spoken sentences (who and what matters), not the whole list. Offer a next step if there's an obvious one.`).catch(() => {});
+    };
+    return () => { confirmRun = null; onRanOutput = null; onMailOutput = null; };
   }, []);
   // Live: Spark watches your screen as a real stream (one frame a second, in memory only) while this is on.
   const [liveOn, setLiveOn] = useState(false), [liveBusy, setLiveBusy] = useState(false);
@@ -256,7 +275,7 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
     let streaming = "";
     for (const e of (events ?? []) as AnyEvent[]) {
       // Spark's own step reports ([guide]/[act]) are bookkeeping, not something you said: keep them out of the chat.
-      if (e.kind === "run.followup" && /^\[(guide|act)\]/.test((e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, ""))) { streaming = ""; continue; }
+      if (e.kind === "run.followup" && /^\[(guide|act|mail)\]/.test((e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, ""))) { streaming = ""; continue; }
       if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, "").split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]!.split("\n\n[app]")[0]! }); streaming = ""; }
       else if (e.kind === "agent.delta") streaming += e.body.text;
       else if (e.kind === "agent.message") { out.push({ who: "spark", text: e.body.text, id: e.seq }); streaming = ""; }

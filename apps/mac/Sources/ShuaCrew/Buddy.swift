@@ -262,6 +262,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "shortcut":
                 Task { let r = await SparkHands.shortcut(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+            case "mail":
+                // Your mail, through the Mail app: read and draft only, never send (see MailBridge).
+                MailBridge.run(action) { [weak self] ok, message, output in
+                    Task { @MainActor in self?.did(["id": id, "ok": ok, "message": message, "output": output], to: sender) }
+                }
             default:
                 let result = MacActions.perform(action)
                 did(["id": id, "ok": result.ok, "message": result.message], to: sender)
