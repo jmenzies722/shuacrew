@@ -29,6 +29,8 @@ export class SpeechQueue {
   private lines: Line[] = [];
   private active = 0;            // generations in flight
   private lead = LEAD;           // how far ahead we schedule; grows if generation ever falls behind
+  /** Buffer before the first sound of a reply (seconds): bigger while the screen is being watched. */
+  cushion = LEAD;
   private at = 0;                // where the next buffer goes on the timeline
   private sources = new Set<AudioBufferSourceNode>();
   private abort = new AbortController();
@@ -106,7 +108,7 @@ export class SpeechQueue {
       while (line.buffers.length) {
         const buffer = line.buffers.shift()!;
         const now = context.currentTime;
-        if (!this.speaking) { this.at = now + LEAD; this.lead = LEAD; this.setSpeaking(true); }
+        if (!this.speaking) { this.at = now + this.cushion; this.lead = this.cushion; this.setSpeaking(true); }
         // Fell behind (the voice model was busy): start again further ahead, and stay further ahead for the rest of this
         // answer, so one slow moment doesn't become a stutter every sentence.
         else if (this.at < now) { this.lead = Math.min(0.9, this.lead + 0.3); this.at = now + this.lead; }

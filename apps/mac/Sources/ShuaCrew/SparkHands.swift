@@ -131,14 +131,27 @@ enum SparkHands {
 
     // MARK: music, system, Shortcuts
 
-    static func media(_ a: [String: Any]) -> (ok: Bool, message: String) {
+    /// Every Music/Spotify AppleScript runs here, one at a time and never on the main thread: an app that's slow to
+    /// answer (Music once took 120 s) used to freeze the notch and the whole UI until it gave up. Each call is also
+    /// capped at 2 s, and a player that stops answering is left alone for a minute.
+    nonisolated static let musicQueue = DispatchQueue(label: "shuacrew.music", qos: .userInitiated)
+    nonisolated(unsafe) private static var quietUntil: [String: Date] = [:]
+    nonisolated private static func timed(_ app: String, _ body: String) -> String? {
+        if let until = quietUntil[app], until > Date() { return nil }
+        var error: NSDictionary?
+        let result = NSAppleScript(source: "with timeout of 2 seconds\n\(body)\nend timeout")?.executeAndReturnError(&error)
+        if let code = error?[NSAppleScript.errorNumber] as? Int, code == -1712 || code == -600 { quietUntil[app] = Date().addingTimeInterval(60) }
+        return error == nil ? (result?.stringValue ?? "") : nil
+    }
+
+    nonisolated static func media(_ a: [String: Any]) -> (ok: Bool, message: String) {
         let command = a["command"] as? String ?? "toggle"
         if command.hasPrefix("volume") {
             let level = max(0, min(100, Int(a["level"] as? Double ?? (command == "volume_up" ? -1 : command == "volume_down" ? -2 : 50))))
             let script = level == -1 ? "set volume output volume ((output volume of (get volume settings)) + 12)" : level == -2 ? "set volume output volume ((output volume of (get volume settings)) - 12)" : "set volume output volume \(level)"
-            return run(script) ? (true, "Volume \(level >= 0 ? "\(level)%" : command == "volume_up" ? "up" : "down")") : (false, "Couldn't change the volume.")
+            return runResult(script) != nil ? (true, "Volume \(level >= 0 ? "\(level)%" : command == "volume_up" ? "up" : "down")") : (false, "Couldn't change the volume.")
         }
-        if command == "mute" { return run("set volume with output muted") ? (true, "Muted") : (false, "Couldn't mute.") }
+        if command == "mute" { return runResult("set volume with output muted") != nil ? (true, "Muted") : (false, "Couldn't mute.") }
         let app = ["spotify": "Spotify", "music": "Music"][(a["app"] as? String ?? "").lowercased()] ?? runningPlayer() ?? "Music"
         if command == "play_query", let q = (a["query"] as? String)?.trimmingCharacters(in: .whitespaces), !q.isEmpty {
             let safe = q.replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "")
@@ -157,13 +170,13 @@ enum SparkHands {
             end tell
             return "none"
             """
-            if runResult(script) == "ok" { return (true, "Playing “\(safe)” in Music") }
+            if timed("Music", script) == "ok" { return (true, "Playing “\(safe)” in Music") }
             let term = safe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? safe
             NSWorkspace.shared.open(URL(string: "https://music.apple.com/search?term=\(term)")!)
             return (true, "Not in your library, so I opened Apple Music search for “\(safe)”")
         }
         let verb = ["play": "play", "pause": "pause", "toggle": "playpause", "next": "next track", "previous": "previous track"][command] ?? "playpause"
-        return run("tell application \"\(app)\" to \(verb)") ? (true, "\(app): \(command)") : (false, "Couldn't control \(app). Allow ShuaCrew in Privacy & Security → Automation.")
+        return timed(app, "tell application \"\(app)\" to \(verb)") != nil ? (true, "\(app): \(command)") : (false, "\(app) didn't answer. If it asks, allow ShuaCrew in Privacy & Security → Automation.")
     }
 
     static func system(_ a: [String: Any]) -> (ok: Bool, message: String) {
@@ -192,7 +205,7 @@ enum SparkHands {
         }
     }
 
-    static func shortcutNames() -> [String] {
+    nonisolated static func shortcutNames() -> [String] {
         let p = Process(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts"); p.arguments = ["list"]; p.standardOutput = out
         guard (try? p.run()) != nil else { return [] }
@@ -200,26 +213,28 @@ enum SparkHands {
         return String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.split(separator: "\n").map(String.init).prefix(80).map { $0 } ?? []
     }
 
-    /// While you and Spark talk, music steps aside: pause Music/Spotify if (and only if) they're playing, and bring back
-    /// exactly what was paused afterwards. Never launches a player that isn't already running.
-    private static var ducked: [String] = []
-    static func duck(_ on: Bool) {
+    /// While you and Spark talk, music steps aside: Music/Spotify dip to a quarter of their own volume (never paused),
+    /// and go back to exactly the volume you had afterwards. Only players already playing; never launches one.
+    nonisolated(unsafe) private static var ducked: [(app: String, volume: Int)] = []
+    nonisolated static func duck(_ on: Bool) {
         let ids = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         if on {
             guard ducked.isEmpty else { return }
             for (app, id) in [("Music", "com.apple.Music"), ("Spotify", "com.spotify.client")] where ids.contains(id) {
-                if runResult("tell application \"\(app)\" to get player state as string") == "playing", run("tell application \"\(app)\" to pause") { ducked.append(app) }
+                guard timed(app, "tell application \"\(app)\" to get player state as string") == "playing",
+                      let volume = timed(app, "tell application \"\(app)\" to get sound volume").flatMap({ Int($0) }) else { continue }
+                if timed(app, "tell application \"\(app)\" to set sound volume to \(max(5, volume / 4))") != nil { ducked.append((app, volume)) }
             }
         } else {
-            for app in ducked where ids.contains(app == "Music" ? "com.apple.Music" : "com.spotify.client") { run("tell application \"\(app)\" to play") }
+            for d in ducked where ids.contains(d.app == "Music" ? "com.apple.Music" : "com.spotify.client") { _ = timed(d.app, "tell application \"\(d.app)\" to set sound volume to \(d.volume)") }
             ducked = []
         }
     }
 
     /// What Music or Spotify is playing, for the notch: title, artist, state, position and artwork. Reads only a player
     /// that's already running (a `tell` would launch it), and fetches artwork once per track, shrunk to a small JPEG.
-    private static var artCache: (id: String, url: String)?
-    static func nowPlaying() -> [String: Any]? {
+    nonisolated(unsafe) private static var artCache: (id: String, url: String)?
+    nonisolated static func nowPlaying() -> [String: Any]? {
         guard let app = runningPlayer() else { return nil }
         let script = app == "Spotify" ? """
             tell application "Spotify"
@@ -234,16 +249,16 @@ enum SparkHands {
               return (player state as string) & tab & (name of t) & tab & (artist of t) & tab & (album of t) & tab & (player position as string) & tab & (duration of t as string) & tab & (persistent ID of t) & tab & ""
             end tell
             """
-        guard let out = runResult(script), out != "stopped" else { return nil }
+        guard let out = timed(app, script), out != "stopped" else { return nil }
         let f = out.components(separatedBy: "\t")
         guard f.count >= 8, !f[1].isEmpty else { return nil }
         let number = { (s: String) in Double(s.replacingOccurrences(of: ",", with: ".")) ?? 0 }
         if artCache?.id != f[6] { artCache = (f[6], app == "Spotify" ? f[7] : musicArtwork() ?? "") }
         return ["app": app, "playing": f[0] == "playing", "title": f[1], "artist": f[2], "album": f[3], "position": number(f[4]), "duration": number(f[5]), "art": artCache?.url ?? ""]
     }
-    private static func musicArtwork() -> String? {
+    nonisolated private static func musicArtwork() -> String? {
         var error: NSDictionary?
-        guard let data = NSAppleScript(source: "tell application \"Music\" to get raw data of artwork 1 of current track")?.executeAndReturnError(&error).data, error == nil,
+        guard let data = NSAppleScript(source: "with timeout of 2 seconds\ntell application \"Music\" to get raw data of artwork 1 of current track\nend timeout")?.executeAndReturnError(&error).data, error == nil,
               let image = NSImage(data: data), let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
         let side = 160, small = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
         guard let small else { return nil }
@@ -253,12 +268,12 @@ enum SparkHands {
         return "data:image/jpeg;base64,\(jpeg.base64EncodedString())"
     }
 
-    private static func runningPlayer() -> String? {
+    nonisolated private static func runningPlayer() -> String? {
         let ids = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
         return ids.contains("com.spotify.client") ? "Spotify" : ids.contains("com.apple.Music") ? "Music" : nil
     }
-    @discardableResult private static func run(_ source: String) -> Bool { runResult(source) != nil }
-    private static func runResult(_ source: String) -> String? {
+    @discardableResult nonisolated private static func run(_ source: String) -> Bool { runResult(source) != nil }
+    nonisolated private static func runResult(_ source: String) -> String? {
         var error: NSDictionary?
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         return error == nil ? (result?.stringValue ?? "") : nil

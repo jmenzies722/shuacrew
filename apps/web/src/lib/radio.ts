@@ -173,11 +173,19 @@ export function resume() {
 }
 export function toggle() { if (state.playing) pause(); else resume(); }
 export function stop() { stopYoutube(); if (state.live) set({ live: null }); if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); } set({ track: null, playing: false, position: 0, queue: [] }); }
-/** Step aside while you talk with Spark, then come back — but only if we were the ones who paused it. */
-let ducked = false;
+/**
+ * Step aside while you talk with Spark: the music dips to a quarter of your volume (a smooth fade, never a pause)
+ * and comes back once it's quiet again. Uses dip(), so your saved volume is never touched.
+ */
+let dipped = 1, fade: ReturnType<typeof setInterval> | undefined;
+function fadeDip(target: number, ms: number) {
+  clearInterval(fade);
+  const from = dipped, steps = 12; let i = 0;
+  fade = setInterval(() => { i++; dipped = from + (target - from) * (i / steps); dip(dipped); if (i >= steps) clearInterval(fade); }, ms / steps);
+}
 export function duck(on: boolean) {
-  if (on) { if (state.playing && !ducked) { ducked = true; pause(); } }
-  else if (ducked) { ducked = false; resume(); }
+  if (on) { if (state.playing && dipped > 0.3) fadeDip(0.25, 350); }
+  else if (dipped < 1) fadeDip(1, 600);
 }
 export function seek(seconds: number) { if (audio && Number.isFinite(seconds)) audio.currentTime = seconds; }
 export function setVolume(v: number) { const x = Math.min(1, Math.max(0, v)); if (audio) audio.volume = x; ytSend("setVolume", [Math.round(x * 100)]); set({ volume: x }); }

@@ -177,6 +177,10 @@ export type ProducerMove =
   | { kind: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous"; station?: string }
   /** Whatever's playing — ShuaCrew Radio, Music or Spotify — decided at the moment it runs. */
   | { kind: "player"; cmd: "pause" | "resume" | "next" | "previous" }
+  /** Voice mode on / off / toggle: a live spoken conversation. Done instantly, never left to a model to claim. */
+  | { kind: "voice"; on: boolean | "toggle" }
+  /** "Stop talking", "be quiet", "shh": stop what Spark is saying or doing, right now. */
+  | { kind: "hush" }
   /** "play Drake", "play some jazz on Spotify": search and play in the music app, right away. */
   | { kind: "play"; query: string; app?: "Spotify" | "Music" }
   | { kind: "focus"; minutes: number }
@@ -195,6 +199,11 @@ export function producerMove(q: string): ProducerMove | null {
   if (isStudioAsk(t)) return { kind: "brief" };
   if (/^(new\s+)?idea\s*[:\-–—]\s*\S/i.test(t)) return { kind: "idea", text: t };
   if (/^(explain|break down|what does|what's|what is)\s+(this|that|the selection|what i (selected|highlighted))( (mean|do|code))?\s*[?.!]*$/i.test(t)) return { kind: "explain" };
+  if (/^(stop talking|stop speaking|be quiet|quiet|shh+|shush|hush|stop|cancel|never ?mind|nevermind)$/i.test(t)) return { kind: "hush" };
+  const VOICE = "(the )?(voice|talk|talking|conversation|hands[- ]?free|live voice)( mode| chat)?";
+  if (new RegExp(`^(toggle|switch) ${VOICE}$`, "i").test(t)) return { kind: "voice", on: "toggle" };
+  if (new RegExp(`^(turn on|start|enable|switch on|go (in)?to|open|use) ${VOICE}$`, "i").test(t) || /^(let'?s talk|talk to me|i want to talk)$/i.test(t)) return { kind: "voice", on: true };
+  if (new RegExp(`^(turn off|stop|end|disable|switch off|exit|leave|close) ${VOICE}$`, "i").test(t)) return { kind: "voice", on: false };
   if (/^(stop|kill|turn off) (the )?(radio|soundscape|record)\b/i.test(t)) return { kind: "stop-radio" };
   // Music/Spotify or the radio — whichever is actually playing.
   const MEDIA = "(the |my |this )?(music|song|track|tune|spotify|apple music|playback|audio|it|that)";

@@ -53,6 +53,7 @@ import type { Skills } from "./skills.js";
 import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
 import { FEATURED, fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
+import { recommend } from "./recommend.js";
 import type { EventStore } from "./store.js";
 import { speechRoutes } from "./speech-routes.js";
 import type { SpeechService } from "./speech.js";
@@ -1143,6 +1144,14 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       }
     });
     app.get("/api/mcp", async () => mcp.list());
+    // In the chat: connections and skills that would help with what you just asked (only ones you don't have yet).
+    app.post<{ Body: { ask?: string } }>("/api/recommend", async (request) => {
+      const ask = String(request.body?.ask ?? "").slice(0, 4000);
+      const added = mcp.list().map((s) => s.name);
+      let catalog: Array<{ name: string; description?: string }> = [], installed: string[] = [];
+      try { installed = options.skills ? options.skills.list().map((x) => x.name) : []; catalog = options.skills ? await options.skills.catalog() : await skillCatalog(); } catch { /* offline: connections only */ }
+      return recommend(ask, { featured: FEATURED, added, skills: catalog, installed });
+    });
     // Servers we checked work: each says whether you've added it already.
     app.get("/api/mcp/featured", async () => {
       const mine = mcp.list();

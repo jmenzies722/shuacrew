@@ -94,6 +94,13 @@ describe("spark producer", () => {
     expect(producerMove("play Drake")).toEqual({ kind: "play", query: "Drake" });
     expect(producerMove("hey shua play some jazz on spotify")).toEqual({ kind: "play", query: "jazz", app: "Spotify" });
     expect(producerMove("play something")).toEqual({ kind: "player", cmd: "resume" });
+    expect(producerMove("toggle voice mode")).toEqual({ kind: "voice", on: "toggle" });
+    expect(producerMove("Hey Shua, can you turn on voice mode please?")).toEqual({ kind: "voice", on: true });
+    expect(producerMove("let's talk")).toEqual({ kind: "voice", on: true });
+    expect(producerMove("stop voice mode")).toEqual({ kind: "voice", on: false });
+    expect(producerMove("what is voice mode")).toBeNull();
+    expect(producerMove("stop talking")).toEqual({ kind: "hush" });
+    expect(producerMove("shh")).toEqual({ kind: "hush" });
     expect(producerMove("put on lofi jazz")).toEqual({ kind: "radio", cmd: "play", station: "jazz" });
     expect(producerMove("play some lo-fi hip hop")).toEqual({ kind: "radio", cmd: "play", station: "hip hop" });
     expect(producerMove("put on some music")).toEqual({ kind: "radio", cmd: "play" });

@@ -447,7 +447,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     self?.did(["id": id, "ok": ok, "message": ok ? "Pressed “\(found.name)”" : "Couldn't press “\(found.name)”"], to: sender)
                 }
             case "media":
-                let r = SparkHands.media(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
+                // Off the main thread: a slow music app can't freeze the notch.
+                nonisolated(unsafe) let a = action
+                SparkHands.musicQueue.async { let r = SparkHands.media(a); Task { @MainActor [weak self] in self?.did(["id": id, "ok": r.ok, "message": r.message], to: sender) } }
             case "system":
                 let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "shortcut":
@@ -464,9 +466,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyHands":
             // What Spark is allowed to do right now, for the page to show (and to ask for access when you choose to).
             if body["ask"] as? Bool == true { SparkHands.askForAccess() }
-            send("shuacrew:hands", ["trusted": SparkHands.trusted, "shortcuts": SparkHands.shortcutNames()], to: sender)
+            // `shortcuts list` can take a second or two: read it off the main thread so nothing stutters.
+            let trusted = SparkHands.trusted
+            DispatchQueue.global(qos: .utility).async {
+                let names = SparkHands.shortcutNames()
+                Task { @MainActor [weak self] in self?.send("shuacrew:hands", ["trusted": trusted, "shortcuts": names], to: sender) }
+            }
         case "buddyDuck":
-            SparkHands.duck(body["on"] as? Bool ?? false)
+            let on = body["on"] as? Bool ?? false
+            SparkHands.musicQueue.async { SparkHands.duck(on) }
         case "buddyHotkey":
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":
@@ -549,7 +557,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let d = body["drop"] as? Double { islandDrop = CGFloat(d) }
         case "buddyNowPlaying":
             // The notch asks what Music or Spotify is playing (only while it shows media).
-            send("shuacrew:media", SparkHands.nowPlaying() ?? ["title": ""])
+            SparkHands.musicQueue.async {
+                nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
+                Task { @MainActor [weak self] in self?.send("shuacrew:media", now, to: sender) }
+            }
         case "buddyNookFocus":
             // You clicked into the nook's Ask box: let it take the keyboard so you can type.
             NSApp.activate(); panel.makeKey()

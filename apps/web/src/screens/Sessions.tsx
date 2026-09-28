@@ -1,4 +1,5 @@
 import "./session-chat.css";
+import { Recommendations } from "../components/Recommendations";
 import "../components/chat-composer.css";
 import { plain } from "../lib/plain";
 import type { RunView } from "@shuacrew/core/projections";
@@ -346,6 +347,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
         </div>
       </header>
       <Thread items={items} working={working && scrub === null} run={run} />
+      {!replay && !run.labels.includes("buddy") && !run.labels.includes("crew-room") && <div className="shrink-0 px-4"><div className="mx-auto max-w-[var(--chat-width,820px)]"><Recommendations ask={run.ask} /></div></div>}
       {!replay && <ReviewBar run={run} />}
       {!replay && !run.labels.includes("crew-room") && <MessageQueue key={run.id} run={run.id} events={events ?? []} />}
       {replay ? (

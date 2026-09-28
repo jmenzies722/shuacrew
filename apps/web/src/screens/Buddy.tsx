@@ -11,6 +11,7 @@ import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption } from "../components/NotchCaption";
+import { Recommendations } from "../components/Recommendations";
 import { resolveTarget, snapBox } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
@@ -294,7 +295,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [islandDrop, setIslandDrop] = useState(250), islandBody = useRef<HTMLDivElement>(null);
   // What's really playing: the player lives in the main app window, so ask it (via the gateway) rather than this page's copy.
   const [radio, setRadio] = useState<RadioNow>({ playing: false, title: null, station: null });
-  useEffect(() => { const tick = () => void radioNow().then(setRadio); tick(); const t = setInterval(tick, 5000); return () => clearInterval(t); }, []);
+  useEffect(() => { const tick = () => void radioNow().then((r) => setRadio((cur) => (JSON.stringify(cur) === JSON.stringify(r) ? cur : r))); tick(); const t = setInterval(tick, 5000); return () => clearInterval(t); }, []);
   // Inside the app, the mic is only live while the app window is in front (the desktop panel covers the rest).
   const [focused, setFocused] = useState(() => typeof document !== "undefined" && document.hasFocus());
   // A live mic never starts just because the app opened: inside the app it waits until you engage the panel this session.
@@ -331,7 +332,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     return () => { alive = false; clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [open, prefs.brain, prefs.modelChoice, prefs.localModel, limited]);
   const timer = useFocusTimer(), [now, setNow] = useState(Date.now());
-  useEffect(() => { if (!timer) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [timer]);
+  // Focus shows minutes, so a 10 s tick is plenty (a 1 s tick re-rendered all of Spark every second).
+  useEffect(() => { if (!timer) return; setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 10_000); return () => clearInterval(t); }, [timer]);
   const [caption, setCaption] = useState<{ text: string; speed: number } | null>(null);
   // Voice mode, straight from the notch: a live spoken conversation with the chat closed. Never remembered across launches.
   const [voiceLive, setVoiceLive] = useState(false);
@@ -670,6 +672,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }
     const move = producerMove(q);
     // Player commands are unambiguous: they run instantly, every time, mid-conversation or not — no model involved.
+    if (move?.kind === "hush") { await interrupt(); stopTask(); if (guide) stopGuide(); setDraft(""); return; } // stop talking, the turn, any task or walkthrough
+    // Voice mode by asking: from the notch it's the live voice session; elsewhere it's the open-mic conversation.
+    if (move?.kind === "voice") {
+      const notchVoice = prefs.desktopPlacement === "notch" && !embedded;
+      const now = notchVoice ? voiceLive : prefs.conversation, next = move.on === "toggle" ? !now : move.on;
+      setArmed(true); speech.current.unlock();
+      if (notchVoice) setVoiceLive(next); else saveCompanion({ ...parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")), conversation: next });
+      const a = next ? (now ? "Voice mode is already on. Just talk." : "Voice mode on. Just talk, I'm listening.") : (now ? "Voice mode off." : "Voice mode is already off.");
+      setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
+    }
     const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
     if (move && PLAYER) {
       const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
@@ -842,6 +854,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     window.addEventListener("shuacrew:wake", on); return () => window.removeEventListener("shuacrew:wake", on);
   }, [embedded]);
   useEffect(() => { if (!embedded && speaking) post({ type: "buddyRaise" }); }, [speaking, embedded]);
+  // Watching the screen shares the GPU with the voice: keep a little more speech buffered so it never cuts out.
+  useEffect(() => { speech.current.cushion = liveOn ? 0.4 : 0.18; }, [liveOn]);
   // Music steps aside while you and Spark talk (the radio and Music/Spotify), and comes back once it's quiet again.
   // "Talking" covers the whole exchange: you speaking, Spark thinking, and Spark answering — no gap in between.
   const talking = speaking || phase === "hearing" || phase === "transcribing" || !!busy || working;
@@ -892,7 +906,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       speech.current.say(r.offer.kind === "error" ? `Looks like ${r.offer.app} keeps showing an error. Want me to walk you through it?` : "Still hunting for an answer? I can look at it with you.");
     };
     window.addEventListener("shuacrew:glance", got);
-    const t = setInterval(() => post({ type: "buddyGlance" }), 15_000);
+    // Never while Spark talks or thinks: reading the screen competes with the voice engine for the GPU.
+    const t = setInterval(() => { if (!quiet.current) post({ type: "buddyGlance" }); }, 15_000);
     return () => { clearInterval(t); window.removeEventListener("shuacrew:glance", got); };
   }, [liveOn, prefs.notice, embedded]);
   useEffect(() => { if (!stuck) return; const t = setTimeout(() => setStuck(null), 120_000); return () => clearTimeout(t); }, [stuck]);
@@ -902,7 +917,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const showMedia = prefs.desktopPlacement === "notch" && prefs.notchMedia && !embedded;
   useEffect(() => {
     if (!showMedia || !native()) { setMedia(null); return; }
-    const got = (e: Event) => { const d = (e as CustomEvent).detail as NonNullable<typeof media>; setMedia(d?.title ? d : null); };
+    // Only re-render when something you'd see changed: the song, playing/paused, artwork, or the bar moving 3 s+.
+    const got = (e: Event) => { const d = (e as CustomEvent).detail as NonNullable<typeof media>; const next = d?.title ? d : null;
+      setMedia((cur) => (!cur || !next ? next : cur.title === next.title && cur.playing === next.playing && cur.art === next.art && Math.abs(cur.position - next.position) < 3 ? cur : next)); };
     window.addEventListener("shuacrew:media", got);
     const ask = () => post({ type: "buddyNowPlaying" }); ask();
     const t = setInterval(ask, islandOpen || open ? 1500 : 5000);
@@ -1006,6 +1023,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             <div className="buddy-msg is-you is-hearing">{heard || (phase === "hearing" ? "Listening…" : "…")}<i className="spk-live-caret" /></div>
           </motion.div>}
           {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={26} crop="portrait" /></span><p className="buddy-typing spk-typing"><span /><span /><span /> {busy || "thinking"}</p></motion.div>}
+          {lastSpark && !working && !busy && <Recommendations ask={[...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? ""} />}
           {quick.length > 0 && <motion.div className="spk-quick" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>{quick.map((q) => <button key={q} type="button" onClick={() => void ask(q)}>{q}</button>)}</motion.div>}
           {convo && !working && !busy && lastQuestion && <button type="button" className="buddy-handoff" onClick={() => void perform({ type: "crew", ask: lastQuestion }).then((r) => r.run && (embedded ? window.shuacrew?.navigate(`/sessions/${r.run}`) : post({ type: "buddyOpen", run: r.run })))}><Send size={11} /> Hand this to the crew as a full session</button>}
         </div>
