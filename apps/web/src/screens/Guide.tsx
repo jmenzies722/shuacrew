@@ -42,12 +42,13 @@ const HUBS: HubSection[] = [
     { title: "Tools & skills", where: "System › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
     { title: "Policy & audit", where: "System › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
     { title: "Insights", where: "System › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
-    { title: "Terminal", where: "System › Terminal", to: "/terminal", body: "A real terminal with command blocks, history, search and split panes. Type what you want in plain English and it writes the command for you." },
+    { title: "Terminal", where: "System › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
+      points: ["Save commands you use often as snippets, then run or insert them in one click", "Open a new terminal in Home, a project or a recent folder", "Filter your history; copy any command's output; hand a failure to the crew to fix", <><kbd>⌘T</kbd> new terminal, <kbd>⌘D</kbd> split, <kbd>⌘⇧H</kbd> history and snippets</>] },
   ] },
 ];
 
 const TOC: Array<{ group: string; items: Array<[id: string, label: string]> }> = [
-  { group: "Start", items: [["what", "What it is"], ["start", "Getting started"], ["spark", "Spark"]] },
+  { group: "Start", items: [["what", "What it is"], ["start", "Getting started"], ["spark", "Spark"], ["chrome", "Spark for Chrome"]] },
   { group: "The five hubs", items: HUBS.map((h) => [h.id, h.title.split(":")[0]!] as [string, string]) },
   { group: "Reference", items: [["engines", "Engines"], ["privacy", "Privacy & safety"], ["keys", "Shortcuts & commands"], ["settings", "Make it yours"], ["status", "Where things stand"]] },
 ];
@@ -123,10 +124,15 @@ export function Guide() {
               <p><b>Talk to it out loud.</b> Hold <kbd>Space</kbd> or the mic button to talk, and let go to send. You can also switch to Auto for a hands-free conversation. Speech-to-text runs on your Mac with Whisper, and captions appear while you're still speaking. It answers in a natural local voice, and you can interrupt it mid-sentence. Speak any language and it answers in that language.</p>
               <p><b>“Hey {name}.”</b> An optional wake word, recognized entirely on your Mac. It opens, says “Yes?” and listens for one request.</p>
               <p><b>It does things, not just answers.</b> It can control your Mac through the accessibility system: pressing buttons by name, running Shortcuts, controlling music and adjusting system settings. It can also draw on your screen to point something out. A visible cursor glides to each target so you can see what it's doing. Terminal commands are checked against your policy and confirmed with you first.</p>
+              <p><b>It stays with you.</b> Collapsed, it rides just beside your pointer wherever you work (clicks pass straight through it), walks off to point at something, and comes back. Tap <kbd>fn</kbd> for a small card right there instead of the full chat; hold <kbd>fn</kbd> to talk and let go to send.</p>
+              <p><b>It finishes jobs.</b> Say <b>“agent:”</b> and a task and it becomes a mission: the crew works on it end to end, and {name} stays with it. If the crew stops to ask something it could decide, or hits a failure, {name} tells it to keep going (up to three times), then tells you out loud when it's done. It never approves anything for you.</p>
+              <p><b>It reaches your mail and Notion.</b> It checks, searches, reads and drafts email through the Mac's Mail app, so Gmail works with no Google setup, and it never sends. Anything about your Notion goes to the crew, which uses your Notion connection.</p>
               <p><b>It never goes dark.</b> If Claude runs out of usage, it switches to a local model on your Mac (Ollama) and keeps working.</p>
             </div>
             <div className="guide-says" aria-label={`Things you can say to ${name}`}>
-              {[["“What was that error I saw earlier?”", "Recalls it from screen memory, if you've turned it on."],
+              {[["“agent: build a landing page for my idea”", "Starts a mission and stays with it until it's done."],
+                ["“Anything important in my unread email?”", "Checks Mail and gives you the gist in a sentence or two."],
+                ["“What was that error I saw earlier?”", "Recalls it from screen memory, if you've turned it on."],
                 ["“idea: a bot that summarizes city council meetings”", "Files it as a new venture. The crew scores it overnight."],
                 ["“Explain this.”", "Reads the text you've selected, explains it and adds a quiz card."],
                 ["“Put on some lofi and start my day.”", "Starts the radio and Flow, then shows the first thing that needs you."]].map(([said, does]) =>
@@ -136,8 +142,27 @@ export function Guide() {
           <Cards features={[
             { title: "It reacts to real events", where: "Moods", body: "Happy when work finishes, concerned when something fails, sleepy after 15 quiet minutes. Its mood always comes from something that actually happened." },
             { title: "It remembers you", where: "Memory", body: "Your goal, lessons from past sessions and what you did today carry into every conversation. You can see and delete that history in its privacy panel." },
-            { title: "It walks you through things", where: "Guides", body: "Guided steps highlight exactly where to click. It walks beside each step and goes back to its corner when you're done." },
+            { title: "It walks you through things", where: "Guides", body: "Guided steps highlight exactly where to click, one short line at a time. It walks beside each step and comes back when you're done." },
+            { title: "Missions", where: "“agent: …”", body: "Hand it a task and it stays with it: keeps the crew going when it stalls, brings approvals to you, and tells you when it's finished. A strip in its panel shows what it's minding." },
+            { title: "Email & Notion", where: "Mail app · Tools & Skills", body: "Unread, search, read and draft (never send) through Mail. Notion through the crew once you connect it in Tools & Skills. Both show in Settings → Spark." },
+            { title: "fn quick card", where: "Tap or hold fn", body: "A small card beside your pointer: your words as you speak, the gist of the answer, or the step you're on with Done, next. Needs the Globe key set to “Do Nothing”." },
           ]} />
+        </Section>
+
+        <Section id="chrome" hub="In your browser · ⌥⇧S" title="Spark for Chrome" intro={`Highlight anything on the web and ${name} acts on it right there. It works with ShuaCrew on this Mac, and nothing else can use it.`}>
+          <div className="guide-spark">
+            <div className="guide-prose">
+              <p><b>Highlight, then choose.</b> A small Spark button appears next to your selection: <b>Explain</b>, <b>Summarize</b>, <b>Rewrite</b> (and put it back into the box you selected from), <b>Draft a reply</b>, <b>Ask</b> anything about it, <b>Save to Library</b>, or <b>Hand to the crew</b> as a mission {name} stays with on your Mac.</p>
+              <p><b>Or right-click</b> a selection, or press <kbd>⌥⇧S</kbd>. With nothing selected, it summarizes the page.</p>
+              <p><b>Proactive, quietly.</b> On a long read it offers once to give you the gist. Turn that off in the extension's popup.</p>
+              <p><b>Private by design.</b> Your gateway still refuses every website and every other extension. Only Spark for Chrome, holding your pairing key, gets through, and page text is treated as material to work on, never as instructions.</p>
+            </div>
+            <ol className="guide-steps">
+              <li><b>Load it</b><span>Open <code>chrome://extensions</code>, turn on Developer mode, choose Load unpacked and pick <code>~/Developer/projects/shuacrew/apps/chrome</code>.</span></li>
+              <li><b>Copy your key</b><span>Settings → Spark → Spark for Chrome → Copy key.</span></li>
+              <li><b>Pair</b><span>Click the Spark icon in Chrome, paste the key, and choose Pair. It says “Connected to ShuaCrew”.</span></li>
+            </ol>
+          </div>
         </Section>
 
         {HUBS.map((h) => <Section key={h.id} id={h.id} hub={h.hub} title={h.title} intro={h.intro}><Cards features={h.features} /></Section>)}
@@ -160,6 +185,10 @@ export function Guide() {
               <tr><td>Screen memory</td><td>Text read from your screen about once a minute. Skips password managers, private windows and idle time.</td><td>Kept on your Mac for 3 days. You can view and delete it in <Link to="/policy">Policy & Audit</Link>.</td></tr>
               <tr><td>Live screen</td><td>One frame per second while your companion is looking</td><td>Held in memory only, never saved</td></tr>
               <tr><td>Calendar</td><td>Event titles and times only</td><td>Used for Today and your brief</td></tr>
+              <tr><td>Email</td><td>The Mail app, only when you ask: unread, search, read, draft</td><td>Read on your Mac; it never sends. macOS asks once to allow it.</td></tr>
+              <tr><td>fn key</td><td>Watches for fn on its own (Accessibility access)</td><td>Nothing is recorded; other keys are ignored</td></tr>
+              <tr><td>Spark for Chrome</td><td>Only the text you highlight or the page you ask about</td><td>Sent to your gateway with a pairing key only this Mac has; answered by Claude with no tools</td></tr>
+              <tr><td>Missions</td><td>The crew, working end to end</td><td>Approvals always come to you; it never answers them for you</td></tr>
               <tr><td>Agent actions</td><td>Files, terminal and git, as your policy allows</td><td>Every decision goes in a tamper-evident audit log</td></tr>
             </tbody>
           </table></div>
@@ -178,11 +207,16 @@ export function Guide() {
               <tr><td><kbd>⌘</kbd> <kbd>\</kbd></td><td>Collapses the sidebar to a thin rail</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>F</kbd></td><td>Flow mode: hides everything but the work</td></tr>
               <tr><td>Hold <kbd>Space</kbd></td><td>Push-to-talk. The mic turns off as soon as your words are sent.</td></tr>
+              <tr><td>Tap <kbd>fn</kbd></td><td>Shows or hides the quick card beside your pointer</td></tr>
+              <tr><td>Hold <kbd>fn</kbd></td><td>Talk from anywhere; let go to send</td></tr>
+              <tr><td><kbd>⌘</kbd> <kbd>T</kbd> · <kbd>⌘</kbd> <kbd>D</kbd> · <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>H</kbd></td><td>In the Terminal: new terminal, split, history and snippets</td></tr>
+              <tr><td><kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>S</kbd></td><td>In Chrome: Spark on your selection, or the page</td></tr>
             </tbody>
           </table></div>
           <div className="guide-table"><table>
             <thead><tr><th>In chat</th><th>What it does</th></tr></thead>
             <tbody>
+              <tr><td><code>agent: …</code></td><td>To {name}: start a mission it stays with until it's done</td></tr>
               <tr><td><code>/agent</code> · <code>/agents</code></td><td>Create a crew member or list them all</td></tr>
               <tr><td><code>/room</code></td><td>Open or create a room</td></tr>
               <tr><td><code>/effort</code> · <code>/budget</code></td><td>Set how hard the crew works and how much it can spend on this task</td></tr>
@@ -197,15 +231,18 @@ export function Guide() {
             <li><b>Look:</b> Pristine (default), Frost Black, Graphite, Carbon, Midnight, Paper and Sand palettes. Space Grotesk or SF Pro for the interface, and JetBrains Mono, SF Mono or Menlo for code. Share a theme as a code.</li>
             <li><b>Modes:</b> Deep work, Cost saver and Wind down, which can switch on automatically on a schedule. Also quiet hours and a daily budget.</li>
             <li><b>Crew behavior:</b> engine fallback order, routing rules, session limits, hooks, your own instructions and a prompt inspector.</li>
+            <li><b>{name}:</b> follow my cursor, keep going on its own (missions), fn key, “Hey {name}”, voice, character and colour, plus Email (via Mail), Notion and Spark for Chrome (your pairing key).</li>
             <li><b>Always on:</b> the gateway runs as a background service, with backups, automatic retries and a menu bar item.</li>
             <li><b>Time machine & export:</b> roll back settings, or export and import your whole setup.</li>
           </ul>
           <Link to="/settings" className="guide-open">Open Settings <ArrowUpRight size={13} /></Link>
         </Section>
 
-        <Section id="status" hub="Honest status · 27 Sep 2026" title="Where things stand" intro="ShuaCrew is under active development. Here's what you can rely on today and what isn't finished yet.">
+        <Section id="status" hub="Honest status · 28 Sep 2026" title="Where things stand" intro="ShuaCrew is under active development. Here's what you can rely on today and what isn't finished yet.">
           <div className="guide-status">
-            <div><span className="is-ready">Ready</span><p>Mac app, gateway, crew, sessions, the Board, Library, memory, schedules, policy and audit, voice and actions, and radio. Covered by 556 automated tests.</p></div>
+            <div><span className="is-ready">Ready</span><p>Mac app, gateway, crew, sessions, the Board, Library, memory, schedules, policy and audit, voice and actions, and radio, terminal snippets, missions, email through Mail, and Spark for Chrome. Covered by 579 automated tests.</p></div>
+            <div><span className="is-partial">Partial</span><p>Follow my cursor and the fn key are built and tested in code but not yet tried with a real key press. fn needs Accessibility access and the Globe key set to “Do Nothing” (System Settings → Keyboard). Email needs your account in the Mail app.</p></div>
+            <div><span className="is-partial">Partial</span><p>Spark for Chrome loads unpacked from your ShuaCrew folder; it isn't in the Chrome Web Store.</p></div>
             <div><span className="is-partial">Partial</span><p>Visual teaching uses Claude only; Codex support for teaching isn't connected yet. Voice uses turn-taking with soft interruptions, not true full-duplex conversation.</p></div>
             <div><span className="is-partial">Partial</span><p>The iPhone and Apple Watch companions (Today, Crew, room chat, Face ID approvals) are built and tested in the simulator. Pairing with real devices over iCloud isn't verified yet.</p></div>
             <div><span className="is-open">Not yet</span><p>A signed, notarized download with automatic updates. For now, the app is built and installed from source.</p></div>
