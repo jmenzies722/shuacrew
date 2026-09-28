@@ -43,8 +43,8 @@
 [data-theme="dark"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset):hover { background: var(--raised) !important; box-shadow: 0 0 0 1px var(--active-line) !important; }
 
 /* The composer: Kiro's rounded field with a violet glow along its edge when you're in it. */
-[data-theme="dark"] .composer-box { background: var(--panel) !important; border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong) !important; }
-[data-theme="dark"] .composer-box:focus-within { box-shadow: 0 0 0 1px var(--amber), 0 0 24px -6px var(--accent-glow) !important; }
+[data-theme="dark"] .composer-box:not(.chat-composer) { background: var(--panel); border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong); }
+[data-theme="dark"] .composer-box:not(.chat-composer):focus-within { box-shadow: 0 0 0 1px var(--amber); }
 
 /* Top bar: blends into the canvas; search is an outlined capsule. */
 /* The top bar sits on the same ground as the gutters (no band of its own), so the two cards float on one surface. */

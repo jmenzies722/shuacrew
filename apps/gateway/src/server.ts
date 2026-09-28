@@ -1,3 +1,4 @@
+import { teachingRoutes } from "./teaching-routes.js";
 /**
  * The HTTP + WebSocket surface.
  *
@@ -28,8 +29,8 @@ import os from "node:os";
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
-import { apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
-import type { Runtime } from "@shuacrew/runtimes";
+import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
+import type { Runtime, RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
@@ -185,6 +186,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
   systemRoutes(app);
   if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
+  teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
   mobileRoutes(app, options.mobile);
@@ -359,7 +361,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     store.forRun(request.params.id, Number(request.query.after ?? 0)),
   );
 
-  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string; venture?: string } }>(
+  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string; venture?: string; intelligence?: IntelligenceRequest } }>(
     "/api/runs",
     async (request, reply) => {
       const body = request.body ?? {};
@@ -367,14 +369,34 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       if (body.runtime && !options.runtimes.has(body.runtime)) return reply.code(400).send({ error: `no runtime ${body.runtime}` });
       const venture = body.venture ? options.ventures?.get(body.venture) : undefined;
       if (body.venture && !venture) return reply.code(400).send({ error: `no venture ${body.venture}` });
-      const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo });
-      return { id };
+      if (body.intelligence) {
+        const parsed = IntelligenceRequestSchema.safeParse(body.intelligence);
+        if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+        await refreshIntelligence(parsed.data.mode);
+        const choice = supervisor.intelligence(parsed.data);
+        if (!choice.runtime || choice.runtime !== body.runtime || choice.model !== body.model) {
+          return reply.code(409).send({ error: "Provider availability changed. Your message is preserved; send it again to choose an available model.", choice });
+        }
+      } else if (!body.runtime && !body.model && !body.member) await refreshIntelligence("auto");
+      try {
+        const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo });
+        return { id };
+      } catch (error) { return reply.code(409).send({ error: (error as Error).message }); }
     },
   );
 
-  app.post<{ Params: { id: string }; Body: { text?: string } }>("/api/runs/:id/followup", async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { text?: string; runtime?: string; model?: string; intelligence?: IntelligenceRequest } }>("/api/runs/:id/followup", async (request, reply) => {
     const text = request.body?.text?.trim();
     if (!text) return reply.code(400).send({ error: "empty message" });
+    if (request.body.intelligence) {
+      const parsed = IntelligenceRequestSchema.safeParse(request.body.intelligence);
+      if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+      await refreshIntelligence(parsed.data.mode);
+      const choice = supervisor.intelligence(parsed.data), current = state.runs[request.params.id];
+      if (!choice.runtime || choice.runtime !== request.body.runtime || choice.model !== request.body.model || current?.runtime !== choice.runtime || current?.model !== choice.model) {
+        return reply.code(409).send({ error: "Provider availability changed. Your message is preserved; send it again to choose an available model.", choice });
+      }
+    }
     try {
       return { ok: true, id: supervisor.followUp(request.params.id, text) };
     } catch (error) {
@@ -911,14 +933,28 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.get("/api/audit/verify", async () => store.verify());
 
   // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
-  const statusCache = new Map<string, { at: number; value: Promise<unknown> }>();
+  const statusCache = new Map<string, { at: number; value: Promise<RuntimeStatus> }>();
   const statusOf = (runtime: Runtime, fresh: boolean) => {
     const hit = statusCache.get(runtime.id);
     if (!fresh && hit && Date.now() - hit.at < 30_000) return hit.value;
-    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] }));
+    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })).then(status => { supervisor.updateRuntimeStatus(runtime.id, status); return status; });
     statusCache.set(runtime.id, { at: Date.now(), value });
     return value;
   };
+  const refreshIntelligence = async (mode: "auto" | "local") => {
+    await Promise.all([...options.runtimes.values()].filter(r => mode !== "local" || r.id === "local").map(async runtime => {
+      const status = await statusOf(runtime, false);
+      const local = runtime as Runtime & { installed?: () => Promise<string[]> };
+      const models = runtime.id === "local" && local.installed ? await local.installed().catch(() => []) : undefined;
+      supervisor.updateRuntimeStatus(runtime.id, status, models);
+    }));
+  };
+  app.post("/api/intelligence/select", async (request, reply) => {
+    const parsed = IntelligenceRequestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+    await refreshIntelligence(parsed.data.mode);
+    return supervisor.intelligence(parsed.data);
+  });
   app.get<{ Querystring: { fresh?: string } }>("/api/runtimes", async (request) =>
     Promise.all(
       [...options.runtimes.values()].map(async (runtime) => ({

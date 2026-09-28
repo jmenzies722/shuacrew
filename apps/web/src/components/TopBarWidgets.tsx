@@ -177,7 +177,7 @@ function CrewTile({ ctx }: { ctx: WidgetCtx }) {
     {runs.slice(0, 5).map((r) => <button type="button" key={r.id} className="wg-run" onClick={() => ctx.go(`/sessions/${r.id}`)}>
       <i data-status={r.status} /><span>{r.title}</span><small>{r.member ? members[r.member]?.name ?? "" : r.runtime}</small>
     </button>)}
-    {limited[0] && <p className="tb-foot">Paused until {new Date(limited[0].until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: {limited[0].message}</p>}
+    {limited[0] && <p className="tb-foot">Reset estimate {new Date(limited[0].until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: {limited[0].message}</p>}
     {!runs.length && !approvals.length && <p className="tb-foot">Nothing running. Start a session and it shows up here, live.</p>}
     <button type="button" className="tb-btn wg-more" onClick={() => ctx.go("/activity")}>Mission control</button>
   </div>;
@@ -293,7 +293,7 @@ export function SparkWidgets({ ctx }: { ctx: WidgetCtx }) {
  * The top bar's one status island: at a glance, just what's live (crew working, the weather, a running focus
  * block, tokens today, gateway health). Click it for everything else as tiles, like Control Center.
  */
-export interface IslandLimit { key: string; label: string; until: string; message: string; retry(): void }
+export interface IslandLimit { key: string; label: string; until: string; message: string; retrying?: boolean; retry(): void }
 export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: { ctx: WidgetCtx; running: number; tokens: string; connection: "live" | "connecting" | "offline" | string; limits?: IslandLimit[] }) {
   const prefs = useWidgets(), tiles = placed(prefs, "topbar"), timer = useFocusTimer(), crew = useCrew();
   const [open, setOpen] = useState(false), root = useRef<HTMLDivElement>(null);
@@ -309,7 +309,7 @@ export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: 
   return <div className="island" ref={root} data-no-drag>
     <button type="button" className={`island-pill ${open ? "is-open" : ""}`} aria-expanded={open} aria-label="Status and widgets" onClick={() => setOpen((o) => !o)}>
       <span className="island-seg"><i className={`island-dot is-${health} ${running ? "is-live" : ""}`} /><b className="tabular-nums">{running}</b><span className="island-dim">working</span></span>
-      {limits[0] && <span className="island-seg island-limit" title={limits[0].message}><Timer size={12} />{limits[0].label} paused</span>}
+      {limits[0] && <span className="island-seg island-limit" title={limits[0].message}><Timer size={12} />{limits[0].label} {limits[0].retrying ? "retrying" : "limited"}</span>}
       {crew.approvals.length > 0 && <span className="island-seg island-wait"><ShieldQuestion size={12} /><b className="tabular-nums">{crew.approvals.length}</b></span>}
       {tiles.includes("weather") && <span className="island-seg"><WeatherChipBody /></span>}
       {timer && <span className="island-seg island-focus"><FocusChipBody /></span>}
@@ -317,7 +317,7 @@ export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: 
     </button>
     {open && <div className="island-panel" role="dialog" aria-label="Status and widgets">
       <header><strong>Now</strong><span>{connection === "live" ? "Gateway online" : connection === "connecting" ? "Connecting…" : "Reconnecting…"} · {tokens} tokens today</span></header>
-      {limits.map((l) => <p key={l.key} className="island-notice"><Timer size={14} /><span><b>{l.label}</b> hit its usage window. Back {l.until}.</span><button type="button" onClick={l.retry}>Try now</button></p>)}
+      {limits.map((l) => <p key={l.key} className="island-notice"><Timer size={14} /><span><b>{l.label}</b> {l.retrying ? "Retry eligible; awaiting a successful response." : `Reset estimate: ${l.until}. Availability is unconfirmed.`}</span><button type="button" onClick={l.retry}>Try now</button></p>)}
       <div className="island-grid">{tiles.map((id) => <section key={id} className={`island-tile tile-${id}`} aria-label={WIDGET_INFO[id].name}><WidgetTile id={id} ctx={go} /></section>)}</div>
       <footer><button type="button" onClick={() => go.go("/settings#widgets")}>Customize widgets</button></footer>
     </div>}

@@ -52,6 +52,7 @@ export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; ab
   { path: "/schedules", name: "Schedules", hub: "Build", about: "work that runs on its own on a schedule" },
   { path: "/library", name: "Library", hub: "Know", about: "everything the crew made: reports, pages, specs, images, saved knowledge (searchable)" },
   { path: "/memory", name: "Memory", hub: "Know", about: "what every agent has learned about the user: lessons, preferences, corrections" },
+  { path: "/teach", name: "Visual teaching", hub: "Know", about: "shared step-by-step explanations, source-grounded diagrams, editable canvas and capture-bound screen annotations; use this for visual lessons" },
   { path: "/learn", name: "Learning", hub: "Know", about: "courses and spaced-repetition quizzes toward the user's career goal" },
   { path: "/integrations", name: "Tools & Skills", hub: "System", about: "MCP tools, connected services and Claude Code skills (including the radio skill)" },
   { path: "/policy", name: "Policy & Audit", hub: "System", about: "what agents may never touch, what needs approval, and the full audit trail" },
@@ -394,7 +395,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
         `To SKETCH on their screen (circle a problem, box a region, arrow from cause to effect, a short note), add \`\`\`draw [{"shape":"box","x":0.5,"y":0.4,"w":0.2,"h":0.1,"label":"this total is wrong"},{"shape":"arrow","from":[0.3,0.6],"to":[0.45,0.42],"label":"comes from here"},{"shape":"circle","x":0.7,"y":0.2,"r":0.03},{"shape":"text","x":0.5,"y":0.9,"text":"note"}]\`\`\` (centres/sizes as fractions; up to 12 shapes). It draws itself in live and fades after ~15s.`,
         screen.text?.length ? screenText(screen.text) : "",
         elementsText(screen.context),
-        `GUIDE MODE — when they want to be shown how to do something on screen ("how do I…", "show me", "walk me through"), guide ONE step at a time: say just that step in a sentence, then add \`\`\`guide {"x": centre 0-1, "y": centre 0-1, "w": width 0-1, "h": height 0-1, "label": "Click Share", "step": 1}\`\`\` boxing exactly the control to use. Their Mac spotlights it; when they click it you'll get a fresh screenshot to plan the next step from what is really there now. If the thing isn't visible yet, guide them to what reveals it (a menu, a tab, scrolling). When the task is complete, say so and add \`\`\`guide {"done": true}\`\`\`.`,
+        `GUIDE MODE — when they want to be shown how to do something on screen ("how do I…", "show me", "walk me through"), guide ONE step at a time: say just that step in a sentence, then add \`\`\`guide {"x": centre 0-1, "y": centre 0-1, "w": width 0-1, "h": height 0-1, "label": "Click Share", "step": 1}\`\`\` boxing exactly the control to use. Their Mac spotlights it; after an attempt you get a fresh screenshot. A click is not evidence of success. Verify the resulting visible state first. If the attempt is wrong or unclear, keep the same goal, explain what happened gently, and repeat or clarify the current step. Stay with the user until the actual goal is achieved or they stop. If the thing isn't visible yet, guide them to what reveals it (a menu, a tab, scrolling). When the task is complete, say so and add \`\`\`guide {"done": true}\`\`\`.`,
       ].join("\n")
       : "No screenshot this time; answer from the question alone. If they want to be shown something on screen, ask them to turn on the eye so you can see.",
     design ? DESIGN : "For anything with structure (an architecture, a flow, a data model), you can include a ```mermaid diagram — it renders as a real diagram.",
@@ -406,7 +407,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
 
 /** What goes back after they do a guided step: a fresh look, and the ask for what's next. */
 export function guideFollowUp(label: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }) {
-  return `[guide] Done — I did “${label}”. A fresh screenshot is attached (${screen.width}×${screen.height}). What's the next step? Use one guide block, or guide {"done": true} if we're finished.${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
+  return `[guide] I attempted “${label}”; success is not yet verified. A fresh screenshot is attached (${screen.width}×${screen.height}). Check the visible result before advancing. If it is wrong or unclear, keep the same goal, explain the correction, and provide one guide block for another try. Use guide {"done": true} only when the requested outcome is visibly achieved.${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
 }
 
 /**

@@ -1,12 +1,15 @@
 import AppKit
+import ShuaCrewCore
 import ScreenCaptureKit
 import Vision
 import WebKit
 
 /// Spark on your desktop, over every app and Space — even with the ShuaCrew window closed.
-/// A non-activating panel: you can type into it without pulling ShuaCrew in front of your work.
+/// Passive updates never activate the app. Opening the interactive card uses normal
+/// macOS activation so keyboard focus cannot remain claimed in another application.
 @MainActor
 final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
+    private let teaching = TeachingOverlay()
     static let enabledKey = "buddyEnabled"
     private static let cornerKey = "buddyCorner"
     /// Spark's own size on the desktop (S/M/L in Settings); the panel hugs it when the card is closed.
@@ -15,11 +18,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var gripWidth: NSLayoutConstraint!
     private var gripHeight: NSLayoutConstraint!
     private var isOpen = false
-    private static let open = NSSize(width: 380, height: 560)
+    private var docked = UserDefaults.standard.bool(forKey: "buddyNotchDock")
+    private var staysOnTop = false
+    private var requestedSize = NSSize(width: 104, height: 108)
+    private static let dockSize = NSSize(width: 240, height: 48)
+    private static let open = NSSize(width: 420, height: 620)
     /// A canvas for diagrams: system designs need room.
     private static let wide = NSSize(width: 940, height: 720)
     /// Room for a speech bubble beside Spark ("Aria finished…") without the whole card.
-    private static let peek = NSSize(width: 320, height: 190)
+    private static let peek = NSSize(width: 360, height: 240)
+    /// The fn quick card: small, beside your pointer.
+    private static let mini = NSSize(width: 360, height: 220)
+    private var isMini = false
 
     private let gateway: Gateway
     private lazy var wake: WakeWord = {
@@ -45,6 +55,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
     private var loaded = false
+    private var ready = false
+    private var pendingFocus = false
     private let location = LocationOnce()
     /// Opens a path in the main window (a session, Learning, Usage…).
     var onOpen: ((String) -> Void)?
@@ -59,11 +71,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     init(gateway: Gateway) {
         self.gateway = gateway
         let config = WKWebViewConfiguration()
+        config.userContentController.addUserScript(WKUserScript(
+            source: "document.documentElement.dataset.shell = 'mac';",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.writingToolsBehavior = .none
         config.mediaTypesRequiringUserActionForPlayback = [] // Spark talks back as the answer streams in
         web = WKWebView(frame: .zero, configuration: config)
         web.setValue(false, forKey: "drawsBackground")
-        panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: closed), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: closed), styleMask: [.borderless], backing: .buffered, defer: false)
         super.init()
         panel.isFloatingPanel = true
         // Not always on top by default: Spark sits on your desktop like any window and comes forward when you call it,
@@ -75,7 +90,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.becomesKeyOnlyIfNeeded = true
+        // WebKit's hit views are not AppKit text fields and need not report
+        // needsPanelToBecomeKey. A click anywhere in the card must acquire focus.
+        panel.becomesKeyOnlyIfNeeded = false
 
         let root = NSView()
         panel.contentView = root
@@ -98,7 +115,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         web.navigationDelegate = self
         config.userContentController.add(WeakHandler(self), name: "shuacrew")
         place(size: closed)
+        NotificationCenter.default.addObserver(self, selector: #selector(displaysChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
+
+    @objc private func displaysChanged() { place(size: requestedSize) }
 
     // MARK: showing
 
@@ -107,6 +127,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if !loaded {
             loaded = true
             web.load(URLRequest(url: URL(string: "/buddy", relativeTo: gateway.base)!))
+            startFnKey()
         }
         panel.orderFrontRegardless()
     }
@@ -121,12 +142,91 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     func summon() {
         if !Self.enabled { setEnabled(true) }
         start()
+        NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
+        guard ready else { pendingFocus = true; return }
         web.evaluateJavaScript("window.buddy && window.buddy.focus()")
     }
 
     private var guiding = false
     private func raise() { panel.orderFrontRegardless() }
+
+    // MARK: follow my cursor (Clicky-style)
+    /// Collapsed, Spark rides beside the pointer. Clicks pass through it while it follows; it pauses to walk
+    /// over and point, stops while you talk to it (opening where it is), and never takes keyboard focus.
+    private var following = UserDefaults.standard.object(forKey: "buddyFollowCursor") as? Bool ?? true
+    private var followTimer: Timer?
+    private func updateFollow() {
+        let active = following && !isOpen && !guiding && !docked && !isMini
+        panel.ignoresMouseEvents = active
+        guard active else { followTimer?.invalidate(); followTimer = nil; return }
+        guard followTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.followStep() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        followTimer = timer
+    }
+    // MARK: fn key (Globe): tap for the quick card, hold to talk
+    /// fn on its own: a tap shows or hides the small card beside your pointer; holding it talks until you let go.
+    /// fn used as a modifier (fn+F-keys, fn+arrows) is left alone (see FnGesture). Watching keys outside
+    /// ShuaCrew needs Accessibility access, which Spark already asks for to click for you.
+    private var fnGesture = FnGesture()
+    private var fnMonitors: [Any] = []
+    private var fnTimer: Timer?
+    private var fnEnabled = UserDefaults.standard.object(forKey: "buddyFnKey") as? Bool ?? true
+    private func startFnKey() {
+        for m in fnMonitors { NSEvent.removeMonitor(m) }
+        fnMonitors = []
+        guard fnEnabled else { return }
+        let seen: @Sendable (NSEvent) -> Void = { [weak self] event in
+            let type = event.type, flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            Task { @MainActor in self?.fnEvent(type: type, flags: flags) }
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: seen) { fnMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: { event in seen(event); return event }) { fnMonitors.append(local) }
+    }
+    private func fnEvent(type: NSEvent.EventType, flags: NSEvent.ModifierFlags) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if type == .keyDown { fnSignal(fnGesture.otherKey()); return }
+        let fn = flags.contains(.function), others = !flags.subtracting([.function, .capsLock, .numericPad]).isEmpty
+        if fn && !others {
+            fnSignal(fnGesture.down(at: now))
+            if fnTimer == nil {
+                let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { guard let self else { return }; self.fnSignal(self.fnGesture.tick(at: ProcessInfo.processInfo.systemUptime)) }
+                }
+                RunLoop.main.add(timer, forMode: .common); fnTimer = timer
+            }
+        } else if fn {
+            fnSignal(fnGesture.otherKey())
+        } else {
+            fnTimer?.invalidate(); fnTimer = nil
+            fnSignal(fnGesture.up(at: now))
+        }
+    }
+    private func fnSignal(_ signal: FnGesture.Signal) {
+        let kind: String
+        switch signal { case .none: return; case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release" }
+        if !Self.enabled { setEnabled(true) }
+        start(); raise()
+        web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(kind)')")
+    }
+    /// What the Globe key does in System Settings: anything but "Do Nothing" also opens emoji or dictation.
+    private func globeKeyUse() -> Int { UserDefaults(suiteName: "com.apple.HIToolbox")?.integer(forKey: "AppleFnUsageType") ?? 0 }
+
+    private func followStep() {
+        guard following, !isOpen, !guiding, !docked, !isMini else { updateFollow(); return }
+        let cursor = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(cursor) }) ?? NSScreen.main else { return }
+        let size = panel.frame.size
+        let target = CompanionPlacement.follow(cursor: cursor, size: size, visible: screen.visibleFrame).origin
+        let now = panel.frame.origin
+        guard abs(target.x - now.x) > 0.5 || abs(target.y - now.y) > 0.5 else { return }
+        // A jump across displays lands at once; on the same display it eases after the pointer.
+        let far = hypot(target.x - now.x, target.y - now.y) > 900
+        panel.setFrameOrigin(far ? target : CompanionPlacement.ease(from: now, to: target))
+    }
 
     /// Teaching: Spark walks over to stand beside the step it's showing you, then goes home when the lesson ends.
     private func walk(beside x: Double, _ y: Double, _ w: Double, _ h: Double, on screen: NSScreen) {
@@ -147,6 +247,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private func walkHome() {
         guard guiding else { return }
         guiding = false
+        if following && !docked { updateFollow(); return }   // back to your pointer, not the corner
+        if docked { place(size: requestedSize); return }
         let corner = savedCorner() ?? defaultCorner(), size = panel.frame.size
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.5
@@ -156,6 +258,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Open Spark from the menu bar or a shuacrew:// link, optionally asking something right away.
     func open(asking text: String? = nil) {
+        NSApp.activate()
         raise(); panel.makeKeyAndOrderFront(nil)
         if let text, let data = try? JSONSerialization.data(withJSONObject: [text]), let json = String(data: data, encoding: .utf8) {
             web.evaluateJavaScript("window.buddy && window.buddy.ask(\(json)[0])")
@@ -165,6 +268,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     private func toggle() {
+        if !isOpen { NSApp.activate() }
         raise()
         panel.makeKeyAndOrderFront(nil)
         web.evaluateJavaScript("window.buddy && window.buddy.toggle()")
@@ -172,14 +276,24 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Grow or shrink around the bottom-right corner, so Spark stays put and the empty, clear area never blocks your clicks.
     private func place(size: NSSize) {
+        requestedSize = size
+        guard let primary = NSScreen.main ?? NSScreen.screens.first else { return }
         let corner = savedCorner() ?? defaultCorner()
-        var frame = NSRect(x: corner.x - size.width, y: corner.y, width: size.width, height: size.height)
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(corner) }) ?? NSScreen.main {
-            let visible = screen.visibleFrame
-            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
-            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
-        }
+        let screen = docked
+            ? (NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? primary)
+            : (NSScreen.screens.first(where: { $0.frame.contains(corner) }) ?? primary)
+        let actual = docked && !isOpen ? (size == Self.peek ? NSSize(width: 360, height: 240) : Self.dockSize) : size
+        let pointer = NSEvent.mouseLocation, pointerScreen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? primary
+        let frame = isMini && !isOpen
+            ? CompanionPlacement.follow(cursor: pointer, size: size, visible: pointerScreen.visibleFrame)   // the fn card opens beside your pointer
+            : docked
+            ? CompanionPlacement.dock(size: actual, screen: screen.frame, visible: screen.visibleFrame, topInset: screen.safeAreaInsets.top)
+            : CompanionPlacement.clamp(NSRect(x: corner.x - size.width, y: corner.y, width: size.width, height: size.height), to: screen.visibleFrame)
+        // Dock mode uses real web buttons; the free-placement character keeps its native drag grip.
+        grip.isHidden = docked || isOpen
+        panel.level = docked || staysOnTop || isMini ? .floating : .normal
         panel.setFrame(frame, display: true, animate: false)
+        if isMini { raise() }
     }
 
     private func defaultCorner() -> NSPoint {
@@ -192,6 +306,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         return NSScreen.screens.contains(where: { $0.frame.insetBy(dx: -1, dy: -1).contains(p) }) ? p : nil
     }
     private func rememberCorner() {
+        guard !docked else { return }
         UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: panel.frame.maxX, y: panel.frame.minY)), forKey: Self.cornerKey)
     }
 
@@ -204,16 +319,40 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // Replies go back to whoever asked: the desktop panel or the app window's Spark panel.
         let sender = message.webView
         switch type {
+        case "buddyReady":
+            if sender === web {
+                ready = true
+                if pendingFocus { pendingFocus = false; summon() }
+            }
         case "buddyExpand":
+            // The embedded companion shares this bridge, but must never change
+            // the desktop panel's geometry or keyboard ownership.
+            guard sender === web else { return }
+            if let placement = body["desktopPlacement"] as? String, ["free", "notch"].contains(placement) {
+                docked = placement == "notch"
+                UserDefaults.standard.set(docked, forKey: "buddyNotchDock")
+            }
             let open = body["open"] as? Bool ?? false, peek = body["peek"] as? Bool ?? false
             if let key = body["size"] as? String, let size = Self.sizes[key] {
                 closed = size
                 gripWidth.constant = size.width - 16
                 gripHeight.constant = size.height - 16
             }
+            // Opened while following: it opens right where it is (beside your pointer), not back in the corner.
+            if open && !isOpen && following && !docked && !isMini { rememberCorner() }
+            isMini = !open && (body["mini"] as? Bool ?? false)
             isOpen = open
-            place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : peek ? Self.peek : closed)
-            if !open { panel.resignKey() }
+            place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : isMini ? Self.mini : peek ? Self.peek : closed)
+            updateFollow()
+            if !open, panel.isKeyWindow {
+                // resignKey() is an AppKit notification/override point, not an
+                // operation for changing focus. Calling it directly can leave
+                // AppKit's keyboard ownership inconsistent.
+                // Ordering out releases that claim; ordering front does not
+                // make the collapsed character key again.
+                panel.orderOut(nil)
+                panel.orderFrontRegardless()
+            }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
             let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
@@ -293,6 +432,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 do { try await live.start(on: screen, excluding: [panel.windowNumber]); send("shuacrew:live", ["on": true], to: sender) }
                 catch { send("shuacrew:live", ["on": false, "error": "Couldn't start watching: \(error.localizedDescription)"], to: sender) }
             }
+        case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
+            if let sender { teaching.handle(body, to: sender) }
         case "buddyCapture":
             Task { await capture(to: sender) }
         case "buddyScreenAccess":
@@ -329,10 +470,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             walkHome()
         case "buddyOnTop":
             let on = body["on"] as? Bool ?? false
-            panel.level = on ? .floating : .normal
+            staysOnTop = on
+            panel.level = on || docked ? .floating : .normal
             if on { raise() }
         case "buddyRaise":
             raise()
+        case "buddyFnKey":
+            if let on = body["on"] as? Bool { fnEnabled = on; UserDefaults.standard.set(on, forKey: "buddyFnKey"); startFnKey() }
+            // 0 = Do Nothing; 1 input source, 2 emoji, 3 dictation — those also fire when fn is pressed.
+            send("shuacrew:fnKey", ["on": fnEnabled, "globe": globeKeyUse(), "trusted": SparkHands.trusted], to: sender)
+        case "buddyFollow":
+            following = body["on"] as? Bool ?? true
+            UserDefaults.standard.set(following, forKey: "buddyFollowCursor")
+            updateFollow()
         case "buddyWake":
             if let names = body["names"] as? [String] { wake.names = Array(Set(["spark"] + names.map { $0.lowercased() }.filter { !$0.isEmpty })) }
             let reply = { [weak self] (error: String?) in

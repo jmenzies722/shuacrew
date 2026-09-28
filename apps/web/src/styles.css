@@ -194,7 +194,7 @@ body {
 }
 [data-shell="mac"][data-palette="frost"] { --chrome: rgba(5, 5, 7, 0.72); }
 [data-shell="mac"][data-fullscreen] { --chrome: var(--ink); }
-/* The work area is the page card (.workspace-card): #main adds no inset or fill of its own, so the
+/* The work area is the page card (.workspace-card, polish.css): #main adds no inset or fill of its own, so the
    sidebar and the page share one top edge, one gutter and one ground. The card stays solid under the chrome. */
 [data-shell="mac"] .workspace-card { background: var(--ink); }
 

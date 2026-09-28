@@ -15,9 +15,10 @@ export interface LookPrefs {
   customAccent: string | null;
   /** A slow aurora behind the whole app (GPU transforms only). */
   livingBackground: boolean;
+  motionStyle: "calm" | "responsive" | "expressive";
 }
 const KEY = "shuacrew.look";
-export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "geist", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false };
+export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "geist", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false, motionStyle: "responsive" };
 
 export const FONT_STACK = {
   ui: { geist: `"Geist Variable", system-ui, sans-serif`, system: `-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif` },
@@ -39,6 +40,7 @@ export function parseLook(value: unknown): LookPrefs {
     sounds: { approval: s.approval === true, done: s.done === true, failed: s.failed === true, volume: vol },
     customAccent: typeof v.customAccent === "string" && /^#[0-9a-f]{6}$/i.test(v.customAccent) ? v.customAccent.toLowerCase() : null,
     livingBackground: v.livingBackground === true,
+    motionStyle: pick("motionStyle", ["calm", "responsive", "expressive"], "responsive"),
   };
 }
 
@@ -52,6 +54,7 @@ export function applyLook(p: LookPrefs, root: HTMLElement = document.documentEle
   set("--chat-width", p.chatWidth === DEFAULT_LOOK.chatWidth ? null : WIDTH[p.chatWidth]);
   // One accent, from the theme: clear any custom accent an older version left inline.
   set("--amber", null); set("--amber-soft", null); set("--on-accent", null);
+  root.dataset.motionStyle = p.motionStyle;
   root.dataset.living = p.livingBackground ? "on" : "off";
   root.dataset.ligatures = p.ligatures ? "on" : "off";
   root.dataset.chatStyle = p.chatStyle;

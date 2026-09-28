@@ -40,3 +40,15 @@ it("thinks with Claude by default, falling back to the smart local model", () =>
   expect(parseCompanion({ brain: "local", localModel: "llama3.2:3b" })).toMatchObject({ brain: "local", localModel: "llama3.2:3b" });
   expect(parseCompanion({ brain: "gpt", localModel: "huge" })).toMatchObject({ brain: "auto", localModel: "gpt-oss:20b" });
 });
+
+it("supports the robot workshop without replacing saved legacy companions", () => {
+  for (const character of ["scout", "atlas", "nova", "spark", "orb", "byte", "kit", "blob"]) {
+    expect(parseCompanion({ character, nickname: "Captain Nova", color: "#34d399", face: "bright", accessory: "headphones" })).toMatchObject({ character, nickname: "Captain Nova", color: "#34d399", face: "bright", accessory: "headphones" });
+  }
+  expect(parseCompanion({ character: "unknown" }).character).toBe("spark");
+});
+it("validates eye colors and bounds personality while preserving spaces during editing", () => {
+  expect(parseCompanion({ eyeColor: "#FFAA00", personality: "Curious and kind " })).toMatchObject({ eyeColor: "#ffaa00", personality: "Curious and kind " });
+  expect(parseCompanion({ eyeColor: "url(secret)", personality: 42 })).toMatchObject({ eyeColor: "#a5f3fc", personality: "" });
+  expect(parseCompanion({ personality: "a".repeat(1500) }).personality).toHaveLength(1000);
+});

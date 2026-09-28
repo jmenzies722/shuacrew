@@ -14,3 +14,11 @@
 .diagram-svg .edgePath path, .diagram-svg .flowchart-link { stroke-width: 1.6px; }
 .diagram-error { margin: 0; font-size: 11px; white-space: pre-wrap; color: var(--bad); }
 .diagram-loading { font-size: 12px; color: var(--text-3); }
+
+.diagram-svg { transition: width .15s ease; min-width: 0; }
+.diagram-svg svg { width: 100%; max-width: none !important; height: auto; display: block; }
+.diagram-canvas { cursor: grab; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+.diagram-canvas:active { cursor: grabbing; }
+.diagram-notice { padding: 8px 12px; font-size: 11px; color: var(--text-2); border-bottom: 1px solid var(--line); }
+:root[data-motion="reduced"] .diagram-svg { transition: none; }
+@media (prefers-reduced-motion: reduce) { .diagram-svg { transition: none; } }

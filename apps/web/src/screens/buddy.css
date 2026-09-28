@@ -1,5 +1,5 @@
 /* The desktop buddy page: a transparent panel; only the character and the card are visible. */
-html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transparent !important; height: 100%; overflow: hidden; }
+html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)) #root { background: transparent !important; height: 100%; overflow: hidden; }
 .buddy { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-end; padding: 8px; gap: 8px; }
 .buddy-spark { position: relative; width: 84px; height: 84px; flex-shrink: 0; animation: buddy-bob 3.6s ease-in-out infinite; filter: drop-shadow(0 10px 18px rgba(0,0,0,.45)); }
 .buddy-spark.is-thinking { animation: buddy-think 1.1s ease-in-out infinite; }
@@ -7,9 +7,9 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .buddy-card { width: 100%; max-height: calc(100% - 100px); display: flex; flex-direction: column; border-radius: 22px; overflow: hidden;
   background: linear-gradient(180deg, var(--float-hi), var(--float) 120px); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
   box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent), 0 24px 60px rgba(0,0,0,.55); animation: buddy-in .25s cubic-bezier(.2,.9,.3,1.25); transform-origin: bottom right; }
-.buddy-card header { display: flex; align-items: center; gap: 6px; padding: 12px 12px 8px 16px; }
-.buddy-card header strong { font-size: 14px; } .buddy-card header span { flex: 1; font-size: 11.5px; color: var(--text-3); }
-.buddy-card header button { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--text-3); } .buddy-card header button:hover { color: var(--text); background: var(--panel); }
+.buddy-card > header { display: flex; align-items: center; gap: 6px; padding: 12px 12px 8px 16px; }
+.buddy-card > header strong { font-size: 14px; } .buddy-card > header span { flex: 1; font-size: 11.5px; color: var(--text-3); }
+.buddy-card > header button { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--text-3); } .buddy-card > header button:hover { color: var(--text); background: var(--panel); }
 .buddy-thread { flex: 1; min-height: 60px; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 10px; }
 .buddy-hint { font-size: 12.5px; line-height: 1.6; color: var(--text-3); }
 .buddy-msg { font-size: 13.5px; line-height: 1.55; }
@@ -30,7 +30,7 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 @keyframes buddy-in { from { opacity: 0; transform: translateY(10px) scale(.94); } }
 @keyframes buddy-dot { 50% { transform: translateY(-3px); opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .buddy-spark, .buddy-card, .buddy-typing span { animation: none; } }
-.buddy-card header button.is-on { color: var(--amber); }
+.buddy-card > header button.is-on { color: var(--amber); }
 .buddy-tabs { display: flex; gap: 4px; margin: 0 12px 6px; padding: 3px; border-radius: 11px; background: var(--sunken); }
 .buddy-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 0; border-radius: 8px; font-size: 11.5px; color: var(--text-3); }
 .buddy-tabs button[aria-selected="true"] { color: var(--text); background: var(--raised); box-shadow: 0 1px 2px rgba(0,0,0,.3), inset 0 0 0 1px var(--line); }
@@ -61,7 +61,7 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .buddy-spark.size-s { width: 68px; height: 68px; } .buddy-spark.size-l { width: 112px; height: 112px; }
 .buddy-spark .spark-character { width: 100%; height: 100%; }
 /* Your colour becomes Spark's accent everywhere in the panel. */
-.buddy { --amber: var(--spark-color, #f5b544); --amber-soft: color-mix(in srgb, var(--spark-color, #f5b544) 14%, transparent); }
+.buddy { --amber-soft: color-mix(in srgb, var(--spark-color, #f5b544) 14%, transparent); }
 /* Guide mode */
 .buddy-guide { display: flex; align-items: center; gap: 8px; margin: 0 10px 8px; padding: 8px 8px 8px 12px; border-radius: 14px; font-size: 12.5px;
   background: var(--amber-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent); animation: buddy-in .25s ease; }
@@ -138,7 +138,7 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .spk .buddy-see.is-on { color: var(--spark-color); background: color-mix(in srgb, var(--spark-color) 12%, transparent); }
 /* Inside the app: a full-height side panel, not a floating card. */
 .buddy.is-embedded { position: static; inset: auto; height: 100%; padding: 0; display: flex; }
-.buddy.is-embedded .buddy-card.spk { width: 100%; max-height: none; height: 100%; border-radius: 0; box-shadow: inset 1px 0 0 var(--line); animation: none; }
+.buddy.is-embedded .buddy-card.spk { width: 100%; min-width:0; max-height: none; height: 100%; margin:0; border-radius: 20px; box-shadow: inset 0 0 0 1px var(--line); animation: none; }
 @keyframes spk-caret { 50% { opacity: 0; } }
 @keyframes spk-wave { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .spk .buddy-msg.is-live .prose-agent > :last-child::after, .spk-typing span { animation: none !important; } }
@@ -207,6 +207,103 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .buddy-talk.is-hold.is-hearing { color: var(--on-accent, #fff); background: var(--amber); box-shadow: 0 0 0 calc(3px + var(--lvl, 0) * 10px) color-mix(in srgb, var(--amber) 25%, transparent); transform: scale(1.06); }
 .spk-local { margin-left: 8px; padding: 2px 7px; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; vertical-align: 2px; color: #4cc38a; background: rgba(76, 195, 138, .12); box-shadow: inset 0 0 0 1px rgba(76, 195, 138, .3); }
 
+.spk-routing { margin: 0; padding: 7px 14px; font-size: 11px; line-height: 1.5; color: var(--text-2); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+
+/* The notch is a home, not another window competing with your work. */
+.buddy.is-docked { padding: 0; align-items: center; justify-content: flex-start; gap: 0; }
+.spark-dock { order: -1; display: flex; align-items: center; gap: 9px; height: 48px; min-height: 48px; width: 240px; padding: 0 16px; border-radius: 0 0 20px 20px; background: #090a0c; color: #f3f4f6; box-shadow: inset 0 -1px 0 #ffffff18; }
+.spark-dock strong { font-size: 12px; font-weight: 600; }
+.spark-dock > span { flex: 1; font-size: 10px; color: #c1c7d0; text-align: right; }
+.spark-dock > i { width: 5px; height: 5px; border-radius: 50%; background: var(--spark-color, var(--amber)); }
+.spark-dock:focus-visible { outline: 2px solid var(--amber); outline-offset: -3px; }
+.buddy.is-docked .spk-pop { min-height: 0; flex: 1; width: 100%; padding: 6px; }
+.buddy.is-docked .buddy-card { height: 100%; max-height: 100%; border-radius: 20px; transform-origin: top center; }
+.buddy.is-docked .buddy-bubble { margin-top: 8px; max-width: calc(100% - 16px); }
+
+/* Alert space follows the actual character size; the native panel grows for every alert. */
+.buddy { --buddy-size: 84px; }
+.buddy[data-size="s"] { --buddy-size: 68px; }
+.buddy[data-size="l"] { --buddy-size: 112px; }
+.buddy-bubble {
+  right: calc(var(--buddy-size) + 20px); bottom: 28px;
+  width: min(228px, calc(100% - var(--buddy-size) - 32px)); max-width: none;
+  max-height: calc(100% - 40px); overflow-y: auto; overflow-wrap: anywhere;
+  padding: 14px 16px; line-height: 1.5;
+  border: 1px solid color-mix(in srgb, var(--spark-color, var(--amber)) 30%, var(--line));
+  box-shadow: 0 8px 22px #0003, inset 0 1px 0 #ffffff0a;
+}
+.buddy-bubble small { margin-top: 5px; line-height: 1.4; }
+.buddy.is-docked .spk-pop { max-height: none; }
+.buddy.is-docked .buddy-bubble { position: relative; inset: auto; flex: 0 1 auto; width: calc(100% - 16px); max-height: calc(100% - 64px); border-radius: 16px; }
+.buddy-badge { top: 5px; right: 5px; box-shadow: 0 0 0 2px var(--panel), 0 3px 10px #0003; }
+.spk-head { min-width: 0; }
+.spk-head > div { min-width: 0; }
+.buddy-input textarea { min-width: 0; }
+
+.buddy[data-presence="interaction"] .buddy-spark:not(.is-thinking):not(.is-speaking) { animation:none; }
+.buddy[data-presence="playful"] .buddy-spark:not(.is-thinking):not(.is-speaking) { animation-duration:2.4s; }
+:root[data-motion="reduced"] .buddy *, :root[data-motion="reduced"] .buddy *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+
+/* Conversation first: one identity, one toolbar, and room to think. */
+.buddy.is-open:not(.is-docked):not(.is-embedded) > .buddy-spark { display:none; }
+.buddy.is-open:not(.is-docked) .spk-pop { height:100%; max-height:100%; }
+.buddy.is-open:not(.is-docked) .spk-pop > .buddy-card { height:100%; }
+.buddy-card.spk { position:relative; color:var(--text); }
+.buddy-card.spk .spk-head { position:static; flex-shrink:0; display:grid; grid-template-columns:36px minmax(0,1fr) repeat(4,28px); grid-template-rows:28px auto; padding:14px; gap:2px 6px; border-bottom:1px solid var(--line); }
+.buddy-card.spk .spk-head > .spk-avatar { grid-column:1; grid-row:1 / 3; }
+.buddy-card.spk .spk-head .spk-who { display:contents; }
+.spk-head .spk-who > strong { grid-column:2; grid-row:1; align-self:center; }
+.spk-head .spk-who > .spk-status { grid-column:2 / -1; grid-row:2; min-width:0; }
+.spk-head > button:nth-of-type(1) { grid-column:3; grid-row:1; }
+.spk-head > button:nth-of-type(2) { grid-column:4; grid-row:1; }
+.spk-head > .spk-options { grid-column:5; grid-row:1; }
+.spk-head > button:nth-of-type(3) { grid-column:6; grid-row:1; }
+.spk-head > button, .spk-options > summary { flex-shrink:0; width:30px; height:30px; display:grid; place-items:center; border-radius:9px; color:var(--text-3); cursor:pointer; }
+.spk-who strong { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.spk-status { white-space:nowrap; overflow:hidden; font-size:11px; }
+.spk-provider { overflow:hidden; text-overflow:ellipsis; color:var(--text-3); }
+.spk-widget-toggle { position:relative; }
+.spk-widget-toggle i { position:absolute; right:3px; top:3px; height:5px; width:5px; background:var(--amber); border-radius:50%; }
+.spk-options > summary { list-style:none; }
+.spk-options > summary::-webkit-details-marker { display:none; }
+.spk-options[open] > summary, .spk-options > summary:hover { color:var(--text); background:var(--raised); }
+.spk-options-panel { position:absolute; top:64px; right:10px; z-index:30; width:min(310px,calc(100% - 20px)); max-height:calc(100% - 90px); overflow:auto; padding:10px; border-radius:15px; background:var(--panel); border:1px solid var(--line-strong); box-shadow:0 16px 40px #0005; }
+.spk-options-label { display:block; padding:6px 8px; font-size:10px; letter-spacing:.12em; color:var(--text-3); }
+.spk-options-panel .spk-routing { padding:7px 8px 12px; margin-bottom:5px; font-size:11px; }
+.buddy-card > header .spk-options-panel > button { display:flex; align-items:center; gap:9px; width:100%; min-height:37px; height:auto; padding:9px 8px; text-align:left; font-size:12px; }
+.buddy-card > header .spk-options-panel > button span { flex:1; color:var(--text-2); }
+.spk-options-panel b { font-size:10px; font-weight:500; color:var(--amber); }
+.spk-option-row { padding:8px; display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:8px; font-size:12px; color:var(--text-2); }
+.spk-option-row .spk-listen button { width:auto; padding:5px 7px; font-size:10.5px; }
+.spk-watch-banner { display:flex; align-items:center; gap:7px; padding:8px 14px; font-size:11px; color:var(--text); background:color-mix(in srgb,var(--bad) 9%,var(--panel)); }
+.spk-watch-banner > i { width:6px; height:6px; background:var(--bad); border-radius:50%; }
+.spk-watch-banner > span { margin-left:auto; color:var(--bad); }
+.spk-mic-status,.spk-connection-notice { padding:8px 14px; font-size:11px; color:var(--text-2); border-bottom:1px solid var(--line); }
+.spk-thread { padding:18px 16px; gap:18px; }
+.spk-hello { margin:auto 0; padding:16px 4px; }
+.spk-hello h2 { margin-top:14px; font-size:22px; letter-spacing:-.035em; }
+.spk-hello > p { max-width:270px; margin-inline:auto; font-size:13px; line-height:1.65; }
+.spk-hello .buddy-starters { display:flex; flex-direction:column; margin:20px auto 16px; width:100%; max-width:290px; gap:7px; }
+.spk-hello .buddy-starters button { border-radius:11px; padding:10px 13px; text-align:left; font-size:12px; }
+.spk .buddy-input { margin:0 12px 12px; padding:9px; gap:5px; flex-shrink:0; }
+.spk .buddy-input textarea { min-height:44px; line-height:1.5; font-size:14px; }
+.spk .buddy-msg { font-size:13.5px; line-height:1.65; }
+.spk .buddy-msg.is-you { padding:10px 13px; border-radius:15px 15px 4px 15px; }
+
+.buddy[data-celebration="subtle"] .mood-happy > svg, .buddy[data-celebration="subtle"] .mood-happy > .spark-art { animation:none; }
+
+/* Alerts must be readable in non-activating panels, where WebKit may pause animation. */
+.buddy-bubble { animation:none; background:var(--panel); }
+.buddy-bubble.is-morning { background:linear-gradient(135deg,color-mix(in srgb,var(--spark-color) 12%,var(--panel)),var(--panel)); }
+
+.spk-thread { scroll-behavior:auto; }
+
+.buddy-practice-status { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.buddy-practice-status > button:first-child { flex: 1; text-align: left; color: var(--text); }
+.buddy-practice-status > button:last-child { color: var(--amber); }
+.buddy-bubble.is-practice > span { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.buddy-bubble.is-practice > div { display: flex; gap: 12px; margin-top: 8px; color: var(--amber); }
+
 /* Missions Spark is staying with: one quiet row each, state as a dot. */
 .spk-missions { display: grid; gap: 4px; margin: 0 12px 8px; }
 .spk-mission { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 10px; text-align: left; font-size: 12px; color: var(--text-2); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
@@ -219,3 +316,69 @@ html:has(.buddy), body:has(.buddy), body:has(.buddy) #root { background: transpa
 .spk-mission.is-awaiting_approval small { color: #e2a33b; }
 @keyframes spk-mission-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .spk-mission i { animation: none; } }
+
+/* fn quick card: small, beside the pointer, one thing at a time. */
+.spk-mini-card { position: absolute; left: 8px; right: 8px; bottom: 8px; display: grid; gap: 8px; padding: 10px 12px 10px; border-radius: 16px; color: var(--text); background: var(--float, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong), 0 18px 44px -12px rgba(0,0,0,.55); }
+.spk-mini-card header { display: grid; grid-template-columns: 28px auto 1fr 22px; align-items: center; gap: 8px; }
+.spk-mini-card header b { font-size: 13px; font-weight: 600; }
+.spk-mini-card header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--text-3); }
+.spk-mini-card.is-listening header small { color: var(--accent-text, var(--amber)); }
+.spk-mini-card header button { width: 22px; height: 22px; border-radius: 7px; font-size: 15px; line-height: 1; color: var(--text-3); }
+.spk-mini-card header button:hover { background: var(--raised); color: var(--text); }
+.spk-mini-face { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: var(--amber-soft); overflow: hidden; }
+.spk-mini-card p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.spk-mini-live { color: var(--text) !important; }
+.spk-mini-hint { color: var(--text-3) !important; }
+.spk-mini-step { display: grid; gap: 6px; padding: 8px 10px; border-radius: 11px; background: var(--amber-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent); }
+.spk-mini-step > span { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-text, var(--amber)); }
+.spk-mini-step p { color: var(--text) !important; font-weight: 500; }
+.spk-mini-step div { display: flex; gap: 6px; }
+.spk-mini-step button, .spk-mini-card footer button { height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spk-mini-step button.is-go { color: var(--on-accent, #fff); background: var(--amber); box-shadow: none; font-weight: 600; }
+.spk-mini-card footer { display: flex; justify-content: flex-end; }
+.spk-mini-card footer button:hover, .spk-mini-step button:not(.is-go):hover { color: var(--text); background: var(--raised); }
+
+/* ── A livelier chat window ─────────────────────────────────────────────────────────────────── */
+/* The welcome centres when there's room and starts at the top when there isn't, so nothing is cut off. */
+.spk .spk-thread:has(> .spk-hello) { justify-content: flex-start; }
+.spk .spk-hello { margin-block: auto; padding-top: 14px; }
+/* Header: one pill that says what Spark is doing. */
+.spk .spk-pill { gap: 6px; padding: 2px 8px 2px 7px; border-radius: 999px; color: var(--text-2); background: color-mix(in srgb, var(--text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.spk .spk-pill.is-listening, .spk .spk-pill.is-hearing { color: var(--spark-color, var(--amber)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 45%, transparent); }
+.spk .spk-pill.is-thinking { color: var(--text); }
+.spk-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--ok, #34d399); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #34d399) 18%, transparent); }
+.spk-dot.is-busy { background: var(--spark-color, var(--amber)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--spark-color, var(--amber)) 22%, transparent); animation: spk-breathe 1.2s ease-in-out infinite; }
+@keyframes spk-breathe { 50% { transform: scale(.7); opacity: .6; } }
+/* Right now: what's actually going on, as tappable chips. */
+.spk-now { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 4px 0 2px; }
+.spk-now > * { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px; color: var(--text-2); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.spk-now > button:hover { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 50%, transparent); }
+.spk-now i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.spk-now .is-wait i { background: #e2a33b; } .spk-now .is-wait { color: var(--text); }
+.spk-now .is-live i { background: var(--spark-color, var(--amber)); animation: spk-breathe 1.6s ease-in-out infinite; }
+.spk-now .is-quiet i { background: var(--ok, #34d399); }
+/* Suggestions that fit the moment; one tap sends. */
+.spk-starters { display: grid; gap: 6px; width: 100%; max-width: 320px; margin: 8px 0 2px; }
+.spk-starters button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; padding: 8px 12px; border-radius: 12px; text-align: left; font-size: 12.5px; color: var(--text-2);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), color-mix(in srgb, var(--text) 2%, transparent)); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent); transition: color .15s, box-shadow .15s, transform .15s; }
+.spk-starters button svg { flex-shrink: 0; opacity: 0; transform: translateY(2px); color: var(--spark-color, var(--amber)); transition: opacity .15s, transform .15s; }
+.spk-starters button:hover { color: var(--text); transform: translateY(-1px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 50%, var(--line-strong)); }
+.spk-starters button:hover svg { opacity: 1; transform: none; }
+.spk-starters .is-agent { justify-content: flex-start; color: var(--text-3); background: transparent; box-shadow: inset 0 0 0 1px var(--line); border-style: dashed; }
+.spk-starters .is-agent b { font-family: var(--font-mono); font-weight: 500; color: var(--spark-color, var(--amber)); }
+/* Quick replies under Spark's latest answer. */
+.spk-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 0 34px; }
+.spk-quick button { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; color: var(--text-2); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: color .15s, box-shadow .15s; }
+.spk-quick button:hover { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 50%, transparent); }
+/* Back to the newest message. */
+.spk-latest { position: absolute; left: 50%; bottom: 96px; z-index: 3; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--text); background: var(--float, var(--raised)); box-shadow: 0 0 0 1px var(--line-strong), 0 8px 24px rgba(0,0,0,.35); }
+.spk { position: relative; }
+/* The composer starts as one line and grows. */
+.spk .chat-composer textarea { min-height: 22px; max-height: 150px; resize: none; overflow-y: auto; }
+@media (prefers-reduced-motion: reduce) { .spk-dot.is-busy, .spk-now .is-live i { animation: none; } .spk-starters button, .spk-starters button svg { transition: none; } }
+.spk .spk-head .spk-who > .spk-pill { width: fit-content; max-width: 100%; flex: none; }
+/* Compact enough that the welcome fits the panel without scrolling. */
+.spk .spk-hello { gap: 6px; padding-top: 10px; }
+.spk .spk-hello-avatar { width: 64px; height: 64px; border-radius: 20px; }
+.spk .spk-starters { gap: 5px; margin-top: 6px; }
+.spk .spk-starters button { min-height: 34px; padding: 6px 12px; }

@@ -6,7 +6,7 @@ export interface CompanionPreferences {
   presence: "interaction" | "subtle" | "playful"; placement: "corner" | "room-header";
   celebration: "off" | "subtle" | "expressive"; sound: boolean; volume: number; focus: "hide" | "still";
   /** Spark, made yours: who it is, its colour and size on the desktop, how it talks, how you summon it. */
-  character: SparkCharacterId; color: string; size: "s" | "m" | "l";
+  character: SparkCharacterId; color: string; eyeColor: string; personality: string; size: "s" | "m" | "l";
   tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
   hotkey: SparkHotkey; guide: "click" | "manual";
   /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
@@ -15,18 +15,24 @@ export interface CompanionPreferences {
   listen: "auto" | "hold";
   /** On the desktop: pinned above every app, or (default) a normal window that comes forward when called, talking or teaching. */
   onTop: boolean;
+  desktopPlacement: "free" | "notch";
   /** Radio DJ: a short spoken intro when a new track or station starts. Off unless you turn it on. */
   dj: boolean;
   /** What you speak: "en" (fastest, live captions) or "auto" (any language; Spark answers in it). */
   language: "en" | "auto";
-  /** Spark's brain: "auto" = Claude, switching to a model on this Mac when Claude is out of usage; "local" = always on this Mac. */
+  /** Spark's brain: "auto" = shared connected-provider routing with local conversation fallback; "local" = always on this Mac. */
   brain: "auto" | "local";
+  modelChoice: string;
   /** Which local model: smart (gpt-oss 20B) or fast (Llama 3.2 3B). */
   localModel: "gpt-oss:20b" | "llama3.2:3b";
+  /** Follow my cursor: the collapsed companion rides beside the pointer, Clicky-style (on by default). */
+  follow: boolean;
   /** Keep going on its own: work handed to the crew becomes a mission Spark stays with to the end (on by default). */
   persist: boolean;
 }
-export const SPARK_CHARACTERS = ["spark", "orb", "byte", "kit", "blob"] as const;
+export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
+/** Retain saved legacy companions without offering them as new robot choices. */
+export const SPARK_CHARACTERS = [...ROBOT_CHARACTERS, "orb", "byte", "kit", "blob"] as const;
 export type SparkCharacterId = (typeof SPARK_CHARACTERS)[number];
 export const SPARK_HOTKEYS = { "ctrl-opt-space": "⌃⌥Space", "ctrl-shift-space": "⌃⇧Space", "opt-shift-space": "⌥⇧Space", "ctrl-opt-s": "⌃⌥S" } as const;
 export type SparkHotkey = keyof typeof SPARK_HOTKEYS;
@@ -39,12 +45,14 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
     character: choice("character", SPARK_CHARACTERS, "spark"), color: validFinish(v.color) ? (v.color === "theme" ? "theme" : v.color.toLowerCase()) : "theme",
+    eyeColor: typeof v.eyeColor === "string" && /^#[0-9a-f]{6}$/i.test(v.eyeColor) ? v.eyeColor.toLowerCase() : "#a5f3fc",
+    personality: typeof v.personality === "string" ? v.personality.slice(0, 1000) : "",
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
-    listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
-    brain: choice("brain", ["auto", "local"], "auto"), localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
-    persist: v.persist !== false };
+    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
+    modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) ? v.modelChoice.slice(0,160) : "", brain: choice("brain", ["auto", "local"], "auto"), localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
+    follow: v.follow !== false, persist: v.persist !== false };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

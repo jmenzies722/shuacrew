@@ -1,0 +1,340 @@
+.teaching {
+  max-width: 1240px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px;
+  overflow: auto;
+  min-height: 0;
+  color: var(--text);
+}
+.teaching-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.teaching-header small {
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.teaching h1 {
+  font-size: 25px;
+  font-weight: 600;
+  margin: 6px 0;
+  letter-spacing: -0.03em;
+}
+.teaching button,
+.teaching select {
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--text-2);
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.teaching button:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+.teaching button:disabled {
+  opacity: 0.45;
+}
+.teaching-session-tools,
+.teaching-step nav,
+.teaching-input-tools,
+.teaching-screen-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0;
+}
+.teaching-session-tools select {
+  max-width: 260px;
+}
+.teaching small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.teaching-answer,
+.teaching-step {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  margin: 14px 0;
+  line-height: 1.6;
+}
+.teaching-answer details {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.teaching summary {
+  cursor: pointer;
+}
+.teaching-drawing {
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--ink);
+}
+.teaching-canvas-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.teaching-canvas-tools > span {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.teaching-canvas {
+  height: 440px;
+  touch-action: none;
+  overscroll-behavior: contain;
+  background-image: radial-gradient(var(--line-strong) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.teaching-canvas svg {
+  display: block;
+  user-select: none;
+}
+.teaching-node {
+  cursor: grab;
+}
+.teaching-node > rect,
+.teaching-node > ellipse {
+  fill: var(--panel);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+.teaching-node.tone-accent > :is(rect, ellipse) {
+  stroke: var(--amber);
+}
+.teaching-node.tone-success > :is(rect, ellipse) {
+  stroke: var(--ok);
+}
+.teaching-node.tone-warning > :is(rect, ellipse) {
+  stroke: var(--wait);
+}
+.teaching-node.is-selected > :is(rect, ellipse) {
+  stroke: var(--amber);
+  stroke-width: 3;
+}
+.teaching-node.is-highlighted > :is(rect, ellipse) {
+  fill: color-mix(in srgb, var(--amber) 10%, var(--ink));
+}
+.teaching-node .text-only {
+  fill: none;
+  stroke: none;
+}
+.teaching-node text {
+  font: 14px system-ui;
+  fill: var(--text);
+  pointer-events: none;
+}
+.teaching-edge text {
+  font: 12px system-ui;
+  fill: var(--text-2);
+}
+.teaching-edge rect {
+  fill: var(--ink);
+  stroke: var(--line);
+}
+.teaching-group rect {
+  fill: color-mix(in srgb, var(--text) 3%, transparent);
+  stroke: var(--line-strong);
+  stroke-dasharray: 5 4;
+}
+.teaching-group text {
+  font: 12px system-ui;
+  fill: var(--text-2);
+}
+.teaching-object-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.teaching-object-editor input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px;
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 7px;
+}
+.teaching-step-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.teaching-step-heading > span {
+  color: var(--amber);
+  font-size: 12px;
+}
+.teaching h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.teaching-step > small {
+  display: block;
+  margin-top: 8px;
+}
+.teaching-compose {
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 16px;
+  background: var(--panel);
+}
+.teaching-compose textarea {
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px;
+  background: var(--ink);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.teaching-compose summary {
+  color: var(--text-2);
+  font-size: 12px;
+  margin: 10px 0;
+}
+.teaching-compose footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+.teaching-compose footer small {
+  flex: 1;
+}
+.teaching-compose footer button[type="submit"] {
+  background: var(--amber);
+  color: var(--on-accent);
+}
+.teaching-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 7px;
+}
+.teaching-notice,
+.teaching-empty {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 14px 0;
+}
+.teaching-error {
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.teaching.is-compact {
+  padding: 12px;
+  flex: 1;
+}
+.teaching.is-compact h1 {
+  font-size: 18px;
+}
+.teaching.is-compact .teaching-canvas {
+  height: 300px;
+}
+.teaching.is-compact .teaching-answer,
+.teaching.is-compact .teaching-step {
+  padding: 12px;
+}
+.teaching-answer {
+  max-height: 190px;
+  overflow: auto;
+}
+.teaching-canvas-tools select {
+  max-width: 180px;
+}
+.teaching.is-compact .teaching-canvas-tools select {
+  max-width: 95px;
+}
+.teaching:not(.is-compact) {
+  height: 100%;
+}
+
+.teaching-practice {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--panel);
+  display: grid;
+  gap: 10px;
+}
+.teaching-practice > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.teaching-practice span {
+  color: var(--amber);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+.teaching-practice p {
+  white-space: pre-wrap;
+  margin: 0;
+  line-height: 1.6;
+}
+.teaching-practice small {
+  color: var(--text-3);
+  line-height: 1.5;
+}
+.teaching-practice button {
+  justify-self: start;
+}
+
+.teaching-header > div {
+  min-width: 0;
+}
+.teaching-header button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.teaching.is-compact .teaching-header {
+  flex-wrap: wrap;
+}
+.teaching-canvas-tools {
+  flex-wrap: wrap;
+}
+.teaching-answer > summary {
+  font-size: 12px;
+  font-weight: 600;
+}
+.teaching:not(.is-compact) .teaching-answer > summary {
+  display: none;
+}
+.teaching.is-compact .teaching-answer[open] > summary {
+  margin-bottom: 12px;
+}
+.teaching.is-compact .teaching-answer:not([open]) {
+  padding: 12px;
+}
+.teaching-practice label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}

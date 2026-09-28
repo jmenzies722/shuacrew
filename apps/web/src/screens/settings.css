@@ -99,3 +99,25 @@
 .settings-group > h3 { font-size: 12px; font-weight: 500; color: var(--text-3); margin: 0 0 10px 4px; }
 .settings-sidebar-note { border-top: 0; margin-top: 24px; padding: 16px 14px; border-radius: 14px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
 .settings-sidebar-note p { font-size: 15px; }
+
+/* Connected workspace: readable settings even beside the companion. */
+.settings-page { container-type: inline-size; }
+.settings-layout { grid-template-columns: 176px minmax(0,1fr); gap: 30px; }
+.settings-hero { padding-bottom: 26px; margin-bottom: 28px; }
+.settings-hero h1 { letter-spacing: -.035em; }
+.settings-sidebar { align-self: start; }
+.settings-content { min-width: 0; }
+.settings-content .setting-detail, .settings-content .preference-row p { font-size: 13px; line-height: 1.6; }
+.settings-section-heading { background: transparent; box-shadow: none; padding: 3px 0 20px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.settings-section-heading h2 { font-size: 23px; letter-spacing: -.025em; }
+.settings-card { border-radius: 16px; }
+.settings-advanced-overview { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 18px; }
+.settings-advanced-overview > summary { font-size: 12px; color: var(--text-2); cursor: pointer; margin-bottom: 18px; }
+.settings-advanced-overview .cmd { display: flex; flex-direction: column; }
+.settings-page :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+@container (max-width: 850px) { .settings-layout { grid-template-columns: 148px minmax(0,1fr); gap: 20px; } .spark-hero { grid-template-columns: 1fr; gap: 18px; } .spark-stage { padding: 16px; } .preference-row { flex-wrap: wrap; } }
+@container (max-width: 620px) { .settings-layout { grid-template-columns: 1fr; } .settings-sidebar { position: static; } .settings-sidebar nav { display: flex; flex-direction: row; flex-wrap: wrap; } .settings-nav-label, .settings-sidebar-note { display: none; } .settings-sidebar nav button { padding: 7px 9px; font-size: 12px; } .settings-hero { display: block; } .settings-save { margin-top: 12px; } }
+
+@container settings-content (max-width: 680px) { .preference-row { align-items: flex-start; flex-direction: column; gap: 12px; } .setting-control { max-width:100%; flex-wrap:wrap; } .segmented { flex-wrap:wrap; max-width:100%; } }
+
+.settings-content { container: settings-content / inline-size; min-width:0; }

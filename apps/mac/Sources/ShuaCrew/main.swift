@@ -146,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ask = item("Ask the Crew", " ", #selector(quickAsk))
         ask.keyEquivalentModifierMask = [.option]
         file.addItem(ask)
+        file.addItem(item("Show Companion", "", #selector(askSpark)))
         file.addItem(.separator())
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 

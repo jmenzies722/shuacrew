@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, Keyboard, Mic, MonitorUp, MousePointerClick } from "lucide-react";
 import { api } from "../lib/api";
-import { saveCompanion, SPARK_CHARACTERS, useCompanion, type CompanionPreferences } from "../lib/companion";
+import { saveCompanion, ROBOT_CHARACTERS, useCompanion, type CompanionPreferences } from "../lib/companion";
 import { CHARACTER_INFO, SparkCharacter } from "./SparkCharacter";
 import { setSparkPanel } from "../lib/spark-panel";
 import "./welcome.css";
@@ -23,6 +23,9 @@ const GOALS = ["AI Platform Engineer", "Staff Software Engineer", "Founder shipp
 /** The first five minutes: your assistant, your goal, your engines, your permissions, and a first win. */
 export function Welcome({ onDone }: { onDone: () => void }) {
   const prefs = useCompanion();
+  // Keep editing separate from persisted normalization: an empty draft must
+  // stay empty while deleting/replacing a name, and spaces must survive typing.
+  const [nameDraft, setNameDraft] = useState(prefs.nickname);
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState(""), [runtimes, setRuntimes] = useState<Runtime[] | null>(null);
   const [perms, setPerms] = useState<{ screen?: boolean; hands?: boolean; mic?: boolean }>({});
@@ -55,9 +58,9 @@ export function Welcome({ onDone }: { onDone: () => void }) {
             <div className="wel-hero" style={sparkVars(prefs.color)}><SparkCharacter preferences={prefs} mood="happy" size={112} /></div>
             <h1>Welcome to ShuaCrew.</h1>
             <p>Your crew of AI engineers, and one assistant who's always with you: on your desktop, in the app, and in your ear. Make it yours.</p>
-            <div className="wel-chars">{SPARK_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })}><SparkCharacter preferences={{ ...prefs, character: id }} size={46} /><span>{CHARACTER_INFO[id].name}</span></button>)}</div>
+            <div className="wel-chars">{ROBOT_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })}><SparkCharacter preferences={{ ...prefs, character: id }} size={46} /><span>{CHARACTER_INFO[id].name}</span></button>)}</div>
             <div className="wel-row">
-              <label className="wel-name"><span>Name</span><input value={prefs.nickname} maxLength={24} placeholder="Spark" onChange={(e) => set({ nickname: e.target.value })} /></label>
+              <label className="wel-name"><span>Name</span><input value={nameDraft} maxLength={40} placeholder="Spark" onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { set({ nickname: nameDraft }); setNameDraft(nameDraft.trim() || "Spark"); }} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} /></label>
               <div className="wel-colors">{SPARK_FINISHES.filter((f) => ["theme", "#111114", "#f5b544", "#60a5fa", "grad:#a78bfa:#60a5fa", "grad:#f472b6:#f59e0b", "grad:#18181b:#7c3aed", "grad:#050506:#52525b"].includes(f.id)).map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}</div>
             </div>
           </>}

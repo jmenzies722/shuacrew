@@ -40,8 +40,11 @@ function theme(color: string) {
 export function Diagram({ code, color = "#8e48ff", onExpand, expanded, onSave }: { code: string; color?: string; onExpand?: (open: boolean) => void; expanded?: boolean; onSave?: (name: string, svg: string) => void }) {
   const id = `d${useId().replace(/[^a-z0-9]/gi, "")}`, host = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState(""), [error, setError] = useState(""), [zoom, setZoom] = useState(1), [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   useEffect(() => {
     let live = true;
+    setSvg(""); setError(""); setZoom(1); setCopyError("");
     void (async () => {
       try {
         const m = await mermaid();
@@ -54,20 +57,30 @@ export function Diagram({ code, color = "#8e48ff", onExpand, expanded, onSave }:
     })();
     return () => { live = false; };
   }, [code, color, id]);
-  const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } };
+  const copy = async () => { try { await navigator.clipboard.writeText(code); setCopyError(""); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setCopyError("Copy failed. Select the source from the message and copy it manually."); } };
   const title = /^\s*%%\s*title:\s*(.+)$/m.exec(code)?.[1]?.trim() ?? "architecture";
   return <figure className={`diagram ${expanded ? "is-expanded" : ""}`}>
     <div className="diagram-bar">
       <span>{title}</span>
       <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.4, z - 0.2))}><Minus size={12} /></button>
-      <button type="button" className="diagram-zoom" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+      <button type="button" className="diagram-zoom" title="Fit to width" aria-label="Fit diagram to width" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.2))}><Plus size={12} /></button>
       <button type="button" aria-label="Copy Mermaid source" title="Copy Mermaid source" onClick={() => void copy()}><Copy size={12} />{copied && <em>Copied</em>}</button>
       {onSave && svg && <button type="button" aria-label="Save as SVG" title="Save as SVG" onClick={() => onSave(`${title.replace(/[^\w-]+/g, "-").toLowerCase()}.svg`, svg)}><Download size={12} /></button>}
       {onExpand && <button type="button" aria-label={expanded ? "Smaller" : "Bigger canvas"} title={expanded ? "Smaller" : "Bigger canvas"} onClick={() => onExpand(!expanded)}>{expanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}</button>}
     </div>
-    <div className="diagram-canvas" ref={host}>
-      {svg ? <div className="diagram-svg" style={{ transform: `scale(${zoom})` }} dangerouslySetInnerHTML={{ __html: svg }} />
+    {copyError && <p className="diagram-notice" role="status">{copyError}</p>}
+    <div className="diagram-canvas" ref={host} tabIndex={0} role="region" aria-label={`${title} diagram. Use arrow keys to scroll; drag to pan.`}
+      onPointerDown={(e) => {
+        if (e.button !== 0 || (e.target as Element).closest("a")) return;
+        const el = e.currentTarget;
+        drag.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
+        el.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => { const start = drag.current; if (!start) return; e.currentTarget.scrollLeft = start.left - (e.clientX - start.x); e.currentTarget.scrollTop = start.top - (e.clientY - start.y); }}
+      onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}>
+
+      {svg ? <div className="diagram-svg" style={{ width: `${zoom * 100}%` }} dangerouslySetInnerHTML={{ __html: svg }} />
         : error ? <pre className="diagram-error">{error}{"\n\n"}{code}</pre> : <p className="diagram-loading">Drawing…</p>}
     </div>
   </figure>;

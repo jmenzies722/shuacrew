@@ -102,3 +102,10 @@ it("starts speaking at the first clause of a reply, but never chops a short open
   const t = "The Studio page in ShuaCrew is your radio, where you can play lofi.", first = nextSentences(t, 0);
   expect(nextSentences(t, first.upto, true).chunks).toEqual(["where you can play lofi."]); // the rest follows normally
 });
+
+it("does not present a guided click as verified success", () => {
+  const prompt = guideFollowUp("Open settings", { width: 800, height: 600 });
+  expect(prompt).toContain("success is not yet verified");
+  expect(prompt).toContain("keep the same goal");
+  expect(prompt).not.toContain("Done — I did");
+});

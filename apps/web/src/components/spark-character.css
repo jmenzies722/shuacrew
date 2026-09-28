@@ -2,7 +2,7 @@
 .spark-character > svg, .spark-character > .spark-art { width: 100%; height: 100%; overflow: visible; }
 /* Chat avatars: uniform zoom on the head, never a non-square stretch of the atlas cell. */
 .spark-character.is-portrait { overflow: hidden; }
-.spark-character.is-portrait > .spark-art { transform: scale(1.9); transform-origin: 50% 22%; }
+.spark-character.is-portrait > .spark-art { transform: translateX(-11%) scale(1.45); transform-origin: 50% 28%; }
 .spark-character.is-portrait > svg { width: 145%; height: 145%; margin-top: -6%; }
 .ch-face .ch-eyes ellipse { fill: var(--ch-face, #15151a); transform-box: fill-box; transform-origin: center; animation: ch-blink 4.2s infinite; }
 .ch-spark .ch-face { display: none; }
@@ -43,3 +43,24 @@
 @keyframes ch-breathe { 50% { transform: scale(1.03, .97) translateY(2px); } }
 @keyframes ch-z { 0% { opacity: 0; transform: translate(0, 4px) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -14px) scale(1.2); } }
 @media (prefers-reduced-motion: reduce) { .mood-sleepy::after { animation: none; opacity: .7; } }
+
+/* Machined shells, luminous visors, and a little body language. */
+.spark-character.is-portrait > svg.robot-art { width: 100%; height: 100%; margin: 0; }
+.robot-body { transform-box: view-box; transform-origin: 50% 75%; }
+.robot-eyes { transform-box: fill-box; transform-origin: center; animation: robot-blink 5.4s infinite; }
+.robot-head { transform-box: view-box; transform-origin: 50% 62%; }
+.robot-mouth { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.robot-thruster { transform-box: fill-box; transform-origin: top; animation: robot-jet 1.6s ease-in-out infinite; }
+.robot-arm-right { transform-box: view-box; transform-origin: 72% 65%; }
+.mood-speaking .robot-smile { opacity: 0; }
+.mood-speaking .robot-mouth { opacity: 1; animation: ch-talk .3s ease-in-out infinite alternate; }
+.mood-thinking .robot-head { transform: rotate(-6deg); }
+.mood-thinking .robot-eyes { translate: 2px -1px; }
+.mood-happy .robot-arm-right { animation: robot-wave .65s ease-in-out 3; }
+.mood-concerned .robot-head { transform: rotate(5deg); }
+.mood-sleepy .robot-eyes { transform: scaleY(.15); animation: none; }
+.mood-sleepy .robot-head { transform: rotate(-7deg); }
+@keyframes robot-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.12); } }
+@keyframes robot-wave { 50% { transform: rotate(-48deg); } }
+@keyframes robot-jet { 50% { transform: scaleY(.6); opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .robot-art * { animation: none !important; } }

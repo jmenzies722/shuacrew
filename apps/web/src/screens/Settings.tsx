@@ -12,6 +12,8 @@ import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
 import { DiagnosticsSettings, FailoverSettings, FlagSettings, GitSettings, InstructionsSettings, LookSettings, MenuBarSettings, QuietHoursSettings, SafetySettings, SoundSettings, SpeechStorageSettings } from "../components/BatchSettings";
+import { MotionSettings } from "../components/MotionSettings";
+import { ConnectedSettings } from "../components/ConnectedSettings";
 import { SettingsCommand } from "../components/SettingsCommand";
 import { ShortcutSettings } from "../components/ShortcutSettings";
 import { WidgetSettings } from "../components/WidgetSettings";
@@ -66,7 +68,7 @@ export function Settings() {
   const [section, setSection] = useState<Section>(() => sectionFromHash(window.location.hash));
   // The workspace dashboard greets you on plain Settings; a deep link or a section click goes straight to the settings.
   const [overview, setOverview] = useState(() => !window.location.hash);
-  useEffect(() => { const on = () => setSection(sectionFromHash(window.location.hash)); window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
+  useEffect(() => { const on = () => { setSection(sectionFromHash(window.location.hash)); setOverview(!window.location.hash); setQuery(""); }; window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
   const [query, setQuery] = useState("");
   const saved = useLive((s) => s.preferenceSaved);
   const set = useLive((s) => s.setAppearance);
@@ -104,7 +106,7 @@ export function Settings() {
     { id: "hud", section: "developer", title: "Live HUD", terms: "hud overlay fps events per second stream lag connection debug floating", body: <HudToggle /> },
     { id: "gateway-log", section: "developer", title: "Gateway log", terms: "log logs gateway errors crash stderr tail search", body: <GatewayLog /> },
     { id: "storage", section: "developer", title: "Storage", terms: "disk storage size space database library models snapshots usage bytes", body: <StorageUsage /> },
-    { id: "spark", section: "play", title: "Make it yours", terms: "spark desktop buddy companion character orb byte kit blob robot name nickname colour color size personality tone voice talk speak hotkey shortcut guide show me steps spotlight clicky screen screenshot point open apps actions", body: <SparkSettings /> },
+    { id: "spark", section: "play", title: "Make it yours", terms: "spark notch presence brain intelligence desktop buddy companion character orb byte kit blob robot name nickname colour color size personality tone voice talk speak hotkey shortcut guide show me steps spotlight clicky screen screenshot point open apps actions", body: <SparkSettings searching={!!query.trim()} /> },
     { id: "tool-cards", section: "chat", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
     { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">
       <p>Choose which crew rooms leave this Mac, compare pairing fingerprints, and revoke devices in the native setup window. Mobile sync is off by default.</p>
@@ -116,6 +118,7 @@ export function Settings() {
     { id: "reading", section: "appearance", title: "Reading & motion", terms: "font size small large text accessibility animations reduced motion", body: <div className="settings-card">
       <Choice name="Reading size" detail="Agent responses and documents. Code scales with the text." field="reading" options={[["small", "Small"], ["default", "Default"], ["large", "Large"]]} />
       <Choice name="Motion" detail="Control transitions, animated counters, and decorative effects." field="motion" options={[["system", "Follow system"], ["reduced", "Reduced"], ["full", "Full"]]} />
+      <MotionSettings />
       <div className="reading-preview"><span className="settings-kicker">READING PREVIEW</span><div className="prose-agent"><p>Your crew is ready for the next idea.</p><p>Clear context, useful tools, and room to focus. Start with a question and build from there.</p></div></div>
     </div> },
     { id: "layout", section: "workspace", title: "Layout & navigation", terms: "density comfortable compact labels icons rail sidebar start page home screen floor board today ventures", body: <div className="settings-card">
@@ -149,20 +152,19 @@ export function Settings() {
     setNotice(`${selected.title} restored to defaults.`);
   };
   return <div className="settings-page">
-    <header className="settings-hero"><div><span className="settings-kicker"><SlidersHorizontal size={12} /> YOUR WORKSPACE</span><h1>Make room for your best work.</h1><p>The look, the flow, the intelligence. Make ShuaCrew yours.</p></div><span className="settings-save" role="status">{saved ? <><Check size={13} /> Preferences save on this device</> : "Storage unavailable · changes last this session"}</span></header>
-    {overview && <SettingsCommand go={(hash) => { window.location.hash = hash; setSection(sectionFromHash(`#${hash}`)); setQuery(""); setOverview(false); }} />}
+    <header className="settings-hero"><div><span className="settings-kicker"><SlidersHorizontal size={12} /> YOUR WORKSPACE</span><h1>Your workspace, connected.</h1><p>A place for your best work. A companion for everything around it.</p></div><span className="settings-save" role="status">{saved ? <><Check size={13} /> Preferences save on this device</> : "Storage unavailable · changes last this session"}</span></header>
     <div className="settings-layout"><aside className="settings-sidebar">
-      <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => setQuery(e.target.value)} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
+      <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => { setQuery(e.target.value); if (e.target.value) setOverview(false); }} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
       {!overview && <button type="button" className="settings-overview-link" onClick={() => { setOverview(true); history.replaceState(null, "", "/settings"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Workspace overview</button>}
       <nav aria-label="Settings sections">{SECTIONS.map(({ id, title, group, icon: Icon }, i) => <Fragment key={id}>
         {SECTIONS[i - 1]?.group !== group && <span className="settings-nav-label">{group}</span>}
-        <button aria-current={!words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); setOverview(false); }}><i className="settings-ico" data-group={group}><Icon size={14} strokeWidth={2} /></i><span>{title}</span></button>
+        <button type="button" aria-current={!overview && !words.length && section === id ? "page" : undefined} onClick={() => { setSection(id); setQuery(""); setNotice(""); setOverview(false); window.location.hash = id; }}><i className="settings-ico" data-group={group}><Icon size={14} strokeWidth={2} /></i><span>{title}</span></button>
       </Fragment>)}</nav>
       <div className="settings-sidebar-note"><span className="settings-kicker">BUILT AROUND YOU</span><p>One workspace.<br />Your entire crew.</p><Link to="/crew">Meet your agents ↗</Link></div>
-    </aside><div className="settings-content"><div className="settings-section-heading">{!words.length && <i className="settings-ico settings-ico-lg" data-group={selected.group}><selected.icon size={20} strokeWidth={1.9} /></i>}<div className="settings-heading-text"><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && ["appearance", "workspace", "chat"].includes(section) && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
+    </aside><div className="settings-content">{overview && !words.length ? <><ConnectedSettings go={hash => { window.location.hash = hash; setOverview(false); }} /><details className="settings-advanced-overview"><summary>Modes, settings history & workspace setup</summary><SettingsCommand go={hash => { window.location.hash = hash; setOverview(false); }} /></details></> : <><div className="settings-section-heading">{!words.length && <i className="settings-ico settings-ico-lg" data-group={selected.group}><selected.icon size={20} strokeWidth={1.9} /></i>}<div className="settings-heading-text"><h2>{words.length ? "Search results" : selected.title}</h2><p>{words.length ? `${visible.length} matching groups for “${query}”` : selected.description}</p></div>{!words.length && ["appearance", "workspace", "chat"].includes(section) && <button className="settings-reset" onClick={reset}><RotateCcw size={13} /> Reset section</button>}</div>
       {notice && <p role="status" className="settings-notice">{notice}</p>}
       {!visible.length && <div className="settings-empty"><Search size={28} /><h3>No settings found</h3><p>Try “motion”, “model”, “navigation”, or “backup”.</p></div>}
       {visible.map((g) => <section key={g.id} aria-label={g.title} className="settings-group"><h3>{words.length > 0 && <span>{SECTIONS.find((s) => s.id === g.section)!.title} / </span>}{g.title}</h3>{g.body}</section>)}
-    </div></div>
+    </>}</div></div>
   </div>;
 }

@@ -27,13 +27,15 @@ import {
   type Layer,
   type PolicyContext,
   type RunStatus,
+  type IntelligenceRequest,
 } from "@shuacrew/core";
-import type { ApprovalAnswer, Runtime, RunSpec } from "@shuacrew/runtimes";
+import type { ApprovalAnswer, Runtime, RunSpec, RuntimeStatus } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
 import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
+import { selectIntelligence } from "./intelligence.js";
 import { inputDigest } from "./mobile/digest.js";
 
 export interface LaunchSpec {
@@ -101,6 +103,15 @@ export class Supervisor {
   private approveAll = new Set<string>();
   private resumeTimers = new Map<string, NodeJS.Timeout>();
   readonly worktrees = new Worktrees();
+  private runtimeSnapshots = new Map<string, { status: RuntimeStatus; models?: string[] }>();
+  updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
+  intelligence(request: IntelligenceRequest) {
+    return selectIntelligence(request, [...this.runtimes.values()].map(runtime => {
+      const snapshot = this.runtimeSnapshots.get(runtime.id);
+      return { ...runtime, models: snapshot?.models ? runtime.models.filter(m => snapshot.models!.includes(m.id)) : runtime.models,
+        status: snapshot?.status ?? { installed: true, signedIn: null, detail: "Not checked", overridingKeys: [] }, limits: this.activeLimits(runtime.id) };
+    }), this.options.settings?.() ?? { router: [], failoverOrder: [] });
+  }
 
   constructor(
     private store: EventStore,
@@ -156,9 +167,15 @@ export class Supervisor {
     if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
     if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? member.model };
-    // Your router rules apply only when agent and model were left on Auto (never over a member or an explicit choice).
-    const rule = !member && !spec.runtime && !spec.model && this.options.settings ? matchRoute(this.options.settings().router, spec.ask) : undefined;
-    if (rule) spec = { ...spec, runtime: rule.runtime && this.runtimes.has(rule.runtime) ? rule.runtime : undefined, model: rule.model || undefined, effort: spec.effort || rule.effort || undefined, labels: [...(spec.labels ?? []), `rule:${rule.name}`] };
+    // Auto and Spark use one routing policy. Explicit choices and crew-member defaults stay explicit.
+    if (!member && !spec.runtime && !spec.model) {
+      const rule = this.options.settings ? matchRoute(this.options.settings().router, spec.ask) : undefined;
+      const choice = this.intelligence({ ask: spec.ask, mode: "auto", purpose: spec.labels?.includes("buddy") ? "conversation" : "work", images: false, tier: "balanced" });
+      if (choice.runtime) spec = { ...spec, runtime: choice.runtime, model: choice.model };
+      else if ([...this.runtimes.keys()].some(id => id !== "mock")) throw new Error(choice.reason);
+      else if (rule) spec = { ...spec, model: rule.model || undefined }; // scripted demo fixtures have no real model catalogue
+      if (rule) spec = { ...spec, effort: spec.effort || rule.effort || undefined, labels: [...(spec.labels ?? []), `rule:${rule.name}`] };
+    }
     const runtime = spec.runtime ?? this.defaultRuntime();
     this.rec(
       "run.created",
@@ -334,6 +351,7 @@ export class Supervisor {
     const ask = this.expand(spoken);
     this.rec("turn.started", { turn, text: spoken, by: "you" }, { run: runId });
     const started = Date.now();
+    const attemptSeq = this.store.head;
     const policy = this.policyFor(runId, cwd);
     // A conversation id only means something to the runtime that owns it. A run that moved to
     // another agent starts a fresh conversation there, with a recap of the work so far.
@@ -436,6 +454,7 @@ export class Supervisor {
             ended = true;
             return;
           case "done":
+            this.confirmRecovery(runtime.id, model, attemptSeq);
             this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
             this.rec(
               "turn.completed",
@@ -519,7 +538,10 @@ export class Supervisor {
   // ── the usage window ────────────────────────────────────────────────────────────────
 
   private limited(run: string, runtime: string, until: number, message: string, model?: string, credits?: boolean): void {
+    // Some providers return a reset already in the past. Never turn that into a tight retry loop.
+    until = Number.isFinite(until) && until > Date.now() ? Math.max(until, Date.now() + 1000) : Date.now() + 30_000;
     this.rec("runtime.limited", { runtime, model, until, message, credits });
+    this.scheduleResume(runtime, until, model);
     // Moves are capped, so a run never bounces between limits forever; past that it waits.
     const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && / is out until | needs usage credits /.test(e.body.reason)).length;
     const created = this.store.forRun(run).find((e) => e.kind === "run.created");
@@ -555,35 +577,57 @@ export class Supervisor {
 
   private scheduleResume(runtime: string, until: number, model?: string): void {
     const key = model ? `${runtime}:${model}` : runtime;
+    const generation = this.unresolvedLimits(runtime).find(l => l.model === model)?.seq;
     clearTimeout(this.resumeTimers.get(key));
-    // setTimeout can't wait longer than ~24.8 days; re-check daily for longer windows.
-    const timer = setTimeout(() => (until - Date.now() > 1000 ? this.scheduleResume(runtime, until, model) : this.restore(runtime, model)), Math.min(Math.max(0, until - Date.now()), 86_400_000));
-    timer.unref?.();
-    this.resumeTimers.set(key, timer);
+    const timer = setTimeout(() => {
+      this.resumeTimers.delete(key);
+      const latest = this.unresolvedLimits(runtime).find(l => l.model === model);
+      if (!latest) return;
+      if (latest.seq !== generation || latest.until > Date.now()) { this.scheduleResume(runtime, latest.until, model); return; }
+      this.restore(runtime, model, generation);
+    }, Math.min(Math.max(0, until - Date.now()), 86_400_000));
+    timer.unref?.(); this.resumeTimers.set(key, timer);
   }
 
-  /** A window reset (or you said "try now"): paused runs go back in the queue. */
-  restore(runtime: string, model?: string): void {
-    this.rec("runtime.restored", { runtime, model });
+  /** A reset or manual retry makes a restriction eligible to try; only a completed response confirms recovery. */
+  restore(runtime: string, model?: string, limitSeq?: number): void {
+    const limits = this.unresolvedLimits(runtime).filter(l => limitSeq !== undefined ? l.seq === limitSeq : model === undefined || l.model === model);
+    for (const l of limits) {
+      if (!this.isRetrying(l.seq)) this.rec("runtime.retrying", { runtime, model: l.model, limitSeq: l.seq });
+      const key = l.model ? `${runtime}:${l.model}` : runtime;
+      clearTimeout(this.resumeTimers.get(key)); this.resumeTimers.delete(key);
+    }
     for (const run of this.projectRuns()) {
-      if (run.status === "paused" && this.currentRuntime(run.id, run.runtime) === runtime) this.setStatus(run.id, "queued", "usage window reset");
+      if (run.status !== "paused" || this.currentRuntime(run.id, run.runtime) !== runtime) continue;
+      const wanted = this.modelFor(run.id, runtime, run.model);
+      if (model && wanted !== model) continue;
+      if (this.limitedUntil(runtime, wanted) > Date.now()) continue;
+      this.setStatus(run.id, "queued", "retrying provider — availability unconfirmed");
     }
     this.pump();
   }
 
-  /** The limits in force on an agent, each for a model or (no model) the whole agent. */
-  private activeLimits(runtime: string): Array<{ model?: string; until: number }> {
+  private isRetrying(seq: number): boolean {
+    return this.store.ofKinds("runtime.retrying", seq).some(e => e.kind === "runtime.retrying" && e.body.limitSeq === seq);
+  }
+
+  private unresolvedLimits(runtime: string): Array<{ seq: number; model?: string; until: number }> {
     const limits = new Map<string, { seq: number; model?: string; until: number }>();
     for (const e of this.store.ofKinds("runtime.limited")) {
       if (e.kind === "runtime.limited" && e.body.runtime === runtime) limits.set(e.body.model ?? "*", { seq: e.seq, model: e.body.model, until: e.body.until });
     }
-    const now = Date.now();
-    return [...limits.values()].filter((l) => {
-      if (l.until <= now) return false;
-      return !this.store
-        .ofKinds("runtime.restored", l.seq)
-        .some((e) => e.kind === "runtime.restored" && e.body.runtime === runtime && (!e.body.model || e.body.model === l.model));
-    });
+    return [...limits.values()].filter(l => !this.store.ofKinds("runtime.restored", l.seq).some(e => e.kind === "runtime.restored" && e.body.runtime === runtime &&
+      (e.body.limitSeq !== undefined ? e.body.limitSeq === l.seq : !e.body.model || e.body.model === l.model)));
+  }
+
+  private activeLimits(runtime: string): Array<{ model?: string; until: number }> {
+    return this.unresolvedLimits(runtime).filter(l => l.until > Date.now() && !this.isRetrying(l.seq));
+  }
+
+  private confirmRecovery(runtime: string, model: string | undefined, attemptSeq: number): void {
+    for (const l of this.unresolvedLimits(runtime)) {
+      if (l.seq <= attemptSeq && (!l.model || l.model === model)) this.rec("runtime.restored", { runtime, model: l.model, limitSeq: l.seq });
+    }
   }
 
   /** Models this agent can't use right now, and why — for the model picker. */
@@ -868,8 +912,8 @@ export class Supervisor {
   }
 
   /** Runs the supervisor may execute — never a held run (a task's parent; its steps do the work). */
-  private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; priority: number; seq: number; labels: string[] }> {
-    const runs = new Map<string, { id: string; status: RunStatus; runtime: string; priority: number; seq: number; labels: string[] }>();
+  private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; model?: string; priority: number; seq: number; labels: string[] }> {
+    const runs = new Map<string, { id: string; status: RunStatus; runtime: string; model?: string; priority: number; seq: number; labels: string[] }>();
     const held = new Set<string>();
     const visit = (e: AnyEvent) => {
       if (!e.run || held.has(e.run)) return;
@@ -877,7 +921,7 @@ export class Supervisor {
         held.add(e.run);
         return;
       }
-      if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, priority: 0, seq: e.seq, labels: e.body.labels });
+      if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, model: e.body.model, priority: 0, seq: e.seq, labels: e.body.labels });
       const r = runs.get(e.run);
       if (!r) return;
       if (e.kind === "run.status") r.status = e.body.status;
@@ -910,7 +954,7 @@ export class Supervisor {
       }
       if (run.status === "paused") {
         const agent = this.currentRuntime(run.id, run.runtime);
-        const limits = this.activeLimits(agent);
+        const limits = this.unresolvedLimits(agent);
         if (limits.length) for (const l of limits) this.scheduleResume(agent, l.until, l.model);
         else this.setStatus(run.id, "queued", "usage window reset while the gateway was down");
       }

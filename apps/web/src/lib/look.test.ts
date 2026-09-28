@@ -29,3 +29,12 @@ it("the theme owns the accent: a custom accent saved by an older version is clea
   expect(vars.has("--amber")).toBe(false); expect(vars.has("--on-accent")).toBe(false);
   expect(contrast("#ffffff", "#000000")).toBeCloseTo(21, 0);
 });
+
+it("persists the motion character and safely migrates older settings", () => {
+  expect(parseLook({}).motionStyle).toBe("responsive");
+  expect(parseLook({ motionStyle: "expressive" }).motionStyle).toBe("expressive");
+  expect(parseLook({ motionStyle: "invalid" }).motionStyle).toBe("responsive");
+  const root = { style: { setProperty() {}, removeProperty() {} }, dataset: {} as Record<string, string> };
+  applyLook(parseLook({ motionStyle: "calm" }), root as unknown as HTMLElement);
+  expect(root.dataset.motionStyle).toBe("calm");
+});

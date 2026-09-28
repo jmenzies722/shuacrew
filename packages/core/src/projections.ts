@@ -206,7 +206,7 @@ export interface CrewState {
   backup?: { file: string; bytes: number; at: number; error?: string };
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
-  limited: Record<string, { until: number; message: string; credits?: boolean }>;
+  limited: Record<string, { until: number; message: string; credits?: boolean; seq?: number; retrying?: boolean }>;
   today: { day: string; tokens: number; costUsd: number | null; records?: number; runs: number };
 }
 
@@ -578,9 +578,19 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       if (run && !run.lessons.includes(event.body.id)) run.lessons.push(event.body.id);
       break;
     case "runtime.limited":
-      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message, credits: event.body.credits };
+      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message, credits: event.body.credits, seq: event.seq };
       break;
+    case "runtime.retrying": {
+      const key = event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime;
+      if (state.limited[key]?.seq === event.body.limitSeq) state.limited[key]!.retrying = true;
+      break;
+    }
     case "runtime.restored":
+      if (event.body.limitSeq !== undefined) {
+        const key = event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime;
+        if (state.limited[key]?.seq === event.body.limitSeq) delete state.limited[key];
+        break;
+      }
       // A restore without a model lifts everything on that agent; with one, just that model.
       for (const key of Object.keys(state.limited)) {
         if (event.body.model ? key === `${event.body.runtime} · ${event.body.model}` : key === event.body.runtime || key.startsWith(`${event.body.runtime} · `)) delete state.limited[key];

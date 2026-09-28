@@ -1,3 +1,5 @@
+import "./session-chat.css";
+import "../components/chat-composer.css";
 import { plain } from "../lib/plain";
 import type { RunView } from "@shuacrew/core/projections";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -119,7 +121,7 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  */
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
-  const [changes, setChanges] = useState(true);
+  const [changes, setChanges] = useState(false);
   useEffect(() => {
     const show = () => setChanges(true);
     window.addEventListener("shuacrew:open-file", show);
@@ -355,7 +357,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       ) : run.labels.includes("crew-room") ? (
         <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This is a crew-room source conversation. <Link to="/rooms/$id" params={{ id: run.labels.find(label => label.startsWith("room:"))?.slice(5) ?? "" }}>Continue in the crew room →</Link></div>
       ) : (
-        <Composer run={run} />
+        <Composer key={run.id} run={run} />
       )}
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
@@ -614,6 +616,9 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const [effort, setEffort] = useState<string>(defaults.effort);
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [commandsDismissed, setCommandsDismissed] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const commandList = useRef<HTMLDivElement>(null);
   const [skills, setSkills] = useState<Array<{ name: string; status: string }>>([]);
   const [servers, setServers] = useState<Array<{ name: string }>>([]);
   const [files, setFiles] = useState<Array<{ key: string; name: string; size: number; preview?: string; done?: Attachment; failed?: string }>>([]);
@@ -725,7 +730,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const slashPrefix = /^\/(\w*)$/.exec(text.trim());
   const mention = !run ? /^@(\w*)$/.exec(text.trim()) : null;
   const named = /^\/(skill|mcp)\s+(\S*)$/.exec(text);
-  const slash = mention
+  const candidates = mention
     ? Object.values(members)
         .filter((m) => m.name.toLowerCase().startsWith(mention[1]!.toLowerCase()) || m.role.toLowerCase().startsWith(mention[1]!.toLowerCase()))
         .map((m) => ({ kind: "member" as const, name: m.id, label: `@${m.name}`, hint: m.role, icon: Users }))
@@ -739,6 +744,17 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
       : named?.[1] === "mcp"
         ? servers.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "mcp" as const, name: s.name, hint: "Use this server on the next message", icon: Cable }))
         : [];
+  const slash = commandsDismissed ? [] : candidates;
+  const activeCommand = Math.min(slashIndex, Math.max(0, slash.length - 1));
+  useEffect(() => {
+    const list = commandList.current;
+    const row = list?.children[activeCommand] as HTMLElement | undefined;
+    if (!list || !row) return;
+    // Scroll only the tray, never the surrounding conversation or page.
+    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight)
+      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+  }, [activeCommand, slash.length]);
   const chosen = runtimes.find((r) => r.id === runtime);
   const recent = useMemo<string[]>(() => {
     try {
@@ -769,6 +785,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
       void cyclePermission();
       setText("");
     } else setText(`/${name} `);
+    setSlashIndex(0);
+    setCommandsDismissed(false);
     field.current?.focus();
   };
 
@@ -861,22 +879,18 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     <div className={hero ? "mt-7 min-w-0" : "shrink-0 px-4 pb-3 pt-1"}>
       <div className={`relative mx-auto min-w-0 ${hero ? "" : "max-w-[var(--chat-width,820px)]"}`}>
         {slash.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-[12px] border border-line-strong bg-raised shadow-[0_18px_50px_rgba(0,0,0,.35)]" role="listbox" aria-label="Commands">
-            {slash.map((c, i) => (
-              <button
-                key={c.name}
-                role="option"
-                aria-selected={i === slashIndex}
-                onMouseEnter={() => setSlashIndex(i)}
-                onClick={() => pick(c.name, c.kind)}
-                className={`flex w-full items-center gap-3 px-3.5 py-2 text-left text-[13px] ${i === slashIndex ? "bg-ink" : ""}`}
-              >
-                <c.icon size={14} className="text-amber" />
-                <span className="mono text-fg">{"label" in c ? c.label : c.kind === "cmd" || c.kind === "snippet" ? `/${c.name}` : c.name}</span>
-                <span className="truncate text-[12px] text-fg-3">{c.hint}</span>
-              </button>
-            ))}
-          </div>
+          <section className="composer-commands" aria-label="Command suggestions">
+            <header><span>Commands <small>{slash.length}</small></span><button onClick={() => { setCommandsDismissed(true); field.current?.focus(); }} aria-label="Dismiss commands">Esc <X size={12} /></button></header>
+            <div ref={commandList} className="composer-command-list" id="session-commands" role="listbox" aria-label="Commands">
+              {slash.map((c, i) => (
+                <button key={`${c.kind}:${c.name}`} id={`session-command-${i}`} role="option" aria-selected={i === activeCommand}
+                  tabIndex={-1} onMouseDown={e => e.preventDefault()} onMouseEnter={() => setSlashIndex(i)} onClick={() => pick(c.name, c.kind)}>
+                  <c.icon size={15} /><span><b>{"label" in c ? c.label : c.kind === "cmd" || c.kind === "snippet" ? `/${c.name}` : c.name}</b><small>{c.hint}</small></span>
+                  {i === activeCommand && <kbd>↵</kbd>}
+                </button>
+              ))}
+            </div>
+          </section>
         )}
         {dropping && (
           <div className="drop-overlay" aria-hidden>
@@ -889,7 +903,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             {power.presets.map((p) => <button key={p.id} type="button" className="preset-chip" title={presetTitle(p)} onClick={() => applyPreset(p)}><Zap size={11} />{p.label}</button>)}
           </div>
         )}
-        <div className={`composer-box ${hero ? "is-hero" : ""}`}>
+        <div className={`composer-box chat-composer ${hero ? "is-hero" : ""}`}>
           {files.length > 0 && (
             <div className="mb-2.5 flex flex-wrap gap-2">
               {files.map((f) => (
@@ -951,8 +965,12 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             onChange={(e) => {
               setText(e.target.value);
               setSlashIndex(0);
+              setCommandsDismissed(false);
             }}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+              if (e.key === "Escape" && slash.length) { e.preventDefault(); e.stopPropagation(); setCommandsDismissed(true); return; }
+              if (e.key === "Tab" && !e.shiftKey && slash.length) { e.preventDefault(); pick(slash[activeCommand]!.name, slash[activeCommand]!.kind); return; }
               if (slash.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                 e.preventDefault();
                 setSlashIndex((i) => (i + (e.key === "ArrowDown" ? 1 : slash.length - 1)) % slash.length);
@@ -960,7 +978,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               }
               if (shouldSend(e.nativeEvent, slash.length && sendShortcut !== "button-only" ? "enter" : sendShortcut)) {
                 e.preventDefault();
-                if (slash.length) pick(slash[slashIndex]!.name, slash[slashIndex]!.kind);
+                if (slash.length) pick(slash[activeCommand]!.name, slash[activeCommand]!.kind);
                 else void send();
               }
             }}
@@ -973,9 +991,12 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               }
             }}
             {...({ writingsuggestions: "false" } as object)}
-            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "Message ShuaCrew… just say what you want done  ( / for commands )"}
+            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "What do you want to build?  / for commands"}
             className="block max-h-[240px] w-full resize-none bg-transparent text-[14px] leading-relaxed text-fg outline-none placeholder:text-fg-3"
             aria-label="Message"
+            aria-controls={slash.length ? "session-commands" : undefined}
+            aria-activedescendant={slash.length ? `session-command-${activeCommand}` : undefined}
+            aria-autocomplete="list"
           />
           <div className="composer-tools">
             <input ref={picker} type="file" multiple hidden onChange={(e) => (e.target.files && attach(e.target.files), (e.target.value = ""))} />
@@ -983,19 +1004,10 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               <Paperclip size={14} />
             </button>
             <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
-            <button className="rounded-full px-2 py-1 text-[11px] text-fg-2 hover:bg-raised" title="Talk with Shua or a crew member" onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:voice", { detail: { runId: run?.member ? run.id : undefined, memberId: run?.member || member || "shua", runtime: run?.runtime || runtime || undefined } }))}>Voice mode</button>
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
-            {!run && <Toggle on={race} onClick={() => setRace((v) => !v)} icon={<Swords size={12} />} label="Race" title="Send this to Claude and Codex at once, each in its own branch — compare and keep the better one" />}
-            {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
-            {run?.worktree && (
-              <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>
-                <GitBranch size={12} /> {run.worktree.branch}
-                {run.files.length > 0 && <span className="text-amber">· {run.files.length} changed</span>}
-              </span>
-            )}
-            {run && <ContextMeter used={run.usage.contextUsed} limit={run.usage.contextLimit} />}
+            <button className="composer-options-toggle" aria-expanded={optionsOpen} aria-controls="session-options" onClick={() => setOptionsOpen(v => !v)}>Options{race || task ? " · active" : ""} <ChevronDown size={12} /></button>
             <div className="ml-auto flex items-center gap-2">
-              {error && <span className={`text-[12px] ${/^(Learned|Scheduled)/.test(error) ? "text-ok" : "text-bad"}`}>{error}</span>}
+
               {working && !text.trim() && !files.length && run ? (
                 <button onClick={() => void cancelRun(run.id)} className="grid h-8 w-8 place-items-center rounded-full bg-raised text-fg hover:bg-line-strong" title="Stop" aria-label="Stop">
                   <CircleStop size={15} />
@@ -1014,6 +1026,19 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             </div>
           </div>
         </div>
+        {error && <div className="composer-feedback" role="status"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss message"><X size={13} /></button></div>}
+        {optionsOpen && <div className="composer-options" id="session-options">
+            <button className="rounded-full px-2 py-1 text-[11px] text-fg-2 hover:bg-raised" title="Talk with Shua or a crew member" onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:voice", { detail: { runId: run?.member ? run.id : undefined, memberId: run?.member || member || "shua", runtime: run?.runtime || runtime || undefined } }))}>Voice mode</button>
+            {!run && <Toggle on={race} onClick={() => setRace((v) => !v)} icon={<Swords size={12} />} label="Race" title="Send this to Claude and Codex at once, each in its own branch — compare and keep the better one" />}
+            {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
+            {run?.worktree && (
+              <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>
+                <GitBranch size={12} /> {run.worktree.branch}
+                {run.files.length > 0 && <span className="text-amber">· {run.files.length} changed</span>}
+              </span>
+            )}
+            {run && <ContextMeter used={run.usage.contextUsed} limit={run.usage.contextLimit} />}
+        </div>}
         {!run && (
           <div className="composer-meta">
             {isMac() ? (
@@ -1045,7 +1070,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                 }}
                 options={[{ value: "", label: "Auto agent" }, ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]}
               />
-              <Select
+              {optionsOpen && <><Select
                 value={model}
                 onChange={setModel}
                 options={[
@@ -1053,7 +1078,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.unavailable ? `${m.label} · ${m.unavailable}` : m.label, disabled: Boolean(m.unavailable) })),
                 ]}
               />
-              <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} />
+              <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} /></>}
             </span>
           </div>
         )}
@@ -1317,7 +1342,7 @@ function GettingStarted() {
 function TodayBriefing() {
   const briefing = useLive((s) => s.crew.briefing);
   const navigate = useNavigate();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const today = new Date();
   const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;

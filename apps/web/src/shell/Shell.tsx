@@ -32,6 +32,8 @@ import { CompactRail, HubSidebar, HubTabs, setSidebarWide, useSidebarWide } from
 import { Welcome, welcomed } from "../components/Welcome";
 import { Buddy } from "../screens/Buddy";
 import { setSparkPanel, toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
+import { WorkspaceSpark } from "../components/WorkspaceSpark";
+import "../polish.css";
 import { RadioHost } from "../components/NowPlaying";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
@@ -88,7 +90,8 @@ export function Shell() {
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
-        <motion.div key={section} className="min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
+        {!flow && <WorkspaceSpark section={section} />}
+        <motion.div key={section} className="workspace-scene min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
         </div>
@@ -161,7 +164,7 @@ function TopBar() {
       <StatusIsland ctx={{ go: (path) => void navigate({ to: path }) }} running={running} connection={connection}
         limits={limited.map(([key, info]) => {
           const [runtime, model] = key.split(" · "), soon = info.until - Date.now() < 86_400_000;
-          return { key, label: model ?? runtime ?? key, message: info.message, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
+          return { key, label: model ?? runtime ?? key, message: info.message, retrying: info.retrying, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
         })}
         tokens={formatTokens(crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0)} />
       <SparkButton />

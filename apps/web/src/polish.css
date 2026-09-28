@@ -1,0 +1,38 @@
+/* Shared Mac workspace finish. Colors remain owned by the chosen palette. */
+:root { --scene-distance: 5px; --scene-duration: 240ms; --interaction-lift: -1px; --motion-ease: cubic-bezier(.2,.75,.25,1); }
+:root[data-motion-style="calm"] { --scene-distance: 0px; --scene-duration: 0ms; --interaction-lift: 0px; }
+:root[data-motion-style="expressive"] { --scene-distance: 12px; --scene-duration: 420ms; --interaction-lift: -3px; }
+.workspace-scene { animation: workspace-arrive var(--scene-duration) var(--motion-ease); }
+@keyframes workspace-arrive { from { transform: translateY(var(--scene-distance)); } to { transform: translateY(0); } }
+/* Content stays visible even if WebKit suspends an occluded window's animation. */
+.pane-body { animation: none; }
+.workspace-companion { display:flex; align-items:center; gap:10px; min-height:42px; padding:5px 24px; border-bottom:1px solid var(--line); flex-shrink:0; }
+.workspace-location { margin-right:auto; color:var(--text-3); font-size:11px; letter-spacing:.035em; }
+.workspace-spark, .workspace-suggestion { display:inline-flex; align-items:center; gap:7px; border-radius:9px; color:var(--text-2); font-size:11.5px; transition:background .18s, color .18s; }
+.workspace-spark { padding:2px 8px 2px 2px; }
+.workspace-suggestion { padding:6px 9px; background:color-mix(in srgb,var(--amber) 5%,transparent); }
+.workspace-spark:hover, .workspace-suggestion:hover { color:var(--text); background:var(--raised); }
+.workspace-spark[aria-expanded="true"] { color:var(--amber); background:var(--amber-soft); }
+.workspace-frame :is(.pane-header,.today-head,.floor-head) { padding-bottom:18px; border-bottom:1px solid var(--line); }
+.workspace-frame :is(.vn-card,.pb-card,.member-card,.art-card,.lib-row,.pol-card,.settings-link-card,.connected-shortcut) { transition:transform var(--scene-duration) var(--motion-ease), border-color .18s, box-shadow .18s, background .18s; }
+.workspace-frame :is(.vn-card,.pb-card,.member-card,.art-card,.settings-link-card):hover { transform:translateY(var(--interaction-lift)); }
+.workspace-frame :is(button,a,input,textarea,select):focus-visible { outline:2px solid var(--amber); outline-offset:3px; }
+.workspace-frame button:not(:disabled) { -webkit-tap-highlight-color:transparent; }
+.workspace-frame :is(.pane-state,.empty-hero) { background:linear-gradient(145deg,color-mix(in srgb,var(--amber) 3%,var(--panel)),var(--panel)); }
+.motion-preview { display:flex; align-items:center; gap:16px; width:100%; padding:20px; margin:10px 0; border-radius:16px; text-align:left; background:radial-gradient(ellipse at top left,var(--amber-soft),transparent 65%),var(--sunken); border:1px solid var(--line); }
+.motion-preview > span:nth-child(2) { flex:1; }
+.motion-preview strong { display:block; font-size:13px; color:var(--text); }
+.motion-preview small { display:block; margin-top:5px; color:var(--text-3); font-size:11.5px; }
+.motion-preview-orbit { display:grid; place-items:center; width:48px; height:48px; border-radius:15px; background:var(--amber-soft); color:var(--amber); animation:motion-sample calc(var(--scene-duration) * 2) var(--motion-ease); }
+@keyframes motion-sample { 0% { transform:translateY(var(--scene-distance)) scale(.88); } 65% { transform:translateY(var(--interaction-lift)) scale(1.04); } 100% { transform:none; } }
+@media (max-width:700px) { .workspace-companion { padding-inline:14px; gap:4px; } .workspace-suggestion { max-width:190px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } }
+:root[data-motion="reduced"] :is(.workspace-scene,.motion-preview-orbit) { animation:none; }
+:root[data-motion="reduced"] .workspace-frame :is(.vn-card,.pb-card,.member-card,.art-card,.settings-link-card):hover { transform:none; }
+@media (prefers-reduced-motion:reduce) { :root:not([data-motion="full"]) :is(.workspace-scene,.motion-preview-orbit) { animation:none; } :root:not([data-motion="full"]) .workspace-frame :is(.vn-card,.pb-card,.member-card,.art-card,.settings-link-card):hover { transform:none; } }
+
+/* Composed fields show focus on their rounded container, not a second white rectangle. */
+.workspace-frame :is(.composer-box,.buddy-input,.coach-input,.pane-search,.edit-bubble) :is(input,textarea):focus-visible { outline:none; }
+.workspace-frame :is(.buddy-input,.coach-input,.pane-search,.edit-bubble):focus-within { box-shadow:0 0 0 1px var(--amber); }
+.companion-model-picker { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:var(--text-2); font-size:12px; padding:8px 0; }
+.companion-model-picker select { min-width:0; max-width:100%; padding:7px 9px; border:1px solid var(--line-strong); border-radius:8px; color:var(--text); background:var(--ink); }
+.companion-model-picker small { width:100%; color:var(--text-3); font-size:10.5px; }

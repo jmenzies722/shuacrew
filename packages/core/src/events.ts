@@ -162,7 +162,8 @@ export const bodies = {
   }),
   "crew.member.removed": z.object({ id: z.string() }),
   "runtime.limited": z.object({ runtime: RuntimeId, model: z.string().optional(), until: z.number(), message: z.string(), credits: z.boolean().optional() }),
-  "runtime.restored": z.object({ runtime: RuntimeId, model: z.string().optional() }),
+  "runtime.retrying": z.object({ runtime: RuntimeId, model: z.string().optional(), limitSeq: z.number().int().positive() }),
+  "runtime.restored": z.object({ runtime: RuntimeId, model: z.string().optional(), limitSeq: z.number().int().positive().optional() }),
 
   // review
   "review.comment": z.object({ file: z.string(), line: z.number().int(), text: z.string() }),

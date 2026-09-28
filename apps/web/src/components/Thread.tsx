@@ -68,6 +68,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
   const context = useMemo(() => ({ run, working, servers }), [run, working, servers]);
   const parent = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
   const virtualizer = useVirtualizer({
     count: blocks.length,
     getScrollElement: () => parent.current,
@@ -94,6 +95,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
     };
     const observer = new ResizeObserver(follow);
     observer.observe(inner);
+    observer.observe(el);
     for (const child of inner.children) observer.observe(child);
     const mutations = new MutationObserver(() => {
       for (const child of inner.children) observer.observe(child);
@@ -128,6 +130,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
       onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        setAtBottom(stick.current);
       }}
     >
       {items.length === 0 && empty}
@@ -153,6 +156,11 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
       )}
       {pills.length > 0 && run && <FollowUps options={pills} run={run} />}
     </div>
+    {!atBottom && <button className="thread-latest" onClick={() => {
+      stick.current = true;
+      setAtBottom(true);
+      if (parent.current) parent.current.scrollTop = parent.current.scrollHeight;
+    }}>↓ Latest message</button>}
     </div>
     </ThreadContext.Provider>
   );
@@ -888,7 +896,7 @@ function Thought({ step }: { step: Extract<Step, { kind: "thought" }> }) {
 function ApprovalCard({ item }: { item: Extract<Item, { kind: "approval" }> }) {
   const input = (item.input ?? {}) as Record<string, unknown>;
   const command = typeof input.command === "string" ? input.command : describe(item.input) || JSON.stringify(item.input);
-  return (
+  const card = (
     <div className={`approval-card ${item.decided ? "is-decided" : ""}`}>
       <div className="flex items-center gap-2 text-[13px]">
         <ShieldAlert size={15} className={item.decided ? (item.decided.allow ? "text-ok" : "text-bad") : "text-wait"} />
@@ -920,6 +928,10 @@ function ApprovalCard({ item }: { item: Extract<Item, { kind: "approval" }> }) {
       )}
     </div>
   );
+  return item.decided ? <details className="approval-history">
+    <summary><ShieldAlert size={13} className={item.decided.allow ? "text-ok" : "text-bad"} /><span>{item.decided.allow ? "Allowed" : "Denied"} · {item.tool}</span><small>by {item.decided.by}</small><ChevronRight size={13} /></summary>
+    {card}
+  </details> : card;
 }
 
 function pathOf(input: unknown, tidy = true): string | undefined {
