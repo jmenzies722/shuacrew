@@ -1,6 +1,7 @@
 import AppKit
 import Contacts
 import EventKit
+import AVFoundation
 import IOKit.ps
 import PDFKit
 import ShuaCrewCore
@@ -32,6 +33,7 @@ enum MacKnowledge {
             case "contacts": contacts(a, done)
             case "status": done(true, "Checked your Mac", status())
             case "context": done(true, "", context())
+            case "permissions": done(true, "", permissions())
             default: done(false, "Spark can't look that up.", "")
             }
         }
@@ -189,6 +191,20 @@ enum MacKnowledge {
         let result = NSAppleScript(source: script)?.executeAndReturnError(&error).stringValue
         if error != nil { done(false, "Notes didn't answer. If macOS asks, allow ShuaCrew to control Notes.", ""); return }
         done(true, "Checked your notes", (result ?? "").isEmpty ? "No notes\(q.isEmpty ? "" : " mention “\(q)”")." : result!)
+    }
+
+    // MARK: what Spark can reach
+
+    /// Which permissions ShuaCrew has right now, as JSON for Settings ("granted", "denied" or "not asked"). Read-only:
+    /// it never prompts. Full Disk Access has no API, so it's checked by whether a protected folder can be listed.
+    static func permissions() -> String {
+        let cal = { (t: EKEntityType) -> String in switch EKEventStore.authorizationStatus(for: t) { case .fullAccess: "granted"; case .notDetermined: "not asked"; default: "denied" } }
+        let contacts: String = { switch CNContactStore.authorizationStatus(for: .contacts) { case .authorized: "granted"; case .notDetermined: "not asked"; default: "denied" } }()
+        let mic: String = { switch AVCaptureDevice.authorizationStatus(for: .audio) { case .authorized: "granted"; case .notDetermined: "not asked"; default: "denied" } }()
+        let fullDisk = (try? FileManager.default.contentsOfDirectory(atPath: home + "/Library/Safari")) != nil ? "granted" : "denied"
+        let map: [String: String] = ["screen": CGPreflightScreenCaptureAccess() ? "granted" : "denied", "accessibility": AXIsProcessTrusted() ? "granted" : "denied",
+                                     "calendar": cal(.event), "reminders": cal(.reminder), "contacts": contacts, "microphone": mic, "files": fullDisk]
+        return (try? String(data: JSONSerialization.data(withJSONObject: map), encoding: .utf8)) ?? "{}"
     }
 
     // MARK: personal context, for every question

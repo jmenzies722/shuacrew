@@ -4,6 +4,7 @@ import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
 import { AudioLines, Check } from "lucide-react";
 import { VoiceSettings, setVoiceEverywhere } from "./VoiceSettings";
+import { MacReach } from "./MacReach";
 import { useLive } from "../lib/live";
 import { api } from "../lib/api";
 import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
@@ -105,6 +106,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <SettingRow name="Little victories" detail="How your robot celebrates completed crew work."><Segmented label="Celebrations" value={prefs.celebration} onChange={celebration => set({ celebration })} options={[["off", "Quiet"], ["subtle", "A little joy"], ["expressive", "Celebrate"]]} /></SettingRow>
     </section>}
     {(searching || category === "presence") && <section className="settings-card batch-pad"><h4 className="spark-h">Presence &amp; connected intelligence</h4>
+      <MacReach name={name} />
       <SettingRow name="Brain" detail={<>Each question goes to the model it needs: quick things to a fast model, real work to a stronger one, always Claude or Codex. <a className="spark-link" href="#agents">Manage connected providers →</a></>}><span className="spark-muted">Automatic</span></SettingRow>
       <SettingRow name="Language" detail={`English is fastest and shows live captions. Any language: speak whatever you like — Whisper detects it on this Mac and ${name} answers in it (captions pause).`} modified={prefs.language !== "en"}><Segmented label="Language" value={prefs.language} onChange={(language) => set({ language })} options={[["en", "English"], ["auto", "Any language"]]} /></SettingRow>
       <WakeRow name={name} nickname={prefs.nickname} />
