@@ -1,9 +1,9 @@
 import { noEmoji } from "./no-emoji";
 /** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
-export interface Point { x: number; y: number; label: string }
+export interface Point { x: number; y: number; label: string; target?: string }
 
 /** One step of a guided walkthrough: where to look (a box, as fractions of the screenshot) and what to do there. */
-export interface GuideStep { x: number; y: number; w: number; h: number; label: string; step: number; done: false }
+export interface GuideStep { x: number; y: number; w: number; h: number; label: string; step: number; done: false; target?: string }
 export type Guide = GuideStep | { done: true };
 
 /** A shape Spark sketches on your screen (fractions of the screenshot, from the top-left). */
@@ -118,14 +118,17 @@ export function parsePoint(text: string): Point | null {
   const m = /```point\s*([\s\S]*?)```/i.exec(text);
   if (!m) return null;
   try {
-    const v = JSON.parse(m[1]!.trim()) as { x?: unknown; y?: unknown; label?: unknown };
-    const x = Number(v.x), y = Number(v.y);
+    const v = JSON.parse(m[1]!.trim()) as { x?: unknown; y?: unknown; label?: unknown; target?: unknown };
+    const target = targetId(v.target);
+    const x = Number(v.x ?? (target ? 0.5 : NaN)), y = Number(v.y ?? (target ? 0.5 : NaN));
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return null;
-    return { x, y, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "" };
+    return { x, y, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "", ...(target ? { target } : {}) };
   } catch { return null; }
 }
 
 const frac = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null; };
+/** A picked on-screen item: "#12" (a control) or "T40" (a text line), from the numbered lists Spark was given. */
+function targetId(v: unknown): string | undefined { return typeof v === "string" && /^(#|T)\d{1,4}$/i.test(v.trim()) ? v.trim().toUpperCase() : undefined; }
 /** A ```guide {...}``` block: the next step (centre x,y and size w,h as fractions), or {"done": true}. */
 export function parseGuide(text: string): Guide | null {
   const m = /```guide\s*([\s\S]*?)```/i.exec(text);
@@ -133,11 +136,12 @@ export function parseGuide(text: string): Guide | null {
   try {
     const v = JSON.parse(m[1]!.trim()) as Record<string, unknown>;
     if (v.done === true) return { done: true };
-    const x = frac(v.x), y = frac(v.y);
+    const target = targetId(v.target);
+    const x = frac(v.x ?? (target ? 0.5 : undefined)), y = frac(v.y ?? (target ? 0.5 : undefined));
     if (x === null || y === null) return null;
     const w = Math.max(0.01, Math.min(0.6, frac(v.w) ?? 0.04)), h = Math.max(0.01, Math.min(0.6, frac(v.h) ?? 0.04));
     const step = Number.isInteger(v.step) && (v.step as number) > 0 && (v.step as number) < 100 ? (v.step as number) : 1;
-    return { x, y, w, h, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "", step, done: false };
+    return { x, y, w, h, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "", step, done: false, ...(target ? { target } : {}) };
   } catch { return null; }
 }
 
@@ -182,8 +186,8 @@ export function isDesign(question: string) {
 export interface ScreenContext { app?: string; window?: string; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
 export function elementsText(ctx: ScreenContext | undefined, max = 120) {
   if (!ctx?.app && !ctx?.elements?.length) return "";
-  const rows = (ctx.elements ?? []).slice(0, max).map((e) => `${e.name} [${e.role}] @${e.x.toFixed(3)},${e.y.toFixed(3)}`);
-  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility ("name [role] @x,y" centres as fractions from the top-left). To use one, act press {label: name} (most reliable) or point/guide at its @x,y:\n${rows.join("\n")}` : ""}`;
+  const rows = (ctx.elements ?? []).slice(0, max).map((e, i) => `#${i + 1} ${e.name} [${e.role}] @${e.x.toFixed(3)},${e.y.toFixed(3)}`);
+  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates:\n${rows.join("\n")}` : ""}`;
 }
 
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
@@ -196,10 +200,10 @@ export function completedBlocks(text: string): Array<{ key: string; kind: "do" |
 /** OCR lines as a compact, exact block for the model (reading order, with centres). */
 export function screenText(lines: ScreenLine[] | undefined, max = 9000) {
   if (!lines?.length) return "";
-  const rows = [...lines].sort((a, b) => (Math.abs(a.y - b.y) < 0.006 ? a.x - b.x : a.y - b.y)).map((l) => `${l.t} @${l.x.toFixed(3)},${l.y.toFixed(3)}`);
+  const rows = lines.map((l, i) => ({ l, i })).sort((a, b) => (Math.abs(a.l.y - b.l.y) < 0.006 ? a.l.x - b.l.x : a.l.y - b.l.y)).map(({ l, i }) => `T${i} ${l.t} @${l.x.toFixed(3)},${l.y.toFixed(3)}`);
   let out = "", n = 0;
   for (const r of rows) { if (out.length + r.length > max) break; out += r + "\n"; n++; }
-  return `SCREEN TEXT — read off their screen by on-device OCR, not typed by the user (never quote or comment on stray lines unless asked); exact, from the full-resolution screen (${n}${n < rows.length ? ` of ${rows.length}` : ""} lines; "text @x,y" = centre as fractions from the top-left). Quote numbers and names from here, not from the image; use these positions to point precisely:\n${out}`;
+  return `SCREEN TEXT — read off their screen by on-device OCR, not typed by the user (never quote or comment on stray lines unless asked); exact, from the full-resolution screen (${n}${n < rows.length ? ` of ${rows.length}` : ""} lines; "Tid text @x,y" = centre as fractions from the top-left; to point or guide at a line, give "target":"T<id>" for its exact box). Quote numbers and names from here, not from the image; use these positions to point precisely:\n${out}`;
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);

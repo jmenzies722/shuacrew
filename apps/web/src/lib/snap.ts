@@ -42,3 +42,13 @@ export function snapBox(target: Box & { label: string }, screen: { text?: Screen
   const pad = 0.004;
   return { x: Math.max(0, best.c.x - pad), y: Math.max(0, best.c.y - pad), w: Math.min(1, best.c.w + pad * 2), h: Math.min(1, best.c.h + pad * 2) };
 }
+
+/** The exact box of a picked item ("#12" → the 12th control, "T40" → text line 40), or null if it isn't on that screen. */
+export function resolveTarget(target: string | undefined, screen: { text?: ScreenLine[]; context?: ScreenContext } | null): Box | null {
+  if (!target || !screen) return null;
+  const n = Number(target.slice(1)), pad = 0.004;
+  const box = target.startsWith("#")
+    ? (() => { const e = screen.context?.elements?.[n - 1]; return e?.w && e.h ? { x: e.x - e.w / 2, y: e.y - e.h / 2, w: e.w, h: e.h } : e ? { x: e.x - 0.02, y: e.y - 0.015, w: 0.04, h: 0.03 } : null; })()
+    : (() => { const l = screen.text?.[n]; return l ? { x: l.x - l.w / 2, y: l.y - l.h / 2, w: l.w, h: l.h } : null; })();
+  return box ? { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), w: Math.min(1, box.w + pad * 2), h: Math.min(1, box.h + pad * 2) } : null;
+}

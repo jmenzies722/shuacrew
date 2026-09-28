@@ -573,3 +573,8 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 /* Stop while Spark thinks or talks (ChatGPT-style): the send button turns into a stop square. */
 .buddy-send.is-stop { color: var(--text); background: color-mix(in srgb, var(--text) 12%, var(--raised)) !important; background-image: none !important; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .spark-nook-ask button.is-stop { color: #000; background: #f1eef5; }
+/* What you're saying, live and in full: anchored to the newest words, older lines scroll up out of view. */
+.notch-heard { display: flex; flex-direction: column; justify-content: flex-end; max-height: 58px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 14px); mask-image: linear-gradient(transparent, #000 14px); }
+.notch-heard p { margin: 0; font-size: 12.5px; line-height: 1.4; color: #f4f1f8; text-align: center; }
+.notch-heard.is-open { max-height: 110px; }
+.notch-heard.is-open p { text-align: left; padding: 0 2px; }

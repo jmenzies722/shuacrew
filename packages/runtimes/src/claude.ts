@@ -219,7 +219,8 @@ export class ClaudeRuntime implements Runtime {
     // doesn't within a short grace, the turn is over.
     const settle = () => {
       clearTimeout(grace);
-      if (held && running.size === 0) grace = setTimeout(() => closeInput(), 15_000);
+      // Spark's conversations stay warm for 5 quiet minutes (a reply in ~1 s instead of a ~3 s cold start); other work, 15 s.
+      if (held && running.size === 0) grace = setTimeout(() => closeInput(), run.lean ? 300_000 : 15_000);
     };
 
     const conversation = query({
@@ -234,6 +235,9 @@ export class ClaudeRuntime implements Runtime {
         permissionMode: "default",
         includePartialMessages: true,
         enableFileCheckpointing: !run.lean,
+        // Spark's quick turns load none of your personal Claude Code setup (output styles, hooks, CLAUDE.md, plugins):
+        // faster to start, and Spark sounds like Spark rather than like a coding session.
+        ...(run.lean ? { settingSources: [] } : {}),
         pathToClaudeCodeExecutable: this.executable,
         // Claude Code's own system prompt, with ShuaCrew's lessons and context appended — or, for a lean
         // conversational turn, a short one of its own (the ask carries the persona and context).

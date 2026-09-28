@@ -28,3 +28,15 @@ it("snaps onto an exact text line, and leaves the box alone when nothing real is
   expect(snapBox(away, screen)).toEqual(away);
   expect(snapBox(away, null)).toEqual(away);
 });
+
+import { resolveTarget } from "./snap";
+import { parseGuide, parsePoint } from "./buddy";
+it("draws a picked item's exact box: '#2' is the 2nd control, 'T0' the first text line", () => {
+  const g = parseGuide('```guide {"target":"#1","label":"Click Save","step":1}```');
+  expect(g && !g.done && g.target).toBe("#1");
+  expect(resolveTarget("#1", screen)!.x).toBeCloseTo(0.82 - 0.025 - 0.004, 3);
+  expect(resolveTarget("T0", screen)!.y).toBeCloseTo(0.4 - 0.01 - 0.004, 3);
+  expect(resolveTarget("#9", screen)).toBeNull();
+  expect(parsePoint('```point {"target":"T0","label":"here"}```')?.target).toBe("T0");
+  expect(parseGuide('```guide {"target":"bogus"}```')).toBeNull();
+});

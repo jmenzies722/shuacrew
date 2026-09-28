@@ -11,7 +11,7 @@ import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption } from "../components/NotchCaption";
-import { snapBox } from "../lib/snap";
+import { resolveTarget, snapBox } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
@@ -404,12 +404,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     for (const b of completedBlocks(text)) {
       if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
       seen.add(b.key);
-      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const s = snapBox({ x: p.x - 0.015, y: p.y - 0.015, w: 0.03, h: 0.03, label: p.label }, lastScreen); post({ type: "buddyPoint", ...p, x: s.x + s.w / 2, y: s.y + s.h / 2, color: accentOf(prefs.color) }); } }
+      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const s = resolveTarget(p.target, lastScreen) ?? snapBox({ x: p.x - 0.015, y: p.y - 0.015, w: 0.03, h: 0.03, label: p.label }, lastScreen); post({ type: "buddyPoint", ...p, x: s.x + s.w / 2, y: s.y + s.h / 2, color: accentOf(prefs.color) }); } }
       else if (b.kind === "draw") { const shapes = parseDraw(b.raw); if (shapes.length) post({ type: "buddyDraw", shapes, color: accentOf(prefs.color) }); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
         if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
-        else if (g) { const exact = { ...g, ...snapBox(g, lastScreen) }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
+        else if (g) { const exact = { ...g, ...(resolveTarget(g.target, lastScreen) ?? snapBox(g, lastScreen)) }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
       } else if (b.kind === "act") {
         const act = parseAct(b.raw);
         if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
@@ -887,7 +887,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const workingRuns = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning"));
   const notched = prefs.desktopPlacement === "notch" && !embedded;
   // Speaking while tucked in: the island widens just enough to caption what Spark is saying, live.
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && speaking && !!caption || !!stuck);
+  const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
+  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow) || !!stuck);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -1039,7 +1040,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? 64 : 0}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow ? 78 : 64) : 0}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <div className="shua-island-ears">
@@ -1054,7 +1055,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <small>{statusLabel}</small>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <div className="notch-heard"><p>{heard}</p></div> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
           {stuck && <div className="spark-nook-stuck"><div><b>{stuck.kind === "error" ? `Stuck in ${stuck.app}?` : "Still searching?"}</b><small>{stuck.detail}</small></div>
             <button type="button" tabIndex={islandOpen ? 0 : -1} className="is-go" onClick={stuckHelp}>Show me</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={stuckLater}>Not now</button></div>}
@@ -1071,7 +1072,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             </>}
           </div>
           {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} />
-            : (busy || working || phase === "hearing" || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{phase === "hearing" ? heard || "Listening…" : busy || working ? "Thinking…" : gist(lastSparkText)}</p>}
+            : hearingNow || phase === "hearing" ? <div className="notch-heard is-open"><p>{heard || "Listening…"}</p></div>
+            : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? "Thinking…" : gist(lastSparkText)}</p>}
           {showMedia && media && <div className="spark-nook-media">
             {media.art ? <img src={media.art} alt="" /> : <i><AudioLines size={16} /></i>}
             <div className="spark-nook-media-text"><b>{media.title}</b><small>{[media.artist, media.app].filter(Boolean).join(" · ")}</small>
