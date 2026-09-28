@@ -369,6 +369,9 @@ export function Buddy({ embedded = false, onClose }: { embedded?: boolean; onClo
   const minding = useRef(new Set<string>());
   useEffect(() => {
     if (embedded) return;
+    // Missions started elsewhere (Spark for Chrome) are Spark's to mind as well.
+    const known = new Set(readMissions().map((m) => m.run));
+    for (const r of Object.values(crew.runs)) if (r.labels?.includes("mission") && !known.has(r.id) && !["done", "merged", "failed", "cancelled"].includes(r.status)) addMission(r.id, r.title);
     for (const m of readMissions()) {
       const run = crew.runs[m.run];
       if (m.done || !run || run.status === m.status || minding.current.has(m.run)) continue;

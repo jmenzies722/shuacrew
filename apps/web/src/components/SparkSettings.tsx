@@ -94,6 +94,7 @@ export function SparkSettings() {
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
       <SettingRow name="Stay on top" detail={`Off: ${name} sits on your desktop like any window — it won't cover your work, and comes forward when you call it, when it talks, and while it's teaching. Drag it anywhere; it stays there.`} modified={prefs.onTop}><Switch label="Stay on top" on={prefs.onTop} onChange={(onTop) => set({ onTop })} /></SettingRow>
       <SparkReach name={name} />
+      <ChromeRow name={name} />
       <SettingRow name="Keep going on its own" detail={`Say “agent:” and a task (or let ${name} hand work to the crew) and it becomes a mission: ${name} stays with it, tells the crew to keep going when it stops early to ask or hits a failure (up to 3 times), and tells you when it's done. It never approves anything for you.`} modified={!prefs.persist}><Switch label="Keep going on its own" on={prefs.persist} onChange={(persist) => set({ persist })} /></SettingRow>
       <SettingRow name="Size on the desktop" modified={prefs.size !== "m"}><Segmented label="Size" value={prefs.size} onChange={(size) => set({ size })} options={[["s", "Small"], ["m", "Medium"], ["l", "Large"]]} /></SettingRow>
       {prefs.character === "spark" && <>
@@ -144,6 +145,20 @@ export function SparkSettings() {
 }
 
 /** How Spark has actually done for you: every action it took, and whether it worked. */
+/** Spark for Chrome: the pairing key to paste into the extension once, and how to install it. */
+function ChromeRow({ name }: { name: string }) {
+  const [key, setKey] = useState(""), [shown, setShown] = useState(false), [copied, setCopied] = useState(false);
+  useEffect(() => { void api<{ key: string }>("/api/ext/key").then((r) => setKey(r.key)).catch(() => setKey("")); }, []);
+  const copy = () => void navigator.clipboard.writeText(key).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); }).catch(() => setShown(true));
+  return <SettingRow name="Spark for Chrome" detail={<>Highlight anything on the web and {name} explains, summarizes, rewrites, drafts a reply, saves it to your Library or hands it to the crew. Install: open <code>chrome://extensions</code>, turn on Developer mode, choose <b>Load unpacked</b> and pick <code>~/Developer/projects/shuacrew/apps/chrome</code>. Then click the Spark icon and paste this key. It only works with ShuaCrew on this Mac.</>}>
+    {key ? <span className="spark-reach-key">
+      <code>{shown ? key : "•".repeat(12)}</code>
+      <button type="button" onClick={() => setShown((v) => !v)}>{shown ? "Hide" : "Show"}</button>
+      <button type="button" className="spark-reach-go" onClick={copy}>{copied ? "Copied" : "Copy key"}</button>
+    </span> : <span className="spark-reach-state">Restart ShuaCrew to enable</span>}
+  </SettingRow>;
+}
+
 function WakeRow({ name, nickname }: { name: string; nickname: string }) {
   const wake = useWakeWord(nickname ? [nickname] : []);
   if (!wake.available) return null;

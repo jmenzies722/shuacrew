@@ -9,6 +9,7 @@
 import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
 import { weatherRoutes } from "./weather-routes.js";
+import { extRoutes } from "./ext-routes.js";
 import { radioRoutes } from "./radio.js";
 import { ideaRoutes } from "./ideas.js";
 import { standupRoutes } from "./standup.js";
@@ -63,6 +64,8 @@ import { observabilityRoutes } from "./observability.js";
 import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 
 export interface ServerOptions {
+  /** Test seam for Spark for Chrome's answers (defaults to the claude CLI). */
+  webAsk?: import("./terminal-ai.js").Ask;
   learning?: Learning;
   settings?: GatewaySettings;
   builtinProtected?: string[];
@@ -141,7 +144,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       if (origin && new URL(origin).host !== request.headers.host) return reply.code(403).send({ error: "cross-origin socket" });
     }
     // Webhooks come from other systems and are authenticated by their HMAC signature instead.
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/") && !toolCall) {
+    // Spark for Chrome (/api/ext/*) is a paired extension: those routes demand its key themselves (ext-routes.ts).
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/") && !request.url.startsWith("/api/ext/") && !toolCall) {
       const origin = request.headers.origin;
       const sameOrigin = !origin || new URL(origin).host === request.headers.host;
       if (request.headers["x-shuacrew"] !== "1" || !sameOrigin) {
@@ -163,6 +167,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   roomRoutes(app, options.rooms);
   devRoutes(app, options.store, options.supervisor);
   weatherRoutes(app);
+  extRoutes(app, { home: path.dirname(options.store.path), ask: options.webAsk });
   radioRoutes(app);
   screenMemoryRoutes(app);
   // Load Spark's local model before it's needed (called when Claude runs out), so the first answer isn't a cold start.

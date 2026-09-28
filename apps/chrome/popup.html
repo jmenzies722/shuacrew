@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Spark</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><img src="icons/48.png" alt=""><div><b>Spark</b><small id="status">Checking ShuaCrew…</small></div></header>
+  <section id="pair" hidden>
+    <p>Paste the key from <b>ShuaCrew → Settings → Spark → Spark for Chrome</b>.</p>
+    <div class="row"><input id="key" type="password" placeholder="Pairing key" autocomplete="off" aria-label="Pairing key"><button id="save">Pair</button></div>
+  </section>
+  <section id="ready" hidden>
+    <button id="page" class="primary">Summarize this page</button>
+    <p class="tip">Highlight any text for Explain, Summarize, Rewrite, Reply, Ask, Save or Hand to the crew. Shortcut: <kbd>⌥⇧S</kbd>.</p>
+  </section>
+  <label class="toggle"><input id="proactive" type="checkbox"> Offer to summarize long reads</label>
+  <button id="unpair" class="link" hidden>Unpair</button>
+  <script src="popup.js"></script>
+</body>
+</html>

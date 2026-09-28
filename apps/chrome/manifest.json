@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Spark for ShuaCrew",
+  "short_name": "Spark",
+  "version": "0.1.0",
+  "description": "Highlight anything on the web and let Spark explain, summarize, rewrite, reply, save it, or hand it to your crew.",
+  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "action": { "default_popup": "popup.html", "default_title": "Spark", "default_icon": { "16": "icons/16.png", "48": "icons/48.png" } },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "contextMenus", "activeTab"],
+  "host_permissions": ["http://127.0.0.1:7420/*"],
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle" }],
+  "commands": {
+    "spark-open": { "suggested_key": { "default": "Alt+Shift+S", "mac": "Alt+Shift+S" }, "description": "Spark on your selection (or this page)" }
+  }
+}
