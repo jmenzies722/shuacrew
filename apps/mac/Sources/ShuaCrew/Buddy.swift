@@ -562,6 +562,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyDraw":
             guard let shapes = body["shapes"] as? [[String: Any]], let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: sparkCenter)
+        case "buddySpeaking":
+            pointer.speaking = body["on"] as? Bool ?? false
         case "buddyGuideStop":
             pointer.hide()
             walkHome()
@@ -913,6 +915,20 @@ final class PointerOverlay {
     private var panel: NSPanel?
     private var hideWork: DispatchWorkItem?
     private var monitors: [Any] = []
+    /// Spark talking right now (from the page): what it's pointing at or drawing stays until it has finished explaining.
+    var speaking = false { didSet { if oldValue && !speaking { quietSince = Date() } } }
+    private var quietSince: Date?
+    /// Stay at least `seconds`; then, while Spark is still talking about it (or went quiet under 4 s ago), keep it up.
+    private func hideWhenDone(after seconds: Double) {
+        hideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if self.speaking || (self.quietSince.map { Date().timeIntervalSince($0) < 4 } ?? false) { self.hideWhenDone(after: 1); return }
+            self.fadeOut()
+        }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
     /// The spotlighted area in global screen coordinates, while a guide step waits for your click.
     private var target: NSRect?
     var onGuideClick: (() -> Void)?
@@ -1097,9 +1113,7 @@ final class PointerOverlay {
             pieces.append(p)
         }
         present(panel, root: root, delay: delay, pieces: pieces, layers: layers)
-        let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 6.5, execute: work)
+        hideWhenDone(after: delay + 6.5)
         return delay
     }
 
@@ -1163,10 +1177,10 @@ final class PointerOverlay {
             if let global = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: hit) { monitors.append(global) }
             if let local = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { hit($0); return $0 }) { monitors.append(local) }
         }
-        // A step left alone quietly fades after two minutes; the guide stays open in Spark.
+        // A step stays until you do it (or Spark moves on); only one left alone for 15 minutes fades.
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
         hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 900, execute: work)
     }
 
     /// Spark sketching on your screen: boxes, circles, arrows and notes that draw themselves in, one after another.
@@ -1241,9 +1255,7 @@ final class PointerOverlay {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) {
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.3; for (v, _) in labels { v.animator().alphaValue = 1 } }
         }
-        let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 16, execute: work)
+        hideWhenDone(after: 16)
     }
 
     private func fadeOut() {
