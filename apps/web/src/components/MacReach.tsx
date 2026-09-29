@@ -8,10 +8,10 @@ import "./spark-reach.css";
  * in System Settings. It re-checks whenever you come back to the window, so it updates the moment you flip a switch.
  */
 type State = "granted" | "denied" | "not asked";
-const ABILITIES: Array<{ key: string; pane: string; icon: typeof Monitor; name: string; does: string }> = [
+const ABILITIES: Array<{ key: string; pane: string; icon: typeof Monitor; name: string; does: string; optional?: boolean }> = [
   { key: "screen", pane: "screen-recording", icon: Monitor, name: "See your screen", does: "Reads what's on screen to point, guide and notice when you're stuck." },
   { key: "accessibility", pane: "accessibility-access", icon: MousePointerClick, name: "Click and type for you", does: "Finds every button, icon and menu exactly, and does steps on autopilot." },
-  { key: "files", pane: "full-disk-access", icon: FolderOpen, name: "Your files", does: "Searches and reads your documents, PDFs and notes to answer from them." },
+  { key: "files", pane: "full-disk-access", icon: FolderOpen, name: "Everywhere, no prompts", does: "Optional (Full Disk Access). Spark already reads your files; this skips the one-time folder prompts and adds iCloud Drive and external drives.", optional: true },
   { key: "calendar", pane: "calendars-access", icon: Calendar, name: "Calendar", does: "Knows what's next and plans around your meetings." },
   { key: "reminders", pane: "reminders-access", icon: ListChecks, name: "Reminders", does: "Tells you what's due and adds reminders when you ask." },
   { key: "contacts", pane: "contacts-access", icon: Contact, name: "Contacts", does: "Knows who you mean: “email Sam”, “what's Mia's number”." },
@@ -62,7 +62,7 @@ export function MacReach({ name }: { name: string }) {
     native()?.postMessage({ type: "buddyDo", id: crypto.randomUUID(), action: { type: "open_settings", pane: pane.key, url: paneURL(pane) } });
   };
   if (!native()) return <p className="reach-note">{name}'s reach on your Mac is set up in the ShuaCrew Mac app.</p>;
-  const known = ABILITIES.filter((a) => a.key !== "music");
+  const known = ABILITIES.filter((a) => a.key !== "music" && !a.optional);
   const on = known.filter((a) => states?.[a.key] === "granted").length;
   const pct = states ? on / known.length : 0;
   return <section className="reach" aria-label={`What ${name} can reach`}>
@@ -70,11 +70,11 @@ export function MacReach({ name }: { name: string }) {
       <svg viewBox="0 0 44 44" className="reach-ring" aria-hidden><circle cx="22" cy="22" r="19" /><circle cx="22" cy="22" r="19" className="is-fill" style={{ strokeDashoffset: `${119.4 * (1 - pct)}` }} /></svg>
       <div><strong>{states ? `${on} of ${known.length} on` : "Checking…"}</strong><small>What {name} can reach on this Mac. Everything stays on this Mac; turn on what you want it to help with.</small></div>
     </header>
-    <ul className="reach-list">{ABILITIES.map(({ key, pane, icon: Icon, name: label, does }) => {
+    <ul className="reach-list">{ABILITIES.map(({ key, pane, icon: Icon, name: label, does, optional }) => {
       const st = key === "music" ? null : states?.[key];
       return <li key={key} className={st === "granted" ? "is-on" : ""}>
         <i className="reach-icon"><Icon size={15} /></i>
-        <span className="reach-text"><b>{label}</b><small>{does}</small></span>
+        <span className="reach-text"><b>{label}{optional && <span className="reach-optional">optional</span>}</b><small>{does}</small></span>
         {st === "granted" ? <em className="reach-on"><CheckCircle2 size={13} /> On</em>
           : asking === key ? <em className="reach-asking">Answer the prompt…</em>
           : <button type="button" className="reach-go" onClick={() => (st === "not asked" && ["reminders", "contacts", "calendar"].includes(key) ? request(key) : open(pane))}>{key === "music" ? "Review" : st === "not asked" ? "Allow" : "Turn on"}</button>}
