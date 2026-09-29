@@ -6,36 +6,33 @@ import { setSparkFull, takeSparkSuggestion, watchSparkSuggestion } from "../lib/
 import { logSense } from "../lib/spark-log";
 import { asksAboutEarlier, recall } from "../lib/screen-memory";
 import { earlierToday, rememberAsk } from "../lib/spark-day";
-import { logAction } from "../lib/spark-log";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption } from "../components/NotchCaption";
-import { PANES, paneURL } from "../lib/settings-panes";
 import { Recommendations } from "../components/Recommendations";
 import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowUp, BookOpen, AudioLines, SlidersHorizontal, StickyNote, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, Pause, Play, SkipBack, SkipForward, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, Pause, Play, SkipBack, SkipForward, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
-import { api, cancelRun, followUp, launchRun } from "../lib/api";
+import { api, cancelRun, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
 import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
-import { addMission, missionBrief, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
+import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { type Shape, aboutScreen, actFollowUp, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, type SparkChanges, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type Action, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, actFollowUp, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
 import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
-import { saveNote, useNote } from "../lib/widgets";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
-import { SparkWidgets, type WidgetCtx } from "../components/TopBarWidgets";
+import { SparkWidgets } from "../components/TopBarWidgets";
 import { useNowPlaying } from "../components/NowPlaying";
 import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/studio";
 import { playScape, stopScape } from "../lib/soundscape";
@@ -43,224 +40,9 @@ import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
-
-type Native = { postMessage(m: unknown): void };
-const native = (): Native | undefined => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;
-const post = (m: Record<string, unknown>) => native()?.postMessage(m);
-const KEY = "shuacrew.buddy";
-const SEE = "shuacrew.buddy.see";
-const readSee = () => { try { return localStorage.getItem(SEE) !== "0"; } catch { return true; } };
-/** Which Spark surface (desktop panel or app side panel) asked last: only it speaks, points and acts on the answer. */
-const OWNER = "shuacrew.buddy.owner";
-const ME = Math.random().toString(36).slice(2);
-const claim = () => { try { localStorage.setItem(OWNER, ME); } catch { /* ignore */ } };
-const mine = () => { try { const o = localStorage.getItem(OWNER); return !o || o === ME; } catch { return true; } };
-const ctx: WidgetCtx = { go: (path) => post({ type: "buddyOpen", path }) };
-
-/** Ask the Mac for one screenshot of the display you're on (never stored beyond this question's session). */
-/** What Music or Spotify is playing right now (asked of the Mac app; null if neither is open or it doesn't answer fast). */
-function nowPlayingOnce(): Promise<{ app: string; playing: boolean; title: string; artist?: string } | null> {
-  if (!native()) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const on = (e: Event) => { clearTimeout(t); window.removeEventListener("shuacrew:media", on); const d = (e as CustomEvent).detail; resolve(d?.title ? d : null); };
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:media", on); resolve(null); }, 900);
-    window.addEventListener("shuacrew:media", on); post({ type: "buddyNowPlaying" });
-  });
-}
-/** A sketch shape, fitted to the real thing it's about: boxes hug the control (in its shape), circles ring it, arrows land on it. */
-function fitShape(sh: Shape): Shape {
-  if (sh.shape === "box" && (sh.target || sh.label)) { const r = locate({ x: sh.x, y: sh.y, w: sh.w, h: sh.h, label: sh.label ?? "", target: sh.target }, lastScreen); return r.exact ? { ...sh, x: r.x, y: r.y, w: r.w, h: r.h, corner: r.shape } : sh; }
-  if (sh.shape === "circle" && (sh.target || sh.label)) {
-    const r = locate({ x: sh.x, y: sh.y, w: sh.r * 2, h: sh.r * 2 * (lastScreen?.aspect ?? 1.6), label: sh.label ?? "", target: sh.target }, lastScreen);
-    // r is a fraction of the screen's width: ring the whole thing with a little room.
-    return r.exact ? { ...sh, x: r.x, y: r.y, r: Math.min(0.3, (Math.max(r.w, r.h / (lastScreen?.aspect ?? 1.6)) / 2) * 1.25 + 0.004) } : sh;
-  }
-  if (sh.shape === "arrow" && sh.target) { const r = locate({ x: sh.to[0], y: sh.to[1], w: 0.03, h: 0.03, label: sh.label ?? "", target: sh.target }, lastScreen); return { ...sh, to: [r.x, r.y] }; }
-  return sh;
-}
-/**
- * Personal context for every question: where you're working, what's next on your calendar, what's due, what you just
- * worked on, anything that needs attention. Read on this Mac, cached for a minute, and never allowed to slow a reply.
- */
-let contextCache: { at: number; text: string } | null = null;
-function macContext(): Promise<string> {
-  if (!native()) return Promise.resolve("");
-  if (contextCache && Date.now() - contextCache.at < 60_000) return Promise.resolve(contextCache.text);
-  return new Promise((resolve) => {
-    const id = crypto.randomUUID();
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve(contextCache?.text ?? ""); }, 1500);
-    const on = (e: CustomEvent<{ id: string; output?: string }>) => {
-      if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener);
-      contextCache = { at: Date.now(), text: e.detail.output ?? "" }; resolve(contextCache.text);
-    };
-    window.addEventListener("shuacrew:did", on as EventListener);
-    post({ type: "buddyDo", id, action: { type: "mac", op: "context" } });
-  });
-}
-/**
- * In Chrome, the page itself knows exactly where things are: ask Spark for Chrome to find, click or type into an
- * element by what it's called. Null when Chrome isn't in front, the extension isn't connected, or nothing matched.
- */
-type WebHit = { found: boolean; name?: string; role?: string; rect?: { x: number; y: number; w: number; h: number } };
-const inChrome = () => /chrome/i.test(lastScreen?.context?.app ?? "");
-function webAct(kind: "locate" | "click" | "type", text: string, value?: string): Promise<WebHit | null> {
-  if (!inChrome() || !text.trim()) return Promise.resolve(null);
-  return api<WebHit>("/api/web/act", { body: { kind, text, ...(value !== undefined ? { value } : {}) } }).then((r) => (r.found ? r : null), () => null);
-}
-/** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
-let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number } | null = null;
-function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
-  return new Promise((resolve, reject) => {
-    if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:capture", on as EventListener); reject(new Error("Screenshot timed out.")); }, 15_000);
-    const on = (e: CustomEvent<{ data?: string; width?: number; height?: number; text?: ScreenLine[]; context?: ScreenContext; error?: string }>) => {
-      clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
-      const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
-      logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
-      lastScreen = { text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined };
-      const bytes = Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0));
-      resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
-    };
-    window.addEventListener("shuacrew:capture", on as EventListener);
-    post({ type: "buddyCapture" });
-  });
-}
-
-/** "Talk faster", "be the fox", "call yourself Nova": Spark changes itself, and Settings shows it at once. */
-function applyChanges(c: SparkChanges) {
-  let current; try { current = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); } catch { current = parseCompanion(null); }
-  saveCompanion({ ...current, ...(c.name ? { nickname: c.name } : {}), ...(c.character ? { character: c.character } : {}), ...(c.color ? { color: c.color } : {}), ...(c.size ? { size: c.size } : {}),
-    ...(c.tone ? { tone: c.tone } : {}), ...(c.length ? { length: c.length } : {}), ...(c.control ? { control: c.control } : {}), ...(c.guide ? { guide: c.guide } : {}),
-    ...(c.hotkey ? { hotkey: c.hotkey } : {}), ...(c.conversation !== undefined ? { conversation: c.conversation } : {}), ...(c.interrupt !== undefined ? { interrupt: c.interrupt } : {}) });
-  if (c.talks !== undefined || c.voice || c.speed) saveBuddyVoice({ ...(c.talks !== undefined ? { on: c.talks } : {}), ...(c.voice ? { id: c.voice } : {}), ...(c.speed ? { speed: c.speed } : {}) });
-  if (c.hotkey) post({ type: "buddyHotkey", combo: c.hotkey });
-}
-
-/** Asking you before a command runs: the panel installs this; without it, nothing risky runs. */
-let confirmRun: ((command: string, why: string) => Promise<boolean>) | null = null;
-/** A command's output, for Spark to read back to you. */
-let onRanOutput: ((command: string, ok: boolean, output: string) => void) | null = null;
-let onMailOutput: ((what: string, output: string) => void) | null = null;
-let onMacOutput: ((what: string, output: string) => void) | null = null;
-
-/** Every action, logged with whether it worked. */
-function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
-  const isAct = ["press", "click", "type", "key", "scroll", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
-  return performNow(a).then((r) => { logAction({ label: isAct ? describeAct(a as Act) : describeAction(a as Action), ok: r.ok, message: r.message }); return r; });
-}
-/** Mac actions go to the app (which checks them again); the rest happen right here. */
-function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
-  if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
-  if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
-    .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {
-    if (a.validate) await api("/api/plays", { body: { playbook: "validate-idea", inputs: { idea: a.pitch || a.name }, venture: v.id } });
-    post({ type: "buddyOpen", path: `/ventures/${v.id}` });
-    return { ok: true, message: a.validate ? `${a.name}: validating now` : `${a.name} created` };
-  }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "playbook") return api<{ id: string }>("/api/plays", { body: { playbook: a.playbook, inputs: a.idea ? { idea: a.idea } : {}, ...(a.venture ? { venture: a.venture } : {}) } })
-    .then((p) => { post({ type: "buddyOpen", path: `/plays/${p.id}` }); return { ok: true, message: `${a.playbook.replace(/-/g, " ")} started` }; }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "run") return (async () => {
-    // Your ShuaCrew policy decides first: denied never runs; "ask" (or Ask-each-step mode) waits for your yes.
-    const verdict = await api<{ verdict: "allow" | "deny" | "ask"; reason: string; rule: string }>("/api/policy/explain", { body: { tool: "Bash", input: { command: a.command } } }).catch(() => ({ verdict: "ask" as const, reason: "couldn't check the policy", rule: "" }));
-    if (verdict.verdict === "deny") return { ok: false, message: `Blocked by your policy: ${verdict.reason}` };
-    let mode = "ask"; try { mode = JSON.parse(localStorage.getItem("shuacrew.companion") ?? "{}").control ?? "ask"; } catch { /* ignore */ }
-    if (verdict.verdict === "ask" || mode !== "auto") {
-      const yes = confirmRun ? await confirmRun(a.command, verdict.verdict === "ask" ? verdict.reason : "") : false;
-      if (!yes) return { ok: false, message: "Not run" };
-    }
-    const r = await new Promise<{ ok: boolean; message: string; output?: string }>((resolve) => {
-      if (!native()) { resolve({ ok: false, message: "Only in the Mac app" }); return; }
-      const id = crypto.randomUUID();
-      const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "No answer from the Mac" }); }, 70_000);
-      const on = (e: CustomEvent<{ id: string; ok: boolean; message: string; output?: string }>) => { if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener); resolve(e.detail); };
-      window.addEventListener("shuacrew:did", on as EventListener);
-      post({ type: "buddyDo", id, action: a });
-    });
-    onRanOutput?.(a.command, r.ok, r.output ?? "");
-    return { ok: r.ok, message: r.message };
-  })();
-  if (a.type === "open_settings") {
-    // The exact page of System Settings, by its direct link (the Mac app opens only System Settings links).
-    const pane = PANES.find((p) => p.key === a.pane);
-    if (!pane) return Promise.resolve({ ok: false, message: "I don't know that Settings page" });
-    return performNow({ ...a, url: paneURL(pane) } as Action).then((r) => ({ ...r, message: r.ok ? `Opened ${pane.name}` : r.message }));
-  }
-  if (a.type === "mac") return new Promise((resolve) => {
-    // Your files, calendar, reminders, notes, contacts and Mac status, read on this Mac; the result goes back to Spark.
-    if (!native()) { resolve({ ok: false, message: "This works in the ShuaCrew Mac app" }); return; }
-    const id = crypto.randomUUID();
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "Your Mac didn't answer in time" }); }, 75_000);
-    const on = (e: CustomEvent<{ id: string; ok: boolean; message: string; output?: string }>) => {
-      if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener);
-      if (e.detail.ok && e.detail.output) onMacOutput?.(describeAction(a), e.detail.output);
-      resolve({ ok: e.detail.ok, message: e.detail.message });
-    };
-    window.addEventListener("shuacrew:did", on as EventListener);
-    post({ type: "buddyDo", id, action: a });
-  });
-  if (a.type === "mail") return new Promise((resolve) => {
-    // Through the Mail app on this Mac (so Gmail works with no Google setup); read and draft only.
-    if (!native()) { resolve({ ok: false, message: "Mail works in the ShuaCrew Mac app" }); return; }
-    const id = crypto.randomUUID();
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "Mail didn't answer in time" }); }, 40_000);
-    const on = (e: CustomEvent<{ id: string; ok: boolean; message: string; output?: string }>) => {
-      if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener);
-      if (e.detail.ok && e.detail.output && a.op !== "draft") onMailOutput?.(describeAction(a), e.detail.output);
-      resolve({ ok: e.detail.ok, message: e.detail.message });
-    };
-    window.addEventListener("shuacrew:did", on as EventListener);
-    post({ type: "buddyDo", id, action: a });
-  });
-  if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: describeAction(a) }); }
-  if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
-  if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
-  if (a.type === "note") { const n = localStorage.getItem("shuacrew.widgets.note") ?? ""; saveNote(n ? `${n}\n${a.text}` : a.text); return Promise.resolve({ ok: true, message: "Added to your note" }); }
-  // A hand-off is a mission: an end-to-end brief, and Spark stays with it until it's finished (see lib/missions).
-  if (a.type === "crew") {
-    const persist = getCompanion().persist;
-    return launchRun({ ask: persist ? missionBrief(a.ask) : a.ask, title: a.ask.split("\n")[0]!.slice(0, 80), ...(persist ? { labels: ["mission"] } : {}) })
-      .then((r) => { if (persist) addMission(r.id, a.ask); return { ok: true, message: persist ? "The crew is on it. I'll stay with it" : "The crew is on it", run: r.id }; }, (e: Error) => ({ ok: false, message: e.message }));
-  }
-  return new Promise((resolve) => {
-    if (!native()) { resolve({ ok: false, message: "Only in the Mac app" }); return; }
-    const id = crypto.randomUUID();
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "No answer from the Mac" }); }, 8000);
-    const on = (e: CustomEvent<{ id: string; ok: boolean; message: string }>) => { if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener); resolve(e.detail); };
-    window.addEventListener("shuacrew:did", on as EventListener);
-    post({ type: "buddyDo", id, action: a });
-  });
-}
-
-type Done = { label: string; ok: boolean; message: string; run?: string };
-/** How far the open notch island widens past the camera housing, each side. */
-const ISLAND_FLARE = 130;
-
-/** The fn quick card: just what matters right now, beside your pointer. Idle for a while, it tucks itself away. */
-function MiniCard({ name, prefs, mood, state, heard, guide, reply, onCheck, onStopGuide, onOpen, onClose }: {
-  name: string; prefs: ReturnType<typeof useCompanion>; mood: Parameters<typeof SparkCharacter>[0]["mood"]; state: "listening" | "thinking" | "speaking" | "ready";
-  heard: string; guide: GuideStep | null; reply: string; onCheck: () => void; onStopGuide: () => void; onOpen: () => void; onClose: () => void;
-}) {
-  const quiet = state === "ready" && !guide;
-  useEffect(() => { if (!quiet) return; const t = setTimeout(onClose, 20_000); return () => clearTimeout(t); }, [quiet, reply]);
-  const label = { listening: "Listening… let go of fn to send", thinking: "Thinking…", speaking: "Speaking", ready: `Hold fn to ask ${name}` }[state];
-  return <motion.div className={`spk-mini-card is-${state}`} role="dialog" aria-label={`${name} quick view`} initial={{ opacity: 0, y: 8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 460, damping: 34 }}>
-    <header><span className="spk-mini-face"><SparkCharacter preferences={prefs} mood={mood} size={26} crop="portrait" /></span><b>{name}</b><small>{label}</small>
-      <button type="button" aria-label="Close" onClick={onClose}>×</button></header>
-    {state === "listening" ? <p className="spk-mini-live">{heard || "…"}</p>
-      : guide ? <div className="spk-mini-step"><span>Step {guide.step}</span><p>{guide.label}</p><div><button type="button" className="is-go" onClick={onCheck}>Done, next</button><button type="button" onClick={onStopGuide}>Stop</button></div></div>
-      : reply ? <p>{reply}</p>
-      : <p className="spk-mini-hint">Ask anything about what you're doing. If it's something to click through, I'll show you one step at a time.</p>}
-    <footer><button type="button" onClick={onOpen}>Open chat</button></footer>
-  </motion.div>;
-}
-
-/** A small live meter: bars that follow your voice while listening, and Spark's while it speaks. */
-function VoiceBars({ level, active }: { level: number; active: boolean }) {
-  return <span className={`spk-bars ${active ? "is-on" : ""}`} aria-hidden="true">{[0.55, 1, 0.75, 0.9, 0.5].map((k, i) => <i key={i} style={{ transform: `scaleY(${active ? Math.max(0.18, Math.min(1, level * 1.6 * k + 0.12 * (i % 2))) : 0.18})` }} />)}</span>;
-}
+import { ctx, capture, claim, fitShape, KEY, macContext, mine, SEE, native, nowPlayingOnce, post, readSee, screenFacts, webAct } from "./spark/bridge";
+import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
+import { MiniCard, VoiceBars } from "./spark/parts";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -268,7 +50,7 @@ function VoiceBars({ level, active }: { level: number; active: boolean }) {
  */
 export function Buddy({ embedded = false, full = false, onClose }: { embedded?: boolean; full?: boolean; onClose?: () => void } = {}) {
   const lesson = useTeaching().document, practicing = !!lesson?.practice.active;
-  const prefs = useCompanion(), voice = useBuddyVoice(), note = useNote(), track = useNowPlaying(), { sounds } = useLook();
+  const prefs = useCompanion(), voice = useBuddyVoice(), track = useNowPlaying(), { sounds } = useLook();
   // Load Spark's voice as soon as it's on screen, so the first spoken reply starts in a blink instead of after a
   // ~10s cold model load. Re-warms when you switch voices; the gateway keeps it loaded for a while after.
   useEffect(() => {
@@ -326,22 +108,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // A command waiting for your yes.
   const [asking, setAsking] = useState<{ command: string; why: string; answer: (yes: boolean) => void } | null>(null);
   useEffect(() => {
-    confirmRun = (command, why) => new Promise<boolean>((resolve) => setAsking({ command, why, answer: (yes) => { setAsking(null); resolve(yes); } }));
-    onRanOutput = (command, ok, output) => {
+    sparkHooks.confirmRun = (command, why) => new Promise<boolean>((resolve) => setAsking({ command, why, answer: (yes) => { setAsking(null); resolve(yes); } }));
+    sparkHooks.onRanOutput = (command, ok, output) => {
       const run = convoRef.current?.run; if (!run || !output.trim()) return;
       void followUp(run, `[ran] \`${command}\` ${ok ? "succeeded" : "failed"}. Output:\n\`\`\`\n${output.slice(-3000)}\n\`\`\`\nTell me in a sentence or two what this means (no need to repeat it all).`).catch(() => {});
     };
     // Mail results go back to Spark to sum up; the raw list stays out of the chat.
-    onMailOutput = (what, output) => {
+    sparkHooks.onMailOutput = (what, output) => {
       const run = convoRef.current?.run; if (!run) return;
       void followUp(run, `[mail] ${what}:\n\n[screen]\n${output.slice(0, 6000)}\n\nSay the gist in one or two spoken sentences (who and what matters), not the whole list. Offer a next step if there's an obvious one.`).catch(() => {});
     };
     // What Spark looked up on your Mac goes back to it to answer from, with the specifics; raw lists stay out of the chat.
-    onMacOutput = (what, output) => {
+    sparkHooks.onMacOutput = (what, output) => {
       const run = convoRef.current?.run; if (!run) return;
       void followUp(run, `[mac] ${what}:\n\n[screen]\n${output.slice(0, 9000)}\n\nAnswer their question from this with the specifics (names, dates, times, where the file is), in a few spoken sentences. If a file looks like the one they meant, offer to open or read it. Don't list everything.`).catch(() => {});
     };
-    return () => { confirmRun = null; onRanOutput = null; onMailOutput = null; onMacOutput = null; };
+    return () => { sparkHooks.confirmRun = null; sparkHooks.onRanOutput = null; sparkHooks.onMailOutput = null; sparkHooks.onMacOutput = null; };
   }, []);
   // Live: Spark watches your screen as a real stream (one frame a second, in memory only) while this is on.
   const [liveOn, setLiveOn] = useState(false), [liveBusy, setLiveBusy] = useState(false);
@@ -388,7 +170,6 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const recorded = convo ? crew.runs[convo.run] : undefined;
   const actualRuntime = recorded?.runtime ?? convo?.runtime;
   const actualModel = recorded?.model ?? convo?.model;
-  const onMac = (actualRuntime ?? choice?.runtime ?? (prefs.brain === "local" ? "local" : undefined)) === "local";
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -492,7 +273,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     for (const b of completedBlocks(text)) {
       if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
       seen.add(b.key);
-      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, lastScreen); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
+      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, screenFacts()); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
       else if (b.kind === "draw") { const shapes = parseDraw(b.raw).map(fitShape); if (shapes.length) queueDraw(key, shapes); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
@@ -500,7 +281,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         else if (g) void (async () => {
           // In Chrome the page reports the element's exact box; elsewhere, snap to the real control.
           const w = g.label ? await webAct("locate", g.label) : null;
-          const r = w?.rect ? { ...w.rect, shape: (/^(button|a|link|tab|summary)$/.test(w.role ?? "") ? "pill" : "rounded") as "pill" | "rounded", exact: true } : locate(g, lastScreen);
+          const r = w?.rect ? { ...w.rect, shape: (/^(button|a|link|tab|summary)$/.test(w.role ?? "") ? "pill" : "rounded") as "pill" | "rounded", exact: true } : locate(g, screenFacts());
           const exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" });
         })();
       } else if (b.kind === "act") {
