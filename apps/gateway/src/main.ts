@@ -66,8 +66,9 @@ export async function registry(): Promise<Map<string, Runtime>> {
     const id = agent.id.startsWith("acp:") ? agent.id : `acp:${agent.id}`;
     runtimes.set(id, new AcpRuntime({ id, label: agent.label, command: agent.command, args: agent.args ?? [], authMode: agent.authMode }));
   }
-  // On this Mac (Ollama): Spark's fallback when Claude and Codex are out of usage. Never used for crew work.
-  if (config.local?.enabled !== false) runtimes.set("local", new LocalRuntime());
+  // On this Mac (Ollama): opt-in only (`local: { enabled: true }` in the config). It answered in up to a minute and
+  // couldn't do real work, so it no longer shows up in Settings, Usage or the model lists unless you turn it on.
+  if (config.local?.enabled === true) runtimes.set("local", new LocalRuntime());
   if (process.env.SHUACREW_DEMO === "1") runtimes.set("mock", new MockRuntime());
   return runtimes;
 }

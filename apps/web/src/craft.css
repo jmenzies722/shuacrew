@@ -15,6 +15,8 @@
   --depth-hover: 0 0 0 1px var(--active-line), 0 12px 28px rgba(0, 0, 0, 0.45);
   --radius-card: 14px;
 }
+/* On light palettes, accent text goes deeper, not lighter: lavender-on-lavender was about 2:1 and unreadable. */
+[data-theme="light"] { --accent-text: color-mix(in srgb, var(--amber) 72%, #000); }
 
 /* The canvas and the floating main panel. */
 [data-theme="dark"] body { background: var(--sunken); }
