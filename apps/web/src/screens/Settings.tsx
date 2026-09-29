@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode, Fragment } from "react";
 import { Link } from "@tanstack/react-router";
-import { AudioLines, Bell, LayoutGrid, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap, Lock, Timer } from "lucide-react";
+import { HeartPulse, Bell, LayoutGrid, Check, Keyboard, MessageSquare, Monitor, Palette, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Zap, Lock, Timer } from "lucide-react";
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { AlwaysOn, Appearance, BackupsPanel, RuntimeSettings } from "./Pages";
@@ -23,6 +23,7 @@ import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, Soundscap
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
 import "./settings.css";
+import { HealthCheck } from "../components/HealthCheck";
 
 const SECTIONS = [
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette, group: "You" },
@@ -33,6 +34,7 @@ const SECTIONS = [
   { id: "agents", title: "Agents", description: "Your crew, models, and connected capabilities.", icon: Sparkles, group: "Crew" },
   { id: "power", title: "Power", description: "Shortcuts that turn intent into running work.", icon: Zap, group: "Crew" },
   { id: "automation", title: "Automation", description: "What runs on its own — and when it waits.", icon: Timer, group: "Crew" },
+  { id: "health", title: "Health check", description: "Everything ShuaCrew needs, checked for real, with the fix for anything that isn't right.", icon: HeartPulse, group: "System" },
   { id: "safety", title: "Safety & git", description: "What agents may never touch, and how their work lands.", icon: Lock, group: "System" },
   { id: "notifications", title: "Notifications", description: "Let the right things interrupt you.", icon: Bell, group: "System" },
   { id: "mobile", title: "Mobile", description: "Your crew, within reach. Your Mac stays in control.", icon: Smartphone, group: "System" },
@@ -131,6 +133,7 @@ export function Settings() {
       <Choice name="Spell check" detail="Use the system's spelling suggestions in the message composer." field="spellcheck" options={[["on", "On"], ["off", "Off"]]} />
       <Choice name="Turn navigator" detail="Jump between prompts using the markers beside a desktop conversation." field="turnMap" options={[["show", "Show"], ["hide", "Hide"]]} />
     </div> },
+    { id: "health-check", section: "health", title: "Health check", terms: "health check status broken not working diagnose troubleshoot problem permissions voice chrome claude codex disk fix doctor", body: <HealthCheck /> },
     { id: "runtimes", section: "agents", title: "Runtime connections", terms: "claude codex acp subscription auth model provider connection", body: <RuntimeSettings /> },
     { id: "desktop-alerts", section: "notifications", title: "Mac desktop alerts", terms: "notifications permission desktop alerts background finish complete failure approval reviews quiet hours sounds morning briefing mute", body: <NotificationSettings /> },
     { id: "crew", section: "agents", title: "Build your crew", terms: "persona role member model prompts skills tools mcp policy approvals", body: <div className="settings-card settings-destinations">

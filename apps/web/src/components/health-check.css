@@ -1,0 +1,31 @@
+/* Settings → Health check: a lit summary, then problems first, each with its fix. */
+.health { --tone: var(--ok, #30d158); display: grid; gap: 12px; padding: 16px; border-radius: 18px;
+  background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--tone) 14%, transparent), transparent 60%), var(--raised);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 28%, var(--line)); transition: box-shadow .3s; }
+.health.is-warn { --tone: #ff9f0a; }
+.health.is-fail { --tone: var(--bad, #ff453a); }
+.health:not(.is-ok):not(.is-warn):not(.is-fail) { --tone: var(--amber); }
+.health-head { display: flex; align-items: center; gap: 12px; }
+.health-head > div { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.health-head strong { font-size: 16px; }
+.health-head small { font-size: 12px; color: var(--text-3); }
+.health-badge { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 12px; font-style: normal; color: #fff; background: var(--tone); box-shadow: 0 8px 22px -10px var(--tone); }
+.health-run { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 9px; font-size: 12.5px; font-weight: 600; color: var(--text); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.health-run:disabled { opacity: .6; }
+.is-spin { animation: health-spin 1s linear infinite; }
+@keyframes health-spin { to { transform: rotate(360deg); } }
+.health-howto { margin: 0; padding: 8px 12px; border-radius: 10px; font-size: 12.5px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.health-howto code { padding: 1px 6px; border-radius: 6px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+.health-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.health-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 12px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.health-list li.is-fail { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad, #ff453a) 45%, var(--line)); }
+.health-list li.is-warn { box-shadow: inset 0 0 0 1px color-mix(in srgb, #ff9f0a 40%, var(--line)); }
+.health-dot { display: grid; place-items: center; font-style: normal; }
+.health-list li.is-ok .health-dot { color: var(--ok, #30d158); }
+.health-list li.is-warn .health-dot { color: #ff9f0a; }
+.health-list li.is-fail .health-dot { color: var(--bad, #ff453a); }
+.health-list span { display: grid; gap: 1px; min-width: 0; }
+.health-list b { font-size: 13px; }
+.health-list small { font-size: 12px; color: var(--text-3); }
+.health-list button { height: 26px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #fff; background: var(--accent-grad, var(--amber)); }
+@media (prefers-reduced-motion: reduce) { .is-spin { animation: none; } }
