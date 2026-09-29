@@ -746,7 +746,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const a = next ? (now ? "Voice mode is already on. Just talk." : "Voice mode on. Just talk, I'm listening.") : (now ? "Voice mode off." : "Voice mode is already off.");
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
-    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "settings" || move.kind === "music" || move.kind === "whatsong" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
+    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "settings" || move.kind === "folder" || move.kind === "music" || move.kind === "whatsong" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
     if (move && PLAYER) {
       const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
       const player = async () => {
@@ -780,6 +780,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const r = radioOn ? await radioNow().catch(() => null) : null;
         done(m?.title ? `That's ${m.title}${m.artist ? ` by ${m.artist}` : ""}${m.playing ? "" : " (paused)"}.` : r?.playing ? `That's ${r.title ?? r.station ?? "ShuaCrew Radio"} on the radio.` : "Nothing's playing right now."); return;
       }
+      if (move.kind === "folder") { const r = await perform({ type: "mac", op: "new_folder", name: move.name, ...(move.in ? { in: move.in } : {}) }); done(r.message); return; }
       if (move.kind === "settings") { const r = await perform({ type: "open_settings", pane: move.pane }); done(r.ok ? r.message : r.message); return; }
       if (move.kind === "browse") {
         const { media: m } = await player();

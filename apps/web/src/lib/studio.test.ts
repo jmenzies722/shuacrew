@@ -190,3 +190,11 @@ describeMusic("Apple Music by asking", () => {
     expectMusic(move("play Drake")).toEqual({ kind: "play", query: "Drake" });
   });
 });
+import { it as itFolder, expect as expectFolder } from "vitest";
+import { producerMove as moveFolder } from "./studio";
+itFolder("makes a folder directly, where you said", () => {
+  expectFolder(moveFolder("open Finder and make a new folder called test on my Desktop")).toBeNull(); // compound: Spark handles it
+  expectFolder(moveFolder("make a new folder called test on my desktop")).toEqual({ kind: "folder", name: "test", in: "~/Desktop" });
+  expectFolder(moveFolder("create a folder named Taxes 2026 in documents")).toEqual({ kind: "folder", name: "Taxes 2026", in: "~/Documents" });
+  expectFolder(moveFolder("make a folder called Receipts")).toEqual({ kind: "folder", name: "Receipts" });
+});

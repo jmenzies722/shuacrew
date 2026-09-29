@@ -34,6 +34,11 @@ enum MacKnowledge {
             case "status": done(true, "Checked your Mac", status())
             case "context": done(true, "", context())
             case "permissions": done(true, "", permissions())
+            case "notes_new": newNote(a, done)
+            case "calendar_add": addEvent(a, done)
+            case "new_folder": newFolder(a, done)
+            case "reveal", "open_file": openFile(a, reveal: a["op"] as? String == "reveal", done)
+            case "browser_tabs": browserTabs(done)
             default: done(false, "Spark can't look that up.", "")
             }
         }
@@ -191,6 +196,79 @@ enum MacKnowledge {
         let result = NSAppleScript(source: script)?.executeAndReturnError(&error).stringValue
         if error != nil { done(false, "Notes didn't answer. If macOS asks, allow ShuaCrew to control Notes.", ""); return }
         done(true, "Checked your notes", (result ?? "").isEmpty ? "No notes\(q.isEmpty ? "" : " mention “\(q)”")." : result!)
+    }
+
+    // MARK: doing things directly (no clicking)
+
+    private static func appleScript(_ source: String) -> String? {
+        var error: NSDictionary?
+        let r = NSAppleScript(source: "with timeout of 8 seconds\n\(source)\nend timeout")?.executeAndReturnError(&error)
+        return error == nil ? (r?.stringValue ?? "") : nil
+    }
+    private static func quoted(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
+    private static func newNote(_ a: [String: Any], _ done: Done) {
+        let title = ((a["title"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(200), body = ((a["body"] as? String) ?? "").prefix(20_000)
+        guard !title.isEmpty || !body.isEmpty else { done(false, "What should the note say?", ""); return }
+        let esc = { (t: Substring) in t.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\n", with: "<br>") }
+        let html = (title.isEmpty ? "" : "<h1>\(esc(title))</h1>") + esc(body)
+        let ok = appleScript("tell application \"Notes\" to make new note at default account with properties {body:\(quoted(html))}") != nil
+        done(ok, ok ? "Made the note “\(title.isEmpty ? String(body.prefix(40)) : String(title))”" : "Notes didn't answer. If macOS asks, allow ShuaCrew to control Notes.", "")
+    }
+    private static func addEvent(_ a: [String: Any], _ done: Done) {
+        guard let title = (a["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty, title.count <= 200 else { done(false, "What's the event?", ""); return }
+        let parse = { (v: Any?) -> Date? in guard let s = v as? String else { return nil }; if let d = ISO8601DateFormatter().date(from: s) { return d }; let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd'T'HH:mm"; return f.date(from: s) }
+        guard let start = parse(a["start"]) else { done(false, "When is it?", ""); return }
+        guard access(.event) else { done(false, "Let ShuaCrew use your calendar in System Settings → Privacy & Security → Calendars.", ""); return }
+        let e = EKEvent(eventStore: events)
+        e.title = title; e.startDate = start; e.endDate = parse(a["end"]) ?? start.addingTimeInterval(3600)
+        if let place = a["location"] as? String, !place.isEmpty { e.location = String(place.prefix(200)) }
+        e.calendar = events.defaultCalendarForNewEvents
+        do { try events.save(e, span: .thisEvent); done(true, "Added “\(title)” on \(when.string(from: start))", "") } catch { done(false, "Couldn't add it to your calendar.", "") }
+    }
+    private static func newFolder(_ a: [String: Any], _ done: Done) {
+        let name = ((a["name"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        guard !name.isEmpty, name.count <= 120, !name.hasPrefix(".") else { done(false, "What should the folder be called?", ""); return }
+        guard let parent = allowed((a["in"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "~/Desktop") else { done(false, "Spark can't make folders there.", ""); return }
+        var target = (parent as NSString).appendingPathComponent(name), n = 2
+        while FileManager.default.fileExists(atPath: target) { target = (parent as NSString).appendingPathComponent("\(name) \(n)"); n += 1 }   // never overwrite
+        do {
+            try FileManager.default.createDirectory(atPath: target, withIntermediateDirectories: false)
+            DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: target)]) }
+            done(true, "Made the folder “\((target as NSString).lastPathComponent)” in \(((parent as NSString).lastPathComponent))", "")
+        } catch { done(false, "Couldn't make that folder.", "") }
+    }
+    private static func openFile(_ a: [String: Any], reveal: Bool, _ done: Done) {
+        guard let raw = a["path"] as? String, let path = allowed(raw), FileManager.default.fileExists(atPath: path) else { done(false, "Couldn't find that file (or it's off-limits).", ""); return }
+        let url = URL(fileURLWithPath: path)
+        DispatchQueue.main.async { if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) } }
+        done(true, reveal ? "Showing \(url.lastPathComponent) in Finder" : "Opened \(url.lastPathComponent)", "")
+    }
+    private static func browserTabs(_ done: Done) {
+        var out: [String] = []
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        if running.contains("com.apple.Safari"), let r = appleScript("""
+            tell application "Safari"
+              set out to ""
+              repeat with w in windows
+                repeat with t in tabs of w
+                  set out to out & (name of t) & " — " & (URL of t) & linefeed
+                end repeat
+              end repeat
+              return out
+            end tell
+            """), !r.isEmpty { out.append("Safari:\n" + r) }
+        if running.contains("com.google.Chrome"), let r = appleScript("""
+            tell application "Google Chrome"
+              set out to ""
+              repeat with w in windows
+                repeat with t in tabs of w
+                  set out to out & (title of t) & " — " & (URL of t) & linefeed
+                end repeat
+              end repeat
+              return out
+            end tell
+            """), !r.isEmpty { out.append("Chrome:\n" + r) }
+        done(true, "Checked your open tabs", out.isEmpty ? "No open browser tabs (or the browser didn't answer)." : String(out.joined(separator: "\n").prefix(9000)))
     }
 
     // MARK: what Spark can reach

@@ -186,6 +186,8 @@ export type ProducerMove =
   | { kind: "music"; command: "playlist" | "shuffle" | "repeat" | "love" | "add_to_library"; query?: string; on?: boolean; mode?: "off" | "one" | "all" }
   /** "What's this song?" — answered from what's actually playing. */
   | { kind: "whatsong" }
+  /** "make a folder called test on my Desktop": made directly, no clicking. */
+  | { kind: "folder"; name: string; in?: string }
   /** "open Wi-Fi settings", "take me to Night Shift": that exact page of System Settings. */
   | { kind: "settings"; pane: string }
   /** "open music artist by Drake", "show me Drake on Spotify": open that artist / album / search in the music app. */
@@ -226,6 +228,8 @@ export function producerMove(q: string): ProducerMove | null {
   if (/^(put on|play|start|turn on)( some| the| my)? (music|radio|shuacrew radio)\b/i.test(t)) return { kind: "radio", cmd: "play" };
   if (/^pause( the)? radio$/i.test(t)) return { kind: "radio", cmd: "pause" };
   if (/^(resume|unpause)( the)? radio$/i.test(t)) return { kind: "radio", cmd: "resume" };
+  const folder = /^(?:make|create|add)\s+(?:me\s+)?(?:a\s+)?(?:new\s+)?folder\s+(?:called|named)\s+["“']?(.{1,80}?)["”']?(?:\s+(?:on|in)\s+(?:my\s+|the\s+)?(desktop|documents|downloads))?$/i.exec(t);
+  if (folder) return { kind: "folder", name: folder[1]!.trim(), ...(folder[2] ? { in: `~/${folder[2][0]!.toUpperCase()}${folder[2].slice(1).toLowerCase()}` } : {}) };
   const playlist = /^(?:play|put on|start)\s+(?:my|the)\s+(.{2,60}?)\s+playlist$/i.exec(t);
   if (playlist) return { kind: "music", command: "playlist", query: playlist[1]!.trim() };
   const shuffle = /^(?:(?:turn|switch)\s+)?shuffle\s+(on|off)$|^(?:turn|switch)\s+(on|off)\s+shuffle$|^shuffle(?:\s+(?:it|this|my music|the music))?$/i.exec(t);
