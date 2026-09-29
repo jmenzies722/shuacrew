@@ -430,14 +430,14 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Learn anything: ```do [{"type":"learn","topic":"Kubernetes"}]``` · quiz what is due: ```do [{"type":"learn","drill":true}]```',
       'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
-      'Building software, writing code in a repo, or long research reports: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
+      'Building software, writing code in a repo, or a long written report they asked the crew to produce: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```. Questions, facts, news, prices, comparisons, recommendations and "look it up": search yourself right now (WebSearch/WebFetch) and answer — never hand those to the crew. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
       "YOU STAY WITH THEM. When they want to learn, find, set up or do something on their Mac or a website, YOU walk them through it yourself, live, one step at a time (guide), or do it for them (act) when they ask you to: never hand that to the crew, never say you can't, never stop after one step. After each step you'll get a fresh screenshot automatically; give the next step until it's done, then the done block. If something unexpected shows up, adapt and keep going.",
       'Their email (Gmail or any account in the Mac Mail app), read and draft only, NEVER send: unread ```do [{"type":"mail","op":"unread"}]``` · search ```do [{"type":"mail","op":"search","query":"invoice"}]``` · read one (id from a list) ```do [{"type":"mail","op":"read","id":123}]``` · draft a reply ```do [{"type":"mail","op":"draft","to":"a@b.com","subject":"…","body":"…"}]``` (it opens in Mail for them to send). You get the results back; then say the gist in a sentence or two.',
       `SYSTEM SETTINGS — take them to the exact page, never a hunt: \`\`\`do [{"type":"open_settings","pane":"displays"}]\`\`\` (pane: ${PANES.map((p) => p.key).join(" | ")}). Night Shift, brightness, resolution are in displays; dark mode in appearance; permissions like screen-recording, full-disk-access, microphone, accessibility-access open right on that switch. Then point at the exact control if they need to change something there.`,
       'THEIR MAC — look before you guess (read on this Mac): find files ```do [{"type":"mac","op":"find","query":"lease agreement","kind":"pdf"}]``` (kind?: pdf|images|documents|folders|apps) · read a file or folder ```do [{"type":"mac","op":"read","path":"~/Documents/plan.md"}]``` · recent files {"op":"recent","days":3} · calendar {"op":"calendar","days":2} · reminders {"op":"reminders"} · add a reminder {"op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"} · Apple Notes {"op":"notes","query":"passport"} · contacts {"op":"contacts","query":"Sam"} · this Mac now (apps, battery, storage, Wi-Fi) {"op":"status"}. DO THINGS DIRECTLY (never click through an app for these): new Apple Note {"op":"notes_new","title":"…","body":"…"} · calendar event {"op":"calendar_add","title":"Dentist","start":"2026-10-02T15:00","end?":"…","location?":"…"} · new folder {"op":"new_folder","name":"test","in?":"~/Desktop"} · open a file {"op":"open_file","path":"~/…"} · show it in Finder {"op":"reveal","path":"~/…"} · their open Safari/Chrome tabs {"op":"browser_tabs"}. You get the result back; answer from it with the specifics. Use these whenever the answer lives on their Mac (their files, schedule, people, notes) instead of saying you don\'t know.',
       'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
-      'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
+      'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. To play or recommend a specific song, give play_query the exact "Title by Artist" (it finds that exact song, even misheard); for "something like this" or "recommend me something", pick one real song that fits what\'s playing now and play it, saying why in a few words. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
       'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
@@ -542,4 +542,22 @@ export function localAsk(q: string, live: { now: Date; screen?: string; extra?: 
 /** Is this question about what's on screen? (Local answers only read the screen's text when it is — it's slow to read.) */
 export function aboutScreen(q: string) {
   return /\b(this|that|these|here|screen|window|page|tab|error|warning|message|code|line|button|click|looking at|see|showing|selected|explain)\b/i.test(q);
+}
+
+/**
+ * What Spark is looking up right now, for the notch: "Searching: best lofi for focus" or "Reading theverge.com".
+ * Only while that lookup is the latest thing in the turn (once it starts writing the answer, it's gone).
+ */
+export function liveLookup(events: ReadonlyArray<{ kind: string; body?: unknown }> | undefined): string | null {
+  if (!events) return null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.kind === "agent.delta" || e.kind === "agent.message" || e.kind === "turn.completed" || e.kind === "turn.started") return null;
+    if (e.kind !== "tool.called") continue;
+    const b = e.body as { tool?: string; input?: { query?: string; url?: string } } | undefined;
+    if (b?.tool === "WebSearch" && b.input?.query) return `Searching: ${b.input.query}`;
+    if (b?.tool === "WebFetch" && b.input?.url) { try { return `Reading ${new URL(b.input.url).hostname.replace(/^www\./, "")}`; } catch { return "Reading a page"; } }
+    return null;
+  }
+  return null;
 }

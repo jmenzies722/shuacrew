@@ -16,7 +16,7 @@ import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stu
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowUp, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, BookOpen, AudioLines, Globe, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -24,7 +24,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, actFollowUp, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, actFollowUp, liveLookup, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -764,7 +764,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Speaking while tucked in: the island widens just enough to caption what Spark is saying, live.
   const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
   const streamingNow = !!streamText && !speaking && !hearingNow;
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!stuck || !!task || !!guide);
+  // Searching the web or reading a page right now: shown live, so you can watch Spark look it up.
+  const lookup = useMemo(() => (busy || working ? liveLookup(events as never) : null), [events, busy, working]);
+  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -944,7 +946,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
@@ -965,7 +967,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} lines={6} />
             : hearingNow || phase === "hearing" ? <Rolling className="notch-heard is-open" lines={6}>{heard || "Listening…"}</Rolling>
             : streamText ? <Rolling className="notch-heard is-open is-stream" lines={6}>{streamText}<i className="notch-caret" /></Rolling>
-            : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? <>Thinking<span className="notch-dots"><i /><i /><i /></span></> : gist(lastSparkText)}</p>}
+            : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? (lookup ? <><Globe size={12} /> {lookup}<span className="notch-dots"><i /><i /><i /></span></> : <>Thinking<span className="notch-dots"><i /><i /><i /></span></>) : gist(lastSparkText)}</p>}
           {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
             task={task} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}
