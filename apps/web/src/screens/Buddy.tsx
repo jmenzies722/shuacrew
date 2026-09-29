@@ -207,7 +207,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (!getBuddyVoice().on) { releaseDraw(); return; }
     clearTimeout(drawing.current.timer); drawing.current.timer = setTimeout(releaseDraw, 4000); // never stuck waiting
   };
-  useEffect(() => { speech.current.onSpeaking = (on) => { setSpeaking(on); mic.current.speaking = on; if (!on) while (drawing.current.queue.length) releaseDraw(); }; speech.current.onCaption = (c) => { setCaption(c); if (c) releaseDraw(); }; }, []);
+  useEffect(() => { speech.current.onSpeaking = (on) => { setSpeaking(on); mic.current.speaking = on; post({ type: "buddySpeaking", on }); /* what it points at stays while it explains */ if (!on) while (drawing.current.queue.length) releaseDraw(); }; speech.current.onCaption = (c) => { setCaption(c); if (c) releaseDraw(); }; }, []);
   useEffect(() => {
     const on = (e: Event) => setHands((e as CustomEvent<{ trusted: boolean; shortcuts: string[] }>).detail);
     window.addEventListener("shuacrew:hands", on); post({ type: "buddyHands" });
