@@ -24,7 +24,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, ackFor, deleteQuestion, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, deleteQuestion, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -117,6 +117,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }, [embedded]);
   // Open-mic conversation.
   const [phase, setPhase] = useState<Phase>("off"), talkBtn = useRef<HTMLButtonElement>(null);
+  // fn held (push-to-talk): the notch shows it is ready the instant the key goes down; `fnSent` keeps the working
+  // state on screen from letting go until Spark's first word.
+  const [fnHeld, setFnHeld] = useState(false), [fnSent, setFnSent] = useState(false);
   useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Spark
   // A command waiting for your yes.
   /** Your last spoken turn: stays in the notch, shimmering, until Spark starts answering — so you can see it heard you. */
@@ -254,11 +257,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
       say: (text: string) => { speech.current.unlock(); for (const s of text.split(/(?<=[.!?])\s+/)) speech.current.say(s); },
       notch: (g: { w: number; h: number; real: boolean }) => setNotchGeo((cur) => (cur.w === g.w && cur.h === g.h && cur.real === g.real ? cur : g)),
-      // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release".
-      fn: (kind: "tap" | "hold" | "release") => {
-        if (kind === "tap") { setMini((m) => !m); return; }
-        if (kind === "hold") { setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
-        mic.current.release();
+      // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release". "down" comes the
+      // instant fn is pressed (the mic opens then, so your first words are kept); "cancel" = fn was a modifier after all.
+      fn: (kind: "down" | "cancel" | "tap" | "hold" | "release") => {
+        if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
+        if (kind === "cancel") { mic.current.cool(); return; }
+        if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
+        if (kind === "hold") { setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
+        setFnHeld(false); setFnSent(true); mic.current.release();
       } };
     post({ type: "buddyReady" });
   }, []);
@@ -635,7 +641,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     const mission = missionTask(q, prefs.nickname);
     if (mission) {
       const r = await perform({ type: "crew", ask: mission });
-      const a = r.ok ? (prefs.persist ? "On it. The crew is working on it and I'll stay with it until it's done." : "On it. The crew is working on it.") : `I couldn't start that: ${r.message}`;
+      const what = mission.length > 70 ? `${mission.slice(0, 67).replace(/\s+\S*$/, "")}…` : mission;
+      const a = r.ok ? `The crew's taking “${what}”.${prefs.persist ? " I'll stay with it until it's done." : ""}` : `I couldn't start that: ${r.message}`;
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
     const move = producerMove(q);
@@ -748,7 +755,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       logSense("heard", "Heard you", t); setLastHeard(t); if (prefsRef.current.interrupt) speech.current.stop();
       const waiting = askingRef.current;
       if (waiting) { const said = yesOrNo(t); if (said !== null) { waiting.answer(said); return; } waiting.answer(false); } // anything else: keep it, and carry on with what you said
-      acknowledge(t);
+      newTurn();
       void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     // You kept talking over Spark: it stops now, like a person would, instead of waiting for the transcript.
@@ -879,19 +886,21 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
   // Working on what you said: after you stop talking and before Spark's first word. It used to look frozen (the bars sat
   // at their floor and your words vanished), easy to take for "it didn't hear me".
-  const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold")) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
+  const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold") || fnSent) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
   const processingText = processing ? (heard || lastHeard) : "";
   useEffect(() => { if (speaking || streamText) setLastHeard(""); }, [speaking, streamText]);
+  // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.
+  const fnReady = notched && fnHeld && !heard;
+  useEffect(() => { if (speaking || streamText) setFnSent(false); }, [speaking, streamText]);
+  useEffect(() => { if (phase === "error") { setFnHeld(false); setFnSent(false); } }, [phase]); // never stuck "listening"
   const streamingNow = !!streamText && !speaking && !hearingNow;
   // Searching the web or reading a page right now: shown live, so you can watch Spark look it up.
   const lookup = useMemo(() => (busy || working ? liveLookup(events as never) : null), [events, busy, working]);
-  // Jarvis, not a loading spinner: the moment you finish talking Spark says what it's doing ("Checking your calendar."),
-  // unless its real answer has already started. A plain question only gets one if the answer is slow.
   const live$ = useRef({ speaking: false, streaming: false, active: false }); live$.current = { speaking, streaming: !!streamText, active: !!busy || working };
-  const ackTimer = useRef<ReturnType<typeof setTimeout>>(undefined), ackTurns = useRef(0), lastSound = useRef(0), narrated = useRef(0);
+  const lastSound = useRef(0), narrated = useRef(0);
   /**
-   * Spark's own lines (acknowledgment, progress, "done") go through here: each at most once per turn. Two separate
-   * cues both said "Looking that up." on one search — now nothing it says on its own can repeat.
+   * Spark's own lines (progress, "done") go through here: each at most once per turn. Two separate cues both said
+   * "Looking that up." on one search — now nothing it says on its own can repeat.
    */
   const ownLines = useRef(new Set<string>());
   const sayOwn = (text: string) => {
@@ -899,16 +908,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (ownLines.current.has(k)) return false;
     ownLines.current.add(k); lastSound.current = Date.now(); speech.current.say(text); return true;
   };
-  const acknowledge = (said: string) => {
-    clearTimeout(ackTimer.current); ownLines.current.clear(); // a new turn
-    const ack = ackFor(said, ackTurns.current++); if (!ack) return;
-    const { text, delay } = ack;
-    ackTimer.current = setTimeout(() => {
-      const l = live$.current; if (l.speaking || l.streaming) return;
-      sayOwn(text);
-    }, delay);
-  };
-  useEffect(() => { if (speaking || streamText) clearTimeout(ackTimer.current); if (speaking) lastSound.current = Date.now(); }, [speaking, streamText]);
+  // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
+  // arrives in ~1.2 s, and the notch animation covers the gap. The quiet clock restarts so progress waits its 4 s.
+  const newTurn = () => { ownLines.current.clear(); lastSound.current = Date.now(); };
+  useEffect(() => { if (speaking) lastSound.current = Date.now(); }, [speaking]);
   // A long turn never leaves you hanging — but with real news, not filler: after ~4 s of quiet, what it's actually doing
   // ("Pulling up space.com."), twice at most. Nothing specific to say: it stays quiet and the notch shows it working.
   const eventsRef = useRef(events); eventsRef.current = events;
@@ -922,7 +925,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }, 1000);
     return () => clearInterval(tick);
   }, [busy, working, voiceLive, prefs.conversation, prefs.listen]);
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads);
+  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -1090,7 +1093,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}${fnHeld ? " is-ready" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <div className="shua-island-ears">
@@ -1101,12 +1104,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </button>
           <span className="shua-island-cam" aria-hidden />
           <span className="shua-island-ear is-live">
-            {voiceLive ? <span className="shua-island-voice">{processing ? <ThinkWave /> : <MicBars floor={speaking ? 0.5 : 0.15} />}</span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
+            {voiceLive || fnHeld || fnSent ? <span className="shua-island-voice">{processing ? <ThinkWave /> : <MicBars floor={speaking ? 0.5 : 0.15} />}</span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
             {islandOpen && <small>{statusLabel}</small>}
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{fnReady ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p> : processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>

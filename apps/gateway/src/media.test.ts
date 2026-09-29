@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { kindOf, status, tools, transcribe } from "./media.js";
+import { fittedAudioCtx, kindOf, status, tools, transcribe } from "./media.js";
 import { Uploads } from "./uploads.js";
 
 const t = tools(path.join(os.homedir(), ".shuacrew", "models"));
@@ -67,4 +67,12 @@ it("hears the wake phrase as \"Hey Shua\", however Whisper split it", () => {
   for (const heard of ["Heishua, pause the music", "Hei Shuaa, pause the music", "hey, shua, pause the music"]) expect(fixWake(heard, [])).toBe("Hey Shua, pause the music");
   expect(fixWake("They should go", [])).toBe("They should go"); // not a lookalike
   expect(vocab([]).startsWith("Hey Shua, ")).toBe(true);
+});
+
+describe("a spoken turn's Whisper window", () => {
+  it("always covers the whole clip (50 frames a second), with room to spare, and never exceeds 30 s", () => {
+    for (const seconds of [0.4, 2, 6.2, 9.5, 12, 18, 27.9]) expect(fittedAudioCtx(seconds)).toBeGreaterThanOrEqual(Math.ceil((seconds + 1) * 50));
+    expect(fittedAudioCtx(1)).toBe(512); // short commands: the smallest window that measured as accurate as the full one
+    expect(fittedAudioCtx(40)).toBe(1500);
+  });
 });

@@ -4,7 +4,9 @@ import Foundation
 /// other key while it's down means "not for Spark" and nothing fires. Pure state: the Mac app feeds it events
 /// and a clock; the tests pin the timing.
 public struct FnGesture: Sendable {
-    public enum Signal: Equatable, Sendable { case none, tap, holdStart, holdEnd }
+    /// `press` fires the instant fn goes down (Spark opens the mic then, so the first words aren't lost); `cancel` says
+    /// that press wasn't for Spark after all (fn+another key, or let go without a tap or hold).
+    public enum Signal: Equatable, Sendable { case none, press, cancel, tap, holdStart, holdEnd }
     public static let holdAfter: TimeInterval = 0.3
     public static let tapWithin: TimeInterval = 0.5
 
@@ -16,15 +18,16 @@ public struct FnGesture: Sendable {
 
     /// fn went down (alone).
     public mutating func down(at t: TimeInterval) -> Signal {
-        if downAt == nil { downAt = t; holding = false; spoiled = false }
-        return .none
+        guard downAt == nil else { return .none }
+        downAt = t; holding = false; spoiled = false
+        return .press
     }
     /// Another key (or modifier) while fn is down: it's being used as a modifier, so this press isn't Spark's.
     public mutating func otherKey() -> Signal {
-        guard downAt != nil else { return .none }
-        if holding { holding = false; spoiled = true; return .holdEnd }
+        guard downAt != nil, !spoiled else { return .none }
         spoiled = true
-        return .none
+        if holding { holding = false; return .holdEnd }
+        return .cancel
     }
     /// Time passing while fn is held: past the threshold, a hold begins.
     public mutating func tick(at t: TimeInterval) -> Signal {
@@ -37,6 +40,7 @@ public struct FnGesture: Sendable {
         guard let start = downAt else { return .none }
         defer { downAt = nil; holding = false; spoiled = false }
         if holding { return .holdEnd }
-        return !spoiled && t - start < Self.tapWithin ? .tap : .none
+        if spoiled { return .none } // already cancelled
+        return t - start < Self.tapWithin ? .tap : .cancel
     }
 }

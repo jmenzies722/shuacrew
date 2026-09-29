@@ -170,7 +170,8 @@ export class HandsFree {
     this.ctx = new AudioContext();
     const source = this.ctx.createMediaStreamSource(this.stream);
     this.node = this.ctx.createScriptProcessor(2048, 1, 1);
-    const frameMs = (2048 / this.ctx.sampleRate) * 1000, keep = Math.ceil(400 / frameMs);
+    // Push-to-talk keeps more: the mic opens the moment fn goes down, and the ~0.3 s before it counts as a hold is yours.
+    const frameMs = (2048 / this.ctx.sampleRate) * 1000, keep = Math.ceil(400 / frameMs), keepHold = Math.ceil(900 / frameMs);
     this.state = vadStart(); this.preroll = []; this.turn = null;
     this.node.onaudioprocess = (e) => {
       const data = new Float32Array(e.inputBuffer.getChannelData(0));
@@ -178,7 +179,7 @@ export class HandsFree {
       const rms = Math.sqrt(sum / data.length);
       this.onLevel?.(Math.min(1, rms * 12));
       if (this.paused) return;
-      if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > keep) this.preroll.shift(); }
+      if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > (this.mode === "hold" ? keepHold : keep)) this.preroll.shift(); }
       if (this.mode !== "hold" && !this.turn && performance.now() < this.muteUntil) return; // typing: listen, but don't start a turn
       if (this.mode === "hold") { if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption(); return; }
       // Echo-aware while Spark talks: learn how much of its voice reaches the mic, and only count you above that.
@@ -208,12 +209,23 @@ export class HandsFree {
 
   /** Push-to-talk: open the mic only now, and start the turn the moment it's live. */
   async press() {
+    if (this.tail) { clearTimeout(this.tail); this.tail = undefined; this.pressed = true; return; } // pressed again right after letting go: same turn
     if (this.holding) return;
     this.pressed = true;
     if (!this.stream) await this.start();
     if (this.pressed) this.hold(); // still holding once the mic came up
   }
   private pressed = false;
+  /** Letting go keeps recording a moment, so the last word isn't cut off. */
+  private tail?: ReturnType<typeof setTimeout>;
+  static readonly TAIL_MS = 300;
+  /**
+   * fn just went down (it isn't a hold yet): open the mic now, so by the time it counts as a hold, what you've already
+   * started saying is in the preroll. Opening the mic only on the hold lost the first ~0.5 s of every turn.
+   */
+  async warm() { if (this.mode !== "hold" || this.holding) return; this.pressed = false; if (!this.stream) await this.start(); }
+  /** It was a tap, or fn+another key: close the mic that warm() opened (never mid-turn). */
+  cool() { if (this.mode === "hold" && !this.holding && !this.pressed && !this.inflight) this.stop(); }
   /** Push-to-talk: start a turn now (keeping the last moment before you pressed, so the first word isn't clipped). */
   hold() {
     if (!this.stream || this.holding || this.paused) return;
@@ -226,10 +238,16 @@ export class HandsFree {
   release() {
     this.pressed = false;
     if (!this.holding) { if (this.mode === "hold") this.stop(); return; }
-    this.holding = false;
-    const frames = this.turn?.length ?? 0, seconds = this.ctx ? (frames * 2048) / this.ctx.sampleRate : 0;
-    // In push-to-talk the mic closes as soon as your words are sent — it's never left open.
-    void this.finish(seconds > 0.3).then(() => { if (this.mode === "hold" && !this.holding) this.stop(); });
+    if (this.tail) return;
+    // People let go on their last syllable, and the audio path runs ~0.1 s behind: keep listening a beat, then send.
+    this.tail = setTimeout(() => {
+      this.tail = undefined;
+      if (this.pressed) return; // pressed again: still the same turn
+      this.holding = false;
+      const frames = this.turn?.length ?? 0, seconds = this.ctx ? (frames * 2048) / this.ctx.sampleRate : 0;
+      // In push-to-talk the mic closes as soon as your words are sent — it's never left open.
+      void this.finish(seconds > 0.3 + HandsFree.TAIL_MS / 1000).then(() => { if (this.mode === "hold" && !this.holding) this.stop(); });
+    }, HandsFree.TAIL_MS);
   }
 
   /** The words so far, quickly (the fast model); the accurate transcript still comes when you stop. */
@@ -283,6 +301,7 @@ export class HandsFree {
   }
 
   stop() {
+    clearTimeout(this.tail); this.tail = undefined; this.holding = false; this.pressed = false;
     if (this.node) { this.node.onaudioprocess = null; this.node.disconnect(); }
     this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close().catch(() => {});

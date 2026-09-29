@@ -259,7 +259,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
     private func fnSignal(_ signal: FnGesture.Signal) {
         let kind: String
-        switch signal { case .none: return; case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release" }
+        switch signal {
+        case .none: return
+        // fn might still be a modifier (fn+arrow): warm or cool the mic quietly, without bringing Spark forward.
+        case .press, .cancel:
+            guard Self.enabled else { return }
+            web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(signal == .press ? "down" : "cancel")')")
+            return
+        case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release"
+        }
         if !Self.enabled { setEnabled(true) }
         start(); raise()
         web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(kind)')")

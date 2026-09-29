@@ -448,6 +448,8 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
   const design = isDesign(question);
   return [
     `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read an attached screenshot.`,
+    // Nothing is said for you while you think (canned "On it" sounded robotic), so the first sentence carries the turn.
+    "YOUR FIRST SENTENCE IS SPOKEN THE MOMENT IT ARRIVES — make it the answer or exactly what you're doing, with the specifics (\"Dentist's on your calendar Thursday at 2:30.\", \"Looking up tonight's Knicks score.\"). Never open with filler: no \"On it\", \"Sure\", \"Got it\", \"Okay\", \"Let me check\", \"Great question\". Be proactive like a sharp assistant: when there's an obvious next thing they'd want (a reminder before the event, leaving time for traffic, the follow-up to a message, a clash in their calendar), offer it in one short question at the end — only when it's genuinely useful, never every turn.",
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
     '```do [{"type":"open_app","name":"Safari"}]```',
     'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
@@ -515,7 +517,7 @@ export function guideFollowUp(label: string, screen: { width: number; height: nu
 export function localSystem(p: Persona): string {
   return [
     `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures, learning and radio. The MODEL line in each message says what you're running on.`,
-    `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Be accurate; if you don't know, say so.`,
+    `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Start with the answer itself, never filler like "On it", "Sure" or "Got it". Be accurate; if you don't know, say so.`,
     "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
     '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below} · radio {cmd: play|pause|resume|next|stop, station?: "lofi jazz"|"lofi hip hop"}',
     "- media {command: play|pause|next|previous|play_query|play_similar, query?, app?: Music|Spotify} ('another song'/'something like this' = play_similar: from their library) · remember {text} · card {front, back} (a quiz card) · run {command} (a terminal command; risky ones ask first)",
@@ -624,27 +626,6 @@ export function deleteQuestion(actions: Action[]): string {
   else if (names.length > 1) parts.push(`${names.length} reminders (${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""})`);
   parts.push(...other);
   return `Delete ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0] ?? "that"}`;
-}
-
-/**
- * What Spark says the instant you finish talking, before the model has a word: Jarvis-style, specific to what you
- * asked. Only when it says something real ("Checking your calendar."): a plain question gets no filler ("give me a
- * sec" sounded robotic) — just the answer, with the notch working in between. null = say nothing.
- */
-export function ackFor(q: string, turn = 0): { text: string; delay: number } | null {
-  const t = q.toLowerCase();
-  const pick = (xs: string[]) => xs[turn % xs.length]!;
-  const quick = 900; // most answers start by ~1.2 s: only a slower one gets a line first
-  const verbs = "remind|set|add|make|create|text|send|email|open|turn|tell|show|check|call|start|schedule|book|delete|remove|find|search|look|put|play";
-  if (new RegExp(`\\b(and|then|also|plus)\\s+(?:${verbs})\\b`).test(t)) return { text: pick(["On it, doing both.", "Got it, both of those.", "On it."]), delay: quick };
-  if (/\b(delete|remove|clear|cancel)\b/.test(t)) return { text: "Let me find that.", delay: quick };
-  if (/\b(remind|reminder)\b/.test(t)) return { text: pick(["Setting that up.", "On it."]), delay: quick };
-  if (/\b(calendar|schedule|meeting|event|appointment)\b/.test(t)) return { text: /\b(add|put|schedule|book|create|make)\b/.test(t) ? "Adding that now." : "Checking your calendar.", delay: quick };
-  if (/\b(email|mail|inbox)\b/.test(t)) return { text: "Checking your mail.", delay: quick };
-  if (/\b(play|put on|queue|song|music|track)\b/.test(t)) return { text: pick(["Queuing that up.", "Coming right up."]), delay: quick };
-  if (/\b(build|code|app|website|landing page|project|repo)\b/.test(t) && /\b(build|make|create|write|fix)\b/.test(t)) return { text: "Handing that to the crew.", delay: quick };
-  if (/\b(look up|search|google|find out|latest|news|price|weather|forecast|score|who won|when is|when's|how much|what time does|open now|near me)\b/.test(t)) return { text: pick(["Let me check.", "Looking that up.", "Checking now."]), delay: quick };
-  return null;
 }
 
 /**

@@ -263,10 +263,9 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         const names = [...Object.values(state.members).map((m) => m.name), ...Object.values(state.ventures).map((v) => v.name)];
         // fast=1: a live caption while you're still talking (quick model, greedy); the final turn uses the accurate one.
         const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.fast === "1" ? 8_000 : request.query.voice === "1" ? 45_000 : undefined, prompt: request.query.lang && request.query.lang !== "en" ? undefined : vocabulary(names), fast: request.query.fast === "1", language: request.query.lang,
-          // A spoken turn in English under ~20 s: the quick model, full beam — about 0.3 s instead of ~1.6 s (the big
-          // model spends most of that loading, every turn), and no less accurate on short commands. Dictation, long
-          // recordings and other languages keep the big one.
-          ...(request.query.voice === "1" && (!request.query.lang || request.query.lang === "en") && request.body.length < 20 * 32_000 + 44 ? { model: "fast" as const } : {}) });
+          // A spoken turn: the big model with a window fitted to the clip — ~0.8 s, and it hears "what's due", "git
+          // status" and "pizza" where base.en heard "what's do", "good status" and "piece" (measured on real turns).
+          ...(request.query.voice === "1" ? { fitWindow: true } : {}) });
         return { text: fixNames(heard, [...names, "ShuaCrew", "Shua", "Codex", "Claude"]) };
       } catch (error) {
         return reply.code(422).send({ error: (error as Error).message });

@@ -131,7 +131,7 @@ it("routes each turn to the model it needs", () => {
   expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
   expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });
-import { ackFor, deleteQuestion, isDestructive, parseNext, progressLine } from "./buddy";
+import { deleteQuestion, isDestructive, localSystem, parseNext, progressLine } from "./buddy";
 it("reads next moves (2–3 short suggestions) and keeps them out of speech", () => {
   const reply = 'Done: Night Shift is on.\n```next ["Schedule it for sunset", "Make it warmer", "Quiz me on this", "extra"]```';
   expect(parseNext(reply)).toEqual(["Schedule it for sunset", "Make it warmer", "Quiz me on this"]);
@@ -171,18 +171,13 @@ it("shows what Spark is looking up only while it's looking", () => {
   expect(liveLookup(undefined)).toBeNull();
 });
 
-describe("Spark answers at once", () => {
-  it("acknowledges actions and lookups almost immediately, with a line that fits", () => {
-    expect(ackFor("Look up when the next SpaceX launch is and put it on my calendar")).toMatchObject({ delay: 900 });
-    expect(ackFor("Play something chill and remind me to stretch")?.text).toMatch(/both|On it/);
-    expect(ackFor("what's on my calendar tomorrow")?.text).toBe("Checking your calendar.");
-    expect(ackFor("add lunch with Sam on Friday to my calendar")?.text).toBe("Adding that now.");
-    expect(ackFor("delete my dentist reminder")?.text).toBe("Let me find that.");
-    expect(ackFor("what's the price of bitcoin")?.text).toMatch(/[Cc]heck|Looking/);
-  });
-  it("says nothing filler-ish for a plain question ('give me a sec' sounded robotic)", () => {
-    expect(ackFor("what's two plus two")).toBeNull();
-    expect(ackFor("tell me a joke")).toBeNull();
+describe("Spark answers at once, without filler", () => {
+  it("leaves the opener to the model: specific first sentence, no canned 'On it', a proactive next step", () => {
+    for (const prompt of [buddyPrompt("add lunch with Sam on Friday", null), localSystem({ name: "Spark", tone: "cheerful", length: "brief" })]) {
+      expect(prompt).toMatch(/never (open with|filler)/i);
+      expect(prompt).toContain("On it");
+    }
+    expect(buddyPrompt("x", null)).toMatch(/proactive/i);
   });
 });
 

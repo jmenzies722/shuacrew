@@ -90,14 +90,25 @@ export function fixNames(text: string, names: string[]): string {
 /** "en" (default), "auto" (Whisper detects it), or a two-letter language code; anything else falls back to English. */
 export function languageArg(language?: string) { return language === "auto" || (language && /^[a-z]{2}$/.test(language)) ? language : "en"; }
 
-export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean; language?: string; model?: "fast" | "accurate" } = {}, t = tools(undefined, options.model ?? (options.fast ? "fast" : "accurate"))): Promise<string> {
+/**
+ * Whisper always encodes a 30 s window, however short the clip; the encoder is most of the time. A spoken turn gets a
+ * window fitted to its length (50 frames a second, rounded up, with room to spare): the big model then runs in ~0.8 s
+ * instead of ~1.4 s on an M1 Pro, just as accurate. Too small a window would cut the end off, so never under the clip.
+ */
+export function fittedAudioCtx(seconds: number): number {
+  return Math.min(1500, Math.max(512, Math.ceil(((seconds + 1.5) * 50) / 64) * 64));
+}
+
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean; language?: string; model?: "fast" | "accurate"; fitWindow?: boolean } = {}, t = tools(undefined, options.model ?? (options.fast ? "fast" : "accurate"))): Promise<string> {
   options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);
   try {
     await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], options.timeoutMs ?? 120_000, options.signal);
     const threads = String(Math.max(2, Math.min(8, os.cpus().length - 2)));
-    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", languageArg(options.language), ...(options.fast ? ["-bs", "1", "-bo", "1"] : ["-bs", "5"]), ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
+    const seconds = Math.max(0, statSync(wav).size - 44) / 32_000; // 16 kHz mono 16-bit
+    const window = options.fitWindow && seconds < 28 ? ["-ac", String(fittedAudioCtx(seconds))] : [];
+    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", languageArg(options.language), ...(options.fast ? ["-bs", "1", "-bo", "1"] : ["-bs", "5"]), ...window, ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
     return out
       .split("\n")
       .map((l) => l.replace(/^\[(\d\d:\d\d:\d\d)\.\d+ --> (\d\d:\d\d:\d\d)\.\d+\]\s*/, (_, a: string, b: string) => `[${a.replace(/^00:/, "")}–${b.replace(/^00:/, "")}] `).trim())
