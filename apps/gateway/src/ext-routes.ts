@@ -10,6 +10,7 @@ import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Ask } from "./terminal-ai.js";
 import { crewBrief, validWebInput, webAnswer } from "./web-spark.js";
+import { WebBridge, validWebCommand, type WebResult } from "./web-bridge.js";
 
 export function extensionKey(home: string): string {
   const file = path.join(home, "extension-key");
@@ -23,7 +24,8 @@ export function extensionKey(home: string): string {
   return key;
 }
 
-export function extRoutes(app: FastifyInstance, options: { home: string; ask?: Ask }) {
+export function extRoutes(app: FastifyInstance, options: { home: string; ask?: Ask; bridge?: WebBridge }) {
+  const bridge = options.bridge ?? new WebBridge();
   // Made on first use (not at startup), so a gateway that never pairs never writes a key.
   let made: string | undefined;
   const keyNow = () => (made ??= extensionKey(options.home));
@@ -45,6 +47,29 @@ export function extRoutes(app: FastifyInstance, options: { home: string; ask?: A
   });
 
   app.post("/api/ext/ping", async (request, reply) => (paired(request, reply) ? { ok: true, name: "ShuaCrew" } : reply));
+
+  // Spark → Chrome: the extension collects commands here (a long poll) and answers each once.
+  app.post("/api/ext/next", async (request, reply) => {
+    if (!paired(request, reply)) return reply;
+    const command = await bridge.next(20_000);
+    return command ? { command } : {};
+  });
+  app.post<{ Body: { id?: string; result?: WebResult } }>("/api/ext/result", async (request, reply) => {
+    if (!paired(request, reply)) return reply;
+    const { id, result } = request.body ?? {};
+    if (typeof id === "string" && result && typeof result === "object") bridge.answer(id, { found: result.found === true, name: typeof result.name === "string" ? result.name.slice(0, 200) : undefined, role: typeof result.role === "string" ? result.role.slice(0, 40) : undefined,
+      rect: result.rect && [result.rect.x, result.rect.y, result.rect.w, result.rect.h].every((n) => typeof n === "number" && Number.isFinite(n)) ? result.rect : undefined, error: typeof result.error === "string" ? result.error.slice(0, 200) : undefined });
+    return { ok: true };
+  });
+  // ShuaCrew's own pages (same origin; the usual CSRF guard applies): find, click or type into a page element by name.
+  app.get("/api/web/status", async () => ({ connected: bridge.connected() }));
+  app.post("/api/web/act", async (request, reply) => {
+    const command = validWebCommand(request.body);
+    if (!command) return reply.code(400).send({ error: "find, click or type, with the element's name" });
+    if (!bridge.connected()) return reply.code(503).send({ error: "Spark for Chrome isn't connected" });
+    const result = await bridge.send(command, 3000);
+    return result ?? reply.code(504).send({ error: "Chrome didn't answer" });
+  });
 
   app.post("/api/ext/act", async (request, reply) => {
     if (!paired(request, reply)) return reply;

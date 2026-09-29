@@ -43,3 +43,30 @@ chrome.commands.onCommand.addListener(async (command) => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: "open" }).catch(() => {});
 });
+
+// Spark → this page, precisely: ShuaCrew asks to find, click or type into an element by what it's called; the page
+// script does it on the real element and answers with its exact screen position. A long poll keeps this listening;
+// an alarm restarts it after Chrome puts the worker to sleep.
+let pumping = false;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function inActiveTab(command) {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.id) return { found: false, error: "No page is open in Chrome." };
+  try { return (await chrome.tabs.sendMessage(tab.id, { type: "spark-web", command })) ?? { found: false, error: "The page didn't answer." }; }
+  catch { return { found: false, error: "Spark can't reach this page (Chrome's own pages and the Web Store are off-limits)." }; }
+}
+async function pump() {
+  if (pumping) return;
+  pumping = true;
+  try {
+    for (;;) {
+      const r = await call("/api/ext/next", {});
+      if (r?.error) { await sleep(5000); continue; }
+      if (r?.command) await call("/api/ext/result", { id: r.command.id, result: await inActiveTab(r.command) });
+    }
+  } finally { pumping = false; }
+}
+chrome.alarms.create("spark-web", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener(() => void pump());
+chrome.runtime.onStartup.addListener(() => void pump());
+void pump();

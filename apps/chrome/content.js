@@ -220,3 +220,63 @@
     }, 2500);
   });
 })();
+
+// ── Spark → this page ─────────────────────────────────────────────────────────────────────────────
+// Find an element the way a person names it ("Sign in", "the Search box", "Add to cart"), then report exactly where it
+// is on screen, click it, or type into it. The real element, not a pixel guess.
+(() => {
+  const FILLER = new Set(["the", "a", "an", "button", "link", "field", "box", "icon", "tab", "menu", "click", "tap", "press", "on", "in", "at", "to", "of", "top", "bottom", "left", "right", "this", "that", "input", "text"]);
+  const words = (s) => (s || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w && !FILLER.has(w));
+  const nameOf = (el) => {
+    const byId = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.innerText;
+    return (el.getAttribute("aria-label") || byId || el.closest("label")?.innerText || el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("alt") ||
+      (el.tagName === "INPUT" && ["submit", "button"].includes(el.type) ? el.value : "") || el.innerText || el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 120);
+  };
+  const visible = (el) => { const r = el.getBoundingClientRect(), cs = getComputedStyle(el); return r.width > 1 && r.height > 1 && cs.visibility !== "hidden" && cs.display !== "none" && Number(cs.opacity) > 0.05; };
+  const SELECTOR = "a, button, input, textarea, select, summary, label, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [role=switch], [role=option], [role=textbox], [role=searchbox], [contenteditable=true], [tabindex]:not([tabindex='-1']), [onclick]";
+  function find(text, typing) {
+    const want = words(text); if (!want.length) return null;
+    const pool = [...document.querySelectorAll(typing ? "input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, [contenteditable=true], [role=textbox], [role=searchbox]" : SELECTOR)].filter(visible);
+    let best = null;
+    for (const el of pool) {
+      const name = nameOf(el), have = words(name); if (!have.length) continue;
+      const hit = want.filter((w) => have.includes(w)).length;
+      const exact = name.toLowerCase() === text.toLowerCase().trim();
+      const fits = have.every((w) => want.includes(w)) || want.every((w) => have.includes(w));
+      if (!fits && hit < Math.ceil(want.length * 0.6)) continue;
+      const r = el.getBoundingClientRect(), inView = r.bottom > 0 && r.top < innerHeight;
+      const score = (exact ? 10 : 0) + (fits ? 4 : 0) + hit - Math.abs(have.length - want.length) * 0.3 + (inView ? 1 : 0);
+      if (!best || score > best.score) best = { el, name, score };
+    }
+    return best;
+  }
+  // The element's box on screen, as fractions of the screen (what Spark draws with). Assumes 100% page zoom.
+  function onScreen(el) {
+    const r = el.getBoundingClientRect(), top = window.screenY + (window.outerHeight - window.innerHeight), left = window.screenX + (window.outerWidth - window.innerWidth) / 2;
+    const W = screen.width, H = screen.height;
+    return { x: (left + r.left + r.width / 2) / W, y: (top + r.top + r.height / 2) / H, w: r.width / W, h: r.height / H };
+  }
+  function typeInto(el, value) {
+    el.focus();
+    if (el.isContentEditable) { document.execCommand("selectAll", false); document.execCommand("insertText", false, value); return; }
+    const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);   // so React-style forms see it too
+    el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  chrome.runtime.onMessage.addListener((message, _sender, send) => {
+    if (message?.type !== "spark-web") return false;
+    const { kind, text, value } = message.command || {};
+    const hit = find(text, kind === "type");
+    if (!hit) { send({ found: false, error: `Couldn't find “${text}” on this page.` }); return false; }
+    const el = hit.el, role = el.getAttribute("role") || el.tagName.toLowerCase();
+    if (kind === "locate") { el.scrollIntoView({ block: "nearest", inline: "nearest" }); send({ found: true, name: hit.name, role, rect: onScreen(el) }); return false; }
+    el.scrollIntoView({ block: "center", inline: "nearest" });
+    setTimeout(() => {
+      const rect = onScreen(el);
+      if (kind === "type") typeInto(el, value ?? "");
+      else { el.focus?.(); el.click(); }
+      send({ found: true, name: hit.name, role, rect });
+    }, 120);
+    return true;
+  });
+})();

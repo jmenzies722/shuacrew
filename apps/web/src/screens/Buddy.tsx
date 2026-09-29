@@ -97,6 +97,16 @@ function macContext(): Promise<string> {
     post({ type: "buddyDo", id, action: { type: "mac", op: "context" } });
   });
 }
+/**
+ * In Chrome, the page itself knows exactly where things are: ask Spark for Chrome to find, click or type into an
+ * element by what it's called. Null when Chrome isn't in front, the extension isn't connected, or nothing matched.
+ */
+type WebHit = { found: boolean; name?: string; role?: string; rect?: { x: number; y: number; w: number; h: number } };
+const inChrome = () => /chrome/i.test(lastScreen?.context?.app ?? "");
+function webAct(kind: "locate" | "click" | "type", text: string, value?: string): Promise<WebHit | null> {
+  if (!inChrome() || !text.trim()) return Promise.resolve(null);
+  return api<WebHit>("/api/web/act", { body: { kind, text, ...(value !== undefined ? { value } : {}) } }).then((r) => (r.found ? r : null), () => null);
+}
 /** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
 let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number } | null = null;
 function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
@@ -487,7 +497,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
         if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
-        else if (g) { const r = locate(g, lastScreen), exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" }); }
+        else if (g) void (async () => {
+          // In Chrome the page reports the element's exact box; elsewhere, snap to the real control.
+          const w = g.label ? await webAct("locate", g.label) : null;
+          const r = w?.rect ? { ...w.rect, shape: (/^(button|a|link|tab|summary)$/.test(w.role ?? "") ? "pill" : "rounded") as "pill" | "rounded", exact: true } : locate(g, lastScreen);
+          const exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" });
+        })();
       } else if (b.kind === "act") {
         const act = parseAct(b.raw);
         if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
@@ -694,7 +709,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (!convo) return;
     setPending(null); setBusy(describeAct(a) + "…");
     try {
-      const r = await perform({ ...a, color: accentOf(prefs.color) });
+      // In Chrome, a named click happens on the page element itself (exact, even if the page scrolled); else the Mac clicks.
+      const onPage = a.type === "click" && a.label && !("button" in a && a.button === "right") ? await webAct("click", a.label) : null;
+      const r = onPage ? { ok: true, message: `Clicked “${onPage.name}” on the page` } : await perform({ ...a, color: accentOf(prefs.color) });
       setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
       await new Promise((ok) => setTimeout(ok, 800)); // let the app react before looking
       if (!taskRef.current) return;
