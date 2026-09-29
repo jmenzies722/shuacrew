@@ -34,6 +34,8 @@ export interface CompanionPreferences {
   /** The notch island: live captions while Spark talks, what's playing (with artwork), mic + screen controls, its edge glow and size. */
   /** Notice when I'm stuck: while live watching is on, Spark glances at the screen's text and offers help, unasked. */
   notice: boolean;
+  /** Speak first: a heads-up before meetings, reminders when due, a catch-up when you come back (on by default). */
+  proactive: boolean; headsUpMinutes: 5 | 10 | 15;
   notchCaptions: boolean; notchMedia: boolean; notchControls: boolean; notchGlow: "off" | "accent" | "spectrum"; notchSize: "compact" | "roomy";
 }
 export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
@@ -63,7 +65,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
-    notice: v.notice !== false, notchCaptions: v.notchCaptions !== false, notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
     notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";

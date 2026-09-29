@@ -1,5 +1,5 @@
-import { expect, it } from "vitest";
-import { meaningful, vadStart, vadStep, type VadState } from "./handsfree";
+import { describe, expect, it } from "vitest";
+import { frameAction, meaningful, yesOrNo, vadStart, vadStep, type VadState } from "./handsfree";
 
 const run = (s: VadState, rms: number, ms: number, strict = false) => {
   const events: string[] = [];
@@ -57,4 +57,32 @@ it("keeps live captions steady: words lock once two guesses agree, and locked wo
   expect(s.shown).toBe("Can you turn the radio off and");
   s = steady(s, "Can you"); // a shorter guess never takes words away
   expect(s.shown).toBe("Can you turn the");
+});
+
+describe("each mic frame", () => {
+  const f = { turn: true, speaking: false, yielded: false, talk: 0, captionDue: false };
+  it("ends your turn even when a live caption falls due on the same frame (it used to be lost: you had to repeat yourself)", () => {
+    expect(frameAction("end", { ...f, captionDue: true })).toBe("finish");
+    expect(frameAction("discard", { ...f, captionDue: true })).toBe("discard");
+  });
+  it("still captions mid-turn and yields when you talk over Spark", () => {
+    expect(frameAction(undefined, { ...f, captionDue: true })).toBe("caption");
+    expect(frameAction(undefined, { ...f, speaking: true, talk: 650, captionDue: true })).toBe("yield");
+    expect(frameAction(undefined, { ...f, turn: false, captionDue: true })).toBeNull();
+  });
+});
+
+describe("answering a yes-or-no out loud", () => {
+  it("hears yes, no, and anything else as neither", () => {
+    for (const y of ["Yes.", "yeah", "yes please", "do it", "delete it", "Go ahead!"]) expect(yesOrNo(y)).toBe(true);
+    for (const n of ["No.", "nope", "keep it", "cancel", "never mind", "don't"]) expect(yesOrNo(n)).toBe(false);
+    expect(yesOrNo("what's the weather")).toBeNull();
+  });
+});
+
+describe("noise that isn't a request", () => {
+  it("drops lone filler words Whisper makes of key clicks, but keeps yes and no", () => {
+    for (const w of ["and", "And.", "so", "the", "Okay.", "mm", "Bye-bye."]) expect(meaningful(w)).toBe(false);
+    for (const w of ["yes", "No.", "and then play Drake", "pause"]) expect(meaningful(w)).toBe(true);
+  });
 });

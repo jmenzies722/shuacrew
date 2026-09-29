@@ -201,6 +201,38 @@ enum SparkHands {
             guard app == "Music" else { return (false, "Spotify doesn't let apps save songs; tap the plus in Spotify.") }
             let r = timed("Music", "tell application \"Music\" to duplicate current track to source \"Library\"")
             return r != nil ? (true, "Added to your library.") : (false, "Music wouldn't add this one from here; use ⋯ → Add to Library.")
+        case "play_similar":
+            // "Another song", "something like this": from YOUR library, chosen here, never a song the model remembers
+            // (those usually aren't yours, and no app may start a catalog song). Same artist, then same genre, then
+            // anything of yours; never the song already playing. by: "vibe" skips straight to the genre.
+            guard app == "Music" else { return timed(app, "tell application \"\(app)\" to next track") != nil ? (true, "Skipped to the next song.") : (false, "\(app) didn't answer.") }
+            let sameArtist = (a["by"] as? String) != "vibe"
+            // A mood ("something chill") is a set of genres in your own library; no match falls through to the rest.
+            let genres = SongMatch.moodGenres((a["mood"] as? String) ?? "").map { "genre contains \"\($0)\"" }.joined(separator: " or ")
+            let r = timed("Music", """
+            tell application "Music"
+              set pool to {}
+              set pid to ""
+              \(genres.isEmpty ? "" : "set pool to (every track of library playlist 1 whose \(genres))")
+              if (count of pool) = 0 then
+                try
+                  set cur to current track
+                  set pid to persistent ID of cur
+                  if \(sameArtist) then set pool to (every track of library playlist 1 whose artist is (artist of cur) and persistent ID is not pid)
+                  if (count of pool) = 0 and (genre of cur) is not "" then set pool to (every track of library playlist 1 whose genre is (genre of cur) and persistent ID is not pid)
+                end try
+              end if
+              if (count of pool) = 0 then
+                if (count of tracks of library playlist 1) = 0 then return "none"
+                set t to some track of library playlist 1
+              else
+                set t to some item of pool
+              end if
+              play t
+              return (name of t) & " by " & (artist of t)
+            end tell
+            """)
+            return r == nil ? (false, "Music didn't answer.") : r == "none" ? (false, "Your Music library is empty, so there's nothing of yours to play.") : (true, "Playing “\(r!)” from your library.")
         case "seek":
             let seconds = max(0, min(36_000, a["seconds"] as? Double ?? 0))
             return timed(app, "tell application \"\(app)\" to set player position to \(Int(seconds))") != nil ? (true, "Skipped to \(Int(seconds) / 60):\(String(format: "%02d", Int(seconds) % 60)).") : (false, "\(app) didn't answer.")
@@ -230,10 +262,20 @@ enum SparkHands {
             // 1. Your library, if the ask is an artist, album or title as you'd type it ("Drake", "Views").
             let script = """
             tell application "Music"
-              set hits to (every track of library playlist 1 whose name contains "\(safe)" or artist contains "\(safe)" or album contains "\(safe)")
+              set hits to (every track of library playlist 1 whose name contains "\(safe)" or artist contains "\(safe)" or album contains "\(safe)" or genre contains "\(safe)")
               if (count of hits) > 0 then
-                play item 1 of hits
-                return (name of item 1 of hits) & " by " & (artist of item 1 of hits)
+                -- A title you named plays that song; an artist or album plays a different one of theirs each time.
+                set exact to (every track of library playlist 1 whose name is "\(safe)")
+                if (count of exact) > 0 then
+                  set t to item 1 of exact
+                else
+                  set t to some item of hits
+                  try
+                    if (count of hits) > 1 and persistent ID of t is (persistent ID of current track) then set t to some item of hits
+                  end try
+                end if
+                play t
+                return (name of t) & " by " & (artist of t)
               end if
             end tell
             return "none"
@@ -263,12 +305,8 @@ enum SparkHands {
                     return (true, "“\(song.title)” by \(song.artist) isn't in your library, so it's waiting in Music, just press play there. Add it to your library and I'll play it straight away next time.")
                 }
             }
-            let term = safe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? safe
-            if let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music"), let url = URL(string: "music://music.apple.com/search?term=\(term)") {
-                let quiet = NSWorkspace.OpenConfiguration(); quiet.activates = false
-                NSWorkspace.shared.open([url], withApplicationAt: music, configuration: quiet)
-            }
-            return (false, "I couldn't find that exact song. I put a search for “\(safe)” in Music in case it's there under another name.")
+            // Nothing by that name anywhere: say so, and don't pop a Music search window open on you every time.
+            return (false, "I couldn't find “\(safe)” in your library or on Apple Music.")
         }
         let verb = ["play": "play", "pause": "pause", "toggle": "playpause", "next": "next track", "previous": "previous track"][command] ?? "playpause"
         return timed(app, "tell application \"\(app)\" to \(verb)") != nil ? (true, "\(app): \(command)") : (false, "\(app) didn't answer. If it asks, allow ShuaCrew in Privacy & Security → Automation.")
@@ -299,6 +337,37 @@ enum SparkHands {
         case "sleep_display":
             let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/pmset"); p.arguments = ["displaysleepnow"]
             return (try? p.run()) != nil ? (true, "Display sleeping") : (false, "Couldn't sleep the display.")
+        case "volume", "volume_up", "volume_down":
+            let level = max(0, min(100, a["level"] as? Int ?? 50))
+            let script = a["what"] as? String == "volume" ? "set volume output volume \(level)" : "set volume output volume ((output volume of (get volume settings)) \(a["what"] as? String == "volume_up" ? "+" : "-") 12)"
+            return run(script) ? (true, a["what"] as? String == "volume" ? "Volume \(level)%" : "Volume \(a["what"] as? String == "volume_up" ? "up" : "down")") : (false, "Couldn't change the volume.")
+        case "mute":
+            let on = a["on"] as? Bool ?? true
+            return run("set volume output muted \(on)") ? (true, on ? "Muted" : "Unmuted") : (false, "Couldn't change mute.")
+        case "lock":
+            // The real lock (⌃⌘Q) when Spark may press keys; otherwise the display sleeps, which locks if your Mac asks for a password.
+            if trusted, run("tell application \"System Events\" to keystroke \"q\" using {control down, command down}") { return (true, "Locked") }
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/pmset"); p.arguments = ["displaysleepnow"]
+            return (try? p.run()) != nil ? (true, "Screen off (it locks if your Mac asks for a password after sleep)") : (false, "Couldn't lock the screen.")
+        case "screenshot":
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            let path = NSHomeDirectory() + "/Desktop/Screenshot \(f.string(from: Date())).png"
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); p.arguments = ["-x", path]
+            guard (try? p.run()) != nil else { return (false, "Couldn't take a screenshot. Allow ShuaCrew in Privacy & Security → Screen Recording.") }
+            p.waitUntilExit()
+            return p.terminationStatus == 0 ? (true, "Screenshot saved to your Desktop") : (false, "Couldn't take a screenshot. Allow ShuaCrew in Privacy & Security → Screen Recording.")
+        case "wifi":
+            let on = a["on"] as? Bool ?? true
+            let ports = Process(), pipe = Pipe(); ports.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup"); ports.arguments = ["-listallhardwareports"]; ports.standardOutput = pipe
+            try? ports.run(); ports.waitUntilExit()
+            let listing = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let device = listing.components(separatedBy: "Hardware Port: Wi-Fi").dropFirst().first?.components(separatedBy: "Device: ").dropFirst().first?.components(separatedBy: "\n").first ?? "en0"
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup"); p.arguments = ["-setairportpower", device, on ? "on" : "off"]
+            guard (try? p.run()) != nil else { return (false, "Couldn't change Wi-Fi.") }
+            p.waitUntilExit()
+            return p.terminationStatus == 0 ? (true, "Wi-Fi \(on ? "on" : "off")") : (false, "Couldn't change Wi-Fi.")
+        case "empty_trash":
+            return run("tell application \"Finder\" to empty the trash") ? (true, "Emptied the Trash") : (false, "Couldn't empty the Trash. Allow ShuaCrew to control Finder in Privacy & Security → Automation.")
         default:
             return (false, "Spark can't change that.")
         }

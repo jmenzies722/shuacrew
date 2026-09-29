@@ -7,10 +7,11 @@ import { logAction } from "../../lib/spark-log";
 import { radioCommand } from "../../lib/radio";
 import { PANES, paneURL } from "../../lib/settings-panes";
 import { addMission, missionBrief } from "../../lib/missions";
-import { describeAct, describeAction, type Act, type Action, type SparkChanges } from "../../lib/buddy";
+import { describeAct, describeAction, isDestructive, type Act, type Action, type SparkChanges } from "../../lib/buddy";
 import { saveBuddyVoice } from "../../lib/buddy-voice";
 import { setFocus, startFocus } from "../../lib/focus-timer";
 import { saveNote } from "../../lib/widgets";
+import { timerOp } from "../../lib/timers";
 import { getCompanion, parseCompanion, saveCompanion } from "../../lib/companion";
 import { native, post } from "./bridge";
 
@@ -26,23 +27,33 @@ export function applyChanges(c: SparkChanges) {
 
 /**
  * Hooks the panel plugs in. confirmRun: asking you before a command runs (without it, nothing risky runs).
+ * confirmDelete: asking before anything is deleted — in the chat, the notch and out loud (without it, nothing is).
  * The on…Output hooks: a command's, mail's or your Mac's results, for Spark to read back to you.
  */
 export const sparkHooks: {
   confirmRun: ((command: string, why: string) => Promise<boolean>) | null;
+  confirmDelete: ((what: string) => Promise<boolean>) | null;
   onRanOutput: ((command: string, ok: boolean, output: string) => void) | null;
   onMailOutput: ((what: string, output: string) => void) | null;
   onMacOutput: ((what: string, output: string) => void) | null;
-} = { confirmRun: null, onRanOutput: null, onMailOutput: null, onMacOutput: null };
+} = { confirmRun: null, confirmDelete: null, onRanOutput: null, onMailOutput: null, onMacOutput: null };
 
 /** Every action, logged with whether it worked. */
-export function perform(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
+export function perform(a: Action | (Act & { color?: string }), opts: { confirmed?: boolean } = {}): Promise<{ ok: boolean; message: string; run?: string }> {
   const isAct = ["press", "click", "type", "key", "scroll", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
+  // Deleting can't be undone: it waits for your yes, whatever the control mode — and with nobody to ask, it doesn't.
+  if (!isAct && !opts.confirmed && isDestructive(a as Action)) return (async () => {
+    const label = describeAction(a as Action);
+    const yes = sparkHooks.confirmDelete ? await sparkHooks.confirmDelete(label) : false;
+    if (!yes) { logAction({ label, ok: true, message: "You said no" }); return { ok: true, message: /^Send/.test(label) ? "Okay, I didn't send it." : /^Call/.test(label) ? "Okay, no call." : "Okay, I kept it. Nothing was deleted." }; }
+    const r = await performNow(a); logAction({ label, ok: r.ok, message: r.message }); return r;
+  })();
   return performNow(a).then((r) => { logAction({ label: isAct ? describeAct(a as Act) : describeAction(a as Action), ok: r.ok, message: r.message }); return r; });
 }
 /** Mac actions go to the app (which checks them again); the rest happen right here. */
 export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
+  if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
   if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
     .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {

@@ -47,4 +47,17 @@ public enum SongMatch {
         }
         return top?.index
     }
+
+    /// The genres in a music library that fit a mood, for "play something chill" (matched with `genre contains`).
+    public static func moodGenres(_ mood: String) -> [String] {
+        switch mood.lowercased() {
+        case "chill", "chilled", "relaxing", "relaxed", "calm", "mellow", "smooth", "soft": return ["Lo-Fi", "Chill", "Ambient", "R&B", "Soul", "Jazz", "Acoustic", "Neo-Soul"]
+        case "upbeat", "happy", "party", "hype", "energetic", "workout", "gym": return ["Dance", "Pop", "Electronic", "House", "Hip-Hop", "Rap", "Afrobeats", "Reggaeton"]
+        case "sad": return ["Singer/Songwriter", "Acoustic", "Indie", "Alternative", "Soul"]
+        case "focus", "study": return ["Lo-Fi", "Ambient", "Classical", "Instrumental", "Soundtrack", "Jazz", "Electronic"]
+        case "romantic": return ["R&B", "Soul", "Neo-Soul", "Jazz"]
+        case "sleepy", "sleep": return ["Ambient", "Classical", "New Age", "Lo-Fi"]
+        default: return []
+        }
+    }
 }

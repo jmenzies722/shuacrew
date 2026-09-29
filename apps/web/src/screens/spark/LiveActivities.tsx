@@ -21,7 +21,9 @@ function Scrubber({ tab, position, duration, playing, onSeek, onHold }: { tab: 0
   const [drag, setDrag] = useState<number | null>(null), [base, setBase] = useState({ pos: position, at: performance.now() }), [, tick] = useState(0);
   const track = useRef<HTMLDivElement>(null), seekedAt = useRef(0);
   useEffect(() => { if (performance.now() - seekedAt.current > 2500) setBase({ pos: position, at: performance.now() }); }, [position]);
-  useEffect(() => { if (!playing || drag !== null) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t); }, [playing, drag]);
+  // Only ticks while you can see it (the island is open): tucked in, the time isn't shown, so it costs nothing.
+  const visible = tab === 0;
+  useEffect(() => { if (!playing || drag !== null || !visible) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t); }, [playing, drag, visible]);
   // Mid-drag the island stays open even if the pointer wanders out of it; let go and it tucks in as usual.
   const dragging = drag !== null;
   useEffect(() => { onHold(dragging); }, [dragging, onHold]);

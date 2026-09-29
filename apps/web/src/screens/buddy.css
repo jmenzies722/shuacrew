@@ -480,6 +480,9 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .shua-island-body { display: grid; gap: 10px; padding: 6px 16px 14px; opacity: 0; transform: translateY(-6px); transition: opacity .18s, transform .28s; }
 .shua-island.is-open .shua-island-body { opacity: 1; transform: none; transition-delay: .08s; }
 .shua-island.is-rest .shua-island-body { pointer-events: none; }
+/* Tucked in, the open view isn't drawn at all: its music card, pulses and live tiles stop costing anything until you
+   hover (it was laid out and repainted invisibly the whole time). */
+.shua-island:not(.is-open) .shua-island-body { content-visibility: hidden; }
 .shua-island .spark-nook-tile b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
 .shua-island .spark-nook-say { -webkit-line-clamp: 3; }
 @media (prefers-reduced-motion: reduce) { .shua-island-shape, .shua-island-body { transition: none; } }
@@ -583,7 +586,8 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .shua-island-expand:hover { color: #fff; background: #1d1a22; }
 /* The song's own colours glow softly behind its card, like Now Playing. */
 .spark-nook-media { position: relative; isolation: isolate; overflow: hidden; }
-.spark-nook-media::before { content: ""; position: absolute; inset: -40%; z-index: -1; background: var(--art, none) center / cover; filter: blur(30px) saturate(1.5); opacity: .32; pointer-events: none; }
+.spark-nook-media::before { content: ""; position: absolute; inset: -40%; z-index: -1; background: var(--art, none) center / cover; filter: blur(30px) saturate(1.5); opacity: .32; pointer-events: none;
+  transform: translateZ(0); will-change: transform; /* blurred once on its own layer, not again on every scrubber tick */ }
 /* Open, the chat's own cap is the island: the tucked-in one steps aside. */
 .buddy.is-docked.is-open > .shua-island { display: none; }
 /* The glow ring never draws along the top: that edge is the screen's. */
@@ -647,3 +651,132 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 /* Looking it up, live: "Searching: …" / "Reading …" on one line in the tucked-in notch. */
 .shua-island-hint.is-lookup { max-width: 100%; color: #e9e5ef; }
 .shua-island-hint.is-lookup span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buddy-task.is-delete b, .shua-island-hint.is-delete { color: var(--text); }
+.buddy-task.is-delete > svg, .shua-island-hint.is-delete svg { color: var(--bad, #ff6b6b); }
+.spark-nook-stuck.is-delete button:first-of-type { color: var(--bad, #ff6b6b); }
+
+/* Processing your voice: a wave through the bars, your words shimmering, and a light sweeping the notch's lower edge —
+   from the moment you stop talking until Spark's first word. One accent, following the theme. */
+.spk-think { display: inline-flex; align-items: center; gap: 2px; height: 12px; }
+.spk-think i { display: block; width: 2px; height: 12px; border-radius: 2px; background: var(--amber, #c19aff); transform: scaleY(.25); opacity: .55; animation: spk-think-wave 1s ease-in-out infinite; }
+@keyframes spk-think-wave { 0%, 100% { transform: scaleY(.25); opacity: .55; } 45% { transform: scaleY(1); opacity: 1; } }
+.notch-heard.is-processing { margin: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: transparent;
+  background: linear-gradient(100deg, rgba(244,241,248,.5) 30%, #fff 50%, rgba(244,241,248,.5) 70%) 0 0 / 250% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: notch-shimmer 1.6s linear infinite; }
+@keyframes notch-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.shua-island.is-processing .shua-island-shape::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 0; height: 2px; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--amber, #c19aff), transparent) 0 0 / 40% 100% no-repeat;
+  filter: drop-shadow(0 0 4px var(--amber, #c19aff)); animation: notch-sweep 1.3s ease-in-out infinite alternate; }
+@keyframes notch-sweep { from { background-position: 0% 0; } to { background-position: 100% 0; } }
+@media (prefers-reduced-motion: reduce) { .spk-think i, .notch-heard.is-processing, .shua-island.is-processing .shua-island-shape::before { animation: none; } .spk-think i { transform: scaleY(.6); } .notch-heard.is-processing { color: #f4f1f8; background: none; } }
+:root[data-motion="reduced"] .buddy .spk-think i, :root[data-motion="reduced"] .buddy .notch-heard.is-processing, :root[data-motion="reduced"] .buddy .shua-island.is-processing .shua-island-shape::before { animation: none; }
+
+/* Spark speaking first: a heads-up, a reminder due, a welcome back — in the notch, in the theme's accent. */
+.shua-island-hint.is-heads { color: #f4f1f8; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.shua-island-hint.is-heads svg { color: var(--amber, #c19aff); vertical-align: -2px; }
+
+/* Visual cards: animated, one accent (the theme's), dark glass on the notch's black. */
+.spk-visual { margin: 0; padding: 10px 12px 12px; border-radius: 14px; background: color-mix(in srgb, var(--amber, #8e48ff) 7%, #0c0b0e); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber, #8e48ff) 22%, transparent); color: #f1eef5; animation: spk-v-in .42s cubic-bezier(.2,.9,.25,1.1) both; font-variant-numeric: tabular-nums; }
+@keyframes spk-v-in { from { opacity: 0; transform: translateY(-8px) scale(.97); } }
+.spk-visual figcaption { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: color-mix(in srgb, #f1eef5 60%, transparent); }
+.spk-visual figcaption button { color: inherit; font-size: 15px; line-height: 1; padding: 0 2px; }
+.spk-visual li { animation: spk-v-row .38s ease both; animation-delay: calc(var(--i, 0) * 70ms + 120ms); }
+@keyframes spk-v-row { from { opacity: 0; transform: translateX(-6px); } }
+.spk-v-stat { display: grid; gap: 4px; }
+.spk-v-stat b { font-size: 30px; font-weight: 600; letter-spacing: -.02em; line-height: 1.05; }
+.spk-v-stat b small { font-size: 14px; margin-left: 3px; color: color-mix(in srgb, #f1eef5 60%, transparent); }
+.spk-v-stat span { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; }
+.spk-v-stat .is-up { color: #4ade80; } .spk-v-stat .is-down { color: #f87171; }
+.spk-v-stat em { font-style: normal; font-size: 11px; color: color-mix(in srgb, #f1eef5 50%, transparent); }
+.spk-v-bars, .spk-v-forecast, .spk-v-timeline, .spk-v-steps, .spk-v-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.spk-v-bars li { display: grid; grid-template-columns: minmax(70px, 34%) 1fr auto; align-items: center; gap: 8px; font-size: 12px; }
+.spk-v-bars li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spk-v-bars i { height: 8px; border-radius: 4px; background: color-mix(in srgb, #f1eef5 8%, transparent); overflow: hidden; }
+.spk-v-bars s { display: block; height: 100%; border-radius: 4px; background: color-mix(in srgb, var(--amber, #8e48ff) 55%, #f1eef5 10%); transition: width .9s cubic-bezier(.2,.9,.25,1); }
+.spk-v-bars li.is-best s { background: var(--amber, #8e48ff); box-shadow: 0 0 10px color-mix(in srgb, var(--amber, #8e48ff) 60%, transparent); }
+.spk-v-bars li.is-best b { color: var(--amber, #c19aff); }
+.spk-v-forecast { grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+.spk-v-forecast li { display: grid; justify-items: center; align-content: start; grid-template-rows: auto 22px auto 12px; gap: 4px; padding: 6px 2px; border-radius: 10px; background: color-mix(in srgb, #f1eef5 4%, transparent); font-size: 11px; }
+.spk-v-forecast li b { font-size: 15px; font-weight: 600; } .spk-v-forecast li small { color: #7dd3fc; font-size: 10px; }
+.spk-v-forecast .is-sun { color: #fbbf24; animation: spk-v-spin 12s linear infinite; } .spk-v-forecast .is-partly { color: #fcd34d; } .spk-v-forecast .is-rain, .spk-v-forecast .is-storm { color: #7dd3fc; } .spk-v-forecast .is-snow { color: #e0f2fe; }
+@keyframes spk-v-spin { to { transform: rotate(360deg); } }
+.spk-v-timeline li { display: grid; grid-template-columns: 52px 10px 1fr; align-items: center; gap: 8px; font-size: 12.5px; }
+.spk-v-timeline time { color: color-mix(in srgb, #f1eef5 55%, transparent); text-align: right; font-size: 11.5px; }
+.spk-v-timeline i { width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, #f1eef5 30%, transparent); }
+.spk-v-timeline li.is-now i { background: var(--amber, #8e48ff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber, #8e48ff) 30%, transparent); animation: spk-v-pulse 1.6s ease-in-out infinite; }
+.spk-v-timeline li.is-now span { font-weight: 600; }
+@keyframes spk-v-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--amber, #8e48ff) 0%, transparent); } }
+.spk-v-steps li, .spk-v-list li { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.spk-v-steps li i, .spk-v-list li i { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--on-accent, #0b0b0c); background: var(--amber, #8e48ff); }
+.spk-v-list li span { display: grid; } .spk-v-list li small { font-size: 11px; color: color-mix(in srgb, #f1eef5 55%, transparent); }
+.spk-v-list li em { font-style: normal; font-weight: 700; color: var(--amber, #c19aff); }
+.shua-island-body > .spk-visual { margin-bottom: 2px; }
+@media (prefers-reduced-motion: reduce) { .spk-visual, .spk-visual li, .spk-v-forecast .is-sun, .spk-v-timeline li.is-now i { animation: none; } .spk-v-bars s { transition: none; } }
+:root[data-motion="reduced"] .spk-visual, :root[data-motion="reduced"] .spk-visual li { animation: none; }
+
+/* Timers & alarms in the notch: the nearest counting down in the ear, all of them (cancel with ×) when it opens. */
+.shua-island-ear em.is-timer { font-style: normal; font-variant-numeric: tabular-nums; font-size: 11.5px; font-weight: 600; color: var(--amber, #c19aff); }
+.spark-nook-timers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.spark-nook-timers li { display: grid; grid-template-columns: 1fr auto 18px; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, #f1eef5 5%, transparent); font-size: 12.5px; color: #f1eef5; }
+.spark-nook-timers li span { display: inline-flex; align-items: center; gap: 6px; }
+.spark-nook-timers li span svg { color: var(--amber, #c19aff); }
+.spark-nook-timers li b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.spark-nook-timers li.is-paused b { opacity: .5; }
+.spark-nook-timers li button { color: color-mix(in srgb, #f1eef5 55%, transparent); font-size: 15px; line-height: 1; }
+
+/* Teaching cards: system design and concepts that move — boxes pop in, arrows draw in order, packets travel them. */
+.spk-v-flow, .spk-v-seq, .spk-v-cycle { display: block; width: 100%; height: auto; overflow: visible; }
+.spk-v-flow text, .spk-v-seq text, .spk-v-cycle text { fill: #f1eef5; font-size: 9.5px; font-family: inherit; }
+.spk-v-edge path, .spk-v-msg path { fill: none; stroke: color-mix(in srgb, var(--amber, #8e48ff) 70%, #f1eef5 10%); stroke-width: 1.4; stroke-dasharray: 100; stroke-dashoffset: 100; animation: spk-v-draw .6s ease forwards; animation-delay: calc(var(--i, 0) * 180ms + 350ms); }
+.spk-v-edge text { fill: color-mix(in srgb, #f1eef5 60%, transparent); font-size: 8.5px; }
+#spk-arrow path, #spk-arrow-seq path { fill: color-mix(in srgb, var(--amber, #8e48ff) 80%, #f1eef5 10%); }
+@keyframes spk-v-draw { to { stroke-dashoffset: 0; } }
+.spk-v-packet { fill: #fff; filter: drop-shadow(0 0 4px var(--amber, #8e48ff)); }
+.spk-v-node { animation: spk-v-pop .4s cubic-bezier(.2,.9,.25,1.3) both; animation-delay: calc(var(--i, 0) * 90ms); transform-box: fill-box; }
+@keyframes spk-v-pop { from { opacity: 0; } }
+.spk-v-node rect { fill: color-mix(in srgb, var(--amber, #8e48ff) 16%, #121016); stroke: color-mix(in srgb, var(--amber, #8e48ff) 55%, transparent); stroke-width: 1; }
+.spk-v-node svg { color: #f1eef5; }
+.spk-v-node.is-db rect, .spk-v-node.is-cache rect, .spk-v-node.is-storage rect { fill: color-mix(in srgb, var(--amber, #8e48ff) 30%, #121016); }
+.spk-v-node text { font-size: 9px; }
+.spk-v-seq line { stroke: color-mix(in srgb, #f1eef5 18%, transparent); stroke-dasharray: 3 3; }
+.spk-v-seq text.is-actor { font-weight: 600; font-size: 10px; }
+.spk-v-msg text { opacity: 0; animation: spk-v-fade .3s ease forwards; animation-delay: calc(var(--i, 0) * 180ms + 550ms); }
+@keyframes spk-v-fade { to { opacity: 1; } }
+.spk-v-cycle ellipse { fill: none; stroke: color-mix(in srgb, var(--amber, #8e48ff) 35%, transparent); stroke-width: 1.2; stroke-dasharray: 4 4; animation: spk-v-orbit 14s linear infinite; }
+@keyframes spk-v-orbit { to { stroke-dashoffset: -80; } }
+.spk-v-cycle circle { fill: #2a2531; stroke: color-mix(in srgb, var(--amber, #8e48ff) 60%, transparent); transition: fill .3s, r .3s; }
+.spk-v-cycle g.is-on circle { fill: var(--amber, #8e48ff); r: 7; filter: drop-shadow(0 0 5px var(--amber, #8e48ff)); }
+.spk-v-cycle g.is-on text { font-weight: 700; }
+.spk-v-layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; justify-items: center; }
+.spk-v-layers li { width: var(--w, 100%); display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--amber, #8e48ff) 18%, #15121a); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber, #8e48ff) 30%, transparent); font-size: 12px; animation: spk-v-drop .38s ease both; animation-delay: calc(var(--i, 0) * 110ms + 100ms); }
+.spk-v-layers li small { color: color-mix(in srgb, #f1eef5 55%, transparent); font-size: 11px; }
+@keyframes spk-v-drop { from { opacity: 0; transform: translateY(-8px); } }
+.spk-v-concept { display: grid; gap: 6px; }
+.spk-v-concept > b { display: inline-flex; align-items: center; gap: 6px; font-size: 17px; }
+.spk-v-concept > b svg { color: var(--amber, #c19aff); }
+.spk-v-concept p { margin: 0; font-size: 12.5px; line-height: 1.45; color: color-mix(in srgb, #f1eef5 85%, transparent); }
+.spk-v-concept ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; font-size: 12px; }
+.spk-v-concept em { font-size: 11.5px; color: var(--amber, #c19aff); animation: spk-v-row .38s ease both; animation-delay: calc(var(--i, 0) * 70ms + 200ms); }
+/* More data: a self-drawing line, a scoreboard, a filling ring, pros and cons. */
+.spk-v-chart b { font-size: 22px; font-weight: 600; } .spk-v-chart b small { font-size: 12px; margin-left: 2px; }
+.spk-v-chart svg { width: 100%; height: 80px; display: block; }
+.spk-v-chart .is-line { fill: none; stroke-width: 2; stroke-dasharray: 100; stroke-dashoffset: 100; animation: spk-v-draw 1.1s ease forwards .15s; vector-effect: non-scaling-stroke; }
+.spk-v-chart .is-area { fill: color-mix(in srgb, var(--amber, #8e48ff) 14%, transparent); animation: spk-v-fade .8s ease both .6s; opacity: 0; }
+.spk-v-chart .is-up { stroke: #4ade80; color: #4ade80; } .spk-v-chart .is-down { stroke: #f87171; color: #f87171; }
+.spk-v-chart circle.is-up { fill: #4ade80; } .spk-v-chart circle.is-down { fill: #f87171; }
+.spk-v-axis { display: flex; justify-content: space-between; font-size: 10px; color: color-mix(in srgb, #f1eef5 50%, transparent); }
+.spk-v-score { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; }
+.spk-v-score > div { display: grid; gap: 2px; padding: 8px; border-radius: 12px; background: color-mix(in srgb, #f1eef5 5%, transparent); animation: spk-v-row .38s ease both; animation-delay: calc(var(--i, 0) * 90ms); }
+.spk-v-score > div span { font-size: 12px; color: color-mix(in srgb, #f1eef5 70%, transparent); } .spk-v-score > div b { font-size: 30px; font-weight: 700; }
+.spk-v-score > div.is-win { box-shadow: inset 0 0 0 1px var(--amber, #8e48ff); } .spk-v-score > div.is-win b { color: var(--amber, #c19aff); }
+.spk-v-score em { grid-column: 1 / -1; font-style: normal; font-size: 11px; color: color-mix(in srgb, #f1eef5 55%, transparent); }
+.spk-v-gauge { display: flex; align-items: center; gap: 14px; }
+.spk-v-gauge svg { width: 78px; height: 78px; transform: rotate(-90deg); }
+.spk-v-gauge circle { fill: none; stroke: color-mix(in srgb, #f1eef5 10%, transparent); stroke-width: 9; }
+.spk-v-gauge circle.is-fill { stroke: var(--amber, #8e48ff); stroke-linecap: round; stroke-dasharray: 100; transition: stroke-dashoffset 1.1s cubic-bezier(.2,.9,.25,1); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--amber, #8e48ff) 60%, transparent)); }
+.spk-v-gauge b { font-size: 26px; font-weight: 700; display: block; } .spk-v-gauge b small { font-size: 13px; } .spk-v-gauge span { font-size: 11.5px; color: color-mix(in srgb, #f1eef5 60%, transparent); }
+.spk-v-proscons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.spk-v-proscons ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; align-content: start; font-size: 12px; }
+.spk-v-proscons li { display: flex; gap: 5px; align-items: flex-start; line-height: 1.35; }
+.spk-v-proscons ul:first-child svg { color: #4ade80; flex: none; margin-top: 2px; } .spk-v-proscons ul:last-child svg { color: #f87171; flex: none; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .spk-v-edge path, .spk-v-msg path, .spk-v-chart .is-line { animation: none; stroke-dashoffset: 0; } .spk-v-msg text, .spk-v-chart .is-area { animation: none; opacity: 1; } .spk-v-node, .spk-v-layers li, .spk-v-cycle ellipse { animation: none; } }

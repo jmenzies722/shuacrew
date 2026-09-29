@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { actFollowUp, buddyPrompt, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
@@ -131,7 +131,7 @@ it("routes each turn to the model it needs", () => {
   expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
   expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });
-import { parseNext } from "./buddy";
+import { ackFor, deleteQuestion, isDestructive, parseNext, progressLine } from "./buddy";
 it("reads next moves (2–3 short suggestions) and keeps them out of speech", () => {
   const reply = 'Done: Night Shift is on.\n```next ["Schedule it for sunset", "Make it warmer", "Quiz me on this", "extra"]```';
   expect(parseNext(reply)).toEqual(["Schedule it for sunset", "Make it warmer", "Quiz me on this"]);
@@ -169,4 +169,63 @@ it("shows what Spark is looking up only while it's looking", () => {
   expect(liveLookup([search, { kind: "tool.called", body: { tool: "WebFetch", input: { url: "https://www.theverge.com/x" } } }])).toBe("Reading theverge.com");
   expect(liveLookup([search, { kind: "agent.delta" }])).toBeNull(); // writing the answer now
   expect(liveLookup(undefined)).toBeNull();
+});
+
+describe("Spark answers at once", () => {
+  it("acknowledges actions and lookups almost immediately, with a line that fits", () => {
+    expect(ackFor("Look up when the next SpaceX launch is and put it on my calendar")).toMatchObject({ delay: 900 });
+    expect(ackFor("Play something chill and remind me to stretch")?.text).toMatch(/both|On it/);
+    expect(ackFor("what's on my calendar tomorrow")?.text).toBe("Checking your calendar.");
+    expect(ackFor("add lunch with Sam on Friday to my calendar")?.text).toBe("Adding that now.");
+    expect(ackFor("delete my dentist reminder")?.text).toBe("Let me find that.");
+    expect(ackFor("what's the price of bitcoin")?.text).toMatch(/[Cc]heck|Looking/);
+  });
+  it("says nothing filler-ish for a plain question ('give me a sec' sounded robotic)", () => {
+    expect(ackFor("what's two plus two")).toBeNull();
+    expect(ackFor("tell me a joke")).toBeNull();
+  });
+});
+
+describe("progress you'd actually want to hear", () => {
+  const turn = (...calls: Array<[string, Record<string, string>]>) => [{ kind: "turn.started" }, ...calls.map(([tool, input]) => ({ kind: "tool.called", body: { tool, input } }))];
+  it("says what it's really doing, from this turn's tools", () => {
+    expect(progressLine(turn(["WebSearch", { query: "next spacex launch" }]), 0)).toBe("Going through the results.");
+    expect(progressLine(turn(["WebSearch", { query: "x" }], ["WebFetch", { url: "https://www.space.com/launches" }]), 0)).toBe("Pulling up space.com.");
+    expect(progressLine(turn(["WebFetch", { url: "https://www.space.com/a" }], ["WebFetch", { url: "https://forecast.weather.gov/b" }]), 1)).toBe("Checking weather.gov too.");
+  });
+  it("stays quiet with nothing specific to say (no 'still on it')", () => {
+    expect(progressLine(turn(), 0)).toBeNull();
+    expect(progressLine(turn(["WebSearch", { query: "x" }]), 1)).toBeNull();
+    expect(progressLine([{ kind: "tool.called", body: { tool: "WebSearch" } }, { kind: "turn.started" }], 0)).toBeNull(); // last turn's tools don't count
+  });
+});
+
+describe("deleting many things takes one yes", () => {
+  it("asks one question for every delete in a reply", () => {
+    const many = ["Organize GitHub", "Plan out Finances", "Clean Room", "GYM"].map((title) => ({ type: "mac" as const, op: "delete_reminder" as const, title }));
+    expect(deleteQuestion(many)).toBe("Delete 4 reminders (Organize GitHub, Plan out Finances, Clean Room and 1 more)");
+    expect(deleteQuestion([{ type: "mac", op: "delete_reminders", all: true, list: "Desk Work" }])).toBe("Delete every reminder in Desk Work");
+    expect(deleteQuestion([{ type: "mac", op: "delete_reminder", title: "dentist" }])).toBe("Delete the reminder “dentist”");
+  });
+  it("reads the bulk action Spark sends", () => {
+    expect(parseActions('```do [{"type":"mac","op":"delete_reminders","titles":["Clean Room","GYM"]}]```')).toEqual([{ type: "mac", op: "delete_reminders", titles: ["Clean Room", "GYM"] }]);
+    expect(parseActions('```do [{"type":"mac","op":"delete_reminders","all":true}]```')).toEqual([{ type: "mac", op: "delete_reminders", all: true }]);
+    expect(parseActions('```do [{"type":"mac","op":"delete_reminders"}]```')).toEqual([]); // nothing named, not "all": nothing
+  });
+});
+
+describe("Siri-style actions ask first when they reach someone or can't be undone", () => {
+  it("reads messages, calls and directions", () => {
+    expect(parseActions('```do [{"type":"mac","op":"send_message","to":"Mom","text":"Running late"}]```')).toEqual([{ type: "mac", op: "send_message", to: "Mom", text: "Running late" }]);
+    expect(parseActions('```do [{"type":"mac","op":"directions","to":"JFK","mode":"transit"}]```')).toEqual([{ type: "mac", op: "directions", to: "JFK", mode: "transit" }]);
+    expect(parseActions('```do [{"type":"system","what":"volume","level":140}]```')).toEqual([]);
+  });
+  it("asks before sending, calling or emptying the Trash — not before directions", () => {
+    expect(isDestructive({ type: "mac", op: "send_message", to: "Mom", text: "hi" })).toBe(true);
+    expect(isDestructive({ type: "mac", op: "facetime", to: "Sam" })).toBe(true);
+    expect(isDestructive({ type: "system", what: "empty_trash" })).toBe(true);
+    expect(isDestructive({ type: "mac", op: "directions", to: "JFK" })).toBe(false);
+    expect(deleteQuestion([{ type: "mac", op: "send_message", to: "Mom", text: "Running late" }, { type: "mac", op: "delete_reminder", title: "dentist" }]))
+      .toBe("Delete the reminder “dentist” and send “Running late” to Mom");
+  });
 });

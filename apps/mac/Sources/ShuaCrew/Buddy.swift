@@ -124,6 +124,20 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         NotificationCenter.default.addObserver(self, selector: #selector(displaysChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appActivity), name: NSApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appActivity), name: NSApplication.didResignActiveNotification, object: nil)
+        // Away and back (locked, or the displays slept): Spark can catch you up when you return.
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(wentAway), name: .init("com.apple.screenIsLocked"), object: nil)
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(cameBack), name: .init("com.apple.screenIsUnlocked"), object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(wentAway), name: NSWorkspace.screensDidSleepNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(cameBack), name: NSWorkspace.screensDidWakeNotification, object: nil)
+    }
+
+    private var awaySince: Date?
+    @objc private func wentAway() { if awaySince == nil { awaySince = Date() } }
+    /// Once per return: waking the displays and unlocking are the same homecoming.
+    @objc private func cameBack() {
+        guard let since = awaySince else { return }
+        awaySince = nil
+        send("shuacrew:welcome", ["awayMs": (Date().timeIntervalSince(since) * 1000).rounded()])
     }
 
     @objc private func displaysChanged() { place(size: requestedSize) }
@@ -588,6 +602,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             SparkHands.musicQueue.async {
                 nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
                 Task { @MainActor [weak self] in self?.send("shuacrew:media", now, to: sender) }
+            }
+        case "buddyAgenda":
+            // Spark checks what's coming up (every minute), to give you a heads-up before it starts.
+            DispatchQueue.global(qos: .utility).async {
+                nonisolated(unsafe) let agenda = MacKnowledge.agenda()
+                Task { @MainActor [weak self] in self?.send("shuacrew:agenda", agenda, to: sender) }
             }
         case "buddyNookFocus":
             // You clicked into the nook's Ask box: let it take the keyboard so you can type.

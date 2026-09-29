@@ -46,14 +46,37 @@ export function learnCoupling(coupling: number, mic: number, out: number): numbe
   const next = ratio > coupling ? coupling * 0.7 + ratio * 0.3 : coupling * 0.995 + ratio * 0.005;
   return Math.max(0.15, next);
 }
+/**
+ * What one mic frame does. The end of your turn comes first, always: it used to lose to a live caption falling due on
+ * the same frame, and since the detector had already reset, that turn was never sent — you had to say it again (and
+ * the next turn started without its pre-roll, clipping your first word).
+ */
+export function frameAction(event: "start" | "end" | "discard" | undefined, f: { turn: boolean; speaking: boolean; yielded: boolean; talk: number; captionDue: boolean }): "finish" | "discard" | "yield" | "caption" | null {
+  if (event === "end") return "finish";
+  if (event === "discard") return "discard";
+  if (f.turn && f.speaking && !f.yielded && f.talk >= 600) return "yield";
+  if (f.turn && f.captionDue) return "caption";
+  return null;
+}
+
 /** A sentence that sounds finished lets the turn end sooner (0.75 s instead of 1.1 s). */
 export const endsSentence = (caption: string) => /[.?!]["')\]]?\s*$/.test(caption.trim());
+
+/** A spoken answer to "…? Say yes or no.": true, false, or null when it's something else entirely. */
+export function yesOrNo(text: string): boolean | null {
+  const t = text.trim().toLowerCase().replace(/[.!?,…]+/g, "").replace(/\s+/g, " ");
+  if (/^(yes|yeah|yep|yup|sure|ok(ay)?|do it|go ahead|delete it|yes delete it|yes please|confirm|correct|please do)( please)?$/.test(t)) return true;
+  if (/^(no|nope|nah|don'?t|do not|keep it|cancel|stop|never ?mind|no thanks|wait|hold on)( (it|that|thanks))?$/.test(t)) return false;
+  return null;
+}
 
 /** Whisper invents words from silence and breath; these aren't turns. */
 export function meaningful(text: string) {
   const t = text.trim().replace(/[.!?,…\s]+$/g, "").toLowerCase();
   if (t.length < 2) return false;
-  return !/^(you|thank you|thanks|thanks for watching|bye|okay|ok|um+|uh+|hmm+|\[.*\]|\(.*\))$/.test(t);
+  // Lone function words are what Whisper makes of keyboard clicks and room noise ("and" showed up in the notch while
+  // typing). "Yes" and "no" still count: they answer Spark's questions.
+  return !/^(you|thank you|thanks|thanks for watching|bye|bye-bye|okay|ok|um+|uh+|hmm+|mm+|ah+|oh+|huh|and|so|the|a|an|but|or|of|to|in|it|is|i|me|well|like|see you|you know|\[.*\]|\(.*\))$/.test(t);
 }
 
 /** 16 kHz mono 16-bit WAV from float samples at `rate`: what Whisper is trained on, and small to upload. */
@@ -108,6 +131,9 @@ export class HandsFree {
   /** "en", or "auto" for any language (the quick caption model only knows English, so captions pause then). */
   lang: "en" | "auto" = "en";
   private holding = false;
+  /** Typing: key clicks aren't you talking, so no turn starts until the keyboard has been quiet a moment. */
+  private muteUntil = 0;
+  muteFor(ms: number) { this.muteUntil = performance.now() + ms; }
   onPhase?: (p: Phase, detail?: string) => void;
   onLevel?: (level: number) => void;
   onTurn?: (text: string) => void;
@@ -126,6 +152,12 @@ export class HandsFree {
   /** Turns already transcribed but not yet sent: if you pause and carry on, they go as one message. */
   private pending: string[] = [];
   private inflight = 0;
+  /**
+   * A head start: once you've been quiet ~0.35 s, the final transcript starts on what you've said so far. If you stay
+   * quiet until the turn ends, it's already done (or nearly) — no waiting on Whisper after you stop. Talk again and
+   * it's thrown away. `talk` is how much speech it covered.
+   */
+  private spec: { talk: number; result: Promise<{ text: string; error?: string }> } | null = null;
 
   get active() { return !!this.stream; }
 
@@ -147,20 +179,27 @@ export class HandsFree {
       this.onLevel?.(Math.min(1, rms * 12));
       if (this.paused) return;
       if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > keep) this.preroll.shift(); }
+      if (this.mode !== "hold" && !this.turn && performance.now() < this.muteUntil) return; // typing: listen, but don't start a turn
       if (this.mode === "hold") { if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption(); return; }
       // Echo-aware while Spark talks: learn how much of its voice reaches the mic, and only count you above that.
       const out = this.speaking && this.outputLevel ? this.outputLevel() : 0;
       if (this.speaking && out && !this.state.speaking) this.coupling = learnCoupling(this.coupling, rms, out);
       const echo = this.speaking && this.outputLevel ? out * this.coupling : undefined;
+      const talkBefore = this.state.talk;
       const r = vadStep(this.state, rms, frameMs, endsSentence(this.lastCaption) ? { ...VAD, endMs: 750 } : VAD, this.speaking, echo);
       this.state = r.state;
+      if (this.turn && this.state.speaking) {
+        if (this.spec && this.spec.talk !== this.state.talk) this.spec = null; // you carried on: that guess is stale
+        else if (!this.spec && this.state.quiet >= 350 && this.state.talk >= VAD.minSpeechMs && this.ctx) { const result = this.transcribe(this.turn.slice(), this.ctx.sampleRate); result.catch(() => {}); this.spec = { talk: this.state.talk, result }; } // a discarded guess never throws
+      }
       if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.steadied = STEADY; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
       // Still talking over Spark after ~0.6 s of real speech: a real interruption — Spark stops, like a person would.
       // Counted in time you were actually speaking (not just elapsed since a start), so a false start never cuts Spark off.
-      if (this.turn && this.speaking && !this.yielded && this.state.talk >= 600) { this.yielded = true; this.onYield?.(); }
-      else if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption();
-      else if (r.event === "end") void this.finish(true);
-      else if (r.event === "discard") void this.finish(false);
+      const act = frameAction(r.event, { turn: !!this.turn, speaking: this.speaking, yielded: this.yielded, talk: this.state.talk, captionDue: !this.captionBusy && performance.now() - this.captionAt > 700 });
+      if (act === "finish") void this.finish(true, talkBefore);
+      else if (act === "discard") void this.finish(false);
+      else if (act === "yield") { this.yielded = true; this.onYield?.(); }
+      else if (act === "caption") void this.caption();
     };
     source.connect(this.node);
     this.node.connect(this.ctx.destination); // required for onaudioprocess to run; the node outputs silence
@@ -212,15 +251,23 @@ export class HandsFree {
     finally { this.captionBusy = false; }
   }
 
-  private async finish(keep: boolean) {
+  /** The final, accurate transcript of a turn's audio. */
+  private async transcribe(turn: Float32Array[], rate: number): Promise<{ text: string; error?: string }> {
+    const r = await fetch(`/api/transcribe?voice=1&name=turn.wav&lang=${this.lang}`, { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, rate) });
+    const { text = "", error } = await r.json() as { text?: string; error?: string };
+    return { text, ...(error ? { error } : {}) };
+  }
+
+  private async finish(keep: boolean, talk?: number) {
     const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = ""; this.steadied = STEADY;
+    const spec = this.spec; this.spec = null;
     if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); if (!this.inflight) this.onPhase?.("listening"); return; }
     // Push-to-talk still pauses while it transcribes; open mic keeps listening, so you can carry on talking.
     if (this.mode === "hold") this.paused = true;
     this.inflight++; this.onPhase?.("transcribing");
     try {
-      const r = await fetch(`/api/transcribe?voice=1&name=turn.wav&lang=${this.lang}`, { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(turn, this.ctx.sampleRate) });
-      const { text = "", error } = await r.json() as { text?: string; error?: string };
+      // The head start covered everything you said (you stayed quiet since): use it. Otherwise transcribe it all now.
+      const { text = "", error } = spec && talk !== undefined && spec.talk === talk ? await spec.result.catch(() => this.transcribe(turn, this.ctx!.sampleRate)) : await this.transcribe(turn, this.ctx.sampleRate);
       if (error) this.onPhase?.("error", error);
       else if (meaningful(text)) this.pending.push(text.trim());
       else this.onDropped?.();
