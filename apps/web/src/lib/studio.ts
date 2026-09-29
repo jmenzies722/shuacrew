@@ -215,10 +215,12 @@ export function producerMove(q: string): ProducerMove | null {
   if (new RegExp(`^(toggle|switch) ${VOICE}$`, "i").test(t)) return { kind: "voice", on: "toggle" };
   if (new RegExp(`^(turn on|start|enable|switch on|go (in)?to|open|use) ${VOICE}$`, "i").test(t) || /^(let'?s talk|talk to me|i want to talk)$/i.test(t)) return { kind: "voice", on: true };
   if (new RegExp(`^(turn off|stop|end|disable|switch off|exit|leave|close) ${VOICE}$`, "i").test(t)) return { kind: "voice", on: false };
-  if (/^(stop|kill|turn off) (the )?(radio|soundscape|record)\b/i.test(t)) return { kind: "stop-radio" };
+  // "Turn off the radio", "turn the radio off", "shut off the lofi", "radio off": all the same ask.
+  const RADIO = "(the |my )?(radio|shuacrew radio|lo-?fi( radio)?|soundscape|record)";
+  if (new RegExp(`^(stop|kill|end|turn off|shut off|shut down|switch off) ${RADIO}\\b`, "i").test(t) || new RegExp(`^(turn|shut|switch) ${RADIO} off$`, "i").test(t) || /^(radio|lo-?fi) off$/i.test(t)) return { kind: "stop-radio" };
   // Music/Spotify or the radio — whichever is actually playing.
   const MEDIA = "(the |my |this )?(music|song|track|tune|spotify|apple music|playback|audio|it|that)";
-  if (new RegExp(`^(pause|stop|hold)( ${MEDIA})?$`, "i").test(t)) return { kind: "player", cmd: "pause" };
+  if (new RegExp(`^(pause|stop|hold|turn off|shut off|switch off)( ${MEDIA})?$`, "i").test(t) || new RegExp(`^(turn|shut|switch) ${MEDIA} off$`, "i").test(t)) return { kind: "player", cmd: "pause" };
   if (new RegExp(`^(resume|unpause|continue|keep playing)( ${MEDIA})?$`, "i").test(t) || new RegExp(`^(play|start) ${MEDIA} again$`, "i").test(t)) return { kind: "player", cmd: "resume" };
   if (new RegExp(`^(next|skip)( ${MEDIA}| one)?$`, "i").test(t) || /^play the next (song|track)$/i.test(t)) return { kind: "player", cmd: "next" };
   if (/^(previous|go back|last|back)( (song|track|one))?$/i.test(t) || /^play the (previous|last) (song|track)$/i.test(t)) return { kind: "player", cmd: "previous" };

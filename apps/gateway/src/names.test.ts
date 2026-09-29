@@ -13,7 +13,7 @@ describe("transcripts spell your names right", () => {
   });
   it("builds a short, de-duplicated hint", () => {
     const v = vocabulary(["Rhea", "rhea", "Leash"]);
-    expect(v.startsWith("Rhea, Leash, ShuaCrew")).toBe(true);
+    expect(v.startsWith("Rhea, Leash, Hey Shua, ShuaCrew")).toBe(true);
     expect(v.split(", ").length).toBeLessThanOrEqual(60);
   });
 });

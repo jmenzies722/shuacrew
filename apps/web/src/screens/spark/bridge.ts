@@ -22,14 +22,31 @@ export const claim = () => { try { localStorage.setItem(OWNER, ME); } catch { /*
 export const mine = () => { try { const o = localStorage.getItem(OWNER); return !o || o === ME; } catch { return true; } };
 export const ctx: WidgetCtx = { go: (path) => post({ type: "buddyOpen", path }) };
 
-/** What Music or Spotify is playing right now (asked of the Mac app; null if neither is open or it doesn't answer fast). */
-export function nowPlayingOnce(): Promise<{ app: string; playing: boolean; title: string; artist?: string } | null> {
+export type NowPlaying = { app: string; playing: boolean; title: string; artist?: string; album?: string; position?: number; duration?: number };
+/** The latest answer from the Mac about Music/Spotify, from any ask (the notch polls it while music plays). */
+let lastMedia: { at: number; media: NowPlaying | null } | null = null;
+if (typeof window !== "undefined") window.addEventListener("shuacrew:media", (e) => { const d = (e as CustomEvent).detail as NowPlaying | undefined; lastMedia = { at: Date.now(), media: d?.title ? d : null }; });
+/**
+ * What Music or Spotify is playing right now. A fresh answer from the notch counts (it asks every few seconds while
+ * music plays); otherwise ask the Mac, and if Music is slow to answer, fall back to the last thing it told us.
+ */
+export function nowPlayingOnce(): Promise<NowPlaying | null> {
   if (!native()) return Promise.resolve(null);
+  if (lastMedia && Date.now() - lastMedia.at < 6_000) return Promise.resolve(lastMedia.media);
   return new Promise((resolve) => {
     const on = (e: Event) => { clearTimeout(t); window.removeEventListener("shuacrew:media", on); const d = (e as CustomEvent).detail; resolve(d?.title ? d : null); };
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:media", on); resolve(null); }, 900);
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:media", on); resolve(lastMedia && Date.now() - lastMedia.at < 90_000 ? lastMedia.media : null); }, 2500);
     window.addEventListener("shuacrew:media", on); post({ type: "buddyNowPlaying" });
   });
+}
+const mmss = (s?: number) => (s && Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "");
+/** One line of "what's playing" for every question, so Spark just knows — Music/Spotify and ShuaCrew Radio. */
+export async function playingContext(radio: () => Promise<{ playing: boolean; title: string | null; station: string | null }>): Promise<string> {
+  const [m, r] = await Promise.all([nowPlayingOnce().catch(() => null), radio().catch(() => null)]);
+  const parts: string[] = [];
+  if (m?.title) parts.push(`${m.playing ? "Now playing" : "Paused"} in ${m.app}: "${m.title}"${m.artist ? ` by ${m.artist}` : ""}${m.album ? ` (album: ${m.album})` : ""}${m.duration ? `, ${mmss(m.position)} of ${mmss(m.duration)}` : ""}.`);
+  if (r?.playing) parts.push(`ShuaCrew Radio is on: ${r.title ?? r.station ?? "lofi"}${r.station && r.title ? ` (${r.station})` : ""}.`);
+  return parts.length ? parts.join(" ") : "Nothing is playing right now (Music, Spotify and ShuaCrew Radio are all quiet).";
 }
 /** A sketch shape, fitted to the real thing it's about: boxes hug the control (in its shape), circles ring it, arrows land on it. */
 export function fitShape(sh: Shape): Shape {

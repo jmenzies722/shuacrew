@@ -1,5 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { CaptionLine } from "../lib/buddy-voice";
+
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced";
+/**
+ * Text in the notch, a few whole lines tall: anchored to the newest words, so when a new line starts the others glide
+ * up rather than jump, and the oldest line fades out (only once there's more above it). Never a line cut in half.
+ */
+export function Rolling({ className = "", lines = 3, children }: { className?: string; lines?: number; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null), text = useRef<HTMLParagraphElement>(null), height = useRef(0);
+  const [full, setFull] = useState(false);
+  useLayoutEffect(() => {
+    const b = box.current, t = text.current; if (!b || !t) return;
+    const h = t.offsetHeight, grew = height.current && h > height.current ? h - height.current : 0; height.current = h;
+    const over = h > b.clientHeight + 1; if (over !== full) setFull(over);
+    if (grew && over && !calm()) { // FLIP: start where the lines were, then glide up into place
+      t.style.transition = "none"; t.style.transform = `translateY(${grew}px)`; void t.offsetHeight;
+      t.style.transition = "transform .3s cubic-bezier(.3, .7, .3, 1)"; t.style.transform = "";
+    }
+  });
+  return <div ref={box} className={`notch-roll ${full ? "is-full" : ""} ${className}`} style={{ "--lines": lines } as CSSProperties} aria-live="polite"><p ref={text}>{children}</p></div>;
+}
 
 /**
  * Live captions in the notch: the whole reply as a rolling transcript, word by word as Spark says it. Each sentence
@@ -28,7 +48,7 @@ export function fitTimes(times: number[], text: string, speed: number, durationM
 }
 
 interface Said extends CaptionLine { start: number }
-export function NotchCaption({ line }: { line: CaptionLine | null }) {
+export function NotchCaption({ line, lines = 3 }: { line: CaptionLine | null; lines?: number }) {
   const [chain, setChain] = useState<Said[]>([]), [shown, setShown] = useState(0);
   const chainRef = useRef<Said[]>([]), timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -47,8 +67,8 @@ export function NotchCaption({ line }: { line: CaptionLine | null }) {
   }, [line]);
   if (!chain.length) return null;
   const current = chain.at(-1)!, words = current.text.split(/\s+/).filter(Boolean);
-  return <div className="notch-caption" aria-live="polite">
-    <p>{chain.slice(0, -1).map((s) => <span key={s.key} className="is-past">{s.text} </span>)}
-      <span key={current.key}>{words.map((w, i) => <span key={i} className={i < shown ? "is-said" : "is-next"}>{w} </span>)}</span></p>
-  </div>;
+  return <Rolling className="notch-caption" lines={lines}>
+    {chain.slice(0, -1).map((s) => <span key={s.key} className="is-past">{s.text} </span>)}
+    <span key={current.key}>{words.map((w, i) => <span key={i} className={i < shown ? "is-said" : "is-next"}>{w} </span>)}</span>
+  </Rolling>;
 }

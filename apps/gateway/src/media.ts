@@ -60,7 +60,8 @@ function run(file: string, args: string[], timeoutMs = 300_000, signal?: AbortSi
 /** Speech → text. `timestamps` keeps "[00:01.2 → 00:04.0]" markers (for video). */
 /** Whisper's vocabulary hint: the names and terms you say, so it spells them right. Short and comma-separated works best. */
 export function vocabulary(words: string[]): string {
-  const base = ["ShuaCrew", "Spark", "Shua", "Claude", "Codex", "crew", "session", "playbook", "venture", "Kubernetes", "TypeScript", "Swift", "GitHub", "deploy", "pull request", "API"];
+  // "Hey Shua" first: without it Whisper hears the wake phrase as one word ("Heishua").
+  const base = ["Hey Shua", "ShuaCrew", "Spark", "Shua", "Claude", "Codex", "crew", "session", "playbook", "venture", "Kubernetes", "TypeScript", "Swift", "GitHub", "deploy", "pull request", "API"];
   const seen = new Set<string>(), out: string[] = [];
   for (const w of [...words, ...base]) { const k = w.trim(); if (k && k.length <= 40 && !seen.has(k.toLowerCase())) { seen.add(k.toLowerCase()); out.push(k); } }
   return out.slice(0, 60).join(", ");
@@ -74,6 +75,8 @@ const soundKey = (w: string) => w.toLowerCase().replace(/[^a-z]/g, "").replace(/
  * not the first word of a sentence) are touched, so everyday words are never "corrected".
  */
 export function fixNames(text: string, names: string[]): string {
+  // The wake phrase, however Whisper split or spelled it: "Heishua", "Hei Shuaa", "hey, shua".
+  text = text.replace(/\bhe[iy]?,?\s*shu+a+\b/gi, "Hey Shua");
   const byKey = new Map<string, string>();
   for (const n of names) { const k = soundKey(n); if (k.length >= 2 && !/\s/.test(n)) byKey.set(k, n); }
   return text.replace(/(^|[.!?]\s+|\s)([A-Z][A-Za-z']+)/g, (all, lead: string, word: string, offset: number) => {

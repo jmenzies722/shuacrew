@@ -91,6 +91,8 @@ describe("spark producer", () => {
     expect(producerMove("put on rain")).toEqual({ kind: "scape", scape: "rain" });
     expect(producerMove("start a 25")).toEqual({ kind: "focus", minutes: 25 });
     expect(producerMove("stop the radio")).toEqual({ kind: "stop-radio" });
+    for (const ask of ["turn off the radio", "turn the radio off", "Can you turn off the radio please", "shut off the lofi", "radio off", "switch the radio off"]) expect(producerMove(ask)).toEqual({ kind: "stop-radio" });
+    for (const ask of ["turn it off", "turn off the music", "turn the music off"]) expect(producerMove(ask)).toEqual({ kind: "player", cmd: "pause" });
     expect(producerMove("play Drake")).toEqual({ kind: "play", query: "Drake" });
     expect(producerMove("hey shua play some jazz on spotify")).toEqual({ kind: "play", query: "jazz", app: "Spotify" });
     expect(producerMove("play something")).toEqual({ kind: "player", cmd: "resume" });

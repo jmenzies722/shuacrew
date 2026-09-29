@@ -61,3 +61,10 @@ it("transcribes English by default, auto-detects on request, and refuses anythin
   expect(languageArg()).toBe("en"); expect(languageArg("auto")).toBe("auto"); expect(languageArg("es")).toBe("es");
   expect(languageArg("es; rm -rf /")).toBe("en"); expect(languageArg("english")).toBe("en");
 });
+
+import { fixNames as fixWake, vocabulary as vocab } from "./media";
+it("hears the wake phrase as \"Hey Shua\", however Whisper split it", () => {
+  for (const heard of ["Heishua, pause the music", "Hei Shuaa, pause the music", "hey, shua, pause the music"]) expect(fixWake(heard, [])).toBe("Hey Shua, pause the music");
+  expect(fixWake("They should go", [])).toBe("They should go"); // not a lookalike
+  expect(vocab([]).startsWith("Hey Shua, ")).toBe(true);
+});
