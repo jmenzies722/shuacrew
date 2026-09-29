@@ -16,3 +16,15 @@ describe("system widget", () => {
     expect(body.cpu).toBeGreaterThanOrEqual(0);
   });
 });
+
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { installedApps } from "./system-routes.js";
+it("lists the apps really installed (so Spark never promises one you don't have)", () => {
+  const home = mkdtempSync(join(tmpdir(), "apps-")); mkdirSync(join(home, "Applications", "Zeta Tool.app"), { recursive: true });
+  const apps = installedApps(home);
+  expect(apps).toContain("Zeta Tool");
+  expect(apps).toContain("Calculator"); // from /System/Applications
+  expect(apps).not.toContain("Definitely Not Installed");
+});
