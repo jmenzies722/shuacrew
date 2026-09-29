@@ -162,7 +162,11 @@ enum SparkHands {
             return runResult(script) != nil ? (true, "Volume \(level >= 0 ? "\(level)%" : command == "volume_up" ? "up" : "down")") : (false, "Couldn't change the volume.")
         }
         if command == "mute" { return runResult("set volume with output muted") != nil ? (true, "Muted") : (false, "Couldn't mute.") }
-        let app = ["spotify": "Spotify", "music": "Music"][(a["app"] as? String ?? "").lowercased()] ?? runningPlayer() ?? "Music"
+        let asked = ["spotify": "Spotify", "music": "Music"][(a["app"] as? String ?? "").lowercased()]
+        // Never claim Spotify when it isn't installed: say so if you asked for it by name, otherwise use Music.
+        let hasSpotify = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") != nil
+        if asked == "Spotify" && !hasSpotify { return (false, "Spotify isn't installed on this Mac, so I can't use it. I can play it in Apple Music instead.") }
+        let app = asked ?? runningPlayer() ?? "Music"
         // Apple Music (and Spotify where it allows): playlists, shuffle, repeat, favourite, add to library, seek.
         let safeQuery = ((a["query"] as? String) ?? "").replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespaces)
         switch command {
@@ -253,13 +257,18 @@ enum SparkHands {
                 // 3. Not in your library: Apple doesn't let any app start a catalog song, so open that exact song in Music.
                 if let link = song.link, let url = URL(string: link.replacingOccurrences(of: "https://", with: "music://")),
                    let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
-                    NSWorkspace.shared.open([url], withApplicationAt: music, configuration: NSWorkspace.OpenConfiguration())
-                    return (true, "“\(song.title)” by \(song.artist) isn't in your library, so I opened it in Music — press play there. Add it to your library and I can play it straight away next time.")
+                    // Quietly, behind what you're doing: Music doesn't jump in front or take over the screen.
+                    let quiet = NSWorkspace.OpenConfiguration(); quiet.activates = false
+                    NSWorkspace.shared.open([url], withApplicationAt: music, configuration: quiet)
+                    return (true, "“\(song.title)” by \(song.artist) isn't in your library, so it's waiting in Music, just press play there. Add it to your library and I'll play it straight away next time.")
                 }
             }
             let term = safe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? safe
-            NSWorkspace.shared.open(URL(string: "https://music.apple.com/search?term=\(term)")!)
-            return (true, "I couldn't find that exact song, so I opened Apple Music search for “\(safe)”.")
+            if let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music"), let url = URL(string: "music://music.apple.com/search?term=\(term)") {
+                let quiet = NSWorkspace.OpenConfiguration(); quiet.activates = false
+                NSWorkspace.shared.open([url], withApplicationAt: music, configuration: quiet)
+            }
+            return (false, "I couldn't find that exact song. I put a search for “\(safe)” in Music in case it's there under another name.")
         }
         let verb = ["play": "play", "pause": "pause", "toggle": "playpause", "next": "next track", "previous": "previous track"][command] ?? "playpause"
         return timed(app, "tell application \"\(app)\" to \(verb)") != nil ? (true, "\(app): \(command)") : (false, "\(app) didn't answer. If it asks, allow ShuaCrew in Privacy & Security → Automation.")

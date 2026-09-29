@@ -64,6 +64,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [brief, setBrief] = useState<{ q: string; a: string } | null>(null);
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [speaking, setSpeaking] = useState(false);
   const [done, setDone] = useState<Record<string, Done[]>>({});
+  const corrected = useRef(new Set<string>()); // replies whose failed action Spark already owned up to
+  // What's actually installed, told to Spark once per conversation (cached with its rules), so it never offers an app you don't have.
+  const installed = useRef("");
+  useEffect(() => { void api<{ apps: string[] }>("/api/system/apps").then((r) => { installed.current = r.apps.join(", "); }).catch(() => {}); }, []);
   const [bubble, setBubble] = useState<{ text: string; path: string } | null>(null);
   // Once a day: "your day in 20 seconds", spoken on tap.
   const [morning, setMorning] = useState(false), [evening, setEvening] = useState(false);
@@ -301,7 +305,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const actions = parseActions(b.raw);
         void (async () => {
           let opened = "";
-          for (const a of actions) { const r = await perform(a); setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (r.ok && (a.type === "open_url" || a.type === "open_app")) opened = a.type === "open_url" ? a.url : a.name; }
+          const failed: string[] = [];
+          for (const a of actions) { const r = await perform(a); setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app")) opened = a.type === "open_url" ? a.url : a.name; }
+          // It already said "Opening X": if that didn't happen (no such app, a blocked step), say so out loud right away,
+          // so a failure never passes as done. Once per reply.
+          if (failed.length && !corrected.current.has(key)) {
+            corrected.current.add(key);
+            speech.current.say(`Actually, that didn't work: ${failed[0]!.replace(/[.\s]+$/, "")}.`);
+          }
           // Opened something to answer a question (weather, a score, a price)? Look at what opened and give the specifics.
           const q = [...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? "";
           if (final && opened && looksForAnswer(q) && !looked.current.has(key)) {
@@ -625,7 +636,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, recap ? `${appNow}\n\nEARLIER IN THIS CONVERSATION (you were on another model; carry on naturally):\n${recap}` : appNow), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (you were on another model; carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");

@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { statfs } from "node:fs/promises";
+import path from "node:path";
 import os from "node:os";
 import type { FastifyInstance } from "fastify";
 
@@ -22,6 +24,12 @@ const battery = (): Promise<Battery | null> => new Promise((resolve) => {
 /** This Mac at a glance for the System widget: load, memory, disk, battery. Read-only, local only. */
 export function systemRoutes(app: FastifyInstance, home = os.homedir()) {
   let cached: { at: number; body: unknown } | null = null;
+  // The apps actually installed, so Spark never promises to open one you don't have. Names only; a minute's cache.
+  let apps: { at: number; names: string[] } | null = null;
+  app.get("/api/system/apps", async () => {
+    if (!apps || Date.now() - apps.at > 60_000) apps = { at: Date.now(), names: installedApps(home) };
+    return { apps: apps.names };
+  });
   app.get("/api/system", async () => {
     if (cached && Date.now() - cached.at < 5000) return cached.body;
     const cores = os.cpus().length || 1, [l1, l5] = os.loadavg();
@@ -36,4 +44,11 @@ export function systemRoutes(app: FastifyInstance, home = os.homedir()) {
     cached = { at: Date.now(), body };
     return body;
   });
+}
+
+export function installedApps(home = os.homedir()): string[] {
+  const roots = ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities", path.join(home, "Applications")];
+  const names = new Set<string>();
+  for (const root of roots) { try { for (const f of readdirSync(root)) if (f.endsWith(".app")) names.add(f.slice(0, -4)); } catch { /* not there */ } }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
