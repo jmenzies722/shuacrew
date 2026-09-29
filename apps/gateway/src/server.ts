@@ -37,7 +37,9 @@ import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
 import type { Terminals } from "./terminals.js";
 import { MAX_UPLOAD, type Uploads } from "./uploads.js";
-import { fixNames, status as mediaStatus, transcribe, vocabulary } from "./media.js";
+import { fixNames, status as mediaStatus, tools as mediaTools, transcribe, vocabulary } from "./media.js";
+import { healthChecks } from "./health.js";
+import { WebBridge } from "./web-bridge.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import { Specs } from "./specs.js";
@@ -169,7 +171,45 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   roomRoutes(app, options.rooms);
   devRoutes(app, options.store, options.supervisor);
   weatherRoutes(app);
-  extRoutes(app, { home: path.dirname(options.store.path), ask: options.webAsk });
+  // One Chrome bridge for everyone: Spark's page actions and the Health check see the same connection.
+  const webBridge = new WebBridge();
+  extRoutes(app, { home: path.dirname(options.store.path), ask: options.webAsk, bridge: webBridge });
+  // The Health check (Settings → Health): every part ShuaCrew needs, checked for real — including a timed voice test.
+  app.get("/api/health/check", async () => {
+    const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))]);
+    const runtimes = await Promise.all([...options.runtimes.values()].filter((r) => r.id === "claude" || r.id === "codex").map(async (r) => {
+      const st = await withTimeout(r.status().catch(() => null), 6000, null);
+      return { id: r.id, label: r.label, installed: st?.installed ?? false, signedIn: st ? st.signedIn : null, limitedUntil: supervisor.limitedUntil(r.id) };
+    }));
+    let speech: { state: string; firstAudioMs: number | null; coldMs?: number; error?: string } | null = null;
+    if (options.speech) {
+      const state = options.speech.status().state;
+      speech = { state, firstAudioMs: null };
+      if (state === "ready") {
+        // Time a real sentence. A slow first one is usually the model loading (once); measure again warm before judging.
+        const timed = async (): Promise<number | null> => {
+          const abort = new AbortController(), t0 = Date.now(), cap = setTimeout(() => abort.abort(), 12_000);
+          // Let the (short) sentence finish: stopping mid-stream makes the speech service restart its worker, so the
+          // next test would always look cold.
+          let first: number | null = null;
+          try {
+            for await (const chunk of options.speech!.synthesize({ id: `health-${t0}`, generation: 1, voiceId: "michael", text: "Health check.", speed: 1 }, abort.signal)) {
+              if (chunk.type === "audio" && first === null) first = Date.now() - t0;
+            }
+            return first;
+          } catch (error) { speech!.error = abort.signal.aborted ? "timed out" : (error as Error).message.slice(0, 120); return first; }
+          finally { clearTimeout(cap); }
+        };
+        const first = await timed();
+        speech.firstAudioMs = first !== null && first > 1500 ? (await timed()) ?? first : first;
+        if (first !== null && speech.firstAudioMs !== null && first > 1500 && speech.firstAudioMs < first) speech.coldMs = first;
+      }
+    }
+    const media = mediaTools();
+    const disk = await statfs(os.homedir()).catch(() => null);
+    return { at: Date.now(), checks: healthChecks({ runtimes, speech, transcription: { ffmpeg: !!media.ffmpeg, whisper: !!media.whisper, model: !!media.model }, chrome: { connected: webBridge.connected() },
+      diskFreeGb: disk ? (disk.bavail * disk.bsize) / 1e9 : null, memoryMb: Math.round(process.memoryUsage().rss / 1e6), now: Date.now() }) };
+  });
   radioRoutes(app);
   screenMemoryRoutes(app);
   // Load Spark's local model before it's needed (called when Claude runs out), so the first answer isn't a cold start.
