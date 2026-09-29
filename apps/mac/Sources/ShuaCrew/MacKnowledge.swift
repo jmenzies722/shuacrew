@@ -61,7 +61,9 @@ enum MacKnowledge {
     /// Build output, caches and package folders: never what you meant.
     private static let noise = ["/Library/", "/node_modules/", "/.git/", "/dist/", "/build/", "/.build/", "/.next/", "/DerivedData/", "/Caches/", "/.cache/", "/__pycache__/", "/.venv/", "/venv/", "/target/", "/Pods/", "/.Trash/", "/go/pkg/", "/.cargo/", "/.rustup/", "/.npm/", "/.pnpm-store/", "/.gradle/", "/.m2/",
         // App-managed libraries and scratch space: the Music/Photos databases change constantly but are never "your file".
-        ".musiclibrary", ".photoslibrary", ".tvlibrary", "/tmp/"]
+        ".musiclibrary", ".photoslibrary", ".tvlibrary", "/tmp/",
+        // Apps that keep caches in your own folders (CapCut, Electron apps): "Cache", "User Data", "GPUCache".
+        "/Cache/", "/User Data/", "/GPUCache/", "/Code Cache/"]
     private static func spotlight(_ args: [String], limit: Int) -> [String] {
         let p = Process(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind"); p.arguments = args; p.standardOutput = out; p.standardError = Pipe()
