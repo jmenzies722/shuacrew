@@ -34,6 +34,18 @@ enum MacKnowledge {
             case "status": done(true, "Checked your Mac", status())
             case "context": done(true, "", context())
             case "permissions": done(true, "", permissions())
+            case "request_access":
+                // Settings' "Allow" button: bring up macOS's own prompt right now (the only way an app gets on these lists).
+                switch a["what"] as? String {
+                case "reminders": done(access(.reminder), "", permissions())
+                case "calendar": done(access(.event), "", permissions())
+                case "contacts":
+                    let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var ok = false
+                    DispatchQueue.main.async { CNContactStore().requestAccess(for: .contacts) { granted, _ in ok = granted; wait.signal() } }
+                    _ = wait.wait(timeout: .now() + 120)
+                    done(ok, "", permissions())
+                default: done(false, "", permissions())
+                }
             case "notes_new": newNote(a, done)
             case "calendar_add": addEvent(a, done)
             case "new_folder": newFolder(a, done)
@@ -118,12 +130,14 @@ enum MacKnowledge {
     // MARK: calendar, reminders, contacts, notes
 
     private static let events = EKEventStore()
+    nonisolated(unsafe) private static var lastError: String?
     private static func access(_ type: EKEntityType) -> Bool {
         if EKEventStore.authorizationStatus(for: type) == .fullAccess { return true }
+        // Ask from the main thread: macOS only shows the permission prompt for requests made there.
         let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var granted = false
-        let finish: EKEventStoreRequestAccessCompletionHandler = { ok, _ in granted = ok; wait.signal() }
-        if type == .event { events.requestFullAccessToEvents(completion: finish) } else { events.requestFullAccessToReminders(completion: finish) }
-        _ = wait.wait(timeout: .now() + 60)
+        let finish: EKEventStoreRequestAccessCompletionHandler = { ok, error in granted = ok; lastError = error?.localizedDescription; wait.signal() }
+        DispatchQueue.main.async { if type == .event { events.requestFullAccessToEvents(completion: finish) } else { events.requestFullAccessToReminders(completion: finish) } }
+        _ = wait.wait(timeout: .now() + 120)
         return granted
     }
     private static let when: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE d MMM, h:mm a"; return f }()
@@ -136,7 +150,7 @@ enum MacKnowledge {
         done(true, "Checked your calendar", lines.isEmpty ? "Nothing on the calendar for the next \(days) day(s)." : "Calendar, next \(days) day(s):\n" + lines.joined(separator: "\n"))
     }
     private static func reminders(_ a: [String: Any], _ done: Done) {
-        guard access(.reminder) else { done(false, "Let ShuaCrew see your reminders in System Settings → Privacy & Security → Reminders.", ""); return }
+        guard access(.reminder) else { done(false, "Let ShuaCrew see your reminders in System Settings → Privacy & Security → Reminders.\(lastError.map { " (\($0))" } ?? "")", ""); return }
         let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var items: [EKReminder] = []
         events.fetchReminders(matching: events.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)) { found in items = found ?? []; wait.signal() }
         _ = wait.wait(timeout: .now() + 10)
@@ -160,8 +174,8 @@ enum MacKnowledge {
         let store = CNContactStore()
         if CNContactStore.authorizationStatus(for: .contacts) != .authorized {
             let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var ok = false
-            store.requestAccess(for: .contacts) { granted, _ in ok = granted; wait.signal() }
-            _ = wait.wait(timeout: .now() + 60)
+            DispatchQueue.main.async { store.requestAccess(for: .contacts) { granted, error in ok = granted; lastError = error?.localizedDescription; wait.signal() } }
+            _ = wait.wait(timeout: .now() + 90)
             guard ok else { done(false, "Let ShuaCrew see your contacts in System Settings → Privacy & Security → Contacts.", ""); return }
         }
         let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactOrganizationNameKey, CNContactEmailAddressesKey, CNContactPhoneNumbersKey, CNContactBirthdayKey] as [CNKeyDescriptor]

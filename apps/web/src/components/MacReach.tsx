@@ -41,6 +41,22 @@ export function MacReach({ name }: { name: string }) {
     load(); window.addEventListener("focus", load);
     return () => window.removeEventListener("focus", load);
   }, []);
+  // Not asked yet: bring up macOS's own prompt right now (the app isn't on the Settings list until it has asked once).
+  const [asking, setAsking] = useState("");
+  const request = (key: string) => {
+    setAsking(key);
+    const t = setTimeout(() => setAsking(""), 125_000);
+    void (async () => {
+      const bridge = native(); if (!bridge) return;
+      const id = crypto.randomUUID();
+      const on = (e: CustomEvent<{ id: string; output?: string }>) => {
+        if (e.detail.id !== id) return; window.removeEventListener("shuacrew:did", on as EventListener); clearTimeout(t); setAsking("");
+        try { setStates(JSON.parse(e.detail.output ?? "null")); } catch { /* keep */ }
+      };
+      window.addEventListener("shuacrew:did", on as EventListener);
+      bridge.postMessage({ type: "buddyDo", id, action: { type: "mac", op: "request_access", what: key } });
+    })();
+  };
   const open = (paneKey: string) => {
     const pane = PANES.find((p) => p.key === paneKey); if (!pane) return;
     native()?.postMessage({ type: "buddyDo", id: crypto.randomUUID(), action: { type: "open_settings", pane: pane.key, url: paneURL(pane) } });
@@ -60,7 +76,8 @@ export function MacReach({ name }: { name: string }) {
         <i className="reach-icon"><Icon size={15} /></i>
         <span className="reach-text"><b>{label}</b><small>{does}</small></span>
         {st === "granted" ? <em className="reach-on"><CheckCircle2 size={13} /> On</em>
-          : <button type="button" className="reach-go" onClick={() => open(pane)}>{key === "music" ? "Review" : st === "not asked" ? "Allow" : "Turn on"}</button>}
+          : asking === key ? <em className="reach-asking">Answer the prompt…</em>
+          : <button type="button" className="reach-go" onClick={() => (st === "not asked" && ["reminders", "contacts", "calendar"].includes(key) ? request(key) : open(pane))}>{key === "music" ? "Review" : st === "not asked" ? "Allow" : "Turn on"}</button>}
       </li>;
     })}</ul>
   </section>;
