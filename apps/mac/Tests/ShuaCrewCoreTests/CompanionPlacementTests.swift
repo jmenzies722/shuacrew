@@ -94,3 +94,11 @@ import Testing
     #expect(MacPaths.allowed("/etc/passwd", home: home) == nil)
     #expect(MacPaths.allowed("/Users/me2/secret.txt", home: home) == nil)
 }
+@Test func aControlFitsHowSparkDescribesIt() {
+    #expect(LabelMatch.fits("Displays", "Displays in the sidebar"))
+    #expect(LabelMatch.fits("Save", "the blue Save button"))
+    #expect(LabelMatch.fits("Night Shift…", "Night Shift"))
+    #expect(!LabelMatch.fits("Cancel", "the blue Save button"))
+    #expect(!LabelMatch.fits("Wi-Fi", "Bluetooth in the sidebar"))
+    #expect(!LabelMatch.fits("", "Save"))
+}

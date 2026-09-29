@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import ShuaCrewCore
 
 /// Spark's hands: mouse, keyboard, music, system and your Shortcuts.
 /// Every action is checked here; the page only proposes. Mouse and keyboard need macOS Accessibility permission.
@@ -30,10 +31,19 @@ enum SparkHands {
         switch a["type"] as? String {
         case "click":
             guard let x = num("x"), let y = num("y") else { return (false, "No place to click.") }
-            let p = eventPoint(x: x, y: y, on: screen)
+            var p = eventPoint(x: x, y: y, on: screen), note = ""
             let right = a["button"] as? String == "right", count = (a["double"] as? Bool ?? false) ? 2 : 1
+            // Check before clicking: what's under that spot NOW? The screen may have changed since Spark looked.
+            if let label = (a["label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+                switch SparkPress.verify(label: label, at: p) {
+                case .confirmed, .unknown: break                                   // it's there (or this app can't tell us): click
+                case .moved(let now): p = now; note = " (it had moved, so I clicked where it is now)"
+                case .gone(let there):
+                    return (false, "Didn't click: “\(label)” isn't where it was\(there.map { " — that spot is now “\($0)”" } ?? ""). Take a fresh look before the next step.")
+                }
+            }
             click(at: p, right: right, count: count)
-            return (true, "\(count == 2 ? "Double-clicked" : right ? "Right-clicked" : "Clicked") \((a["label"] as? String).map { "“\($0)”" } ?? "")")
+            return (true, "\(count == 2 ? "Double-clicked" : right ? "Right-clicked" : "Clicked") \((a["label"] as? String).map { "“\($0)”" } ?? "")\(note)")
         case "type":
             guard let text = a["text"] as? String, !text.isEmpty, text.count <= 2000 else { return (false, "Nothing to type.") }
             if focusedIsSecure() { return (false, "That's a password field. Spark won't type there.") }
@@ -396,6 +406,51 @@ enum SparkPress {
             if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &children) == .success, let list = children as? [AXUIElement] { queue.append(contentsOf: list) }
         }
         return partial
+    }
+
+    enum Check { case confirmed, moved(CGPoint), gone(String?), unknown }
+    /// Does a control's name fit what Spark called it? (See LabelMatch, which is tested.)
+    static func fits(_ name: String, _ label: String) -> Bool { LabelMatch.fits(name, label) }
+    /// The names at a point in the front app: the element there and a few of its ancestors (a label inside a button, a row…).
+    private static func names(at p: CGPoint) -> [String] {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return [] }
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(app.processIdentifier), Float(p.x), Float(p.y), &hit) == .success, var el = hit else { return [] }
+        var out: [String] = []
+        for _ in 0..<4 {
+            for key in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, "AXHelp"] { if let n = string(el, key)?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty, n.count < 120 { out.append(n) } }
+            var parent: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(el, kAXParentAttribute as CFString, &parent) == .success, let up = parent else { break }
+            el = up as! AXUIElement
+        }
+        return out
+    }
+    /// Right before a click: is the thing Spark means still under the point? If it moved, where is it now? If it's gone
+    /// (something else is there and it's nowhere to be found), don't click. Apps that describe nothing: can't tell.
+    static func verify(label: String, at p: CGPoint) -> Check {
+        let here = names(at: p)
+        if here.contains(where: { fits($0, label) }) { return .confirmed }
+        if let found = locate(label, near: p) { return hypot(found.center.x - p.x, found.center.y - p.y) < 6 ? .confirmed : .moved(found.center) }
+        return here.isEmpty ? .unknown : .gone(here.first)
+    }
+    /// The control that fits a label in the front app, nearest to where Spark aimed.
+    static func locate(_ label: String, near p: CGPoint) -> Found? {
+        guard let app = NSWorkspace.shared.frontmostApplication, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
+        var queue: [AXUIElement] = [AXUIElementCreateApplication(app.processIdentifier)], seen = 0, best: (Found, CGFloat)?
+        while !queue.isEmpty, seen < 5000 {
+            let el = queue.removeFirst(); seen += 1
+            if pressable.contains(string(el, kAXRoleAttribute) ?? "") {
+                for key in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, "AXHelp"] {
+                    guard let name = string(el, key)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name.count < 120, fits(name, label), let c = center(el) else { continue }
+                    let d = hypot(c.x - p.x, c.y - p.y)
+                    if best == nil || d < best!.1 { best = (Found(element: el, center: c, name: name), d) }
+                    break
+                }
+            }
+            var children: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &children) == .success, let list = children as? [AXUIElement] { queue.append(contentsOf: list) }
+        }
+        return best?.0
     }
 
     static func press(_ found: Found) -> Bool {
