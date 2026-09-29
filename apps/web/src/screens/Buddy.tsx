@@ -27,7 +27,7 @@ import { upload, withAttachments } from "../lib/attachments";
 import { aboutScreen, actFollowUp, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
-import { remainingFocusMs, setFocus, startFocus, useFocusTimer } from "../lib/focus-timer";
+import { remainingFocusMs, setFocus, useFocusTimer } from "../lib/focus-timer";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
@@ -35,14 +35,14 @@ import { Markdown } from "../components/Markdown";
 import { SparkWidgets } from "../components/TopBarWidgets";
 import { useNowPlaying } from "../components/NowPlaying";
 import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/studio";
-import { playScape, stopScape } from "../lib/soundscape";
 import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
-import { ctx, capture, claim, fitShape, KEY, macContext, mine, SEE, native, nowPlayingOnce, post, readSee, screenFacts, webAct } from "./spark/bridge";
+import { ctx, capture, claim, fitShape, KEY, macContext, mine, SEE, native, post, readSee, screenFacts, webAct } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
 import { MiniCard, VoiceBars } from "./spark/parts";
+import { isInstant, runInstant } from "./spark/commands";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -544,61 +544,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const a = next ? (now ? "Voice mode is already on. Just talk." : "Voice mode on. Just talk, I'm listening.") : (now ? "Voice mode off." : "Voice mode is already off.");
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
-    const PLAYER = move && (move.kind === "player" || move.kind === "play" || move.kind === "browse" || move.kind === "settings" || move.kind === "folder" || move.kind === "music" || move.kind === "whatsong" || move.kind === "radio" || move.kind === "stop-radio" || move.kind === "scape" || move.kind === "focus");
-    if (move && PLAYER) {
-      const done = (a: string) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); };
-      const player = async () => {
-        const [r, m] = await Promise.all([radioNow().catch(() => ({ playing: false } as Awaited<ReturnType<typeof radioNow>>)), nowPlayingOnce()]);
-        return { radioOn: r.playing, media: m };
-      };
-      if (move.kind === "player") {
-        const { radioOn, media: m } = await player();
-        if (move.cmd === "pause") {
-          if (radioOn) { await radioCommand({ cmd: "pause" }); void radioNow().then(setRadio); done("Paused."); return; }
-          if (m?.playing) { const r = await perform({ type: "media", command: "pause", app: m.app }); done(r.ok ? "Paused." : r.message); return; }
-          done("Nothing's playing."); return;
-        }
-        if (move.cmd === "resume") {
-          if (m && !m.playing && m.title) { const r = await perform({ type: "media", command: "play", app: m.app }); done(r.ok ? `Back to ${m.title}.` : r.message); return; }
-          if (m?.playing || radioOn) { done("It's already playing."); return; }
-          const r = await radioCommand({ cmd: getRadio().station ? "resume" : "play" }); done(r.ok ? "Putting the radio on." : r.error); return;
-        }
-        // next / previous: whichever is playing
-        if (radioOn) { await radioCommand({ cmd: move.cmd }); done(move.cmd === "next" ? "Next one." : "Going back."); return; }
-        if (m?.title) { const r = await perform({ type: "media", command: move.cmd, app: m.app }); done(r.ok ? (move.cmd === "next" ? "Next one." : "Going back.") : r.message); return; }
-        done("Nothing's playing."); return;
-      }
-      if (move.kind === "music") {
-        const { media: m } = await player();
-        const r = await perform({ type: "media", command: move.command, ...(move.query ? { query: move.query } : {}), ...(move.on !== undefined ? { on: move.on } : {}), ...(move.mode ? { mode: move.mode } : {}), ...(m?.app ? { app: m.app } : {}) });
-        done(r.message); return;
-      }
-      if (move.kind === "whatsong") {
-        const { radioOn, media: m } = await player();
-        const r = radioOn ? await radioNow().catch(() => null) : null;
-        done(m?.title ? `That's ${m.title}${m.artist ? ` by ${m.artist}` : ""}${m.playing ? "" : " (paused)"}.` : r?.playing ? `That's ${r.title ?? r.station ?? "ShuaCrew Radio"} on the radio.` : "Nothing's playing right now."); return;
-      }
-      if (move.kind === "folder") { const r = await perform({ type: "mac", op: "new_folder", name: move.name, ...(move.in ? { in: move.in } : {}) }); done(r.message); return; }
-      if (move.kind === "settings") { const r = await perform({ type: "open_settings", pane: move.pane }); done(r.ok ? r.message : r.message); return; }
-      if (move.kind === "browse") {
-        const { media: m } = await player();
-        const r = await perform({ type: "media", command: "open_query", query: move.query, ...(move.app ? { app: move.app } : m?.app ? { app: m.app } : {}) });
-        done(r.message); return;
-      }
-      if (move.kind === "play") {
-        const { media: m } = await player();
-        const r = await perform({ type: "media", command: "play_query", query: move.query, ...(move.app ? { app: move.app } : m?.app ? { app: m.app } : {}) });
-        done(r.ok ? r.message : r.message); return;
-      }
-    }
-    if (move && (PLAYER || !(convo && status && !["failed", "cancelled"].includes(status)))) {
+    // Instant commands (music, settings pages, folders, focus…) never wait for a model: see spark/commands.
+    if (move && isInstant(move)) { await runInstant(move, (a) => { setBrief({ q, a }); speech.current.say(a); setDraft(""); }, { setRadio, soundsVolume: sounds.volume }); return; }
+    if (move && !(convo && status && !["failed", "cancelled"].includes(status))) {
       const set = todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now());
       if (move.kind === "brief") {
         const a = studioAnswer({ track, set, waiting: Object.keys(crew.approvals).length, tokens: crew.today.tokens, costUsd: crew.today.costUsd });
         setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
       }
-      if (move.kind === "scape") { playScape(move.scape, sounds.volume); const a = `Putting on ${move.scape}.`; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
-      if (move.kind === "stop-radio") { stopScape(); void radioCommand({ cmd: "stop" }); const a = "Radio off."; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
       if (move.kind === "explain") {
         const sel = await new Promise<{ text: string; app: string }>((resolve) => {
           const on = (e: Event) => { window.removeEventListener("shuacrew:selection", on); resolve((e as CustomEvent<{ text: string; app: string }>).detail); };
@@ -616,12 +569,6 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const a = "error" in r ? r.error.replace(/^\d+\s*/, "") : `Saved “${r.venture.name}” to your idea inbox.${r.scoring ? " The crew will score it tonight: demand, competitors and effort, in your Library by morning." : ""}`;
         setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
       }
-      if (move.kind === "radio") {
-        const r = await radioCommand({ cmd: move.cmd, station: move.station });
-        const a = r.ok ? (move.cmd === "play" ? (move.station ? `Putting on lofi ${move.station}.` : "Putting the radio on.") : move.cmd === "next" ? "Next one." : move.cmd === "previous" ? "Going back." : move.cmd === "pause" ? "Paused." : "Back on.") : r.error;
-        setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
-      }
-      if (move.kind === "focus") { setFocus(startFocus(move.minutes)); const a = `${move.minutes}-minute focus. I'll chime when it's done.`; setBrief({ q, a }); speech.current.say(a); setDraft(""); return; }
     }
     const look = see || liveOn || !!opt.look;
     setBusy(see || opt.look ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
