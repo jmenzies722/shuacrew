@@ -1,0 +1,151 @@
+/* ShuaCrew Radio. Everything takes its colour from the theme: surfaces from the palette, the record label and the
+   visualizer from the accent. */
+.radio { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.radio-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.radio-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: var(--accent-text, var(--amber)); background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+.radio-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+.radio-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-3); }
+.radio-head > div { flex: 1; min-width: 220px; }
+.radio-skill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; font-size: 12px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.radio-skill svg { color: var(--accent-text, var(--amber)); }
+
+.radio-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 24px; text-align: center; border-radius: 18px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); color: var(--text-2); }
+.radio-empty > svg { color: var(--accent-text, var(--amber)); }
+.radio-empty h2 { margin: 4px 0 0; font-size: 20px; color: var(--text); }
+.radio-empty p { max-width: 52ch; margin: 0; font-size: 13.5px; line-height: 1.6; }
+.radio-empty code, .radio-hint code { font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--raised); overflow-wrap: anywhere; }
+.radio-cta { margin-top: 8px; height: 38px; padding: 0 18px; border-radius: 11px; font-weight: 600; color: var(--on-accent, #fff); background: var(--amber); }
+.radio-cta:hover { background: var(--accent-hover, var(--amber)); }
+
+/* The deck: a record on the left, the player on the right. */
+.radio-deck { display: grid; grid-template-columns: minmax(200px, 300px) minmax(0, 1fr); gap: 28px; align-items: center; padding: 24px; border-radius: 20px;
+  background: radial-gradient(420px 260px at 12% 30%, color-mix(in srgb, var(--amber) 14%, transparent), transparent 70%), var(--panel); box-shadow: 0 0 0 1px var(--line-strong), 0 20px 50px -30px rgba(0,0,0,.8); }
+@media (max-width: 900px) { .radio-deck { grid-template-columns: minmax(0, 1fr); justify-items: center; } .radio-now { width: 100%; } }
+
+.radio-record { position: relative; width: 100%; max-width: 280px; aspect-ratio: 1; }
+.radio-vinyl { position: absolute; inset: 4%; border-radius: 50%; display: grid; place-items: center;
+  background: repeating-radial-gradient(circle at 50% 50%, #0d0c0f 0 2px, #17151a 2px 3px), #111; box-shadow: 0 18px 40px -12px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.05);
+  animation: radio-spin 1.8s linear infinite; animation-play-state: paused; }
+.radio-vinyl::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 30deg, transparent 0 20%, rgba(255,255,255,.07) 25%, transparent 32% 70%, rgba(255,255,255,.05) 76%, transparent 82%); }
+.is-spinning .radio-vinyl { animation-play-state: running; }
+.radio-label { position: relative; z-index: 1; display: grid; place-items: center; width: 36%; aspect-ratio: 1; border-radius: 50%; padding: 8px; text-align: center;
+  background: radial-gradient(circle at 50% 50%, var(--ink) 0 5%, transparent 5.5%), linear-gradient(145deg, color-mix(in srgb, var(--amber) 85%, #fff), color-mix(in srgb, var(--amber) 70%, #000)); }
+.radio-label span { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--on-accent, #fff); line-height: 1.2; transform: translateY(-12px); }
+.radio-arm { position: absolute; top: 2%; right: 4%; width: 8px; height: 52%; border-radius: 4px; transform-origin: 50% 6%; transform: rotate(-8deg);
+  background: linear-gradient(180deg, #c9c7cf, #7b7882); box-shadow: 0 4px 10px rgba(0,0,0,.5); transition: transform .6s cubic-bezier(.2,.8,.2,1); }
+.radio-arm::before { content: ""; position: absolute; top: -8px; left: 50%; width: 22px; height: 22px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle, #d8d6de 0 30%, #4a4750 32%); }
+.radio-arm.is-down { transform: rotate(18deg); }
+@keyframes radio-spin { to { transform: rotate(360deg); } }
+
+.radio-now { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.radio-stations { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio-stations button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background .15s, color .15s; }
+.radio-stations button small { font-size: 11px; color: var(--text-3); }
+.radio-stations button:hover { background: var(--raised); color: var(--text); }
+.radio-stations button.is-on { color: var(--accent-text, var(--amber)); background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+.radio-title small { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-text, var(--amber)); }
+.radio-title h2 { margin: 4px 0 2px; font-size: 26px; font-weight: 600; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.radio-title p { margin: 0; font-size: 13.5px; color: var(--text-3); }
+.radio-viz { width: 100%; height: 44px; display: block; }
+
+.radio-progress { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.radio input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--amber) var(--pct, 0%), var(--line-strong) var(--pct, 0%)); }
+.radio input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+.radio input[type="range"]:disabled { opacity: .4; cursor: default; }
+
+.radio-controls { display: flex; align-items: center; gap: 10px; }
+.radio-controls > button { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--text-2); transition: background .15s, color .15s, transform .15s; }
+.radio-controls > button:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+.radio-controls > button:disabled { opacity: .35; }
+.radio-controls > .radio-play { width: 52px; height: 52px; color: var(--on-accent, #fff); background: var(--amber); box-shadow: 0 8px 22px -8px var(--accent-glow, var(--amber)); }
+.radio-controls > .radio-play:hover:not(:disabled) { background: var(--accent-hover, var(--amber)); color: var(--on-accent, #fff); transform: scale(1.04); }
+.radio-volume { display: flex; align-items: center; gap: 6px; margin-left: auto; width: min(170px, 40%); }
+.radio-volume button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--text-3); flex-shrink: 0; }
+.radio-volume button:hover { color: var(--text); background: var(--raised); }
+.radio-volume input { flex: 1; min-width: 0; }
+.radio-error { margin: 0; font-size: 12.5px; color: var(--text-2); }
+
+.radio-cols { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
+.radio-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (max-width: 1100px) { .radio-cols { grid-template-columns: minmax(0, 1fr); } }
+.radio-panel { padding: 14px; border-radius: 16px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); min-width: 0; }
+.radio-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 4px 10px; }
+.radio-panel > header strong { font-size: 13.5px; font-weight: 600; }
+.radio-panel > header span { font-size: 12px; color: var(--text-3); }
+.radio-panel > header button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.radio-panel > header button:hover { color: var(--text); background: var(--raised); }
+.radio-hint { margin: 4px; font-size: 13px; line-height: 1.6; color: var(--text-3); }
+
+.radio-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow-y: auto; }
+.radio-list button { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: 10px; text-align: left; transition: background .15s; }
+.radio-list button:hover { background: var(--raised); }
+.radio-list li.is-on button { background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+.radio-row-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--text-3); background: var(--raised); }
+.radio-list li.is-on .radio-row-icon { color: var(--accent-text, var(--amber)); }
+.radio-row-text { display: flex; flex-direction: column; min-width: 0; }
+.radio-row-text b, .radio-row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-row-text b { font-size: 13px; font-weight: 500; color: var(--text); }
+.radio-list li.is-on .radio-row-text b { color: var(--accent-text, var(--amber)); }
+.radio-row-text small { font-size: 11.5px; color: var(--text-3); }
+.radio-list time { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.radio-list.is-compact button { padding: 5px 8px; }
+
+.radio-scapes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.radio-scapes button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 12px; font-size: 12px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background .15s, color .15s; }
+.radio-scapes button:hover { background: var(--raised); color: var(--text); }
+.radio-scapes button.is-on { color: var(--accent-text, var(--amber)); background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+
+.radio-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.radio-eq i { width: 2.5px; border-radius: 1px; background: currentColor; animation: radio-eq .9s ease-in-out infinite; }
+.radio-eq i:nth-child(2) { animation-delay: -.3s; } .radio-eq i:nth-child(3) { animation-delay: -.6s; }
+@keyframes radio-eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+@media (prefers-reduced-motion: reduce) { .radio-vinyl, .radio-eq i { animation: none; } }
+
+/* Live stations: YouTube's own player plays them; here they get art, a live dot, and a paste-a-link field. */
+.radio-stations button svg { color: var(--text-3); }
+.radio-stations button.is-on svg { color: inherit; }
+.radio-label.has-art { background-size: cover; background-position: center; box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 70%, #000); }
+.radio-live-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); }
+.radio-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #f94359; box-shadow: 0 0 0 4px rgba(249, 67, 89, .18); animation: radio-live 1.6s ease-in-out infinite; }
+@keyframes radio-live { 50% { box-shadow: 0 0 0 7px rgba(249, 67, 89, 0); } }
+.radio-row-art { background-size: cover; background-position: center; }
+.radio-list .radio-row-x { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--text-3); opacity: 0; transition: opacity .15s, background .15s; }
+.radio-list li:hover .radio-row-x { opacity: 1; }
+.radio-list .radio-row-x:hover { color: var(--text); background: var(--raised); }
+.radio-add { display: flex; gap: 6px; margin-top: 10px; }
+.radio-add input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border-radius: 10px; font-size: 12.5px; color: var(--text); background: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); outline: none; }
+.radio-add input:focus { box-shadow: inset 0 0 0 1px var(--amber), 0 0 16px -6px var(--accent-glow, var(--amber)); }
+.radio-add button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--on-accent, #fff); background: var(--amber); }
+.radio-add button:disabled { opacity: .4; }
+.radio-setup { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .radio-live-dot { animation: none; } }
+
+/* Radio widget (top bar popover, Spark widgets): same look as the Studio, pocket size. */
+.rw-chip-text { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-tile { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rw-now { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rw-art { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; color: var(--on-accent, #fff); background: var(--amber) center / cover; box-shadow: 0 0 0 3px var(--ink), 0 0 0 4px var(--line-strong); }
+.rw-art.is-on { animation: radio-spin 4s linear infinite; }
+.rw-text { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left; }
+.rw-text b, .rw-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-text b { font-size: 13px; font-weight: 600; color: var(--text); }
+.rw-text small { font-size: 11.5px; color: var(--text-3); }
+.rw-btn { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--text-2); flex-shrink: 0; }
+.rw-btn:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+.rw-btn:disabled { opacity: .35; }
+.rw-btn.is-main { width: 34px; height: 34px; color: var(--on-accent, #fff); background: var(--amber); }
+.rw-btn.is-main:hover:not(:disabled) { background: var(--accent-hover, var(--amber)); color: var(--on-accent, #fff); }
+.rw-stations { display: flex; flex-wrap: wrap; gap: 5px; }
+.rw-stations button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.rw-stations button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-stations button:hover { background: var(--raised); color: var(--text); }
+.rw-stations button.is-on { color: var(--accent-text, var(--amber)); background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+@media (prefers-reduced-motion: reduce) { .rw-art.is-on { animation: none; } }
+.focus-start { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.focus-start button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 40px; border-radius: 11px; font-size: 13px; font-weight: 600; color: var(--on-accent, #fff); background: var(--amber); }
+.focus-start button + button { color: var(--text); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.focus-live { display: flex; align-items: baseline; gap: 10px; }
+.focus-live b { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.focus-live span { flex: 1; font-size: 12.5px; color: var(--text-3); }
+.focus-live button { font-size: 12px; color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }

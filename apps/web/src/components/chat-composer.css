@@ -1,0 +1,54 @@
+/* Sessions and Shua use the same writing surface in the native workspace. */
+.composer-box.chat-composer,
+.buddy-input.chat-composer {
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--ink));
+  box-shadow: 0 4px 16px -12px #0004;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.composer-box.chat-composer:focus-within,
+.buddy-input.chat-composer:focus-within {
+  border-color: color-mix(in srgb, var(--amber) 55%, var(--line-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 7%, transparent);
+}
+.chat-composer textarea,
+.chat-composer textarea:focus-visible {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  background: transparent;
+  caret-color: var(--amber);
+}
+.chat-composer textarea::placeholder { color: var(--text-3); opacity: 1; }
+.spk .buddy-input.chat-composer {
+  display: grid;
+  grid-template-columns: 32px 32px minmax(0, 1fr);
+  align-items: end;
+  gap: 8px 6px;
+  margin: 0 12px 12px;
+  padding: 12px;
+}
+.spk .chat-composer textarea {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
+  min-height: 52px;
+  max-height: min(180px, 25vh);
+  padding: 2px 3px 6px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.spk .chat-composer > button { grid-row: 2; width: 32px; height: 32px; }
+.spk .chat-composer .buddy-see { grid-column: 1; border-radius: 10px; }
+.spk .chat-composer .buddy-talk { grid-column: 2; border-radius: 10px; }
+.spk .chat-composer .buddy-send { grid-column: 3; justify-self: end; color: var(--on-accent); }
+.spk .chat-composer .buddy-send:disabled { opacity: 1; background: var(--raised); color: var(--text-3); }
+.chat-composer .composer-tools { gap: 8px; margin-top: 12px; }
+.chat-composer .composer-tools > button { min-height: 28px; }
+:root[data-motion="reduced"] .chat-composer { transition: none; }
+@media (prefers-reduced-motion: reduce) { .chat-composer { transition: none; } }

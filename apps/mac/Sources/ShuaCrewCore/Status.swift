@@ -80,8 +80,37 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
     public let recent: [Finished]
     public let reviews: [Review]
     public let briefing: Briefing?
+    /// Settings → Menu bar: "attention" (default), "running", "tokens" or "off".
+    public var menuBar: String = "attention"
+    public var tokensToday: Int = 0
+    /// The session on right now — menu bar Now Playing. Absent on older gateways.
+    public var now: Now?
+    /// Health problems worth a notification (gateway memory, disk, voice engine, runtimes out). Absent on older gateways.
+    public var alerts: [Alert]?
+    public struct Alert: Decodable, Equatable, Sendable {
+        public let id: String
+        public let level: String
+        public let text: String
+        public init(id: String, level: String, text: String) { self.id = id; self.level = level; self.text = text }
+    }
+    /// Alerts that weren't there last time — each problem notifies once, and again only if it clears and comes back.
+    public func newAlerts(since seen: Set<String>) -> [Alert] { (alerts ?? []).filter { !seen.contains($0.id) } }
 
-    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing }
+    public struct Now: Decodable, Equatable, Sendable {
+        public let id: String?
+        public let title: String
+        public let who: String
+        public let status: String
+        public let updatedAt: Int
+        public init(id: String?, title: String, who: String, status: String, updatedAt: Int) {
+            self.id = id; self.title = title; self.who = who; self.status = status; self.updatedAt = updatedAt
+        }
+        public var live: Bool { id != nil && ["running", "planning", "queued", "awaiting_approval", "paused"].contains(status) }
+        public var stoppable: Bool { ["running", "planning", "queued"].contains(status) }
+        public var line: String { who.isEmpty ? title : "\(title) — \(who)" }
+    }
+
+    enum CodingKeys: String, CodingKey { case running, awaiting, reviewing, approvals, limited, recent, reviews, briefing, menuBar, tokensToday, now, alerts }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -93,6 +122,10 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
         recent = try c.decodeIfPresent([Finished].self, forKey: .recent) ?? [] // older gateways don't send it
         reviews = try c.decodeIfPresent([Review].self, forKey: .reviews) ?? []
         briefing = try c.decodeIfPresent(Briefing.self, forKey: .briefing)
+        menuBar = try c.decodeIfPresent(String.self, forKey: .menuBar) ?? "attention"
+        tokensToday = try c.decodeIfPresent(Int.self, forKey: .tokensToday) ?? 0
+        alerts = try c.decodeIfPresent([Alert].self, forKey: .alerts)
+        now = try c.decodeIfPresent(Now.self, forKey: .now)
     }
 
     public init(running: Int, awaiting: Int, reviewing: Int, approvals: [Approval], limited: [String], recent: [Finished] = [], reviews: [Review] = []) {
@@ -122,9 +155,22 @@ public struct CrewStatus: Decodable, Equatable, Sendable {
 
     /// The number beside the menu-bar icon: approvals first (they block work), then running.
     public var badge: String? {
-        if needsYou > 0 { return "\(needsYou)" }
-        if running > 0 { return "\(running)" }
-        return nil
+        switch menuBar {
+        case "off": return nil
+        case "running": return running > 0 ? "\(running)" : nil
+        case "tokens":
+            if needsYou > 0 { return "\(needsYou)" } // approvals still win: they block work
+            return tokensToday > 0 ? Self.compact(tokensToday) : nil
+        default:
+            if needsYou > 0 { return "\(needsYou)" }
+            if running > 0 { return "\(running)" }
+            return nil
+        }
+    }
+
+    /// 386300 → "386k", 1250000 → "1.3M".
+    public static func compact(_ n: Int) -> String {
+        n >= 1_000_000 ? String(format: n >= 10_000_000 ? "%.0fM" : "%.1fM", Double(n) / 1_000_000) : n >= 1000 ? "\(n / 1000)k" : "\(n)"
     }
 
     /// Outcomes not seen before — each one notifies once.

@@ -1,10 +1,12 @@
 import { Button } from "@shuacrew/ui";
-import { BookOpen, Check, ChevronDown, Cloud, Download, Eye, Globe, KeyRound, Loader2, Lock, PenLine, Plug, Plus, RefreshCw, Search, Sparkles, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Cloud, Download, Eye, Globe, KeyRound, Loader2, Lock, PenLine, Plug, Plus, RefreshCw, Search, Sparkles, Terminal, Trash2, Wrench, X, Cable } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "../components/Markdown";
 import { api } from "../lib/api";
 import { isMac, pickFolder } from "../lib/native";
+import { BrandIcon } from "../components/ToolActivityCard";
+import { PaneHeader } from "../components/Pane";
 
 interface Server {
   id: string;
@@ -14,6 +16,7 @@ interface Server {
   url?: string;
   auth: "none" | "oauth";
   signedIn: boolean;
+  brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" };
 }
 interface Tool {
   name: string;
@@ -40,6 +43,7 @@ interface Featured {
   auth: "none" | "oauth";
   asksForFolder?: boolean;
   added: string | null;
+  brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" };
 }
 interface RegistryCard {
   id: string;
@@ -73,14 +77,8 @@ export function Integrations() {
   useEffect(() => history.replaceState(null, "", `#${tab}`), [tab]);
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1160px] px-6 py-6">
-        <header className="mb-5 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Tools & Skills</h1>
-            <p className="mt-1 max-w-[680px] text-[13.5px] leading-relaxed text-fg-2">
-              Tools connect your agents to real services through MCP. Skills teach them how to do a job well — they load one when the work calls for it. Both reach every new session.
-            </p>
-          </div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="Brain" icon={Cable} title="Tools & Skills" description="Tools connect your agents to real services through MCP. Skills teach them how to do a job well — they load one when the work calls for it. Both reach every new session." actions={
           <div className="seg" role="tablist">
             <button role="tab" aria-selected={tab === "tools"} className={tab === "tools" ? "is-on" : ""} onClick={() => setTab("tools")}>
               <Plug size={13} /> Tools
@@ -88,8 +86,7 @@ export function Integrations() {
             <button role="tab" aria-selected={tab === "skills"} className={tab === "skills" ? "is-on" : ""} onClick={() => setTab("skills")}>
               <Sparkles size={13} /> Skills
             </button>
-          </div>
-        </header>
+          </div>} />
         {tab === "tools" ? <Tools /> : <SkillsTab />}
       </div>
     </div>
@@ -182,7 +179,7 @@ function FeaturedCard({ item, onAdd }: { item: Featured; onAdd: () => Promise<vo
   return (
     <div className={`tl-card ${item.added ? "is-added" : ""}`}>
       <div className="flex items-start gap-3">
-        <span className="tl-mono">{monogram(item.title)}</span>
+        <BrandIcon assetId={item.brand?.assetId} fallback={<span className="tl-mono">{monogram(item.title)}</span>} />
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-semibold text-fg">{item.title}</div>
           <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-fg-3">{item.blurb}</div>
@@ -221,20 +218,20 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
       setTesting(false);
     }
   };
-  useEffect(() => {
-    if (!initial && (server.auth === "none" || server.signedIn)) void test(false);
-  }, []);
+  // Discovery may launch a local process or contact a server. Only an explicit
+  // connection check may do that; merely viewing saved integrations must not.
   const needsSignIn = server.auth === "oauth" && (!server.signedIn || conn?.error === "needs sign-in");
   return (
     <div className="tl-row">
       <div className="flex items-center gap-3">
-        <span className="tl-mono is-small">{monogram(server.name)}</span>
+        <BrandIcon assetId={server.brand?.assetId} />
         <button className="min-w-0 flex-1 text-left" onClick={() => conn?.ok && setOpen((v) => !v)}>
           <span className="flex items-center gap-2">
             <span className="text-[13.5px] font-semibold text-fg">{server.name}</span>
             {conn?.server && <span className="mono text-[11px] text-fg-3">v{conn.server.version}</span>}
           </span>
           <span className="mono block truncate text-[11px] text-fg-3">{server.url ?? [server.command, ...server.args].join(" ")}</span>
+          <span className="block text-[11px] text-fg-3">{server.brand?.publisher === "community" ? "Community connector" : server.brand?.publisher === "official" ? "Recognized publisher endpoint" : "Publisher unverified"} · {server.auth === "none" ? "No sign-in required" : server.signedIn ? "Credential saved · not a live connection check" : "Not signed in"}{conn ? ` · Last checked ${new Date(conn.at).toLocaleString()}` : " · Connection not checked"}</span>
         </button>
         {testing ? (
           <span className="tl-status">
@@ -281,15 +278,15 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
                 <div key={t.name} className="tl-tool">
                   <div className="flex items-center gap-2">
                     <span className="mono text-[12px] font-medium text-fg">{t.name}</span>
-                    {t.readOnly && <span className="tl-pill">read-only</span>}
-                    {t.destructive && <span className="tl-pill is-bad">changes things</span>}
+                    {t.readOnly && <span className="tl-pill" title="Server-provided hint, not a permission guarantee">read-only hint</span>}
+                    {t.destructive && <span className="tl-pill is-bad" title="Server-provided hint; policy still applies">destructive hint</span>}
                   </div>
                   {t.description && <div className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-fg-3">{t.description}</div>}
                 </div>
               ))}
             </div>
             <div className="mt-2 text-[11px] text-fg-3">
-              Agents call these as <span className="mono">mcp__{server.name}__…</span>. Anything that isn't read-only asks you first, unless you allow it for good.
+              Agents call these as <span className="mono">mcp__{server.name}__…</span>. Server hints are advisory. Your active policy and exact approval requests govern execution.
             </div>
           </motion.div>
         )}

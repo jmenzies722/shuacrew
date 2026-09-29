@@ -1,3 +1,4 @@
+import { teachingRoutes } from "./teaching-routes.js";
 /**
  * The HTTP + WebSocket surface.
  *
@@ -6,20 +7,37 @@
  * another site can't set that header without a CORS preflight this server never approves, which is
  * the CSRF defence. The dashboard is served with a strict CSP (no inline script, no remote origins).
  */
+import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
+import { devRoutes } from "./dev-routes.js";
+import { weatherRoutes } from "./weather-routes.js";
+import { extRoutes } from "./ext-routes.js";
+import { radioRoutes } from "./radio.js";
+import { ideaRoutes } from "./ideas.js";
+import { standupRoutes } from "./standup.js";
+import { routineRoutes } from "./routines.js";
+import { healthAlerts } from "./health-alerts.js";
+import { statfs } from "node:fs/promises";
+import { screenMemoryRoutes } from "./screen-memory.js";
+import { systemRoutes } from "./system-routes.js";
+import { settingsRoutes } from "./settings-routes.js";
+import { createCrewMember } from "./crew-create.js";
+import { learningRoutes } from "./learning-routes.js";
+import type { Learning } from "./learning.js";
+import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
-import { apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
-import type { Runtime } from "@shuacrew/runtimes";
+import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
+import type { Runtime, RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
 import type { Memory } from "./memory.js";
 import type { Terminals } from "./terminals.js";
 import { MAX_UPLOAD, type Uploads } from "./uploads.js";
-import { status as mediaStatus, transcribe } from "./media.js";
+import { fixNames, status as mediaStatus, transcribe, vocabulary } from "./media.js";
 import { MergeQueue } from "./merge.js";
 import type { Supervisor } from "./runs.js";
 import { Specs } from "./specs.js";
@@ -35,9 +53,24 @@ import type { Skills } from "./skills.js";
 import { NEXT, STAGES, type Ventures } from "./ventures.js";
 import type { ToolServer } from "./toolserver.js";
 import { FEATURED, fetchSkill, mcpCatalog, skillCatalog } from "./catalog.js";
+import { recommend } from "./recommend.js";
 import type { EventStore } from "./store.js";
+import { speechRoutes } from "./speech-routes.js";
+import type { SpeechService } from "./speech.js";
+import { speechManifest } from "./speech.js";
+import { VoiceSessions } from "./voice-sessions.js";
+import { randomUUID } from "node:crypto";
+import type { RoomCoordinator } from "./rooms.js";
+import { roomRoutes } from "./room-routes.js";
+import { observabilityRoutes } from "./observability.js";
+import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 
 export interface ServerOptions {
+  /** Test seam for Spark for Chrome's answers (defaults to the claude CLI). */
+  webAsk?: import("./terminal-ai.js").Ask;
+  learning?: Learning;
+  settings?: GatewaySettings;
+  builtinProtected?: string[];
   store: EventStore;
   supervisor: Supervisor;
   runtimes: Map<string, Runtime>;
@@ -63,6 +96,9 @@ export interface ServerOptions {
   tools?: ToolServer;
   terminals?: Terminals;
   uploads?: Uploads;
+  speech?: SpeechService;
+  rooms?: RoomCoordinator;
+  mobile?: MobileRoutesSource;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -110,7 +146,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       if (origin && new URL(origin).host !== request.headers.host) return reply.code(403).send({ error: "cross-origin socket" });
     }
     // Webhooks come from other systems and are authenticated by their HMAC signature instead.
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/") && !toolCall) {
+    // Spark for Chrome (/api/ext/*) is a paired extension: those routes demand its key themselves (ext-routes.ts).
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !request.url.startsWith("/hooks/") && !request.url.startsWith("/api/ext/") && !toolCall) {
       const origin = request.headers.origin;
       const sameOrigin = !origin || new URL(origin).host === request.headers.host;
       if (request.headers["x-shuacrew"] !== "1" || !sameOrigin) {
@@ -122,12 +159,38 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     // A route that set its own (stricter or sandboxed) policy keeps it.
     if (!reply.hasHeader("Content-Security-Policy")) reply.header(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'",
     );
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Referrer-Policy", "no-referrer");
     return payload;
   });
+  speechRoutes(app, options.speech);
+  roomRoutes(app, options.rooms);
+  devRoutes(app, options.store, options.supervisor);
+  weatherRoutes(app);
+  extRoutes(app, { home: path.dirname(options.store.path), ask: options.webAsk });
+  radioRoutes(app);
+  screenMemoryRoutes(app);
+  // Load Spark's local model before it's needed (called when Claude runs out), so the first answer isn't a cold start.
+  app.post<{ Body: { model?: string; system?: string } }>("/api/local/warm", async (req, reply) => {
+    const local = options.runtimes.get("local") as (Runtime & { warm?: (m: string, minutes?: number, system?: string) => Promise<boolean>; installed?: () => Promise<string[]> }) | undefined;
+    if (!local?.warm || !local.installed) return reply.code(404).send({ error: "no local runtime" });
+    const have = await local.installed();
+    const model = req.body?.model && have.includes(req.body.model) ? req.body.model : have[0];
+    if (!model) return reply.code(409).send({ error: "No local model installed — run: ollama pull llama3.2:3b" });
+    return { model, ready: await local.warm(model, 30, typeof req.body?.system === "string" ? req.body.system.slice(0, 20_000) : undefined) };
+  });
+  app.get("/api/local", async () => {
+    const local = options.runtimes.get("local") as (Runtime & { installed?: () => Promise<string[]> }) | undefined;
+    return { available: local?.installed ? await local.installed() : [] };
+  });
+  systemRoutes(app);
+  if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
+  teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
+  if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
+  observabilityRoutes(app, store);
+  mobileRoutes(app, options.mobile);
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
 
@@ -141,16 +204,27 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       return uploads.process(uploads.save(request.query.name ?? "file", request.body));
     });
     // Dictation: speech in, text out — nothing kept.
-    app.post<{ Querystring: { name?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
+    app.post<{ Querystring: { name?: string; voice?: string; fast?: string; lang?: string }; Body: Buffer }>("/api/transcribe", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
       if (!Buffer.isBuffer(request.body) || !request.body.length) return reply.code(400).send({ error: "no audio" });
       const ext = (request.query.name ?? "voice.webm").split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "webm";
-      const file = path.join(os.tmpdir(), `shuacrew-dictation-${Date.now()}.${ext}`);
+      if (request.query.voice === "1" && request.body.length > 8 * 1024 * 1024) return reply.code(413).send({ error: "Voice recording exceeds 8 MiB." });
+      const file = path.join(os.tmpdir(), `shuacrew-dictation-${randomUUID()}.${ext}`);
+      const abort = new AbortController();
+      const cancel = () => abort.abort();
+      reply.raw.once("close", cancel);
+      const deadline = request.query.voice === "1" ? setTimeout(cancel, 45_000) : undefined;
       writeFileSync(file, request.body, { mode: 0o600 });
       try {
-        return { text: await transcribe(file) };
+        // Your crew's and ventures' names spell right when Whisper knows to expect them.
+        const names = [...Object.values(state.members).map((m) => m.name), ...Object.values(state.ventures).map((v) => v.name)];
+        // fast=1: a live caption while you're still talking (quick model, greedy); the final turn uses the accurate one.
+        const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.fast === "1" ? 8_000 : request.query.voice === "1" ? 45_000 : undefined, prompt: request.query.lang && request.query.lang !== "en" ? undefined : vocabulary(names), fast: request.query.fast === "1", language: request.query.lang });
+        return { text: fixNames(heard, [...names, "ShuaCrew", "Shua", "Codex", "Claude"]) };
       } catch (error) {
         return reply.code(422).send({ error: (error as Error).message });
       } finally {
+        clearTimeout(deadline);
+        reply.raw.off("close", cancel);
         rmSync(file, { force: true });
       }
     });
@@ -288,7 +362,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     store.forRun(request.params.id, Number(request.query.after ?? 0)),
   );
 
-  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string; venture?: string } }>(
+  app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string; venture?: string; intelligence?: IntelligenceRequest } }>(
     "/api/runs",
     async (request, reply) => {
       const body = request.body ?? {};
@@ -296,14 +370,34 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       if (body.runtime && !options.runtimes.has(body.runtime)) return reply.code(400).send({ error: `no runtime ${body.runtime}` });
       const venture = body.venture ? options.ventures?.get(body.venture) : undefined;
       if (body.venture && !venture) return reply.code(400).send({ error: `no venture ${body.venture}` });
-      const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo });
-      return { id };
+      if (body.intelligence) {
+        const parsed = IntelligenceRequestSchema.safeParse(body.intelligence);
+        if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+        await refreshIntelligence(parsed.data.mode);
+        const choice = supervisor.intelligence(parsed.data);
+        if (!choice.runtime || choice.runtime !== body.runtime || choice.model !== body.model) {
+          return reply.code(409).send({ error: "Provider availability changed. Your message is preserved; send it again to choose an available model.", choice });
+        }
+      } else if (!body.runtime && !body.model && !body.member) await refreshIntelligence("auto");
+      try {
+        const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo });
+        return { id };
+      } catch (error) { return reply.code(409).send({ error: (error as Error).message }); }
     },
   );
 
-  app.post<{ Params: { id: string }; Body: { text?: string } }>("/api/runs/:id/followup", async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { text?: string; runtime?: string; model?: string; intelligence?: IntelligenceRequest } }>("/api/runs/:id/followup", async (request, reply) => {
     const text = request.body?.text?.trim();
     if (!text) return reply.code(400).send({ error: "empty message" });
+    if (request.body.intelligence) {
+      const parsed = IntelligenceRequestSchema.safeParse(request.body.intelligence);
+      if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+      await refreshIntelligence(parsed.data.mode);
+      const choice = supervisor.intelligence(parsed.data), current = state.runs[request.params.id];
+      if (!choice.runtime || choice.runtime !== request.body.runtime || choice.model !== request.body.model || current?.runtime !== choice.runtime || current?.model !== choice.model) {
+        return reply.code(409).send({ error: "Provider availability changed. Your message is preserved; send it again to choose an available model.", choice });
+      }
+    }
     try {
       return { ok: true, id: supervisor.followUp(request.params.id, text) };
     } catch (error) {
@@ -314,6 +408,28 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Params: { id: string; followup: string } }>("/api/runs/:id/followups/:followup/withdraw", async (request, reply) => {
     try {
       supervisor.withdraw(request.params.id, request.params.followup);
+      return { ok: true };
+    } catch (error) {
+      return reply.code(409).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string; followup: string }; Body: { text?: unknown; expectedText?: unknown } }>("/api/runs/:id/followups/:followup/edit", async (request, reply) => {
+    const { text, expectedText } = request.body ?? {};
+    if (typeof text !== "string" || !text.trim() || text.length > 100_000 || typeof expectedText !== "string") return reply.code(400).send({ error: "Provide a nonempty message (up to 100,000 characters) and its original text." });
+    try {
+      supervisor.editFollowup(request.params.id, request.params.followup, text, expectedText);
+      return { ok: true };
+    } catch (error) {
+      return reply.code(409).send({ error: (error as Error).message });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { ids?: unknown } }>("/api/runs/:id/followups/reorder", async (request, reply) => {
+    const ids = request.body?.ids;
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) return reply.code(400).send({ error: "Provide the ordered message ids." });
+    try {
+      supervisor.reorderFollowups(request.params.id, ids);
       return { ok: true };
     } catch (error) {
       return reply.code(409).send({ error: (error as Error).message });
@@ -366,7 +482,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Params: { id: string } }>("/api/runs/:id/archive", async (request, reply) => {
     const run = state.runs[request.params.id];
     if (!run) return reply.code(404).send({ error: "no such session" });
-    if (["running", "planning", "queued", "awaiting_approval"].includes(run.status)) {
+    if (["running", "planning", "queued", "awaiting_approval", "paused"].includes(run.status)) {
       return reply.code(409).send({ error: "stop the session before archiving it" });
     }
     store.append("run.archived", { reason: "archived by you" }, { run: run.id });
@@ -438,11 +554,28 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   if (options.crew) {
     const crew = options.crew;
+    const voice = new VoiceSessions(store, supervisor, crew, options.runtimes);
+    app.post<{ Body: { runtime?: string } }>("/api/voice/initialize", async (request, reply) => {
+      try { return voice.initialize(request.body?.runtime ?? ""); }
+      catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    });
+    app.post<{ Body: Parameters<VoiceSessions["submit"]>[0] }>("/api/voice/utterances", async (request, reply) => {
+      try { return voice.submit(request.body ?? {}); }
+      catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    });
+    app.get<{ Params: { id: string } }>("/api/voice/runs/:id/idle", async request => ({ idle: !supervisor.isActive(request.params.id) }));
     app.get("/api/crew", async () => crew.list());
     app.post("/api/crew/starter", async () => crew.starter());
+    // Create-only (chat /agent): refuses an existing name instead of replacing that member.
+    app.post<{ Body: { name?: string; role?: string; persona?: string; runtime?: string } }>("/api/crew/new", async (request, reply) => {
+      try { return createCrewMember(crew, { name: request.body?.name ?? "", role: request.body?.role, persona: request.body?.persona, runtime: request.body?.runtime }, [...options.runtimes.keys()].filter((id) => id !== "mock")); }
+      catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    });
     app.post<{ Body: Partial<MemberInput> }>("/api/crew", async (request, reply) => {
       const b = request.body ?? {};
       try {
+        // A retired voice (e.g. "aiden") is still a valid saved choice: it speaks as its successor.
+        if (b.voice && !speechManifest.voices.some(v => v.id === (speechManifest.aliases?.[b.voice!.voiceId] ?? b.voice!.voiceId))) throw new Error("Choose an available neural voice.");
         return crew.set({
           id: b.id ?? b.name ?? "",
           name: b.name ?? "",
@@ -454,6 +587,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
           color: b.color ?? "#ffb020",
           emoji: b.emoji ?? "",
           triggers: b.triggers ?? [],
+          voice: b.voice ?? crew.get(b.id ?? "")?.voice,
         });
       } catch (error) {
         return reply.code(400).send({ error: (error as Error).message });
@@ -678,6 +812,9 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   const auto = options.autonomy;
+  if (options.ventures) ideaRoutes(app, options.ventures, auto?.scheduler);
+  if (auto) standupRoutes(app, auto.scheduler);
+  if (auto) routineRoutes(app, auto.scheduler);
   if (auto) {
     const fail = (reply: { code(n: number): { send(b: unknown): unknown } }, error: unknown) =>
       reply.code((error as { status?: number }).status ?? 400).send({ error: (error as Error).message });
@@ -798,14 +935,28 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.get("/api/audit/verify", async () => store.verify());
 
   // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
-  const statusCache = new Map<string, { at: number; value: Promise<unknown> }>();
+  const statusCache = new Map<string, { at: number; value: Promise<RuntimeStatus> }>();
   const statusOf = (runtime: Runtime, fresh: boolean) => {
     const hit = statusCache.get(runtime.id);
     if (!fresh && hit && Date.now() - hit.at < 30_000) return hit.value;
-    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] }));
+    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })).then(status => { supervisor.updateRuntimeStatus(runtime.id, status); return status; });
     statusCache.set(runtime.id, { at: Date.now(), value });
     return value;
   };
+  const refreshIntelligence = async (mode: "auto" | "local") => {
+    await Promise.all([...options.runtimes.values()].filter(r => mode !== "local" || r.id === "local").map(async runtime => {
+      const status = await statusOf(runtime, false);
+      const local = runtime as Runtime & { installed?: () => Promise<string[]> };
+      const models = runtime.id === "local" && local.installed ? await local.installed().catch(() => []) : undefined;
+      supervisor.updateRuntimeStatus(runtime.id, status, models);
+    }));
+  };
+  app.post("/api/intelligence/select", async (request, reply) => {
+    const parsed = IntelligenceRequestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+    await refreshIntelligence(parsed.data.mode);
+    return supervisor.intelligence(parsed.data);
+  });
   app.get<{ Querystring: { fresh?: string } }>("/api/runtimes", async (request) =>
     Promise.all(
       [...options.runtimes.values()].map(async (runtime) => ({
@@ -846,7 +997,16 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       const text = typeof i.command === "string" ? i.command : typeof i.file_path === "string" ? i.file_path : typeof i.path === "string" ? i.path : JSON.stringify(input ?? "");
       return text.length > 160 ? `${text.slice(0, 157)}…` : text;
     };
+    const disk = await statfs(os.homedir()).catch(() => null);
+    const alerts = healthAlerts({
+      rssMb: Math.round(process.memoryUsage().rss / 1e6),
+      diskFreeGb: disk ? (disk.bavail * disk.bsize) / 1e9 : null,
+      speech: options.speech?.status().state ?? null,
+      runtimesOut: [...options.runtimes.keys()].filter((id) => id !== "mock" && id !== "local" && supervisor.limitedUntil(id) > Date.now()),
+      battery: null,
+    });
     return {
+      alerts,
       running: runs.filter((r) => r.status === "running" || r.status === "planning").length,
       awaiting: Object.keys(state.approvals).length,
       reviewing: runs.filter((r) => r.status === "reviewing").length,
@@ -854,7 +1014,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         .sort((a, b) => a.seq - b.seq)
         .map((a) => ({ id: a.id, run: a.run, runTitle: (a.run && state.runs[a.run]?.title) || "", tool: a.tool, summary: summary(a.input), risk: a.risk, reason: a.reason })),
       // Only real usage windows; a model that needs paid credits isn't "limited", it's not in the plan.
-      limited: Object.entries(state.limited).flatMap(([key, l]) => (l.credits ? [] : [key])),
+      // …and only while the window is still closed: a limit whose reset time has passed pauses nothing.
+      limited: Object.entries(state.limited).flatMap(([key, l]) => (l.credits || l.until <= Date.now() ? [] : [key])),
       // What just finished, for "ready for review" / "failed" notifications.
       recent: runs
         // A playbook's phases announce themselves as reviews (below), not as finished sessions.
@@ -864,6 +1025,21 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         .map((r) => ({ id: r.id, title: r.title, status: r.status, reason: r.statusReason ?? "", files: r.files.length, at: r.updatedAt })),
       // Today's briefing, so the menu bar can announce it once.
       briefing: state.briefing ? { id: state.briefing.id, day: state.briefing.day, headline: state.briefing.headline } : null,
+      // Settings → Menu bar: what the Mac shows beside its icon, and today's recorded tokens for "tokens".
+      menuBar: options.settings?.get().menuBar ?? "attention",
+      tokensToday: state.today.day === new Date().toISOString().slice(0, 10) ? state.today.tokens : 0,
+      now: (() => {
+        const live = ["awaiting_approval", "running", "planning", "queued", "paused"];
+        const rank: Record<string, number> = { awaiting_approval: 0, running: 1, planning: 2, queued: 3, paused: 4 };
+        const pinned = Object.values(state.approvals).sort((a, b) => a.seq - b.seq).find((a) => a.run && state.runs[a.run]);
+        const run = (pinned?.run ? state.runs[pinned.run] : undefined)
+          ?? Object.values(state.runs)
+            .filter((r) => !r.parent && !r.labels.includes("buddy") && !r.labels.includes("learning") && live.includes(r.status))
+            .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || b.updatedAt - a.updatedAt)[0];
+        if (!run) return { id: null, title: "All quiet", who: "", status: "idle", updatedAt: 0 };
+        const who = run.member ? state.members[run.member]?.name ?? "" : run.runtime;
+        return { id: run.id, title: run.title, who, status: run.status, updatedAt: run.updatedAt };
+      })(),
       // Playbook phases waiting at a gate for you (and plays that stopped), for the menu bar and notifications.
       reviews: Object.values(state.plays).flatMap((play) =>
         play.phases.flatMap((phase, index) => {
@@ -969,10 +1145,18 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       }
     });
     app.get("/api/mcp", async () => mcp.list());
+    // In the chat: connections and skills that would help with what you just asked (only ones you don't have yet).
+    app.post<{ Body: { ask?: string } }>("/api/recommend", async (request) => {
+      const ask = String(request.body?.ask ?? "").slice(0, 4000);
+      const added = mcp.list().map((s) => s.name);
+      let catalog: Array<{ name: string; description?: string }> = [], installed: string[] = [];
+      try { installed = options.skills ? options.skills.list().map((x) => x.name) : []; catalog = options.skills ? await options.skills.catalog() : await skillCatalog(); } catch { /* offline: connections only */ }
+      return recommend(ask, { featured: FEATURED, added, skills: catalog, installed });
+    });
     // Servers we checked work: each says whether you've added it already.
     app.get("/api/mcp/featured", async () => {
       const mine = mcp.list();
-      return FEATURED.map((f) => ({ ...f, added: mine.find((s) => s.name === f.name)?.id ?? null }));
+      return FEATURED.map((f) => ({ ...f, added: mine.find((s) => s.name === f.name)?.id ?? null, brand: resolveMcpBrand({ name: f.name, url: f.url, packageId: mcpPackage(f.command, f.args ?? []) }) }));
     });
     app.post<{ Params: { id: string }; Body: { folder?: string } }>("/api/mcp/featured/:id", async (request, reply) => {
       const f = FEATURED.find((x) => x.id === request.params.id);

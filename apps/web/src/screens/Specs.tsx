@@ -2,6 +2,9 @@ import { Button, Eyebrow, Panel, StatusGlyph } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { FileText } from "lucide-react";
+import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
 
 type Phase = "requirements" | "design" | "tasks";
 const PHASES: Phase[] = ["requirements", "design", "tasks"];
@@ -44,16 +47,9 @@ export function Specs() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] px-6 py-6">
-        <div className="flex items-end gap-4">
-          <div>
-            <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Specs</h1>
-            <p className="mt-1 text-[13px] text-fg-2">Requirements, then design, then tasks. A session writes the draft; you approve it here. Tasks land on the board as runs.</p>
-          </div>
-          <Button className="ml-auto" onClick={() => (setStarting(true), setOpen(null))}>
-            Start a spec
-          </Button>
-        </div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader children={<StatStrip stats={[{ value: specs.length, label: specs.length === 1 ? "spec" : "specs" }, { value: specs.filter((x) => !x.approved.includes(x.phase)).length, label: "waiting for your approval", tone: "wait" }]} />} eyebrow="Plan" icon={FileText} title="Specs" description="Requirements, then design, then tasks. A session writes the draft; you approve it here. Tasks land on the board as runs."
+          actions={<Button onClick={() => (setStarting(true), setOpen(null))}>Start a spec</Button>} />
 
         {starting && (
           <Start

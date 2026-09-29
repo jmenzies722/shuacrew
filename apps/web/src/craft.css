@@ -1,0 +1,146 @@
+/*
+ * Craft: the Kiro Crew look for the Pristine palette. Purple-tinted blacks, floating rounded panels on a darker
+ * canvas, hairline borders, and exactly one colour — the violet accent — for anything active. Every surface below
+ * uses the palette tokens, so nothing drifts out of sync.
+ */
+:root {
+  --accent-text: color-mix(in srgb, var(--amber) 55%, #fff);
+  --active-bg: color-mix(in srgb, var(--amber) 16%, var(--panel));
+  --active-line: color-mix(in srgb, var(--amber) 32%, var(--line-strong));
+  --accent-hover: color-mix(in srgb, var(--amber) 85%, #fff);
+  --accent-glow: color-mix(in srgb, var(--amber) 45%, transparent);
+  --surface: var(--panel);
+  --surface-hi: var(--raised);
+  --depth: 0 0 0 1px var(--line-strong), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --depth-hover: 0 0 0 1px var(--active-line), 0 12px 28px rgba(0, 0, 0, 0.45);
+  --radius-card: 14px;
+}
+
+/* The canvas and the floating main panel. */
+[data-theme="dark"] body { background: var(--sunken); }
+/* The page card is solid; the column around it stays clear, so every gutter shows the same ground (and the living background) as the sidebar's. */
+[data-theme="dark"] .workspace-card { background: var(--ink); }
+
+/* Surfaces: one material everywhere. */
+[data-theme="dark"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
+  .today-lanes-box, .island-tile, .wg-tile, .spark-record, .brief, .crew-cta, .lib-row, .pb-row, .tl-card, .sheet) {
+  background: var(--panel) !important; border-color: transparent !important; border-radius: var(--radius-card);
+  box-shadow: var(--depth) !important; transition: box-shadow .18s ease, transform .18s ease;
+}
+[data-theme="dark"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row):hover { box-shadow: var(--depth-hover) !important; }
+[data-theme="dark"] :is(.board-col, .vn-lane) { background: var(--sunken) !important; box-shadow: 0 0 0 1px var(--line) !important; border-radius: 14px; }
+[data-theme="dark"] .stat-chip { background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); border-radius: 12px; }
+[data-theme="dark"] .stat-chip strong { font-weight: 600; }
+
+/* Buttons: the accent is solid violet; the rest are quiet outlines. */
+[data-theme="dark"] .ui-btn[data-variant="primary"], [data-theme="dark"] :is(.wel-next, .buddy-send:not(:disabled)) {
+  background: var(--amber); color: var(--on-accent, #fff); box-shadow: 0 0 0 1px var(--amber), 0 4px 14px -6px var(--amber);
+}
+[data-theme="dark"] .ui-btn[data-variant="primary"]:hover { background: var(--accent-hover); }
+[data-theme="dark"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset) {
+  background: transparent !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important;
+}
+[data-theme="dark"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset):hover { background: var(--raised) !important; box-shadow: 0 0 0 1px var(--active-line) !important; }
+
+/* The composer: Kiro's rounded field with a violet glow along its edge when you're in it. */
+[data-theme="dark"] .composer-box:not(.chat-composer) { background: var(--panel); border-radius: 16px; box-shadow: 0 0 0 1px var(--line-strong); }
+[data-theme="dark"] .composer-box:not(.chat-composer):focus-within { box-shadow: 0 0 0 1px var(--amber); }
+
+/* Top bar: blends into the canvas; search is an outlined capsule. */
+/* The top bar sits on the same ground as the gutters (no band of its own), so the two cards float on one surface. */
+[data-theme="dark"] header[aria-label="Top bar"] { background: transparent; box-shadow: none; }
+[data-theme="dark"] .tb-center > button { background: var(--ink) !important; border-color: transparent !important; box-shadow: 0 0 0 1px var(--line-strong) !important; border-radius: 10px; }
+[data-theme="dark"] .island-pill { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
+
+/* Headings. */
+[data-theme="dark"] .pane-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: #ebe9ee; }
+
+/* Hub tabs: Kiro's selected state. */
+[data-theme="dark"] .hub-tab-on { background: var(--active-bg); box-shadow: 0 0 0 1px var(--active-line); }
+[data-theme="dark"] .hub-tab.is-on { color: var(--accent-text); }
+[data-theme="dark"] .hub-tab-on::after { display: none; }
+
+/* Accent text reads in Kiro's lighter violet. */
+[data-theme="dark"] :is(.settings-kicker, .prose-agent a) { color: var(--accent-text); }
+
+/* Proportions: when Spark is open the conversation keeps the room. The sessions list and changes sheet step aside
+   before the chat is squeezed, Spark and the sidebar scale with the window, and toolbar labels never break mid-label. */
+@media (max-width: 1560px) { [data-frame]:has(.spark-side) aside.side-pane { display: none; } }
+@media (max-width: 1900px) { [data-frame]:has(.spark-side) aside.sheet { display: none; } }
+.spark-side-inner { width: clamp(340px, 24vw, 400px) !important; }
+@media (max-width: 1300px) { .side { width: 220px !important; } }
+.composer-tools > button { white-space: nowrap; }
+/* Narrow sidebar: the shortcut hint makes way so "Ask Spark" and its line read in full. */
+@media (max-width: 1300px) { .side-spark kbd { display: none; } }
+/* The Today brief: its rows wrap inside the card instead of running past its edge. */
+.brief .grid { grid-template-columns: minmax(0, 1fr); }
+.brief-item { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.brief-item * { min-width: 0; }
+
+/* New crew member: ready-made hires. */
+.crew-templates { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 14px; }
+.crew-templates > span { font-size: 11.5px; color: var(--text-3); margin-right: 2px; }
+.crew-templates button { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.crew-templates button:hover { background: var(--raised); color: var(--text); }
+.crew-templates button.is-on { color: var(--accent-text, var(--amber)); background: var(--active-bg, var(--raised)); box-shadow: inset 0 0 0 1px var(--active-line, var(--line-strong)); }
+
+/* Privacy: what Spark saw, heard and did today. */
+.spark-today { display: grid; gap: 14px; padding: 18px 20px; margin-bottom: 18px; border-radius: 16px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.spark-today > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.spark-today h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.spark-today header p { margin: 3px 0 0; max-width: 68ch; font-size: 12.5px; color: var(--text-3); }
+.spark-today header button, .spark-today-confirm button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 9px; font-size: 12px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spark-today header button:hover:not(:disabled) { color: var(--text); background: var(--raised); }
+.spark-today header button:disabled { opacity: .4; }
+.spark-today-confirm { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.spark-today-confirm .is-danger { color: #fff; background: #d9434f; box-shadow: none; }
+.spark-today-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .spark-today-cols { grid-template-columns: minmax(0, 1fr); } }
+.spark-today-col { min-width: 0; padding: 12px; border-radius: 12px; background: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.spark-today-col h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.spark-today-col h3 svg { color: var(--accent-text, var(--amber)); }
+.spark-today-col h3 small { margin-left: auto; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.spark-today-col > p { margin: 0; font-size: 12.5px; color: var(--text-3); }
+.spark-today-col ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 220px; overflow-y: auto; }
+.spark-today-col li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; font-size: 12px; }
+.spark-today-col li time { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.spark-today-col li span { display: grid; min-width: 0; }
+.spark-today-col li b { font-weight: 500; color: var(--text); }
+.spark-today-col li small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spark-today-col li.is-failed b { color: #f97583; }
+.spark-today-memory { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; color: var(--text-2); }
+.spark-today-memory svg { color: var(--accent-text, var(--amber)); }
+.spark-today-memory button { margin-left: 4px; font-size: 12px; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Crew routines on Schedules. */
+.routines { display: grid; gap: 12px; padding: 16px 18px; margin-bottom: 18px; border-radius: 16px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.routines > header { display: grid; gap: 2px; }
+.routines > header strong { font-size: 15px; font-weight: 600; }
+.routines > header span { font-size: 12.5px; color: var(--text-3); }
+.routines-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 900px) { .routines-grid { grid-template-columns: minmax(0, 1fr); } }
+.routine { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border-radius: 12px; background: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.routine > svg { flex-shrink: 0; color: var(--text-3); }
+.routine.is-on > svg { color: var(--accent-text, var(--amber)); }
+.routine > span { display: grid; flex: 1; min-width: 0; }
+.routine b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.routine small { font-size: 12px; color: var(--text-3); }
+
+/* Insights: health alerts. */
+.health-ok { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: 13px; color: var(--text-2); }
+.health-ok svg { color: #4cc38a; flex-shrink: 0; }
+.health-alerts { list-style: none; display: grid; gap: 8px; margin: 0 0 16px; padding: 0; }
+.health-alerts li { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 13px; color: var(--text); background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.health-alerts li.is-warn svg { color: #e0b252; flex-shrink: 0; } .health-alerts li.is-critical svg { color: #f94359; flex-shrink: 0; }
+.health-alerts li.is-critical { box-shadow: 0 0 0 1px color-mix(in srgb, #f94359 45%, var(--line-strong)); }
+
+/* Team: performance review. */
+.crew-perf { display: grid; gap: 10px; margin-top: 22px; padding: 16px 18px; border-radius: 16px; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.crew-perf > header { display: grid; gap: 2px; } .crew-perf > header strong { font-size: 15px; font-weight: 600; } .crew-perf > header span { font-size: 12.5px; color: var(--text-3); }
+.crew-perf-table { display: grid; overflow-x: auto; }
+.crew-perf-table > div { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(6, minmax(70px, 1fr)); align-items: center; gap: 8px; padding: 9px 6px; border-top: 1px solid var(--line); font-size: 13px; font-variant-numeric: tabular-nums; min-width: 640px; }
+.crew-perf-table > div.is-head { border-top: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.crew-perf-table span:first-child { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); }
+.crew-perf-table span:first-child i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.crew-perf-table span:first-child small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crew-perf-table .is-bad { color: #f97583; }

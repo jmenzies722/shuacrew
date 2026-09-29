@@ -1,0 +1,10 @@
+.wins { position:fixed; right:28px; bottom:28px; z-index:90; pointer-events:none; display:flex; flex-direction:column; align-items:flex-end; }
+.wins-sparks { position:absolute; right:60px; bottom:14px; width:0; height:0; }
+.wins-sparks i { position:absolute; width:6px; height:6px; border-radius:2px; background:var(--amber); opacity:0; animation:win-spark .9s cubic-bezier(.2,.7,.3,1) forwards; }
+.wins-party .wins-sparks i { background:hsl(var(--h) 90% 62%); width:7px; height:7px; animation-duration:1.2s; }
+@keyframes win-spark { 0% { transform:rotate(var(--a)) translateX(0) scale(.6); opacity:1; } 100% { transform:rotate(var(--a)) translateX(var(--d)) scale(1); opacity:0; } }
+.wins-toast { display:inline-flex; align-items:center; gap:7px; max-width:360px; padding:8px 14px; border-radius:999px; font-size:12.5px; color:var(--text); background:color-mix(in srgb, var(--panel) 90%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; animation:win-toast 2.6s ease forwards; }
+.wins-toast svg { color:var(--ok); flex-shrink:0; }
+@keyframes win-toast { 0% { transform:translateY(10px); opacity:0; } 10%,80% { transform:none; opacity:1; } 100% { opacity:0; } }
+@media (prefers-reduced-motion: reduce) { .wins-sparks { display:none; } .wins-toast { animation:none; } }
+:root[data-motion="reduced"] .wins-sparks { display:none; }

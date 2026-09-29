@@ -10,6 +10,10 @@
  *     one burst.
  */
 import { randomUUID } from "node:crypto";
+import { mkdirSync, realpathSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import {
   agentEnv,
   allowAll,
@@ -18,17 +22,24 @@ import {
   defaultRules,
   normalise,
   standingRule,
+  within,
   type AnyEvent,
   type Layer,
   type PolicyContext,
   type RunStatus,
+  type IntelligenceRequest,
 } from "@shuacrew/core";
-import type { ApprovalAnswer, Runtime, RunSpec } from "@shuacrew/runtimes";
+import type { ApprovalAnswer, Runtime, RunSpec, RuntimeStatus } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
+import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
+import { queuedMessages } from "@shuacrew/core/queue";
+import { selectIntelligence } from "./intelligence.js";
+import { inputDigest } from "./mobile/digest.js";
 
 export interface LaunchSpec {
+  baseCommit?: string;
   ask: string;
   title?: string;
   repo?: string;
@@ -56,9 +67,14 @@ interface Waiting {
   resolve: (answer: ApprovalAnswer) => void;
   tool: string;
   input: unknown;
+  risk: "low" | "medium" | "high" | "critical";
 }
 
 export interface SupervisorOptions {
+  /** Gateway-enforced settings (~/.shuacrew/settings.json). */
+  settings?: () => GatewaySettingsValue;
+  canStart?: (run: string) => boolean;
+  runHint?: (run: string) => string | undefined;
   workspace: string; // where runs with no repo work
   roots?: string[];
   protectedFolders?: string[];
@@ -87,12 +103,24 @@ export class Supervisor {
   private approveAll = new Set<string>();
   private resumeTimers = new Map<string, NodeJS.Timeout>();
   readonly worktrees = new Worktrees();
+  private runtimeSnapshots = new Map<string, { status: RuntimeStatus; models?: string[] }>();
+  updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
+  intelligence(request: IntelligenceRequest) {
+    return selectIntelligence(request, [...this.runtimes.values()].map(runtime => {
+      const snapshot = this.runtimeSnapshots.get(runtime.id);
+      return { ...runtime, models: snapshot?.models ? runtime.models.filter(m => snapshot.models!.includes(m.id)) : runtime.models,
+        status: snapshot?.status ?? { installed: true, signedIn: null, detail: "Not checked", overridingKeys: [] }, limits: this.activeLimits(runtime.id) };
+    }), this.options.settings?.() ?? { router: [], failoverOrder: [] });
+  }
 
   constructor(
     private store: EventStore,
     private runtimes: Map<string, Runtime>,
     private options: SupervisorOptions,
   ) {
+    // Quiet hours end on the clock, not on an event: look at the queue once a minute.
+    if (options.settings) setInterval(() => this.pump(), 60_000).unref();
+    if (options.settings) this.worktrees.config = () => options.settings!().git;
     for (const event of this.store.ofKinds("run.permission")) {
       if (event.kind === "run.permission" && event.run) {
         if (event.body.mode === "auto") this.approveAll.add(event.run);
@@ -118,11 +146,36 @@ export class Supervisor {
 
   // ── launching ────────────────────────────────────────────────────────────────────────
 
-  launch(spec: LaunchSpec): string {
+  roomBase(repo: string): { repo: string; base: string } {
+    if (!path.isAbsolute(repo)) throw new Error("Choose an absolute repository path");
+    const ctx = this.policyFor("", this.options.workspace).ctx;
+    const forbidden = [...ctx.protected, ...ctx.sensitive];
+    if (forbidden.some(root => within(repo, root))) throw new Error("Repository is in a protected folder");
+    const canonical = realpathSync(repo);
+    if (forbidden.some(root => within(canonical, root))) throw new Error("Repository resolves into a protected folder");
+    const allowed = [ctx.workspace, ...ctx.roots].map(root => { const expanded = root.replace(/^~(?=\/|$)/, os.homedir()); try { return realpathSync(expanded); } catch { return path.resolve(expanded); } });
+    if (!allowed.some(root => within(canonical, root))) throw new Error("Repository is outside the configured project roots");
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: canonical, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+    if (!/^[a-f0-9]{40}$/.test(base)) throw new Error("Repository needs an existing commit");
+    return { repo: canonical, base };
+  }
+
+  launch(spec: LaunchSpec, reservedId?: string): string {
     this.expand(spec.ask);
-    const id = `r_${randomUUID().slice(0, 8)}`;
+    const id = reservedId ?? `r_${randomUUID().slice(0, 8)}`;
+    if (!/^r_[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid reserved run ID");
+    if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
     if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? member.model };
+    // Auto and Spark use one routing policy. Explicit choices and crew-member defaults stay explicit.
+    if (!member && !spec.runtime && !spec.model) {
+      const rule = this.options.settings ? matchRoute(this.options.settings().router, spec.ask) : undefined;
+      const choice = this.intelligence({ ask: spec.ask, mode: "auto", purpose: spec.labels?.includes("buddy") ? "conversation" : "work", images: false, tier: "balanced" });
+      if (choice.runtime) spec = { ...spec, runtime: choice.runtime, model: choice.model };
+      else if ([...this.runtimes.keys()].some(id => id !== "mock")) throw new Error(choice.reason);
+      else if (rule) spec = { ...spec, model: rule.model || undefined }; // scripted demo fixtures have no real model catalogue
+      if (rule) spec = { ...spec, effort: spec.effort || rule.effort || undefined, labels: [...(spec.labels ?? []), `rule:${rule.name}`] };
+    }
     const runtime = spec.runtime ?? this.defaultRuntime();
     this.rec(
       "run.created",
@@ -131,6 +184,7 @@ export class Supervisor {
         ask: spec.ask,
         project: spec.project,
         repo: spec.repo,
+        baseCommit: spec.baseCommit,
         runtime,
         model: spec.model,
         effort: spec.effort,
@@ -182,6 +236,23 @@ export class Supervisor {
     this.rec("run.followup.withdrawn", { id }, { run });
   }
 
+  editFollowup(run: string, id: string, text: string, expectedText: string): void {
+    const pending = this.unanswered(run, true).find((f) => f.id === id);
+    if (!pending) throw new Error("That message has already started or was withdrawn. Your edit has not been sent.");
+    if (pending.text !== expectedText) throw new Error("That queued message changed. Cancel this edit and reopen it to see the latest text.");
+    if (!text.trim()) throw new Error("empty message");
+    this.expand(text);
+    this.rec("run.followup.edited", { id, text: text.trim() }, { run });
+  }
+
+  reorderFollowups(run: string, ids: string[]): void {
+    const pending = this.unanswered(run, true);
+    if (!pending.length || ids.length !== pending.length || new Set(ids).size !== ids.length || pending.some((f) => !f.id || !ids.includes(f.id))) {
+      throw new Error("The queue changed. Try again with the current messages.");
+    }
+    this.rec("run.followups.reordered", { ids }, { run });
+  }
+
   cancel(run: string, reason = "cancelled by you"): void {
     this.active.get(run)?.abort();
     // Anything it was waiting on you for is answered "no" — on the record, so it leaves the bell.
@@ -196,6 +267,11 @@ export class Supervisor {
     const runs = this.projectRuns();
     const queued = runs.filter((r) => r.status === "queued").sort((a, b) => b.priority - a.priority || a.seq - b.seq);
     for (const run of queued) {
+      if (this.active.has(run.id)) continue;
+      if (this.options.canStart && !this.options.canStart(run.id)) continue;
+      // Quiet hours: automation waits in the queue and starts when they end (nothing is dropped).
+      const quiet = this.options.settings?.().quietHours;
+      if (quiet && run.labels.some((l) => l === "schedule" || l === "webhook" || l === "heartbeat") && inQuietHours(quiet)) continue;
       const agent = this.currentRuntime(run.id, run.runtime);
       if (this.limitedUntil(agent) > Date.now() || this.allModelsLimited(agent)) continue;
       const cap = this.options.concurrency?.[run.runtime] ?? (run.runtime === "mock" ? 8 : 2);
@@ -217,6 +293,18 @@ export class Supervisor {
     const runtime = this.runtimes.get(runtimeId);
     const controller = this.active.get(runId) ?? new AbortController();
     this.active.set(runId, controller);
+    // Session cap (minutes): stops only this stretch of work, and only if it's still this one.
+    const maxMinutes = this.options.settings?.().caps.maxMinutes;
+    if (maxMinutes) {
+      const timer = setTimeout(() => { if (this.active.get(runId) === controller && !controller.signal.aborted) this.cancel(runId, `Stopped at your ${maxMinutes}-minute session cap (Settings → Agents). Send a follow-up to continue.`); }, maxMinutes * 60_000);
+      timer.unref?.();
+      controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+    }
+    const ready = () => {
+      if (controller.signal.aborted || this.halted) { this.active.delete(runId); return false; }
+      if (this.options.canStart && !this.options.canStart(runId)) { this.active.delete(runId); return false; }
+      return true;
+    };
     if (!runtime) {
       this.setStatus(runId, "failed", `no runtime called ${runtimeId}`);
       this.active.delete(runId);
@@ -225,8 +313,13 @@ export class Supervisor {
 
     let cwd = this.options.workspace;
     try {
+      if (spec.labels.includes("crew-room")) {
+        const status = await runtime.status();
+        if (!status.installed || status.signedIn === false || status.overridingKeys.length) throw new Error("Room provider unavailable; connect its subscription without API-key overrides");
+        if (!ready()) return;
+      }
       // A task's steps share the task's worktree, so each step builds on the last.
-      const parentTree = spec.parent ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
+      const parentTree = spec.parent && !spec.labels.includes("crew-room") ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
       if (parentTree?.kind === "run.worktree") {
         cwd = parentTree.body.path;
       } else if (spec.repo && spec.labels.includes("in-place")) {
@@ -236,30 +329,39 @@ export class Supervisor {
         if (existing && existing.kind === "run.worktree") {
           cwd = existing.body.path;
         } else {
-          const tree = await this.worktrees.create(spec.repo, runId, spec.forkOf?.commit);
+          const tree = await this.worktrees.create(spec.repo, runId, spec.baseCommit ?? spec.forkOf?.commit);
           cwd = tree.path;
           this.rec("run.worktree", tree, { run: runId });
         }
+      } else if (spec.labels.includes("crew-room")) {
+        cwd = path.join(this.options.workspace, "rooms", runId);
+        mkdirSync(cwd, { recursive: true });
       }
     } catch (error) {
-      this.setStatus(runId, "failed", `could not create a worktree: ${(error as Error).message}`);
+      if (controller.signal.aborted || this.halted) { this.active.delete(runId); return; }
+      this.setStatus(runId, "failed", `could not prepare run: ${(error as Error).message}`);
       this.active.delete(runId);
       return;
     }
 
+    if (!ready()) return;
     this.setStatus(runId, "running");
     const turn = this.turns(runId) + 1;
     const spoken = this.currentAsk(runId, spec.ask);
     const ask = this.expand(spoken);
     this.rec("turn.started", { turn, text: spoken, by: "you" }, { run: runId });
     const started = Date.now();
+    const attemptSeq = this.store.head;
     const policy = this.policyFor(runId, cwd);
     // A conversation id only means something to the runtime that owns it. A run that moved to
     // another agent starts a fresh conversation there, with a recap of the work so far.
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
     const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
+    // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
+    const lean = spec.labels.includes("buddy");
     const run: RunSpec = {
+      lean,
       id: runId,
       // A fork's first turn carries the conversation it branched from; a moved run gets a recap.
       ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : spec.forkOf && turn === 1 ? `${spec.ask}\n\n---\n\n${ask}` : ask,
@@ -267,12 +369,14 @@ export class Supervisor {
       model,
       effort: spec.effort,
       resume,
-      agents: this.options.crew?.agentsFor?.(runtime.id, spec.member),
+      agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
+      disableNativeAgents: lean || spec.labels.includes("crew-room"),
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume ? undefined : [spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint].filter(Boolean).join("\n\n") || undefined,
-      mcpServers: this.options.mcpServers?.(runtime.id, runId),
-      plugins: this.options.plugins?.(runtime.id),
+      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
+      mcpServers: lean ? undefined : this.options.mcpServers?.(runtime.id, runId),
+      plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
+    this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort: spec.effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
 
     let ended = false;
     let buffered = "";
@@ -326,11 +430,19 @@ export class Supervisor {
                 outputTokens: event.outputTokens,
                 cacheTokens: event.cacheTokens ?? 0,
                 costUsd: runtime.authMode === "subscription" ? undefined : event.costUsd,
+                accounting: event.accounting,
                 contextUsed: event.contextUsed,
                 contextLimit: event.contextLimit,
               },
               { run: runId },
             );
+            {
+              const maxTokens = this.options.settings?.().caps.maxTokens;
+              if (maxTokens && this.active.get(runId) === controller) {
+                const used = this.store.forRun(runId).reduce((n, e) => n + (e.kind === "usage.recorded" ? e.body.inputTokens + e.body.outputTokens : 0), 0);
+                if (used > maxTokens) this.cancel(runId, `Stopped at your ${maxTokens.toLocaleString()}-token session cap (Settings → Agents). Send a follow-up to continue.`);
+              }
+            }
             break;
           case "checkpoint": {
             const commit = spec.repo || cwd !== this.options.workspace ? await this.worktrees.checkpoint(cwd, `turn ${turn}: ${event.note ?? ""}`).catch(() => undefined) : undefined;
@@ -342,6 +454,7 @@ export class Supervisor {
             ended = true;
             return;
           case "done":
+            this.confirmRecovery(runtime.id, model, attemptSeq);
             this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
             this.rec(
               "turn.completed",
@@ -425,11 +538,19 @@ export class Supervisor {
   // ── the usage window ────────────────────────────────────────────────────────────────
 
   private limited(run: string, runtime: string, until: number, message: string, model?: string, credits?: boolean): void {
+    // Some providers return a reset already in the past. Never turn that into a tight retry loop.
+    until = Number.isFinite(until) && until > Date.now() ? Math.max(until, Date.now() + 1000) : Date.now() + 30_000;
     this.rec("runtime.limited", { runtime, model, until, message, credits });
+    this.scheduleResume(runtime, until, model);
     // Moves are capped, so a run never bounces between limits forever; past that it waits.
     const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && / is out until | needs usage credits /.test(e.body.reason)).length;
     const created = this.store.forRun(run).find((e) => e.kind === "run.created");
     const launched = created?.kind === "run.created" ? created.body.model : undefined;
+    if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) {
+      this.setStatus(run, "paused", `${runtime} usage window — resumes ${when(until)}; room provider stays unchanged`);
+      this.scheduleResume(runtime, until, model);
+      return;
+    }
     const what = model ?? runtime;
     const why = credits ? `${what} needs usage credits on your plan` : `${what} is out until ${when(until)}`;
     // First choice: another model on the same agent (a weekly cap on one model isn't the account's).
@@ -442,7 +563,7 @@ export class Supervisor {
     }
     const other =
       this.options.failover && moves < 3
-        ? [...this.runtimes.keys()].find((r) => r !== runtime && r !== "mock" && this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
+        ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local") /* the local model has no tools: never hand it crew work */, runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
     if (other) {
       this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${why} — moved to ${other}` }, { run });
@@ -456,35 +577,57 @@ export class Supervisor {
 
   private scheduleResume(runtime: string, until: number, model?: string): void {
     const key = model ? `${runtime}:${model}` : runtime;
+    const generation = this.unresolvedLimits(runtime).find(l => l.model === model)?.seq;
     clearTimeout(this.resumeTimers.get(key));
-    // setTimeout can't wait longer than ~24.8 days; re-check daily for longer windows.
-    const timer = setTimeout(() => (until - Date.now() > 1000 ? this.scheduleResume(runtime, until, model) : this.restore(runtime, model)), Math.min(Math.max(0, until - Date.now()), 86_400_000));
-    timer.unref?.();
-    this.resumeTimers.set(key, timer);
+    const timer = setTimeout(() => {
+      this.resumeTimers.delete(key);
+      const latest = this.unresolvedLimits(runtime).find(l => l.model === model);
+      if (!latest) return;
+      if (latest.seq !== generation || latest.until > Date.now()) { this.scheduleResume(runtime, latest.until, model); return; }
+      this.restore(runtime, model, generation);
+    }, Math.min(Math.max(0, until - Date.now()), 86_400_000));
+    timer.unref?.(); this.resumeTimers.set(key, timer);
   }
 
-  /** A window reset (or you said "try now"): paused runs go back in the queue. */
-  restore(runtime: string, model?: string): void {
-    this.rec("runtime.restored", { runtime, model });
+  /** A reset or manual retry makes a restriction eligible to try; only a completed response confirms recovery. */
+  restore(runtime: string, model?: string, limitSeq?: number): void {
+    const limits = this.unresolvedLimits(runtime).filter(l => limitSeq !== undefined ? l.seq === limitSeq : model === undefined || l.model === model);
+    for (const l of limits) {
+      if (!this.isRetrying(l.seq)) this.rec("runtime.retrying", { runtime, model: l.model, limitSeq: l.seq });
+      const key = l.model ? `${runtime}:${l.model}` : runtime;
+      clearTimeout(this.resumeTimers.get(key)); this.resumeTimers.delete(key);
+    }
     for (const run of this.projectRuns()) {
-      if (run.status === "paused" && this.currentRuntime(run.id, run.runtime) === runtime) this.setStatus(run.id, "queued", "usage window reset");
+      if (run.status !== "paused" || this.currentRuntime(run.id, run.runtime) !== runtime) continue;
+      const wanted = this.modelFor(run.id, runtime, run.model);
+      if (model && wanted !== model) continue;
+      if (this.limitedUntil(runtime, wanted) > Date.now()) continue;
+      this.setStatus(run.id, "queued", "retrying provider — availability unconfirmed");
     }
     this.pump();
   }
 
-  /** The limits in force on an agent, each for a model or (no model) the whole agent. */
-  private activeLimits(runtime: string): Array<{ model?: string; until: number }> {
+  private isRetrying(seq: number): boolean {
+    return this.store.ofKinds("runtime.retrying", seq).some(e => e.kind === "runtime.retrying" && e.body.limitSeq === seq);
+  }
+
+  private unresolvedLimits(runtime: string): Array<{ seq: number; model?: string; until: number }> {
     const limits = new Map<string, { seq: number; model?: string; until: number }>();
     for (const e of this.store.ofKinds("runtime.limited")) {
       if (e.kind === "runtime.limited" && e.body.runtime === runtime) limits.set(e.body.model ?? "*", { seq: e.seq, model: e.body.model, until: e.body.until });
     }
-    const now = Date.now();
-    return [...limits.values()].filter((l) => {
-      if (l.until <= now) return false;
-      return !this.store
-        .ofKinds("runtime.restored", l.seq)
-        .some((e) => e.kind === "runtime.restored" && e.body.runtime === runtime && (!e.body.model || e.body.model === l.model));
-    });
+    return [...limits.values()].filter(l => !this.store.ofKinds("runtime.restored", l.seq).some(e => e.kind === "runtime.restored" && e.body.runtime === runtime &&
+      (e.body.limitSeq !== undefined ? e.body.limitSeq === l.seq : !e.body.model || e.body.model === l.model)));
+  }
+
+  private activeLimits(runtime: string): Array<{ model?: string; until: number }> {
+    return this.unresolvedLimits(runtime).filter(l => l.until > Date.now() && !this.isRetrying(l.seq));
+  }
+
+  private confirmRecovery(runtime: string, model: string | undefined, attemptSeq: number): void {
+    for (const l of this.unresolvedLimits(runtime)) {
+      if (l.seq <= attemptSeq && (!l.model || l.model === model)) this.rec("runtime.restored", { runtime, model: l.model, limitSeq: l.seq });
+    }
   }
 
   /** Models this agent can't use right now, and why — for the model picker. */
@@ -525,9 +668,12 @@ export class Supervisor {
   // ── approvals ───────────────────────────────────────────────────────────────────────
 
   private policyFor(run: string, workspace: string): { ctx: PolicyContext; layers: () => Layer[] } {
+    const settings = this.options.settings?.();
+    // Your protected folders are added to the built-in ones; they can never remove them.
     const ctx = defaultContext(workspace, {
       roots: this.options.roots ?? ["~/Developer"],
-      protected: this.options.protectedFolders ?? [],
+      protected: [...(this.options.protectedFolders ?? []), ...(settings?.protectedPaths ?? [])],
+      ...(settings ? { protectedBranches: [...new Set(["main", "master", ...settings.git.protectedBranches])] } : {}),
     });
     return {
       ctx,
@@ -555,6 +701,11 @@ export class Supervisor {
     input: unknown,
     subagent?: string,
   ): Promise<ApprovalAnswer> {
+    const created = this.store.forRun(run).find(e => e.kind === "run.created");
+    if (created?.kind === "run.created" && created.body.labels.includes("crew-room") && /^(Agent|Task|spawn_agent|collabAgentToolCall)$/i.test(tool)) {
+      this.rec("policy.decided", { tool, verdict: "deny", rule: "room-delegation-only", layer: "room", reason: "Use tracked crew delegation; native child agents are disabled" }, { run });
+      return { allow: false, reason: "Use tracked crew delegation; native child agents are disabled" };
+    }
     const decision = decide(normalise(tool, input), policy.ctx, policy.layers());
     this.rec("policy.decided", { tool, verdict: decision.verdict, rule: decision.rule, layer: decision.layer, reason: decision.reason }, { run });
     if (decision.verdict === "allow") return { allow: true, reason: decision.reason };
@@ -573,13 +724,17 @@ export class Supervisor {
       this.waiting.set(id, {
         run,
         tool,
-        input,
+        input: structuredClone(input),
+        risk: decision.risk,
         resolve: (answer) => {
           clearTimeout(timeout);
-          if (this.status(run) === "awaiting_approval" && ![...this.waiting.values()].some((w) => w.run === run)) {
-            this.setStatus(run, "running");
+          try {
+            if (this.status(run) === "awaiting_approval" && ![...this.waiting.values()].some((w) => w.run === run)) this.setStatus(run, "running");
+          } finally {
+            // approval.decided is already durable. A secondary status error must not strand
+            // the provider after its waiter and timeout have been consumed.
+            resolve(answer);
           }
-          resolve(answer);
         },
       });
     });
@@ -587,6 +742,7 @@ export class Supervisor {
 
   /** Cycle this session: ask stops for approval, auto lets those through. A deny still wins. */
   setPermission(run: string, mode: "ask" | "auto"): void {
+    if (mode === "auto" && this.store.forRun(run).some(e => e.kind === "run.created" && e.body.labels.includes("crew-room"))) throw new Error("Crew rooms must remain supervised");
     if (!this.status(run) && !this.store.forRun(run).some((e) => e.kind === "run.created")) throw new Error(`no run ${run}`);
     this.rec("run.permission", { mode }, { run });
     if (mode === "auto") {
@@ -597,14 +753,44 @@ export class Supervisor {
 
   /** A person (or a timeout) answers an approval. Returns false when nothing was waiting. */
   decideApproval(id: string, allow: boolean, by = "you", always = false, comment?: string): boolean {
+    if (this.halted) return false;
     const wait = this.waiting.get(id);
     const known = wait ?? this.pendingFromLog(id);
     if (!known) return false;
-    this.rec("approval.decided", { id, allow, by, always: always && allow, comment }, { run: known.run });
+    if (wait) this.waiting.delete(id);
+    try {
+      this.store.append("approval.decided", { id, allow, by, always: always && allow, comment }, { run: known.run });
+    } catch (error) {
+      if (wait) this.waiting.set(id, wait);
+      throw error;
+    }
     if (wait) {
-      this.waiting.delete(id);
       wait.resolve({ allow, reason: allow ? `${by} allowed it` : comment ? `${by} said no: ${comment}` : `${by} said no` });
     }
+    return true;
+  }
+
+  /** A detached copy from the live waiter, never historical audit state. */
+  liveApproval(id: string): { run: string; tool: string; input: unknown; risk: Waiting["risk"] } | undefined {
+    if (this.halted) return undefined;
+    const wait = this.waiting.get(id);
+    return wait ? { run: wait.run, tool: wait.tool, input: structuredClone(wait.input), risk: wait.risk } : undefined;
+  }
+
+  /** Synchronous compare-and-consume for remotely signed, single-use decisions. */
+  decideLiveApproval(id: string, expectedRun: string, expectedDigest: string, allow: boolean, by: string, commandId: string): boolean {
+    if (this.halted) return false;
+    const wait = this.waiting.get(id);
+    if (!wait || wait.run !== expectedRun || inputDigest(wait.input) !== expectedDigest) return false;
+    // Reserve before append: synchronous event listeners must not consume this waiter twice.
+    this.waiting.delete(id);
+    try {
+      this.store.append("approval.decided", { id, allow, by, always: false, mobileCommandId: commandId }, { run: wait.run });
+    } catch (error) {
+      this.waiting.set(id, wait);
+      throw error;
+    }
+    wait.resolve({ allow, reason: `${by} ${allow ? "allowed" : "denied"} this request` });
     return true;
   }
 
@@ -617,10 +803,36 @@ export class Supervisor {
   // ── follow-ups ──────────────────────────────────────────────────────────────────────
 
   /** Send another message to a run: a new turn in the same runtime conversation. */
-  followUp(run: string, text: string, by = "you"): string {
+  isActive(run: string): boolean { return this.active.has(run); }
+
+  followUp(run: string, text: string, by = "you", requestId?: string): string {
+    const created = this.store.forRun(run).find(e => e.kind === "run.created");
+    if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) throw new Error("Continue this conversation in its crew room, not the source session.");
+    return this.enqueueFollowUp(run, text, by, requestId);
+  }
+
+  /** Only a durably authorized coordinator summary can resume a room conversation. */
+  roomSummary(run: string, text: string, requestId: string): string {
+    const authorized = this.store.ofKinds("room.summary-requested").findLast(e => e.kind === "room.summary-requested" && e.body.runId === run && `room-summary:${e.body.requestId}` === requestId);
+    if (!authorized || authorized.kind !== "room.summary-requested") throw new Error("Room summary is not authorized");
+    const latest = this.store.ofKinds("room.turn").findLast(e => e.kind === "room.turn" && e.body.room === authorized.body.room);
+    if (latest?.kind !== "room.turn" || latest.body.runId !== run) throw new Error("Stale room summary");
+    return this.enqueueFollowUp(run, text, "crew results", requestId);
+  }
+
+  private enqueueFollowUp(run: string, text: string, by: string, requestId?: string): string {
     if (!this.status(run)) throw new Error(`no run ${run}`);
     this.expand(text);
-    const id = `f_${randomUUID().slice(0, 8)}`;
+    const id = requestId ?? `f_${randomUUID().slice(0, 8)}`;
+    const previous = this.store.forRun(run).find(e => e.kind === "run.followup" && e.body.id === id);
+    if (previous?.kind === "run.followup") {
+      if (previous.body.text !== text || previous.body.by !== by) throw new Error("Follow-up request conflict");
+      // Recover only a message no turn has consumed, never an interrupted turn.
+      if (!this.active.has(run) && ["done", "reviewing", "merged"].includes(this.status(run)!) && this.unanswered(run, true).some(f => f.id === id)) {
+        this.setStatus(run, "queued", "persisted follow-up awaiting its first turn"); this.pump();
+      }
+      return id;
+    }
     this.rec("run.followup", { id, text, by }, { run });
     // Mid-turn, a message waits its turn: the one after this answers everything queued.
     if (this.active.has(run)) return id;
@@ -633,12 +845,7 @@ export class Supervisor {
   private unanswered(run: string): string[];
   private unanswered(run: string, detailed: true): Array<{ id?: string; text: string }>;
   private unanswered(run: string, detailed?: boolean): Array<string | { id?: string; text: string }> {
-    let pending: Array<{ id?: string; text: string }> = [];
-    for (const e of this.store.forRun(run)) {
-      if (e.kind === "run.followup") pending.push({ id: e.body.id, text: e.body.text });
-      if (e.kind === "run.followup.withdrawn") pending = pending.filter((f) => f.id !== e.body.id);
-      if (e.kind === "turn.started") pending = [];
-    }
+    const pending = queuedMessages(this.store.forRun(run));
     return detailed ? pending : pending.map((f) => f.text);
   }
 
@@ -664,6 +871,27 @@ export class Supervisor {
     if (this.halted) return;
     if (this.status(run) === status && !reason) return;
     this.rec("run.status", { status, reason }, { run });
+    if (status === "done" || status === "failed") this.runHook(run, status);
+  }
+
+  /** The last 50 prompts exactly as sent — in memory only, gone on restart (Developer → Prompt inspector). */
+  private prompts = new Map<string, Array<{ at: number; turn: number; runtime: string; model?: string; effort?: string; resumed: boolean; system: string; ask: string; tools: string[] }>>();
+  private rememberPrompt(run: string, p: { at: number; turn: number; runtime: string; model?: string; effort?: string; resumed: boolean; system: string; ask: string; tools: string[] }) {
+    const list = this.prompts.get(run) ?? [];
+    list.push(p); this.prompts.delete(run); this.prompts.set(run, list.slice(-10));
+    while (this.prompts.size > 50) this.prompts.delete(this.prompts.keys().next().value!);
+  }
+  promptsFor(run: string) { return this.prompts.get(run) ?? []; }
+  promptRuns() { return [...this.prompts.keys()].reverse(); }
+
+  /** Settings → Automation hooks: your command, for sessions you started (not delegated steps). */
+  private runHook(run: string, status: "done" | "failed"): void {
+    const hooks = this.options.settings?.().hooks, command = status === "done" ? hooks?.onDone : hooks?.onFailed;
+    if (!command?.trim()) return;
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    if (!created || created.kind !== "run.created" || created.body.parent || created.body.labels.includes("held")) return;
+    execFile("/bin/sh", ["-c", command], { cwd: this.options.workspace, timeout: 60_000, env: { ...process.env, SHUA_RUN_ID: run, SHUA_STATUS: status, SHUA_TITLE: created.body.title, SHUA_REPO: created.body.repo ?? "" } },
+      (error) => { if (error) console.error(`hook (${status}) for ${run} failed: ${error.message.split("\n")[0]}`); });
   }
 
   status(run: string): RunStatus | undefined {
@@ -684,8 +912,8 @@ export class Supervisor {
   }
 
   /** Runs the supervisor may execute — never a held run (a task's parent; its steps do the work). */
-  private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; priority: number; seq: number }> {
-    const runs = new Map<string, { id: string; status: RunStatus; runtime: string; priority: number; seq: number }>();
+  private projectRuns(): Array<{ id: string; status: RunStatus; runtime: string; model?: string; priority: number; seq: number; labels: string[] }> {
+    const runs = new Map<string, { id: string; status: RunStatus; runtime: string; model?: string; priority: number; seq: number; labels: string[] }>();
     const held = new Set<string>();
     const visit = (e: AnyEvent) => {
       if (!e.run || held.has(e.run)) return;
@@ -693,7 +921,7 @@ export class Supervisor {
         held.add(e.run);
         return;
       }
-      if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, priority: 0, seq: e.seq });
+      if (e.kind === "run.created" && !runs.has(e.run)) runs.set(e.run, { id: e.run, status: "queued", runtime: e.body.runtime, model: e.body.model, priority: 0, seq: e.seq, labels: e.body.labels });
       const r = runs.get(e.run);
       if (!r) return;
       if (e.kind === "run.status") r.status = e.body.status;
@@ -714,13 +942,19 @@ export class Supervisor {
   recover(): string[] {
     const resumed: string[] = [];
     for (const run of this.projectRuns()) {
+      const created = this.store.forRun(run.id).find(e => e.kind === "run.created");
+      if (created?.kind === "run.created" && created.body.labels.includes("crew-room") && ["running", "planning", "awaiting_approval", "paused"].includes(run.status)) {
+        this.cancel(run.id, "Gateway restarted; room work interrupted. Inspect side effects before retrying.");
+        this.setStatus(run.id, "failed", "Gateway restarted; room work interrupted. Explicit retry required.");
+        continue;
+      }
       if (["running", "planning", "awaiting_approval"].includes(run.status)) {
         this.setStatus(run.id, "queued", "gateway restarted — resuming from the last checkpoint");
         resumed.push(run.id);
       }
       if (run.status === "paused") {
         const agent = this.currentRuntime(run.id, run.runtime);
-        const limits = this.activeLimits(agent);
+        const limits = this.unresolvedLimits(agent);
         if (limits.length) for (const l of limits) this.scheduleResume(agent, l.until, l.model);
         else this.setStatus(run.id, "queued", "usage window reset while the gateway was down");
       }

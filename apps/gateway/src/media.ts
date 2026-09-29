@@ -27,10 +27,10 @@ export interface MediaTools {
   model?: string;
 }
 
-export function tools(modelsDir = path.join(process.env.SHUACREW_HOME ?? path.join(HOME, ".shuacrew"), "models")): MediaTools {
-  // The most accurate English model you have, else any model.
+export function tools(modelsDir = path.join(process.env.SHUACREW_HOME ?? path.join(HOME, ".shuacrew"), "models"), speed: "accurate" | "fast" = "accurate"): MediaTools {
+  // Accurate: the best English model you have. Fast (live captions while you talk): the quickest good one.
   const models = existsSync(modelsDir) ? readdirSync(modelsDir).filter((f) => /^ggml-.*\.bin$/.test(f)) : [];
-  const rank = ["large-v3-turbo", "medium.en", "small.en", "base.en", "small", "base", "tiny.en", "tiny"];
+  const rank = speed === "fast" ? ["base.en", "small.en", "tiny.en", "base", "small", "large-v3-turbo", "medium.en", "tiny"] : ["large-v3-turbo", "medium.en", "small.en", "base.en", "small", "base", "tiny.en", "tiny"];
   const best = [...models].sort((a, b) => rank.findIndex((r) => a.includes(r)) - rank.findIndex((r) => b.includes(r)))[0];
   return { ffmpeg: bin("ffmpeg"), ffprobe: bin("ffprobe"), whisper: bin("whisper-cli") ?? bin("whisper-cpp"), model: best ? path.join(modelsDir, best) : undefined };
 }
@@ -48,9 +48,9 @@ export function status(t = tools()) {
   };
 }
 
-function run(file: string, args: string[], timeoutMs = 300_000): Promise<string> {
+function run(file: string, args: string[], timeoutMs = 300_000, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(file, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, signal }, (error, stdout, stderr) => {
       if (error) reject(new Error(`${path.basename(file)}: ${(stderr || error.message).toString().trim().split("\n").pop()}`));
       else resolve(stdout.toString());
     });
@@ -58,13 +58,43 @@ function run(file: string, args: string[], timeoutMs = 300_000): Promise<string>
 }
 
 /** Speech → text. `timestamps` keeps "[00:01.2 → 00:04.0]" markers (for video). */
-export async function transcribe(file: string, options: { timestamps?: boolean } = {}, t = tools()): Promise<string> {
+/** Whisper's vocabulary hint: the names and terms you say, so it spells them right. Short and comma-separated works best. */
+export function vocabulary(words: string[]): string {
+  const base = ["ShuaCrew", "Spark", "Shua", "Claude", "Codex", "crew", "session", "playbook", "venture", "Kubernetes", "TypeScript", "Swift", "GitHub", "deploy", "pull request", "API"];
+  const seen = new Set<string>(), out: string[] = [];
+  for (const w of [...words, ...base]) { const k = w.trim(); if (k && k.length <= 40 && !seen.has(k.toLowerCase())) { seen.add(k.toLowerCase()); out.push(k); } }
+  return out.slice(0, 60).join(", ");
+}
+
+/** A rough sound-alike key: case, h's, doubled letters and vowel colour don't matter ("Ria" ~ "Rhea", "Shuaa" ~ "Shua"). */
+const soundKey = (w: string) => w.toLowerCase().replace(/[^a-z]/g, "").replace(/h/g, "").replace(/(.)\1+/g, "$1").replace(/[aeiouy]+/g, "a");
+
+/**
+ * Snap names Whisper almost got right to their exact spelling. Only capitalized words mid-sentence (a name,
+ * not the first word of a sentence) are touched, so everyday words are never "corrected".
+ */
+export function fixNames(text: string, names: string[]): string {
+  const byKey = new Map<string, string>();
+  for (const n of names) { const k = soundKey(n); if (k.length >= 2 && !/\s/.test(n)) byKey.set(k, n); }
+  return text.replace(/(^|[.!?]\s+|\s)([A-Z][A-Za-z']+)/g, (all, lead: string, word: string, offset: number) => {
+    const sentenceStart = offset === 0 || /[.!?]\s+$/.test(lead);
+    if (sentenceStart) return all;
+    const exact = byKey.get(soundKey(word));
+    return exact && exact !== word ? lead + exact : all;
+  });
+}
+
+/** "en" (default), "auto" (Whisper detects it), or a two-letter language code; anything else falls back to English. */
+export function languageArg(language?: string) { return language === "auto" || (language && /^[a-z]{2}$/.test(language)) ? language : "en"; }
+
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean; language?: string } = {}, t = tools(undefined, options.fast ? "fast" : "accurate")): Promise<string> {
+  options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);
   try {
-    await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], 120_000);
+    await run(t.ffmpeg, ["-y", "-loglevel", "error", "-i", file, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], options.timeoutMs ?? 120_000, options.signal);
     const threads = String(Math.max(2, Math.min(8, os.cpus().length - 2)));
-    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", ...(options.timestamps ? [] : ["-nt"])], 600_000);
+    const out = await run(t.whisper, ["-m", t.model, "-f", wav, "-t", threads, "-np", "-l", languageArg(options.language), ...(options.fast ? ["-bs", "1", "-bo", "1"] : ["-bs", "5"]), ...(options.prompt ? ["--prompt", options.prompt] : []), ...(options.timestamps ? [] : ["-nt"])], options.timeoutMs ?? 600_000, options.signal);
     return out
       .split("\n")
       .map((l) => l.replace(/^\[(\d\d:\d\d:\d\d)\.\d+ --> (\d\d:\d\d:\d\d)\.\d+\]\s*/, (_, a: string, b: string) => `[${a.replace(/^00:/, "")}–${b.replace(/^00:/, "")}] `).trim())

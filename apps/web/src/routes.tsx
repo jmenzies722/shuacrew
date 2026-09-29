@@ -9,13 +9,21 @@ const Memory = lazyRouteComponent(() => import("./screens/Memory"), "Memory");
 const Schedules = lazyRouteComponent(() => import("./screens/Schedules"), "Schedules");
 const TerminalPage = lazyRouteComponent(() => import("./screens/TerminalPage"), "TerminalPage");
 const CrewFloor = lazyRouteComponent(() => import("./screens/CrewFloor"), "CrewFloor");
+const Studio = lazyRouteComponent(() => import("./screens/Studio"), "Studio");
 const CrewPage = lazyRouteComponent(() => import("./screens/CrewPage"), "CrewPage");
+const Rooms = lazyRouteComponent(() => import("./screens/Rooms"), "Rooms");
+const Observability = lazyRouteComponent(() => import("./screens/Observability"), "Observability");
+const Usage = lazyRouteComponent(() => import("./screens/Observability"), "Usage");
+const Developer = lazyRouteComponent(() => import("./screens/Developer"), "Developer");
+const Teaching = lazyRouteComponent(() => import("./screens/Teaching"), "Teaching");
+const Learning = lazyRouteComponent(() => import("./screens/Learning"), "Learning");
 const Library = lazyRouteComponent(() => import("./screens/Library"), "Library");
 const Review = lazyRouteComponent(() => import("./screens/Review"), "Review");
 const RunDetail = lazyRouteComponent(() => import("./screens/RunDetail"), "RunDetail");
 const Integrations = lazyRouteComponent(() => import("./screens/Pages"), "Integrations");
 const Policy = lazyRouteComponent(() => import("./screens/Pages"), "Policy");
 const Settings = lazyRouteComponent(() => import("./screens/Settings"), "Settings");
+const Guide = lazyRouteComponent(() => import("./screens/Guide"), "Guide");
 const Specs = lazyRouteComponent(() => import("./screens/Pages"), "Specs");
 const PlayPage = lazyRouteComponent(() => import("./screens/Playbooks"), "PlayPage");
 const Playbooks = lazyRouteComponent(() => import("./screens/Playbooks"), "Playbooks");
@@ -30,9 +38,17 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/activity", component: MissionControl }),
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),
   createRoute({ getParentRoute: () => root, path: "/floor", component: CrewFloor }),
+  createRoute({ getParentRoute: () => root, path: "/studio", component: Studio }),
   createRoute({ getParentRoute: () => root, path: "/ventures", component: Ventures }),
   createRoute({ getParentRoute: () => root, path: "/ventures/$id", component: VenturePage }),
   createRoute({ getParentRoute: () => root, path: "/crew", component: CrewPage }),
+  createRoute({ getParentRoute: () => root, path: "/rooms", component: Rooms }),
+  createRoute({ getParentRoute: () => root, path: "/observability", component: Observability }),
+  createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
+  createRoute({ getParentRoute: () => root, path: "/developer", component: Developer }),
+  createRoute({ getParentRoute: () => root, path: "/teach", component: Teaching }),
+  createRoute({ getParentRoute: () => root, path: "/learn", component: Learning }),
+  createRoute({ getParentRoute: () => root, path: "/rooms/$id", component: Rooms }),
   createRoute({ getParentRoute: () => root, path: "/library", component: Library }),
   createRoute({ getParentRoute: () => root, path: "/playbooks", component: Playbooks }),
   createRoute({ getParentRoute: () => root, path: "/plays/$id", component: PlayPage }),
@@ -45,6 +61,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/integrations", component: Integrations }),
   createRoute({ getParentRoute: () => root, path: "/policy", component: Policy }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
+  createRoute({ getParentRoute: () => root, path: "/guide", component: Guide }),
 ];
 
 export const router = createRouter({ routeTree: root.addChildren(routes), defaultPreload: "intent" });

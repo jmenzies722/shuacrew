@@ -51,3 +51,32 @@ import Testing
     let none = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"briefing":null}"#
     #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(none.utf8)).briefing == nil)
 }
+
+@Test func nowPlayingDecodesAndOlderGatewaysStayQuiet() throws {
+    let json = #"{"running":1,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"now":{"id":"r1","title":"Ship it","who":"Eli","status":"running","updatedAt":1}}"#
+    let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+    #expect(status.now?.line == "Ship it — Eli")
+    #expect(status.now?.live == true)
+    #expect(status.now?.stoppable == true)
+    let old = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[]}"#
+    #expect(try JSONDecoder().decode(CrewStatus.self, from: Data(old.utf8)).now == nil)
+}
+
+@Test func menuBarModesPickTheBadge() throws {
+    func status(_ json: String) throws -> CrewStatus { try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8)) }
+    let base = #""running":2,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"tokensToday":386300"#
+    #expect(try status("{\(base)}").badge == "2")                                   // older gateways: attention
+    #expect(try status(#"{"menuBar":"tokens","# + base + "}").badge == "386k")
+    #expect(try status(#"{"menuBar":"off","# + base + "}").badge == nil)
+    #expect(try status(#"{"menuBar":"running","# + base + "}").badge == "2")
+    #expect(CrewStatus.compact(1_300_000) == "1.3M")
+}
+
+@Test func healthAlertsNotifyOncePerProblem() throws {
+  let json = #"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"recent":[],"reviews":[],"alerts":[{"id":"disk","level":"critical","text":"Only 3 GB free"}]}"#
+  let status = try JSONDecoder().decode(CrewStatus.self, from: Data(json.utf8))
+  #expect(status.newAlerts(since: []).map(\.id) == ["disk"])
+  #expect(status.newAlerts(since: ["disk"]).isEmpty)
+  let old = try JSONDecoder().decode(CrewStatus.self, from: Data(#"{"running":0,"awaiting":0,"reviewing":0,"approvals":[],"limited":[],"recent":[],"reviews":[]}"#.utf8))
+  #expect(old.alerts == nil && old.newAlerts(since: []).isEmpty)
+}

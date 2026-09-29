@@ -1,0 +1,66 @@
+.spark-character { position: relative; display: inline-grid; place-items: center; width: 84px; height: 84px; }
+.spark-character > svg, .spark-character > .spark-art { width: 100%; height: 100%; overflow: visible; }
+/* Chat avatars: uniform zoom on the head, never a non-square stretch of the atlas cell. */
+.spark-character.is-portrait { overflow: hidden; }
+.spark-character.is-portrait > .spark-art { transform: translateX(-11%) scale(1.45); transform-origin: 50% 28%; }
+.spark-character.is-portrait > svg { width: 145%; height: 145%; margin-top: -6%; }
+.ch-face .ch-eyes ellipse { fill: var(--ch-face, #15151a); transform-box: fill-box; transform-origin: center; animation: ch-blink 4.2s infinite; }
+.ch-spark .ch-face { display: none; }
+.ch-glint { fill: var(--ch-glint, #fff); }
+.ch-smile { fill: none; stroke: var(--ch-face, #15151a); stroke-width: 2.4; stroke-linecap: round; }
+.ch-mouth { fill: var(--ch-face, #15151a); opacity: 0; transform-box: fill-box; transform-origin: center; }
+.ch-aura { fill: var(--ch); opacity: .18; filter: blur(6px); animation: ch-aura 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.ch-orbit { fill: none; stroke: var(--ch-light); stroke-width: 1.4; opacity: .55; }
+.ch-moon { fill: var(--ch-light); animation: ch-orbit 5s linear infinite; transform-origin: 50px 52px; }
+.ch-ear { transform-box: fill-box; transform-origin: bottom center; animation: ch-ear 5s ease-in-out infinite; } .ch-ear.r { animation-delay: .4s; }
+.ch-jelly { transform-box: fill-box; transform-origin: bottom center; animation: ch-squish 2.6s ease-in-out infinite; }
+.ch-byte svg { animation: ch-float 3.2s ease-in-out infinite; }
+/* Moods */
+.mood-speaking .ch-smile { opacity: 0; } .mood-speaking .ch-mouth { opacity: 1; animation: ch-talk .26s ease-in-out infinite alternate; }
+.mood-thinking .ch-eyes { transform: translate(3px, -3px); transition: transform .3s; }
+.mood-thinking .ch-aura { animation-duration: 1s; }
+.mood-happy .ch-eyes ellipse { transform: scaleY(.35); animation: none; }
+.mood-happy svg, .mood-happy > .spark-art { animation: ch-hop .5s ease-in-out 2; }
+.mood-happy.is-portrait { animation: ch-hop .5s ease-in-out 2; }
+.mood-happy.is-portrait > svg, .mood-happy.is-portrait > .spark-art { animation: none; }
+@keyframes ch-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+@keyframes ch-talk { from { transform: scaleY(.35); } to { transform: scaleY(1.1); } }
+@keyframes ch-aura { 50% { transform: scale(1.12); opacity: .3; } }
+@keyframes ch-orbit { to { transform: rotate(360deg); } }
+@keyframes ch-ear { 0%, 88%, 100% { transform: rotate(0); } 92% { transform: rotate(-9deg); } 96% { transform: rotate(4deg); } }
+@keyframes ch-squish { 50% { transform: scale(1.04, .95); } }
+@keyframes ch-float { 50% { transform: translateY(-4px); } }
+@keyframes ch-hop { 50% { transform: translateY(-10px); } }
+@media (prefers-reduced-motion: reduce) { .spark-character, .spark-character *, .spark-character svg { animation: none !important; } }
+
+/* Moods from real events: concerned when work fails, sleepy after a long quiet stretch. */
+.mood-concerned .ch-eyes ellipse { transform: scaleY(.6) translateY(1.5px); animation: none; }
+.mood-concerned svg, .mood-concerned > .spark-art { animation: ch-worry 1.6s ease-in-out 2; filter: saturate(.75); }
+.mood-sleepy .ch-eyes ellipse { transform: scaleY(.12); animation: none; }
+.mood-sleepy svg, .mood-sleepy > .spark-art { animation: ch-breathe 4.5s ease-in-out infinite; filter: saturate(.6) brightness(.9); }
+.mood-sleepy::after { content: "z"; position: absolute; top: 2%; right: 4%; font: 700 14px/1 var(--font-ui, system-ui); color: var(--text-3, #999); animation: ch-z 3s ease-in-out infinite; pointer-events: none; }
+@keyframes ch-worry { 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+@keyframes ch-breathe { 50% { transform: scale(1.03, .97) translateY(2px); } }
+@keyframes ch-z { 0% { opacity: 0; transform: translate(0, 4px) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -14px) scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { .mood-sleepy::after { animation: none; opacity: .7; } }
+
+/* Machined shells, luminous visors, and a little body language. */
+.spark-character.is-portrait > svg.robot-art { width: 100%; height: 100%; margin: 0; }
+.robot-body { transform-box: view-box; transform-origin: 50% 75%; }
+.robot-eyes { transform-box: fill-box; transform-origin: center; animation: robot-blink 5.4s infinite; }
+.robot-head { transform-box: view-box; transform-origin: 50% 62%; }
+.robot-mouth { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.robot-thruster { transform-box: fill-box; transform-origin: top; animation: robot-jet 1.6s ease-in-out infinite; }
+.robot-arm-right { transform-box: view-box; transform-origin: 72% 65%; }
+.mood-speaking .robot-smile { opacity: 0; }
+.mood-speaking .robot-mouth { opacity: 1; animation: ch-talk .3s ease-in-out infinite alternate; }
+.mood-thinking .robot-head { transform: rotate(-6deg); }
+.mood-thinking .robot-eyes { translate: 2px -1px; }
+.mood-happy .robot-arm-right { animation: robot-wave .65s ease-in-out 3; }
+.mood-concerned .robot-head { transform: rotate(5deg); }
+.mood-sleepy .robot-eyes { transform: scaleY(.15); animation: none; }
+.mood-sleepy .robot-head { transform: rotate(-7deg); }
+@keyframes robot-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.12); } }
+@keyframes robot-wave { 50% { transform: rotate(-48deg); } }
+@keyframes robot-jet { 50% { transform: scaleY(.6); opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .robot-art * { animation: none !important; } }

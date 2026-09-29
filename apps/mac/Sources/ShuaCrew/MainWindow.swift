@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import ShuaCrewCore
 
 /// One window: native chrome and sidebar material, the screens in WebKit on top of it.
 @MainActor
@@ -8,17 +9,26 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     private let strip = DragStrip()
     private weak var material: NSVisualEffectView?
     /// The page's top bar is this tall; the traffic lights are centred in it.
-    static let titleBarHeight: CGFloat = 38
+    static let titleBarHeight: CGFloat = 48 // matches the web top bar row (Shell.tsx grid-rows-[48px_1fr])
     private let gateway: Gateway
     private let overlay = StartOverlay()
+    private let location = LocationOnce()
+    private let voiceSettings = VoiceSettings()
+    private let voiceAudio = NativeVoiceAudio()
     private static let lastPathKey = "lastPath"
+    var onNotificationSettings: (([String: Any]) -> Void)?
+    var onMobileSettings: (() -> Void)?
+    var onBuddyEnabled: ((Bool) -> Void)?
+    var onBuddyHotkey: ((String) -> Void)?
+    var onBuddyMessage: ((WKUserContentController, WKScriptMessage) -> Void)?
 
     init(gateway: Gateway) {
         self.gateway = gateway
         let config = WKWebViewConfiguration()
+        config.mediaTypesRequiringUserActionForPlayback = [] // the radio and Spark can start sound when you ask by voice
         // Mark the page before it renders so the CSS lays out for the Mac window from the first frame.
         config.userContentController.addUserScript(WKUserScript(
-            source: "document.documentElement.dataset.shell = 'mac';",
+            source: "document.documentElement.dataset.shell = 'mac'; document.documentElement.dataset.nativeVoice = '1';",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.preferences.isElementFullscreenEnabled = true
         config.writingToolsBehavior = .none // no Writing Tools badge hanging off the composer
@@ -65,6 +75,13 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             strip.heightAnchor.constraint(equalToConstant: Self.titleBarHeight),
         ])
         super.init(window: window)
+        voiceAudio.onEvent = { [weak self] body in
+            guard let data = try? JSONSerialization.data(withJSONObject: body), let json = String(data: data, encoding: .utf8) else { return }
+            self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:voiceAudio', { detail: \(json) }))")
+        }
+        voiceSettings.onSnapshot = { [weak self] json in
+            self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:voices', { detail: \(json) }))")
+        }
         window.delegate = self
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -91,6 +108,10 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 overlay.show(.failed(error.localizedDescription))
             }
         }
+    }
+
+    func reportScreenAccess(_ granted: Bool = ScreenAccess.granted()) {
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:screenAccess', { detail: { granted: \(granted) } }))")
     }
 
     /// Call into the page's bridge (`window.shuacrew`).
@@ -121,16 +142,83 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     }
 
     func windowDidResize(_ notification: Notification) { placeTrafficLights() }
+    func windowWillClose(_ notification: Notification) { voiceSettings.stop(); voiceAudio.end() }
     func windowDidExitFullScreen(_ notification: Notification) { placeTrafficLights() }
     // Full screen has no desktop behind it: the page paints its chrome solid, in the app's colour.
-    func windowWillEnterFullScreen(_ notification: Notification) { page("document.documentElement.dataset.fullscreen = '1'") }
-    func windowWillExitFullScreen(_ notification: Notification) { page("delete document.documentElement.dataset.fullscreen") }
+    func windowWillEnterFullScreen(_ notification: Notification) { page("fullscreen(true)") }
+    func windowWillExitFullScreen(_ notification: Notification) { page("fullscreen(false)") }
 
     // MARK: messages from the page
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
+        case "voiceAudio":
+            let origin = message.frameInfo.securityOrigin
+            guard let url = URL(string: "\(origin.protocol)://\(origin.host):\(origin.port)"),
+                  let command = try? VoiceAudioCommand.decode(body, mainFrame: message.frameInfo.isMainFrame, origin: url, expected: gateway.base) else { return }
+            voiceAudio.handle(command)
+        case "mobileSettings":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.protocol == gateway.base.scheme,
+                  origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            onMobileSettings?()
+        case "voiceSettings":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.protocol == gateway.base.scheme,
+                  origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            voiceSettings.handle(body)
+        case "notificationSettings":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            onNotificationSettings?(body)
+        case "saveFile":
+            // A page-initiated save always goes through the user's own Save panel; the page never picks the path.
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.protocol == gateway.base.scheme,
+                  origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let text = body["text"] as? String, text.utf8.count <= 5_000_000 else { return }
+            let name = ((body["name"] as? String) ?? "shuacrew.json").replacingOccurrences(of: "/", with: "-").prefix(120)
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = String(name)
+            panel.canCreateDirectories = true
+            guard let window else { return }
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                try? text.write(to: url, atomically: true, encoding: .utf8)
+            }
+        case "notify":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let title = body["title"] as? String else { return }
+            NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
+        case "location":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            location.request { [weak self] result in
+                let detail: String
+                switch result {
+                case .success(let c): detail = "{\"lat\": \((c.latitude * 100).rounded() / 100), \"lon\": \((c.longitude * 100).rounded() / 100)}"
+                case .failure(let e):
+                    let msg = (try? String(data: JSONEncoder().encode(e.localizedDescription), encoding: .utf8)) ?? "\"Location unavailable\""
+                    detail = "{\"error\": \(msg)}"
+                }
+                self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:location', { detail: \(detail) }))")
+            }
+        case "buddyEnabled":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let on = body["on"] as? Bool else { return }
+            onBuddyEnabled?(on)
+        case "buddyHotkey":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let combo = body["combo"] as? String else { return }
+            onBuddyHotkey?(combo)
+        case "buddyScreenAccess":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            reportScreenAccess(ScreenAccess.handle(body))
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
@@ -159,7 +247,8 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 self?.web.evaluateJavaScript("window.shuacrew && window.shuacrew.folderPicked(\(arg))")
             }
         default:
-            break
+            // Spark's panel inside the app: its screen, pointer and Mac-control messages go to Spark, which replies here.
+            if type.hasPrefix("buddy") { onBuddyMessage?(controller, message) }
         }
     }
 
@@ -173,10 +262,67 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
 
     // MARK: navigation
 
+    /// <input type="file"> (composer Attach, settings Import): WebKit asks the app to show the Open panel.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.canChooseFiles = true
+        guard let window else { completionHandler(nil); return }
+        panel.beginSheetModal(for: window) { response in completionHandler(response == .OK ? panel.urls : nil) }
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        voiceSettings.stop()
+        voiceAudio.end()
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         web.isHidden = false
         overlay.hide()
         if ProcessInfo.processInfo.environment["SHUACREW_DEBUG_HIT"] == "1" { reportHits() }
+        // SHUACREW_APP_SELFTEST='{"type":"open_app","name":"Calculator"}' at launch: the app window's Spark panel path
+        // (page → this window → Spark → back here) runs one action and logs the result. Only the launcher can set it.
+        // SHUACREW_SNAPSHOT=/path/shot.png at launch: after the page settles, save what this window's page actually
+        // looks like (optionally after SHUACREW_SNAPSHOT_JS runs, e.g. to open Spark) plus the layout of the sidebar and the
+        // window buttons, to /path/shot.json. For checking the real app without screen recording or synthetic input.
+        if let path = ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT"], path.hasSuffix(".png") { snapshot(to: path) }
+        if let spec = ProcessInfo.processInfo.environment["SHUACREW_APP_SELFTEST"], spec.hasPrefix("{") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.web.evaluateJavaScript("""
+                window.addEventListener('shuacrew:did', e => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: e.detail.ok, message: 'app window: ' + e.detail.message, output: (e.detail.output || '').slice(0, 600) }), { once: true });
+                window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDo', id: 'selftest', action: \(spec) });
+                """)
+            }
+        }
+    }
+
+    private func snapshot(to path: String) {
+        let script = ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT_JS"] ?? ""
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            if !script.isEmpty { self.web.evaluateJavaScript(script) }
+            let wait = Double(ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT_WAIT"] ?? "") ?? 1.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                guard let self, let window = self.window else { return }
+                let measure = """
+                JSON.stringify({ probe: window.__probe ?? null, attrs: Object.fromEntries([...document.documentElement.attributes].map(a => [a.name, a.value])), viewport: [innerWidth, innerHeight, devicePixelRatio], rects: [".side", ".side-brand", ".side-spark", ".side-new", ".side-scroll", ".side-foot", "header[aria-label='Top bar']", "#main", ".spark-side"].map(s => { const r = document.querySelector(s)?.getBoundingClientRect(); return [s, r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] : null]; }) })
+                """
+                self.web.evaluateJavaScript(measure) { result, _ in
+                    let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind -> String? in
+                        guard let b = window.standardWindowButton(kind) else { return nil }
+                        let f = b.convert(b.bounds, to: nil), h = window.contentView?.bounds.height ?? 0
+                        return "[\(Int(f.minX)),\(Int(h - f.maxY)),\(Int(f.width)),\(Int(f.height))]"
+                    }
+                    let json = "{\"page\":\(result as? String ?? "null"),\"windowButtons\":[\(buttons.joined(separator: ","))],\"window\":[\(Int(window.frame.width)),\(Int(window.frame.height))]}"
+                    try? json.write(toFile: path.replacingOccurrences(of: ".png", with: ".json"), atomically: true, encoding: .utf8)
+                }
+                self.web.takeSnapshot(with: nil) { image, _ in
+                    guard let image, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
+            }
+        }
     }
 
     /// For checking without clicking: which view gets a click at a few title-bar points.
@@ -198,9 +344,14 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     }
 
     /// The gateway's pages stay here; every other link opens in your browser.
+    private static let playerHosts: Set<String> = ["www.youtube-nocookie.com", "www.youtube.com", "youtube.com"]
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.cancel) }
-        if url.host == gateway.base.host && url.port == gateway.base.port || url.scheme == "about" {
+        // The radio's YouTube stations play in YouTube's own embedded player: allow that inside a frame (never as
+        // the page itself). Everything else outside the gateway opens in your browser.
+        let embeddedPlayer = action.targetFrame.map { !$0.isMainFrame } == true && Self.playerHosts.contains(url.host ?? "")
+        if url.host == gateway.base.host && url.port == gateway.base.port || url.scheme == "about" || embeddedPlayer {
             decisionHandler(.allow)
         } else {
             NSWorkspace.shared.open(url)
@@ -215,6 +366,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
 
     /// WebKit can kill a page's process under memory pressure; come back rather than go blank.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        voiceAudio.end()
         webView.reload()
     }
 }

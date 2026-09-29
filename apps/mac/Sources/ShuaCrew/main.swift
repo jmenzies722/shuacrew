@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// ShuaCrew for Mac. Closing the window doesn't stop anything: agents keep working in the
 /// gateway, and the menu-bar icon and notifications keep you in the loop.
@@ -8,11 +9,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: MainWindow!
     private var tray: Tray?
     private var hotKey: HotKey?
+    private var buddyKey: HotKey?
+    private var buddy: Buddy!
+    private var mobile: MobileBridge!
+    private var mobileWindow: MobileSettingsWindow?
     /// For headless checks: no Dock icon, no menu-bar item, never takes focus.
     private let quiet = ProcessInfo.processInfo.environment["SHUACREW_NO_ACTIVATE"] == "1"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         window = MainWindow(gateway: gateway)
+        mobile = MobileBridge(gateway: gateway)
+        window.onMobileSettings = { [weak self] in self?.showMobileSettings() }
+        buddy = Buddy(gateway: gateway)
+        buddy.onOpen = { [weak self] path in
+            NSApp.activate()
+            self?.window.navigate(path)
+        }
+        window.onBuddyEnabled = { [weak self] on in self?.buddy.setEnabled(on) }
+        window.onBuddyHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
+        buddy.onHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
+        window.onBuddyMessage = { [weak self] controller, message in self?.buddy.userContentController(controller, didReceive: message) }
+        buddy.appWeb = window.web
         NSApp.mainMenu = mainMenu()
         if quiet {
             NSApp.setActivationPolicy(.accessory)
@@ -21,11 +38,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.showWindow(nil)
             NSApp.activate()
             tray = Tray(gateway: gateway, window: window, notifications: true)
+            tray?.onAskSpark = { [weak self] in self?.buddy.open() }
+            window.onNotificationSettings = { [weak self] body in self?.tray?.notificationSettings(body) }
             // ⌥Space, anywhere: ShuaCrew comes forward with the message box ready; again, it hides.
             hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
+            // ⌃⌥Space, anywhere: Spark, your desktop buddy, ready for a question about whatever you're looking at.
+            bindBuddyKey(UserDefaults.standard.string(forKey: "buddyHotkey") ?? "ctrl-opt-space")
         }
         window.start()
         tray?.start()
+        Task {
+            // The buddy's page comes from the gateway, so it appears once the gateway answers.
+            try? await Launcher.ensureRunning(gateway)
+            if !quiet { buddy.start() }
+        }
+        Task { await mobile.start() }
+    }
+
+    // shuacrew:// links — for Shortcuts, Siri ("Run shortcut…"), Raycast, a browser bookmark:
+    //   shuacrew://ask?q=…   shuacrew://idea?text=…   shuacrew://radio/play?station=lofi%20jazz   shuacrew://radio/pause
+    //   shuacrew://open/studio   shuacrew://start-day
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleLink(_:reply:)), forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+    @objc private func handleLink(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue, let url = URL(string: text), url.scheme == "shuacrew" else { return }
+        let query = Dictionary((URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
+        let path = url.path.split(separator: "/").map(String.init)
+        switch url.host ?? "" {
+        case "ask": buddy.open(asking: query["q"] ?? query["text"])
+        case "idea": if let idea = query["text"] ?? query["q"], !idea.isEmpty { buddy.open(asking: "idea: \(idea)") }
+        case "radio": Tray.radio(gateway.base, cmd: path.first ?? "play", station: query["station"])
+        case "open":
+            let page = "/" + path.joined(separator: "/")
+            if page.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { NSApp.activate(); window.showWindow(nil); window.navigate(page) }
+        case "start-day": NSApp.activate(); window.showWindow(nil); window.navigate("/activity"); window.page("setTimeout(() => window.dispatchEvent(new Event('shuacrew:start-day')), 900)")
+        default: break
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { quiet }
@@ -35,11 +84,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        window.reportScreenAccess()
+        buddy.reportScreenAccess()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         window.rememberPath()
     }
 
     @objc private func quickAsk() { summon() }
+
+    /// Spark's shortcut, chosen in Settings → Spark. Rebinding replaces the old one at once.
+    private func bindBuddyKey(_ combo: String) {
+        let combos: [String: (UInt32, Int)] = [
+            "ctrl-opt-space": (UInt32(kVK_Space), controlKey | optionKey), "ctrl-shift-space": (UInt32(kVK_Space), controlKey | shiftKey),
+            "opt-shift-space": (UInt32(kVK_Space), optionKey | shiftKey), "ctrl-opt-s": (UInt32(kVK_ANSI_S), controlKey | optionKey),
+        ]
+        guard !quiet, let (key, mods) = combos[combo] else { return }
+        UserDefaults.standard.set(combo, forKey: "buddyHotkey")
+        buddyKey = nil
+        buddyKey = HotKey(keyCode: key, modifiers: UInt32(mods)) { [weak self] in Task { @MainActor in self?.buddy.summon() } }
+    }
 
     /// Bring the app forward, ready to type — or, if it's already in front, put it away.
     private func summon() {
@@ -49,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate()
         window.showWindow(nil)
-        window.page("window.dispatchEvent(new Event('shuacrew:compose'))")
+        window.page("compose()")
     }
 
     // MARK: menus
@@ -61,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "About ShuaCrew", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(item("Settings…", ",", #selector(go(_:)), "/settings"))
+        app.addItem(item("Mobile Settings…", "", #selector(showMobileSettings)))
         app.addItem(.separator())
         let services = NSMenu()
         app.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services
@@ -79,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ask = item("Ask the Crew", " ", #selector(quickAsk))
         ask.keyEquivalentModifierMask = [.option]
         file.addItem(ask)
+        file.addItem(item("Show Companion", "", #selector(askSpark)))
         file.addItem(.separator())
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
@@ -94,10 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         let view = submenu(main, "View")
+        // The five hubs, as in the rail. Each opens on its first tab; the tabs are one click from there.
         let screens: [(String, String, String)] = [
-            ("Sessions", "1", "/"), ("Ventures", "2", "/ventures"), ("Crew", "3", "/crew"), ("Crew Floor", "4", "/floor"),
-            ("Playbooks", "5", "/playbooks"), ("Library", "6", "/library"), ("Tools & Skills", "7", "/integrations"),
-            ("Memory", "8", "/memory"), ("Policy & Audit", "9", "/policy"),
+            ("Home", "1", "/"), ("Crew", "2", "/crew"), ("Build", "3", "/ventures"), ("Know", "4", "/library"), ("System", "5", "/integrations"),
         ]
         for (title, key, path) in screens { view.addItem(item(title, key, #selector(go(_:)), path)) }
         view.addItem(.separator())
@@ -117,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
         windowMenu.addItem(item("ShuaCrew", "0", #selector(showMain)))
+        windowMenu.addItem(item("Ask Spark", "", #selector(askSpark)))
         windowMenu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         NSApp.windowsMenu = windowMenu
 
@@ -141,6 +209,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func newRun() { window.page("launch()") }
+    @objc private func showMobileSettings() {
+        if mobileWindow == nil { mobileWindow = MobileSettingsWindow(model: mobile) }
+        mobileWindow?.showWindow(nil)
+        NSApp.activate()
+        Task { await mobile.refreshRooms() }
+    }
     @objc private func palette() { window.page("palette()") }
     @objc private func go(_ sender: NSMenuItem) { if let path = sender.representedObject as? String { window.navigate(path) } }
     @objc private func toggleTerminal() { window.page("terminal()") }
@@ -149,11 +223,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func zoomIn() { window.web.pageZoom = min(window.web.pageZoom + 0.1, 2) }
     @objc private func zoomOut() { window.web.pageZoom = max(window.web.pageZoom - 0.1, 0.6) }
     @objc private func showMain() { window.showWindow(nil) }
+    @objc private func askSpark() { buddy.summon() }
     @objc private func openLog() { NSWorkspace.shared.open(Launcher.log) }
     @objc private func shortcuts() {
         window.showWindow(nil)
-        // The page's keymap overlay opens on "?".
-        window.web.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: '?'}))")
+        window.page("shortcuts()")
     }
 }
 

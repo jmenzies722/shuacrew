@@ -68,6 +68,45 @@ describe("fork", () => {
 });
 
 describe("queued messages", () => {
+  it("recovers the edited order from disk after the gateway restarts", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "shua-queue-"));
+    const file = path.join(dir, "events.db");
+    const store = new EventStore(file);
+    const paused = new Supervisor(store, new Map([["mock", new MockRuntime()]]), { workspace: dir, concurrency: { mock: 0 } });
+    const run = paused.launch({ ask: "initial", runtime: "mock" });
+    const a = paused.followUp(run, "first");
+    const b = paused.followUp(run, "second");
+    paused.editFollowup(run, a, "revised", "first");
+    paused.reorderFollowups(run, [b, a]);
+    paused.shutdown();
+    store.close();
+    const reopened = new EventStore(file);
+    const resumed = new Supervisor(reopened, new Map([["mock", new MockRuntime()]]), { workspace: dir });
+    cleanups.push(() => { resumed.shutdown(); reopened.close(); });
+    resumed.recover();
+    await until(() => reopened.forRun(run).some((e) => e.kind === "turn.started"));
+    const turn = reopened.forRun(run).find((e) => e.kind === "turn.started");
+    expect(turn?.kind === "turn.started" && turn.body.text).toBe("second\n\nrevised");
+  });
+  it("edits and reorders pending messages without withdrawing them, then sends the saved order", async () => {
+    const { store, supervisor, app, seen } = await world(60);
+    const run = supervisor.launch({ ask: "Audit the sync path", runtime: "mock" });
+    await until(() => store.forRun(run).some((e) => e.kind === "turn.started"));
+    const a = supervisor.followUp(run, "Check retries");
+    const b = supervisor.followUp(run, "Keep it short");
+    const post = (suffix: string, payload: object) => app.inject({ method: "POST", url: `/api/runs/${run}/followups/${suffix}`, headers: { "x-shuacrew": "1" }, payload });
+    expect((await post(`${a}/edit`, { text: "Check timeouts", expectedText: "Check retries" })).statusCode).toBe(200);
+    expect((await post("reorder", { ids: [b, a] })).statusCode).toBe(200);
+    // A stale editor cannot overwrite newer text; an incomplete order cannot lose a message.
+    expect((await post(`${a}/edit`, { text: "Lost edit", expectedText: "Check retries" })).statusCode).toBe(409);
+    expect((await post("reorder", { ids: [b, b] })).statusCode).toBe(409);
+    expect((await post(`${a}/edit`, { text: "  ", expectedText: "Check timeouts" })).statusCode).toBe(400);
+    await until(() => seen.length === 2 && ["done", "reviewing"].includes(status(store, run)));
+    expect(seen[1]?.ask).toBe("Keep it short\n\nCheck timeouts");
+    expect((await post(`${a}/edit`, { text: "Too late", expectedText: "Check timeouts" })).statusCode).toBe(409);
+    expect((await post("reorder", { ids: [b, a] })).statusCode).toBe(409);
+  });
+
   it("a withdrawn message is never sent; the others are", async () => {
     const { store, supervisor } = await world(60);
     const run = supervisor.launch({ ask: "Audit the sync path", runtime: "mock" });

@@ -2,8 +2,8 @@
  * How ShuaCrew looks: a palette (surfaces and text) and an accent. "Follow system" pairs a dark
  * palette with a light one. Applied as attributes on <html>; themes.css does the rest.
  */
-export type PaletteId = "frost" | "night" | "cursor" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
-export type AccentId = "amber" | "mono" | "blue" | "green" | "coral";
+export type PaletteId = "pristine" | "frost" | "night" | "cursor" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
+export type AccentId = "iris" | "amber" | "mono" | "blue" | "green" | "coral";
 
 export interface Palette {
   id: PaletteId;
@@ -15,6 +15,7 @@ export interface Palette {
 }
 
 export const PALETTES: Palette[] = [
+  { id: "pristine", name: "Pristine", mode: "dark", blurb: "Graphite layers, hairline edges", swatch: ["#0c0c0e", "#131316", "#19191d", "#ededf0"] },
   { id: "frost", name: "Frost Black", mode: "dark", blurb: "Frosted glass on true black", swatch: ["#050506", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "#f2f2f4"] },
   { id: "night", name: "Night", mode: "dark", blurb: "Blue-black instrument panel", swatch: ["#0b0d10", "#12151a", "#181c22", "#e8eaed"] },
   { id: "cursor", name: "Cursor Black", mode: "dark", blurb: "True neutral black", swatch: ["#0a0a0a", "#111111", "#181818", "#ededed"] },
@@ -27,6 +28,7 @@ export const PALETTES: Palette[] = [
 ];
 
 export const ACCENTS: Array<{ id: AccentId; name: string; dark: string; light: string }> = [
+  { id: "iris", name: "Iris", dark: "#8e48ff", light: "#723acc" },
   { id: "amber", name: "Amber", dark: "#ffb020", light: "#b86e00" },
   { id: "mono", name: "Mono", dark: "#ededed", light: "#18181b" },
   { id: "blue", name: "Blue", dark: "#5b8cff", light: "#2f63d6" },
@@ -45,10 +47,13 @@ export interface Appearance {
   motion: "system" | "reduced" | "full";
   navigation: "icons" | "labels";
   startPage: "/" | "/floor" | "/activity" | "/ventures" | "/board";
+  sendShortcut: "enter" | "modifier-enter" | "button-only";
+  spellcheck: "on" | "off";
+  turnMap: "show" | "hide";
 }
 
 const KEY = "shuacrew.appearance";
-export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "frost", light: "daylight", accent: "amber", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/" };
+export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "pristine", light: "daylight", accent: "iris", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
 
 export function normalizeAppearance(value: unknown): Appearance {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -59,10 +64,26 @@ export function normalizeAppearance(value: unknown): Appearance {
     accent: ACCENTS.map((a) => a.id), density: ["comfortable", "compact"],
     reading: ["small", "default", "large"], motion: ["system", "reduced", "full"],
     navigation: ["icons", "labels"], startPage: ["/", "/floor", "/activity", "/ventures", "/board"],
+    sendShortcut: ["enter", "modifier-enter", "button-only"], spellcheck: ["on", "off"], turnMap: ["show", "hide"],
   };
   return Object.fromEntries(Object.entries(choices).map(([key, allowed]) => [key,
     typeof raw[key] === "string" && allowed.includes(raw[key]) ? raw[key] : DEFAULT_APPEARANCE[key as keyof Appearance],
   ])) as unknown as Appearance;
+}
+
+/**
+ * The Pristine redesign, once: a setup still on the old defaults (Frost Black, Amber) moves to Pristine and Iris.
+ * A palette or accent you chose yourself is left exactly as it is.
+ */
+export function migrateToPristine(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
+  let done = false; try { done = store.getItem("shuacrew.design") === "pristine"; } catch { /* ignore */ }
+  if (!saved || done) return a;
+  const next = { ...a };
+  if (next.dark === "frost") next.dark = "pristine";
+  if (next.palette === "frost") next.palette = "pristine";
+  if (next.accent === "amber") next.accent = "iris";
+  try { store.setItem("shuacrew.design", "pristine"); } catch { /* the move is cosmetic; never lose your settings over it */ }
+  return next;
 }
 
 export function loadAppearance(): Appearance {
@@ -73,7 +94,7 @@ export function loadAppearance(): Appearance {
     const base = normalizeAppearance(saved);
     if (!saved && legacy === "dark") base.palette = "night";
     if (!saved && legacy === "light") base.palette = "daylight";
-    return base;
+    return migrateToPristine(base, Boolean(saved));
   } catch {
     return DEFAULT_APPEARANCE;
   }

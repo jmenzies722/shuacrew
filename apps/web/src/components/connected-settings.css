@@ -1,0 +1,33 @@
+.connected-settings { display: grid; gap: 22px; }
+.connected-eyebrow { font-size: 10px; font-weight: 650; letter-spacing: .12em; color: var(--text-2); }
+.connected-hero { display: grid; grid-template-columns: 156px 1fr; align-items: center; gap: 24px; padding: 30px; border: 1px solid var(--line-strong); border-radius: 22px; background: linear-gradient(125deg, color-mix(in srgb, var(--spark-color) 10%, var(--panel)), var(--panel) 70%); }
+.connected-portrait { display: grid; place-items: center; min-height: 154px; }
+.connected-hero h2 { margin: 9px 0 12px; font-size: clamp(25px, 3vw, 35px); line-height: 1.12; letter-spacing: -.045em; font-weight: 580; }
+.connected-settings p { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.connected-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 20px; }
+.connected-actions button, .connected-section-title button { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.connected-actions .connected-primary { border-radius: 9px; padding: 9px 13px; color: var(--text); background: var(--raised); border: 1px solid var(--line-strong); }
+.connected-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.connected-settings h3 { font-size: 17px; font-weight: 550; letter-spacing: -.02em; margin: 5px 0; }
+.connected-providers { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.connected-providers > p { margin: 7px 0 17px; }
+.connected-provider-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 10px; }
+.connected-provider { text-align: left; display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--sunken); }
+.connected-provider-icon { color: var(--text-2); }
+.connected-provider strong { font-size: 13px; font-weight: 550; }
+.connected-provider-state { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2); }
+.connected-provider-state i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+.connected-provider-state i[data-ready] { background: var(--ok); }
+.connected-providers > small { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 11px; line-height: 1.5; margin-top: 17px; }
+.connected-shortcuts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.connected-shortcuts button { position: relative; display: flex; flex-direction: column; gap: 9px; padding: 20px 16px; border: 1px solid var(--line); border-radius: 14px; text-align: left; background: var(--panel); }
+.connected-shortcuts button > svg:first-child { color: var(--accent-text); margin-bottom: 7px; }
+.connected-shortcuts button > svg:last-child { position: absolute; right: 13px; top: 20px; color: var(--text-3); }
+.connected-shortcuts strong { font-weight: 550; font-size: 13px; }
+.connected-shortcuts span { font-size: 12px; line-height: 1.55; color: var(--text-2); }
+.connected-loop { display: flex; justify-content: space-between; gap: 24px; padding: 16px 2px; }
+.connected-loop > div:last-child { display: flex; flex-direction: column; justify-content: center; gap: 12px; flex-shrink: 0; }
+.connected-loop a { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--accent-text); }
+.connected-settings button:hover { border-color: var(--accent-text); color: var(--accent-text); }
+.connected-settings :is(button,a):focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 8px; }
+@container (max-width: 760px) { .connected-hero { grid-template-columns: 90px 1fr; gap: 15px; padding: 22px; } .connected-portrait { transform: scale(.75); } .connected-shortcuts { grid-template-columns: 1fr; } .connected-shortcuts button { padding: 15px; } .connected-loop { flex-direction: column; } }

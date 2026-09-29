@@ -5,6 +5,24 @@
  */
 
 /* ── Dark palettes ─────────────────────────────────────────────────────────────────────── */
+/* Pristine (default): graphite layers, hairline borders, nothing glows. Calm enough to work in all day. */
+:root[data-theme][data-palette="pristine"] {
+  /* Kiro Crew's kiro-dark: purple-tinted blacks, one violet accent. */
+  --ink: #19161d;
+  --panel: #211d25;
+  --raised: #28242e;
+  --sunken: #151218;
+  --line: #2b2631;
+  --line-strong: #352f3d;
+  --highlight: rgba(255, 255, 255, 0.04);
+  --text: #dcdadf;
+  --text-2: #b1adb8;
+  --text-3: #938f9b;
+  --idle: #5e5966;
+  --glass: rgba(25, 22, 29, 0.95);
+  --term-bg: #151218;
+  --term-head: #1c1922;
+}
 /* Frost Black: true black, surfaces are frosted glass (translucent + blurred), hairline edges. */
 :root[data-theme][data-palette="frost"] {
   --ink: #050506;
@@ -120,6 +138,8 @@
 /* ── Accents ───────────────────────────────────────────────────────────────────────────── */
 :root { --on-accent: #1a1204; }
 :root[data-theme="light"] { --on-accent: #ffffff; }
+:root[data-theme][data-accent="iris"] { --amber: #8e48ff; --amber-soft: rgba(142, 72, 255, 0.14); --on-accent: #ffffff; }
+:root[data-theme="light"][data-accent="iris"] { --amber: #723acc; --amber-soft: rgba(114, 58, 204, 0.1); --on-accent: #ffffff; }
 :root[data-theme][data-accent="mono"] { --amber: #ededed; --amber-soft: rgba(237, 237, 237, 0.12); --on-accent: #0a0a0a; }
 :root[data-theme="light"][data-accent="mono"] { --amber: #18181b; --amber-soft: rgba(24, 24, 27, 0.08); --on-accent: #ffffff; }
 :root[data-theme][data-accent="blue"] { --amber: #5b8cff; --amber-soft: rgba(91, 140, 255, 0.15); --on-accent: #ffffff; }

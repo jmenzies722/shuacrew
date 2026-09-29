@@ -1,0 +1,92 @@
+name: ShuaCrew
+options:
+  bundleIdPrefix: dev.shuacrew
+  deploymentTarget:
+    iOS: "27.0"
+packages:
+  ShuaCrewMobile:
+    path: ../../packages/apple
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_STYLE: Manual
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  ShuaCrew:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    info:
+      path: Resources/Info.plist
+      properties:
+        UIBackgroundModes: [fetch, remote-notification]
+    dependencies:
+      - package: ShuaCrewMobile
+      - target: ShuaCrewWatch
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shuacrew.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ShuaCrew
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Authenticate before allowing a specific crew action on your Mac.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+  ShuaCrewWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "27.0"
+    sources: [../watch/Sources]
+    dependencies:
+      - package: ShuaCrewMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shuacrew.ios.watchkitapp
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ShuaCrew
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: dev.shuacrew.ios
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO
+        SKIP_INSTALL: YES
+  ShuaCrewWatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    deploymentTarget: "27.0"
+    sources: [../watch/Tests]
+    dependencies:
+      - target: ShuaCrewWatch
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  ShuaCrewTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: ShuaCrew
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  ShuaCrewUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: ShuaCrew
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  ShuaCrewWatch:
+    build:
+      targets:
+        ShuaCrewWatch: all
+    test:
+      targets: [ShuaCrewWatchTests]
+  ShuaCrew:
+    build:
+      targets:
+        ShuaCrew: all
+    test:
+      targets: [ShuaCrewTests, ShuaCrewUITests]

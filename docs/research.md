@@ -30,6 +30,10 @@ ACP and package facts, checked against npm tarballs and the installed CLIs on 20
 
 ## Kiro Crew weaknesses ShuaCrew targets
 
+Historical motivation, not a current superiority claim: the [2026-09-24 comparison](research/parity-status-2026-09-24.md)
+supersedes the blanket provider-lock-in characterization below. Current Kiro Crew supports multiple
+backend paths; neither app has been benchmarked against the other here.
+
 Lock-in to kiro-cli and Kiro credits (every cron/heartbeat model call billed); poor cost visibility
 (issues #10102, #6338, #8531, #11031); no default egress control or audit UI; app permissions mostly
 advisory; heavy resource use. See the parity file §3.

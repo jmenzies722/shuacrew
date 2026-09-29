@@ -1,12 +1,17 @@
 import { Eyebrow, Panel, StatusGlyph, StatusPill, formatTokens, since } from "@shuacrew/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { decideApproval } from "../lib/api";
+import "./today.css";
 import { AgentCard } from "../components/AgentCard";
-import { policyLine, scopeRuns } from "../lib/crew";
+import { policyLine, isTopLevelWork, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
 import { newSession } from "../shell/Shell";
+import { PaneHeader } from "../components/Pane";
+import { Radar } from "lucide-react";
+import { DayHero } from "../components/DayHero";
 
 /** Home: what's running, what needs you, what just finished, what it's costing. */
 export function MissionControl() {
@@ -16,10 +21,10 @@ export function MissionControl() {
   const scoped = useMemo(() => scopeRuns(crew.runs, scope), [crew.runs, scope]);
   const runs = useMemo(() => Object.values(scoped), [scoped]);
   const live = runs
-    .filter((r) => ["running", "planning", "awaiting_approval", "paused", "queued"].includes(r.status) && !r.parent)
+    .filter((r) => ["running", "planning", "awaiting_approval", "paused", "queued"].includes(r.status) && isTopLevelWork(r, crew.runs))
     .sort((a, b) => rank(a.status) - rank(b.status) || b.updatedAt - a.updatedAt);
   const finished = runs
-    .filter((r) => ["done", "failed", "merged", "reviewing", "cancelled"].includes(r.status))
+    .filter((r) => ["done", "failed", "merged", "reviewing", "cancelled"].includes(r.status) && isTopLevelWork(r, crew.runs))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 8);
   const approvals = Object.values(crew.approvals)
@@ -35,19 +40,15 @@ export function MissionControl() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1440px] px-6 pb-10 pt-6">
-        <header className="mb-5 flex items-end gap-4">
-          <div>
-            <Eyebrow>{new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</Eyebrow>
-            <h1 className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">Today</h1>
-          </div>
-          <div className="ml-auto flex items-center gap-6 pb-1 text-[12px] text-fg-2">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
+        <DayHero />
+        <PaneHeader eyebrow="Live" icon={Radar} title="Right now" description="What needs you, what's moving, and what finished — each item opens where it came from."
+          actions={<div className="flex items-center gap-6 pb-1 text-[12px] text-fg-2">
             <Stat label="running" value={running} tone={running ? "live" : "idle"} />
             <Stat label="awaiting you" value={approvals.length} tone={approvals.length ? "wait" : "idle"} />
             <Stat label="finished today" value={finished.filter((r) => isToday(r.updatedAt)).length} tone="ok" />
             <Stat label="tokens today" value={formatTokens(crew.today.tokens)} tone="idle" />
-          </div>
-        </header>
+          </div>} />
 
         <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-5 max-[1100px]:grid-cols-1">
           <section aria-label="Live agents">
@@ -70,6 +71,8 @@ export function MissionControl() {
                 </AnimatePresence>
               </div>
             )}
+
+            <DayLanes runs={runs.filter((r) => isTopLevelWork(r, crew.runs) && isToday(r.createdAt))} members={crew.members} />
 
             <div className="mb-2.5 mt-7 flex items-center justify-between">
               <Eyebrow>Recent completions</Eyebrow>
@@ -100,17 +103,7 @@ export function MissionControl() {
                     <StatusGlyph tone="ok" /> Nothing waiting on you.
                   </div>
                 )}
-                {approvals.map((a) => (
-                  <Link key={a.id} to="/sessions/$id" params={{ id: a.run ?? "" }} className="block px-4 py-3 hover:bg-raised">
-                    <div className="flex items-center gap-2 text-[12px]">
-                      <StatusGlyph tone="wait" />
-                      <span className="text-fg">{a.tool}</span>
-                      <span className="ml-auto text-[11px] uppercase text-fg-3">{a.risk}</span>
-                    </div>
-                    <div className="mono mt-1 truncate text-[11.5px] text-fg-2">{describe(a.input)}</div>
-                    <div className="mono mt-0.5 truncate text-[11px] text-fg-3">{policyLine("ask", a.rule, a.layer)}</div>
-                  </Link>
-                ))}
+                {approvals.map((a) => <ApprovalRow key={a.id} approval={a} />)}
               </Panel>
             </div>
 
@@ -188,4 +181,44 @@ function EmptyCrew() {
       ))}
     </div>
   );
+}
+
+/** Decide right here: Allow, Deny, or open the session for the full context. */
+function ApprovalRow({ approval: a }: { approval: { id: string; run: string | null; tool: string; risk: string; input: unknown; rule: string; layer?: string } }) {
+  const [busy, setBusy] = useState(false);
+  const decide = async (allow: boolean) => { setBusy(true); try { await decideApproval(a.id, allow); } finally { setBusy(false); } };
+  return <div className="today-approval">
+    <div className="flex items-center gap-2 text-[12px]"><StatusGlyph tone="wait" /><span className="text-fg">{a.tool}</span><span className="ml-auto text-[10.5px] uppercase tracking-wide text-fg-3">{a.risk}</span></div>
+    <div className="mono mt-1 truncate text-[11.5px] text-fg-2">{describe(a.input)}</div>
+    <div className="mono mt-0.5 truncate text-[11px] text-fg-3">{policyLine("ask", a.rule, a.layer)}</div>
+    <div className="today-approval-actions">
+      <button type="button" className="is-allow" disabled={busy} onClick={() => void decide(true)}>Allow</button>
+      <button type="button" disabled={busy} onClick={() => void decide(false)}>Deny</button>
+      {a.run && <Link to="/sessions/$id" params={{ id: a.run }}>Open</Link>}
+    </div>
+  </div>;
+}
+
+/** Your day as lanes: each member's sessions laid out on today's clock, coloured by how they went. */
+function DayLanes({ runs, members }: { runs: Array<{ id: string; title: string; member?: string; runtime: string; status: string; createdAt: number; updatedAt: number }>; members: Record<string, { name: string }> }) {
+  const now = Date.now();
+  if (!runs.length) return null;
+  const start = Math.min(...runs.map((r) => r.createdAt), new Date(new Date().setHours(8, 0, 0, 0)).getTime());
+  const span = Math.max(now - start, 3_600_000);
+  const lanes = new Map<string, typeof runs>();
+  for (const r of runs) { const k = r.member ? members[r.member]?.name ?? r.runtime : r.runtime; lanes.set(k, [...(lanes.get(k) ?? []), r]); }
+  const live = (st: string) => ["running", "planning", "queued", "awaiting_approval"].includes(st);
+  const hours: number[] = []; for (let t = Math.ceil(start / 3_600_000) * 3_600_000; t <= now; t += 3_600_000 * Math.max(1, Math.round(span / 3_600_000 / 6))) hours.push(t);
+  return <section className="today-lanes" aria-label="Your day">
+    <div className="mb-2.5 flex items-center justify-between"><Eyebrow>Your day</Eyebrow><span className="text-[11px] text-fg-3">{runs.length} session{runs.length === 1 ? "" : "s"} today</span></div>
+    <div className="today-lanes-box">
+      {[...lanes.entries()].map(([who, list]) => <div key={who} className="today-lane">
+        <span className="today-lane-who">{who}</span>
+        <div className="today-lane-track">
+          {list.map((r) => { const end = live(r.status) ? now : Math.max(r.updatedAt, r.createdAt + 60_000); return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} title={`${r.title} · ${r.status}`} className={`today-bar is-${live(r.status) ? "live" : r.status}`} style={{ left: `${((r.createdAt - start) / span) * 100}%`, width: `max(6px, ${((end - r.createdAt) / span) * 100}%)` }} />; })}
+        </div>
+      </div>)}
+      <div className="today-axis">{hours.map((t) => <span key={t} style={{ left: `${((t - start) / span) * 100}%` }}>{new Date(t).toLocaleTimeString([], { hour: "numeric" })}</span>)}<span className="is-now">now</span></div>
+    </div>
+  </section>;
 }

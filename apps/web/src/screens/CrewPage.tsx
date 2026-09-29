@@ -1,3 +1,5 @@
+import { CREW_TEMPLATES } from "../lib/crew-templates";
+import { CrewPerformance } from "../components/CrewPerformance";
 import type { CrewMember, RunView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
@@ -7,6 +9,10 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { Glyph, IconPicker } from "../lib/glyphs";
+import { SHUA_PERSONA, type MemberVoice } from "@shuacrew/core/voice";
+import { VoiceCastPicker } from "../components/VoiceCastPicker";
+import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
 
 interface Runtime {
   id: string;
@@ -38,18 +44,13 @@ export function CrewPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <header className="mb-6 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Your crew</h1>
-            <p className="mt-1 max-w-[640px] text-[13.5px] leading-relaxed text-fg-2">
-              A standing team you hand work to. Each member keeps its own thread, model and lessons — and new work is routed to whoever it's for.
-            </p>
-          </div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader children={<StatStrip stats={[{ value: list.length, label: "members" }, { value: list.filter((m) => m.delegatable).length, label: "available in rooms", tone: "amber", to: "/rooms" }, { value: Object.values(runs).filter((r) => r.member && ["running", "planning"].includes(r.status)).length, label: "working now", live: Object.values(runs).some((r) => r.member && ["running", "planning"].includes(r.status)), to: "/floor" }]} />} eyebrow="Work" icon={Users} title="Your crew" description="A standing team you hand work to. Each member keeps its own thread, model and lessons — and new work is routed to whoever it's for." actions={<>
           <Button onClick={() => setEditing({ color: COLORS[list.length % COLORS.length], triggers: [] })}>
             <Plus size={14} /> New member
           </Button>
-        </header>
+          <Button variant="ghost" onClick={() => setEditing({ role: "Personal assistant", persona: SHUA_PERSONA, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "michael", speed: 1, personality: "calm" } })}>Start from Shua</Button>
+        </>} />
 
         {list.length === 0 ? (
           <StarterCta />
@@ -64,6 +65,7 @@ export function CrewPage() {
             </AnimatePresence>
           </div>
         )}
+        {list.length > 0 && <CrewPerformance members={list} runs={runs} lessons={lessons} />}
       </div>
       {editing && <MemberEditor member={editing} runtimes={runtimes} onClose={() => setEditing(null)} />}
     </div>
@@ -227,6 +229,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
 }
 
 function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMember>; runtimes: Runtime[]; onClose: () => void }) {
+  const [voice, setVoice] = useState<MemberVoice>(member.voice ?? { voiceId: "michael", speed: 1, personality: "calm" });
   const [draft, setDraft] = useState({
     id: member.id ?? "",
     name: member.name ?? "",
@@ -244,7 +247,7 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
   const set = (k: keyof typeof draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
   const save = async () => {
     try {
-      await api("/api/crew", { body: { ...draft, id: draft.id || draft.name, model: draft.model || undefined, triggers: draft.triggers.split(",").map((t) => t.trim()).filter(Boolean) } });
+      await api("/api/crew", { body: { ...draft, voice, id: draft.id || draft.name, model: draft.model || undefined, triggers: draft.triggers.split(",").map((t) => t.trim()).filter(Boolean) } });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -254,6 +257,13 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-label="Crew member">
       <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-[560px] max-w-full rounded-[16px] border border-line-strong bg-panel p-5 shadow-[0_30px_90px_rgba(0,0,0,.45)]">
         <div className="mb-4 text-[16px] font-semibold">{member.id ? `Edit ${member.name}` : "New crew member"}</div>
+        {!member.id && <div className="crew-templates" role="group" aria-label="Start from a template">
+          <span>Start from</span>
+          {CREW_TEMPLATES.map((t) => <button key={t.key} type="button" className={draft.role === t.role ? "is-on" : ""} onClick={() => {
+            setDraft((d) => ({ ...d, name: t.name, role: t.role, emoji: t.emoji, color: t.color, runtime: "claude", model: "", persona: t.persona, triggers: t.triggers.join(", "), delegatable: true }));
+            setVoice(t.voice);
+          }}>{t.role}</button>)}
+        </div>}
         <div className="grid grid-cols-2 gap-3">
           <label className="field">
             <span>Name</span>
@@ -300,9 +310,10 @@ function MemberEditor({ member, runtimes, onClose }: { member: Partial<CrewMembe
           <span>Hand it work about… (comma-separated phrases)</span>
           <input value={draft.triggers} onChange={set("triggers")} placeholder="growth, retention, funnel, cohorts" />
         </label>
-        {draft.runtime === "claude" && <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-[12px]">
+        <div className="mt-4"><VoiceCastPicker value={voice} onChange={setVoice} /><p className="mt-2 text-[11px] text-fg-3">Hear every voice in Settings → Shua companion → Personality &amp; voice. Personality adds speaking style without replacing your instructions. Playback pace also changes pitch; 1× preserves the natural voice.</p></div>
+        {["claude", "codex"].includes(draft.runtime) && <label className="mt-4 flex items-start gap-3 rounded-xl border border-line bg-sunken p-3 text-[12px]">
           <input type="checkbox" className="mt-1 accent-[var(--amber)]" checked={draft.delegatable} onChange={(e) => setDraft((d) => ({ ...d, delegatable: e.target.checked }))} />
-          <span><strong className="block font-medium">Available for delegation</strong><span className="mt-1 block text-fg-3">Claude sessions can call this member as a specialist using its persona and model. It shares the parent’s tools and approvals; its private thread and lessons stay separate. Applies next turn.</span></span>
+          <span><strong className="block font-medium">Available for delegation</strong><span className="mt-1 block text-fg-3">Crew rooms can assign this member supervised tasks using its provider, persona and model, in a separate workspace. Claude members are also available as native specialists outside rooms. Applies to new assignments.</span></span>
         </label>}
         <div className="mt-3 flex gap-2">
           {COLORS.map((c) => (

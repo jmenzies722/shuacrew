@@ -1,7 +1,8 @@
+import "./library-extra.css";
 import type { ArtifactView, KnowledgeView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { BookMarked, Code2, Copy, Database, Download, FileText, FolderOpen, Globe, Image, NotebookPen, Package, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { BookMarked, Code2, Copy, Database, Download, FileText, FolderOpen, Globe, Image, NotebookPen, Package, Plus, Search, Trash2, Upload, X, LibraryBig } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "../components/Markdown";
@@ -11,8 +12,12 @@ import { KIND } from "../lib/kinds";
 import { PublishButton } from "../components/Publish";
 import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
+import { recentlyPlayed } from "../lib/studio";
 import { isMac, pickFolder } from "../lib/native";
 import { Glyph } from "../lib/glyphs";
+import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
+import "../components/studio-desk.css";
 
 type Kind = ArtifactView["kind"];
 interface Hit {
@@ -45,6 +50,7 @@ export function Library() {
   const [adding, setAdding] = useState(false);
 
   const made = useMemo(() => Object.values(artifacts).sort((a, b) => b.updatedAt - a.updatedAt), [artifacts]);
+  const crate = useMemo(() => recentlyPlayed(made, Date.now(), 8), [made]);
   const known = useMemo(() => Object.values(knowledge).sort((a, b) => b.addedAt - a.addedAt), [knowledge]);
   const shown = kind === "all" ? made : made.filter((a) => a.kind === kind);
 
@@ -62,18 +68,9 @@ export function Library() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <header className="mb-5 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Library</h1>
-            <p className="mt-1 max-w-[640px] text-[13.5px] leading-relaxed text-fg-2">
-              What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here.
-            </p>
-          </div>
-          <Button onClick={() => setAdding(true)}>
-            <Plus size={14} /> Add knowledge
-          </Button>
-        </header>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader children={<StatStrip stats={[{ value: Object.keys(artifacts).length, label: "made by the crew" }, { value: Object.keys(knowledge).length, label: "in your knowledge" }, { value: Object.values(artifacts).filter((a) => a.createdAt > Date.now() - 7 * 86_400_000).length, label: "saved this week", tone: "ok" }]} />} eyebrow="Brain" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
+          actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
 
         <label className="lib-search">
           <Search size={15} className="text-fg-3" />
@@ -110,6 +107,20 @@ export function Library() {
                 </div>
               )}
             </div>
+            {tab === "made" && crate.length > 0 && !query && shown.length > 9 && (
+              <div className="lib-crate" aria-label="Recently played">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[.14em] text-amber">Recently played</div>
+                <div className="sd-crate">
+                  {crate.map((a) => {
+                    const K = KIND[a.kind];
+                    return <button key={a.id} type="button" className="sd-sleeve-card" onClick={() => setOpen({ type: "artifact", id: a.id })}>
+                      <span className="sd-cover" style={{ "--c": K.tone } as React.CSSProperties}>{a.kind === "image" ? <img src={`/api/library/artifacts/${a.id}/raw`} alt="" /> : <K.icon size={26} strokeWidth={1.6} />}</span>
+                      <b>{a.title}</b>
+                    </button>;
+                  })}
+                </div>
+              </div>
+            )}
             {tab === "made" ? (
               shown.length ? (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3.5">
@@ -148,7 +159,9 @@ function ArtifactCard({ artifact: a, onOpen }: { artifact: ArtifactView; onOpen:
   return (
     <button onClick={onOpen} className="art-card" style={{ "--kind": K.tone } as React.CSSProperties}>
       <div className="art-thumb">
-        {a.kind === "image" ? <img src={`/api/library/artifacts/${a.id}/raw`} alt="" loading="lazy" /> : <K.icon size={26} strokeWidth={1.6} />}
+        {a.kind === "image" ? <img src={`/api/library/artifacts/${a.id}/raw`} alt="" loading="lazy" />
+          : a.summary ? <div className="art-paper" aria-hidden="true"><b>{a.title}</b><p>{a.summary}</p></div>
+          : <K.icon size={26} strokeWidth={1.6} />}
         <span className="art-kind">{K.label}</span>
         {a.version > 1 && <span className="art-version">v{a.version}</span>}
       </div>

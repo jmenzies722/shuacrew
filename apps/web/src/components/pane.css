@@ -1,0 +1,24 @@
+.pane-header { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:22px; }
+.pane-header > div:first-child { min-width:0; }
+.pane-header h1 { margin:0; color:var(--text); font-size:26px; line-height:1.15; font-weight:650; letter-spacing:-.03em; overflow-wrap:anywhere; }
+.pane-eyebrow + h1 { margin-top:6px; }
+.pane-header p { margin:6px 0 0; color:var(--text-3); font-size:13.5px; line-height:1.55; max-width:72ch; overflow-wrap:anywhere; }
+.pane-state p { margin:8px 0 0; color:var(--text-2); font-size:var(--reading-size, 14px); line-height:1.6; max-width:65ch; overflow-wrap:anywhere; }
+.pane-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; flex-shrink:0; }
+.pane-state { padding:24px; border:1px solid var(--line); border-radius:16px; background:var(--panel); display:flex; flex-direction:column; align-items:flex-start; gap:18px; }
+.pane-state h2 { margin:0; font-size:calc(var(--reading-size, 14px) + 2px); font-weight:600; color:var(--text); }
+.pane-state-error { border-color:var(--bad); }
+.pane-state-offline { border-style:dashed; }
+.pane-source { color:var(--amber); font-size:var(--reading-size, 14px); text-decoration:none; border-radius:4px; }
+.pane-source:hover { text-decoration:underline; text-underline-offset:3px; }
+.pane-source:focus-visible, .pane-actions :focus-visible { outline:2px solid var(--amber); outline-offset:4px; }
+.pane-source-unavailable { color:var(--text-3); }
+@media (max-width:700px) { .pane-header { flex-direction:column; gap:16px; } .pane-actions { flex-shrink:1; } .pane-state { padding:18px; } }
+.pane-eyebrow { display:inline-flex; align-items:center; gap:6px; color:var(--amber); font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; }
+.pane-scroll { height:100%; overflow-y:auto; }
+.pane-body { max-width:1280px; margin:0 auto; padding:26px 32px 56px; animation:pane-in .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes pane-in { from { opacity:0; transform:translateY(6px); } }
+@media (prefers-reduced-motion:reduce) { .pane-body { animation:none; } }
+.pane-body-wide { max-width:1600px; }
+@media (max-width:700px) { .pane-body { padding:20px 16px 32px; } }
+.floor-head .pane-header { flex:1; margin-bottom:0; }

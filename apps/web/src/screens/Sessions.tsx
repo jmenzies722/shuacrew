@@ -1,4 +1,9 @@
+import "./session-chat.css";
+import { Recommendations } from "../components/Recommendations";
+import "../components/chat-composer.css";
+import { plain } from "../lib/plain";
 import type { RunView } from "@shuacrew/core/projections";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Button, Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -13,7 +18,7 @@ import {
   Folder,
   Paperclip,
   GitBranch,
-  ListChecks,
+  ListChecks, Swords,
   Plus,
   Search,
   ShieldCheck,
@@ -28,11 +33,16 @@ import {
   History,
   RefreshCw,
   Sunrise,
+  Trash2,
+  ArrowUpRight,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
-import { conversation, queued } from "../lib/conversation";
+import { conversation } from "../lib/conversation";
+import { MessageQueue } from "../components/MessageQueue";
+import { shouldSend } from "../lib/composer-keys";
+import { canRemoveSession, removeSession } from "../lib/session-removal";
 import { pauseClock, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
@@ -41,6 +51,9 @@ import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
 import { LogoMark } from "../lib/motion";
+import { DEFAULT_WORKSPACE, getWorkspace, saveWorkspace } from "../lib/workspace-prefs";
+import { getPower, savePower, usePower, type Preset } from "../lib/power";
+import { parseChatAction } from "../lib/chat-actions";
 
 interface RuntimeInfo {
   id: string;
@@ -109,7 +122,7 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  */
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
-  const [changes, setChanges] = useState(true);
+  const [changes, setChanges] = useState(false);
   useEffect(() => {
     const show = () => setChanges(true);
     window.addEventListener("shuacrew:open-file", show);
@@ -120,8 +133,8 @@ export function Sessions() {
   const loaded = useLive((s) => s.crew.head > 0);
   const id = params.id && (known || !loaded) ? params.id : undefined;
   return (
-    <div className={`grid h-full gap-2 p-2 pt-0 ${id && changes ? "grid-cols-[300px_minmax(0,1fr)_320px]" : "grid-cols-[300px_minmax(0,1fr)]"} max-[1150px]:grid-cols-[260px_minmax(0,1fr)] max-[760px]:grid-cols-1`}>
-      <SessionsPanel selected={id} />
+    <div className={`sessions-layout ${id ? "is-thread" : "is-fresh"} ${id && changes ? "has-changes" : ""}`}>
+      {id && <SessionsPanel selected={id} />}
       {id ? <Chat id={id} changes={changes} onToggleChanges={() => setChanges((v) => !v)} /> : <NewSession />}
       {id && changes && <ChangesPanel id={id} />}
     </div>
@@ -140,7 +153,7 @@ function SessionsPanel({ selected }: { selected?: string }) {
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const all = Object.values(runs)
-      .filter((r) => !r.parent)
+      .filter((r) => !r.parent && !r.labels?.some((l) => l === "buddy" || l === "learning")) // Spark chats and study sessions live in Spark and Learning
       .filter((r) => !q || `${r.title} ${r.ask} ${r.ticker} ${r.repo ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => b.updatedAt - a.updatedAt);
     const week = Date.now() - 7 * 86400_000;
@@ -202,15 +215,24 @@ function Group({ title, runs, selected, accent }: { title?: string; runs: RunVie
 }
 
 function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
+  const [removing, setRemoving] = useState(false), [removeError, setRemoveError] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const navigate = useNavigate();
+  const remove = async () => {
+    setRemoving(true); setRemoveError("");
+    try { await removeSession(run.id, run.status); setConfirmRemove(false); if (selected) await navigate({ to: "/" }); }
+    catch (error) { setRemoveError((error as Error).message); }
+    finally { setRemoving(false); }
+  };
   const limited = useLive((s) => s.crew.limited);
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
   const pause = pauseClock(run, limited);
   const member = useLive((s) => (run.member ? s.crew.members[run.member] : undefined));
   return (
-    <Link
+    <Dialog.Root open={confirmRemove} onOpenChange={open => { if (!removing) { setConfirmRemove(open); setRemoveError(""); } }}><div className="session-sidebar-row"><Link
       to="/sessions/$id"
       params={{ id: run.id }}
-      className={`relative mb-0.5 block rounded-[10px] px-2.5 py-2 transition-colors ${selected ? "bg-raised" : "hover:bg-raised/60"}`}
+      className={`relative mb-0.5 block rounded-[10px] px-2.5 py-2 pr-9 transition-colors ${selected ? "bg-raised" : "hover:bg-raised/60"}`}
       aria-current={selected ? "page" : undefined}
     >
       {selected && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-full bg-amber" />}
@@ -230,13 +252,13 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
         {run.pendingApprovals.length > 0 ? (
           <span className="text-wait">Waiting for your approval</span>
         ) : working ? (
-          <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : run.ticker || "Thinking…"}</span>
+          <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : plain(run.ticker) || "Thinking…"}</span>
         ) : run.status === "failed" ? (
           <span className="text-bad">{run.statusReason ?? "Failed"}</span>
         ) : pause ? (
           <span className="text-amber">{pause}</span>
         ) : (
-          <span className="text-fg-3">{run.ticker || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
+          <span className="text-fg-3">{plain(run.ticker) || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
@@ -246,7 +268,14 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
         {run.lessons.length > 0 && <Chip>{run.lessons.length === 1 ? "1 lesson" : `${run.lessons.length} lessons`}</Chip>}
         {run.status === "reviewing" && <Chip>review</Chip>}
       </div>
-    </Link>
+    </Link><Dialog.Trigger asChild><button className="session-remove" aria-label={`Remove chat: ${run.title}`} title={canRemoveSession(run.status) ? "Remove chat from sidebar" : "Stop this session before removing it"} disabled={removing || !canRemoveSession(run.status)}><Trash2 size={14} /></button></Dialog.Trigger></div>
+      <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm" /><Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl">
+        <Dialog.Title className="text-lg font-semibold text-fg">Remove chat?</Dialog.Title>
+        <Dialog.Description className="mt-3 text-sm leading-relaxed text-fg-2">“{run.title}” will be archived from the sidebar. Its audit history and project files are retained.</Dialog.Description>
+        {removeError && <p role="alert" className="mt-3 text-sm text-bad">{removeError}</p>}
+        <div className="mt-5 flex justify-end gap-3"><Dialog.Close asChild><Button disabled={removing}>Cancel</Button></Dialog.Close><Button disabled={removing || !canRemoveSession(run.status)} onClick={() => void remove()}>{removing ? "Removing…" : "Remove chat"}</Button></div>
+      </Dialog.Content></Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -318,16 +347,19 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
         </div>
       </header>
       <Thread items={items} working={working && scrub === null} run={run} />
+      {!replay && !run.labels.includes("buddy") && !run.labels.includes("crew-room") && <div className="shrink-0 px-4"><div className="mx-auto max-w-[var(--chat-width,820px)]"><Recommendations ask={run.ask} /></div></div>}
       {!replay && <ReviewBar run={run} />}
-      {!replay && <Queue run={run} events={events ?? []} />}
+      {!replay && !run.labels.includes("crew-room") && <MessageQueue key={run.id} run={run.id} events={events ?? []} />}
       {replay ? (
         <div className="shrink-0 px-4 pb-3 pt-1">
-          <div className="mx-auto max-w-[820px]">
-            <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} />
+          <div className="mx-auto max-w-[var(--chat-width,820px)]">
+            <ReplayBar events={events ?? []} at={scrub} onChange={setScrub} onClose={() => (setReplay(false), setScrub(null))} title={run.title} />
           </div>
         </div>
+      ) : run.labels.includes("crew-room") ? (
+        <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This is a crew-room source conversation. <Link to="/rooms/$id" params={{ id: run.labels.find(label => label.startsWith("room:"))?.slice(5) ?? "" }}>Continue in the crew room →</Link></div>
       ) : (
-        <Composer run={run} />
+        <Composer key={run.id} run={run} />
       )}
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
@@ -348,7 +380,7 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
   }, [open]);
   const archive = async () => {
     try {
-      await api(`/api/runs/${run.id}/archive`, { body: {} });
+      await removeSession(run.id, run.status);
       setOpen(false);
       navigate({ to: "/" });
     } catch (e) {
@@ -374,7 +406,7 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
             Copy session id
           </button>
           <div className="my-1 h-px bg-line" />
-          <button role="menuitem" disabled={working} onClick={() => void archive()} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={working ? "Stop it first" : undefined}>
+          <button role="menuitem" disabled={!canRemoveSession(run.status)} onClick={() => void archive()} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={!canRemoveSession(run.status) ? "Stop it first" : undefined}>
             Archive session
           </button>
           {error && <div className="px-3 pb-1.5 text-[11.5px] text-bad">{error}</div>}
@@ -411,7 +443,7 @@ function ReviewBar({ run }: { run: RunView }) {
     }
   };
   return (
-    <div className="mx-auto w-full max-w-[820px] px-4">
+    <div className="mx-auto w-full max-w-[var(--chat-width,820px)] px-4">
       <div className={`review-bar ${landed ? "is-landed" : review?.failed ? "is-failed" : ""}`}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="review-dot" />
@@ -479,37 +511,6 @@ function ReviewBar({ run }: { run: RunView }) {
   );
 }
 
-/** Messages you sent while it worked: they go with the next turn — edit or take them back until then. */
-function Queue({ run, events }: { run: RunView; events: import("@shuacrew/core/events").AnyEvent[] }) {
-  const waiting = queued(events);
-  if (!waiting.length) return null;
-  const withdraw = (id: string) => api(`/api/runs/${run.id}/followups/${id}/withdraw`, { body: {} });
-  return (
-    <div className="mx-auto w-full max-w-[820px] px-4">
-      <div className="queue">
-        <div className="queue-head">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" /> Queued — sent together when this turn ends
-        </div>
-        {waiting.map((q, i) => (
-          <div key={q.id ?? i} className="queue-item">
-            <span className="min-w-0 flex-1 truncate">{q.text}</span>
-            {q.id && (
-              <>
-                <button onClick={() => void withdraw(q.id!)?.then(() => window.dispatchEvent(new CustomEvent("shuacrew:insert", { detail: q.text })))} title="Edit (takes it back into the composer)">
-                  Edit
-                </button>
-                <button onClick={() => void withdraw(q.id!)} title="Take it back" aria-label="Withdraw message">
-                  ×
-                </button>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** How full the agent's context is: a ring that turns amber, then red, as it fills. */
 function ContextMeter({ used, limit }: { used?: number; limit?: number }) {
   if (!used || !limit) return null;
@@ -538,16 +539,19 @@ function NewSession() {
   const [terminal, setTerminal] = useTerminal();
   const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
   const ideas = [
-    { icon: CheckCircle2, text: "Review my uncommitted changes across ~/Developer and tell me what's risky" },
+    { icon: CheckCircle2, text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
     { icon: Bug, text: "Find a failing test in one of my projects and fix it" },
     { icon: Telescope, text: "Summarise what changed in my repos today" },
     { icon: Sparkles, text: "Look at my most recent project and suggest the next three things to build" },
   ];
   return (
-    <section className="sheet flex min-h-0 flex-col" aria-label="New session">
-      <div className="hero min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-center px-6 pb-[12vh] pt-10">
+    <section className="sheet hero-sheet flex min-h-0 min-w-0 flex-col" aria-label="New session">
+      <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div className="hero-stack">
+          <div className="hero-core">
           <NeedsYou />
+          {/* Your day, right under what needs you: the first thing you see in a new session. */}
+          <TodayBriefing />
           <div className="hero-mark">
             <LogoMark size={60} />
           </div>
@@ -557,12 +561,13 @@ function NewSession() {
           <div className="hero-ideas stagger">
             {ideas.map(({ icon: Icon, text }) => (
               <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea">
-                <Icon size={14} className="shrink-0 text-amber" />
+                <i className="hero-idea-icon"><Icon size={14} /></i>
                 <span className="line-clamp-2">{text}</span>
+                <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
               </button>
             ))}
           </div>
-          <TodayBriefing />
+          </div>
           <GettingStarted />
         </div>
       </div>
@@ -574,6 +579,12 @@ function NewSession() {
 // ── composer ────────────────────────────────────────────────────────────────────────────────
 
 const COMMANDS = [
+  { name: "agent", hint: "/agent Nova as Security reviewer: how they work — add a crew member", icon: Users },
+  { name: "agents", hint: "List your crew", icon: Users },
+  { name: "room", hint: "/room Launch week with @rhea @eli — open a crew room", icon: Users },
+  { name: "effort", hint: "/effort high — how hard this session thinks", icon: Zap },
+  { name: "budget", hint: "/budget 500k — daily token budget (off to clear)", icon: Zap },
+  { name: "flow", hint: "Toggle Flow mode (⌘⇧F)", icon: Zap },
   { name: "task", hint: "Plan it into steps, check each one, retry what fails", icon: ListChecks },
   { name: "learn", hint: "Teach a lesson every future run is told", icon: Sparkles },
   { name: "schedule", hint: "/schedule weekdays 9am: triage new issues", icon: Zap },
@@ -587,19 +598,30 @@ const RECENT = "shuacrew.recentRepos";
 let runtimeCache: Promise<RuntimeInfo[]> | null = null;
 const loadRuntimes = () => (runtimeCache ??= api<RuntimeInfo[]>("/api/runtimes").catch(() => ((runtimeCache = null), [])));
 
+const presetTitle = (p: Preset) => [p.runtime || "Auto agent", p.model || "auto model", p.effort || "auto effort", p.autopilot ? "Autopilot" : "Supervised", p.task ? "Task" : ""].filter(Boolean).join(" · ");
+
 function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n: number }; hero?: boolean }) {
   const navigate = useNavigate();
+  const sendShortcut = useLive((s) => s.appearance.sendShortcut);
+  const spellcheck = useLive((s) => s.appearance.spellcheck);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [task, setTask] = useState(false);
-  const [autopilot, setAutopilot] = useState(false);
+  // A new session starts from Settings → Session defaults; a follow-up inside a run never does.
+  const defaults = run ? DEFAULT_WORKSPACE : getWorkspace();
+  const [task, setTask] = useState(defaults.task);
+  // Race: the same task to Claude and Codex at once, each in its own branch — keep the better one.
+  const [race, setRace] = useState(false);
+  const [autopilot, setAutopilot] = useState(defaults.autopilot);
   const [repo, setRepo] = useState("");
-  const [runtime, setRuntime] = useState("");
-  const [model, setModel] = useState("");
-  const [effort, setEffort] = useState("");
+  const [runtime, setRuntime] = useState(defaults.runtime);
+  const [model, setModel] = useState(defaults.model);
+  const [effort, setEffort] = useState<string>(defaults.effort);
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [commandsDismissed, setCommandsDismissed] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const commandList = useRef<HTMLDivElement>(null);
   const [skills, setSkills] = useState<Array<{ name: string; status: string }>>([]);
   const [servers, setServers] = useState<Array<{ name: string }>>([]);
   const [files, setFiles] = useState<Array<{ key: string; name: string; size: number; preview?: string; done?: Attachment; failed?: string }>>([]);
@@ -608,6 +630,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const [member, setMember] = useState("");
   const [suggested, setSuggested] = useState("");
   const members = useLive((s) => s.crew.members);
+  const power = usePower();
   const picker = useRef<HTMLInputElement>(null);
   const uploading = files.some((f) => !f.done && !f.failed);
 
@@ -652,7 +675,12 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const working = run ? WORKING.has(run.status) : false;
 
   useEffect(() => {
-    void loadRuntimes().then(setRuntimes);
+    void loadRuntimes().then((list) => {
+      setRuntimes(list);
+      // A saved default agent/model that isn't available any more falls back to Auto rather than failing the send.
+      setRuntime((r) => (r && !list.some((x) => x.id === r) ? "" : r));
+      setModel((m) => (m && !list.some((x) => x.models.some((mm) => mm.id === m && !mm.unavailable)) ? "" : m));
+    });
     void api<{ skills: Array<{ name: string; status: string }> }>("/api/memory").then((m) => setSkills(m.skills.filter((s) => s.status === "accepted"))).catch(() => undefined);
     void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
     void api<{ voice: boolean; video: boolean; missing: string[] }>("/api/media").then(setMedia).catch(() => undefined);
@@ -705,17 +733,31 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const slashPrefix = /^\/(\w*)$/.exec(text.trim());
   const mention = !run ? /^@(\w*)$/.exec(text.trim()) : null;
   const named = /^\/(skill|mcp)\s+(\S*)$/.exec(text);
-  const slash = mention
+  const candidates = mention
     ? Object.values(members)
         .filter((m) => m.name.toLowerCase().startsWith(mention[1]!.toLowerCase()) || m.role.toLowerCase().startsWith(mention[1]!.toLowerCase()))
         .map((m) => ({ kind: "member" as const, name: m.id, label: `@${m.name}`, hint: m.role, icon: Users }))
     : slashPrefix && !text.includes(" ")
-    ? COMMANDS.filter((c) => c.name.startsWith(slashPrefix[1]!)).map((c) => ({ kind: "cmd" as const, name: c.name, hint: c.hint, icon: c.icon }))
+    ? [
+        ...COMMANDS.filter((c) => c.name.startsWith(slashPrefix[1]!)).map((c) => ({ kind: "cmd" as const, name: c.name, hint: c.hint, icon: c.icon })),
+        ...power.snippets.filter((sn) => sn.name.startsWith(slashPrefix[1]!)).map((sn) => ({ kind: "snippet" as const, name: sn.name, hint: sn.text, icon: Zap })),
+      ]
     : named?.[1] === "skill"
       ? skills.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "skill" as const, name: s.name, hint: "Use this skill on the next message", icon: BookOpen }))
       : named?.[1] === "mcp"
         ? servers.filter((s) => s.name.toLowerCase().startsWith(named[2]!.toLowerCase())).map((s) => ({ kind: "mcp" as const, name: s.name, hint: "Use this server on the next message", icon: Cable }))
         : [];
+  const slash = commandsDismissed ? [] : candidates;
+  const activeCommand = Math.min(slashIndex, Math.max(0, slash.length - 1));
+  useEffect(() => {
+    const list = commandList.current;
+    const row = list?.children[activeCommand] as HTMLElement | undefined;
+    if (!list || !row) return;
+    // Scroll only the tray, never the surrounding conversation or page.
+    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight)
+      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+  }, [activeCommand, slash.length]);
   const chosen = runtimes.find((r) => r.id === runtime);
   const recent = useMemo<string[]>(() => {
     try {
@@ -725,8 +767,16 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     }
   }, []);
 
-  const pick = (name: string, kind: "cmd" | "skill" | "mcp" | "member" = "cmd") => {
-    if (kind === "member") {
+  /** A preset sets the whole launch at once; the prompt you already typed is kept after its prefix. */
+  const applyPreset = (p: Preset) => {
+    setRuntime(p.runtime && runtimes.some((r) => r.id === p.runtime) ? p.runtime : "");
+    setModel(p.model); setEffort(p.effort); setAutopilot(p.autopilot); setTask(p.task);
+    if (p.prefix) setText((t) => (t.startsWith(p.prefix) ? t : p.prefix + t));
+    field.current?.focus();
+  };
+  const pick = (name: string, kind: "cmd" | "skill" | "mcp" | "member" | "snippet" = "cmd") => {
+    if (kind === "snippet") setText(power.snippets.find((sn) => sn.name === name)?.text ?? "");
+    else if (kind === "member") {
       setMember(name);
       setText("");
     } else if (kind === "skill") setText(`/skill ${name} `);
@@ -738,6 +788,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
       void cyclePermission();
       setText("");
     } else setText(`/${name} `);
+    setSlashIndex(0);
+    setCommandsDismissed(false);
     field.current?.focus();
   };
 
@@ -757,6 +809,27 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     setBusy(true);
     setError("");
     try {
+      // Instant commands: done right here, no AI call.
+      const action = parseChatAction(message);
+      if (action) {
+        if (action.kind === "error") { setError(action.message); return; }
+        if (action.kind === "agent") {
+          const m = await api<{ id: string; name: string; role: string }>("/api/crew/new", { body: action });
+          setText(""); setError(`Added ${m.name} · ${m.role}. Talk to them with @${m.id}; turn on delegation in Crew to use them in rooms.`); return;
+        }
+        if (action.kind === "agents") {
+          const list = Object.values(members);
+          setError(list.length ? list.map((m) => `@${m.id} ${m.name} · ${m.role}${m.delegatable ? " · rooms" : ""}`).join("   ") : "No crew yet — try /agent Nova as Researcher");
+          setText(""); return;
+        }
+        if (action.kind === "room") {
+          const r = await api<{ id: string }>("/api/rooms", { body: { title: action.title, coordinator: action.members[0], members: action.members } });
+          setText(""); void navigate({ to: "/rooms/$id", params: { id: r.id } }); return;
+        }
+        if (action.kind === "effort") { setEffort(action.value); setText(""); setError(`Effort for this session: ${action.value || "auto"}.`); return; }
+        if (action.kind === "budget") { saveWorkspace({ dailyTokenBudget: action.tokens }); setText(""); setError(action.tokens ? `Daily budget set to ${action.tokens.toLocaleString()} tokens.` : "Daily budget off."); return; }
+        if (action.kind === "flow") { savePower({ flow: !getPower().flow }); setText(""); return; }
+      }
       if (message.startsWith("/learn ")) {
         await api("/api/memory/lessons", { body: { text: message.slice(7), project: run?.repo ?? (repo || undefined) } });
         setText("");
@@ -777,6 +850,13 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
         return;
       }
       const common = { repo: repo || undefined, runtime: runtime || undefined, model: model || undefined };
+      if (race && !task) {
+        const tag = `race:${Date.now().toString(36)}`, short = message.split("\n")[0]!.slice(0, 60);
+        const [first] = await Promise.all((["claude", "codex"] as const).map((rt) => launchRun({ ask: message, repo: repo || undefined, runtime: rt, effort: effort || undefined, approveAll: auto, title: `Race · ${rt === "claude" ? "Claude" : "Codex"} · ${short}`, labels: [tag] })));
+        setText(""); setFiles([]); setRace(false);
+        navigate({ to: "/sessions/$id", params: { id: first!.id } });
+        return;
+      }
       const { id } = task
         ? await launchTask({ markdown: message.startsWith("#") ? message : `# ${message.split("\n")[0]}\n${message}`, ...common })
         : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto, member: member || undefined });
@@ -799,25 +879,21 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   };
 
   return (
-    <div className={hero ? "mt-7" : "shrink-0 px-4 pb-3 pt-1"}>
-      <div className={`relative mx-auto ${hero ? "" : "max-w-[820px]"}`}>
+    <div className={hero ? "mt-7 min-w-0" : "shrink-0 px-4 pb-3 pt-1"}>
+      <div className={`relative mx-auto min-w-0 ${hero ? "" : "max-w-[var(--chat-width,820px)]"}`}>
         {slash.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-[12px] border border-line-strong bg-raised shadow-[0_18px_50px_rgba(0,0,0,.35)]" role="listbox" aria-label="Commands">
-            {slash.map((c, i) => (
-              <button
-                key={c.name}
-                role="option"
-                aria-selected={i === slashIndex}
-                onMouseEnter={() => setSlashIndex(i)}
-                onClick={() => pick(c.name, c.kind)}
-                className={`flex w-full items-center gap-3 px-3.5 py-2 text-left text-[13px] ${i === slashIndex ? "bg-ink" : ""}`}
-              >
-                <c.icon size={14} className="text-amber" />
-                <span className="mono text-fg">{"label" in c ? c.label : c.kind === "cmd" ? `/${c.name}` : c.name}</span>
-                <span className="truncate text-[12px] text-fg-3">{c.hint}</span>
-              </button>
-            ))}
-          </div>
+          <section className="composer-commands" aria-label="Command suggestions">
+            <header><span>Commands <small>{slash.length}</small></span><button onClick={() => { setCommandsDismissed(true); field.current?.focus(); }} aria-label="Dismiss commands">Esc <X size={12} /></button></header>
+            <div ref={commandList} className="composer-command-list" id="session-commands" role="listbox" aria-label="Commands">
+              {slash.map((c, i) => (
+                <button key={`${c.kind}:${c.name}`} id={`session-command-${i}`} role="option" aria-selected={i === activeCommand}
+                  tabIndex={-1} onMouseDown={e => e.preventDefault()} onMouseEnter={() => setSlashIndex(i)} onClick={() => pick(c.name, c.kind)}>
+                  <c.icon size={15} /><span><b>{"label" in c ? c.label : c.kind === "cmd" || c.kind === "snippet" ? `/${c.name}` : c.name}</b><small>{c.hint}</small></span>
+                  {i === activeCommand && <kbd>↵</kbd>}
+                </button>
+              ))}
+            </div>
+          </section>
         )}
         {dropping && (
           <div className="drop-overlay" aria-hidden>
@@ -825,7 +901,12 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             Drop to attach — the agent gets the file
           </div>
         )}
-        <div className={`composer-box ${hero ? "is-hero" : ""}`}>
+        {!run && power.presets.length > 0 && (
+          <div className="preset-row" role="group" aria-label="Launch presets">
+            {power.presets.map((p) => <button key={p.id} type="button" className="preset-chip" title={presetTitle(p)} onClick={() => applyPreset(p)}><Zap size={11} />{p.label}</button>)}
+          </div>
+        )}
+        <div className={`composer-box chat-composer ${hero ? "is-hero" : ""}`}>
           {files.length > 0 && (
             <div className="mb-2.5 flex flex-wrap gap-2">
               {files.map((f) => (
@@ -882,20 +963,25 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
           })()}
           <textarea
             ref={field}
+            spellCheck={spellcheck === "on"}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
               setSlashIndex(0);
+              setCommandsDismissed(false);
             }}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+              if (e.key === "Escape" && slash.length) { e.preventDefault(); e.stopPropagation(); setCommandsDismissed(true); return; }
+              if (e.key === "Tab" && !e.shiftKey && slash.length) { e.preventDefault(); pick(slash[activeCommand]!.name, slash[activeCommand]!.kind); return; }
               if (slash.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                 e.preventDefault();
                 setSlashIndex((i) => (i + (e.key === "ArrowDown" ? 1 : slash.length - 1)) % slash.length);
                 return;
               }
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (shouldSend(e.nativeEvent, slash.length && sendShortcut !== "button-only" ? "enter" : sendShortcut)) {
                 e.preventDefault();
-                if (slash.length) pick(slash[slashIndex]!.name, slash[slashIndex]!.kind);
+                if (slash.length) pick(slash[activeCommand]!.name, slash[activeCommand]!.kind);
                 else void send();
               }
             }}
@@ -908,27 +994,23 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               }
             }}
             {...({ writingsuggestions: "false" } as object)}
-            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "Message ShuaCrew… just say what you want done  ( / for commands )"}
+            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "What do you want to build?  / for commands"}
             className="block max-h-[240px] w-full resize-none bg-transparent text-[14px] leading-relaxed text-fg outline-none placeholder:text-fg-3"
             aria-label="Message"
+            aria-controls={slash.length ? "session-commands" : undefined}
+            aria-activedescendant={slash.length ? `session-command-${activeCommand}` : undefined}
+            aria-autocomplete="list"
           />
-          <div className="mt-2 flex items-center gap-1.5">
+          <div className="composer-tools">
             <input ref={picker} type="file" multiple hidden onChange={(e) => (e.target.files && attach(e.target.files), (e.target.value = ""))} />
             <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach photos, videos, voice notes or files (or drop / paste them)" aria-label="Attach files">
               <Paperclip size={14} />
             </button>
             <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
-            {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
-            {run?.worktree && (
-              <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>
-                <GitBranch size={12} /> {run.worktree.branch}
-                {run.files.length > 0 && <span className="text-amber">· {run.files.length} changed</span>}
-              </span>
-            )}
-            {run && <ContextMeter used={run.usage.contextUsed} limit={run.usage.contextLimit} />}
+            <button className="composer-options-toggle" aria-expanded={optionsOpen} aria-controls="session-options" onClick={() => setOptionsOpen(v => !v)}>Options{race || task ? " · active" : ""} <ChevronDown size={12} /></button>
             <div className="ml-auto flex items-center gap-2">
-              {error && <span className={`text-[12px] ${/^(Learned|Scheduled)/.test(error) ? "text-ok" : "text-bad"}`}>{error}</span>}
+
               {working && !text.trim() && !files.length && run ? (
                 <button onClick={() => void cancelRun(run.id)} className="grid h-8 w-8 place-items-center rounded-full bg-raised text-fg hover:bg-line-strong" title="Stop" aria-label="Stop">
                   <CircleStop size={15} />
@@ -938,7 +1020,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   onClick={() => void send()}
                   disabled={(!text.trim() && !files.some((f) => f.done)) || busy || uploading}
                   className="grid h-8 w-8 place-items-center rounded-full bg-amber text-[var(--on-accent)] transition hover:brightness-110 disabled:bg-raised disabled:text-fg-3"
-                  title={working ? "Queue (↵)" : "Send (↵)"}
+                  title={`${working ? "Queue" : "Send"}${sendShortcut === "button-only" ? "" : ` (${sendShortcut === "enter" ? "↵" : "⌘ / Ctrl + ↵"})`}`}
                   aria-label="Send"
                 >
                   <ArrowUp size={16} strokeWidth={2.5} />
@@ -947,8 +1029,21 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             </div>
           </div>
         </div>
+        {error && <div className="composer-feedback" role="status"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss message"><X size={13} /></button></div>}
+        {optionsOpen && <div className="composer-options" id="session-options">
+            <button className="rounded-full px-2 py-1 text-[11px] text-fg-2 hover:bg-raised" title="Talk with Shua or a crew member" onClick={() => window.dispatchEvent(new CustomEvent("shuacrew:voice", { detail: { runId: run?.member ? run.id : undefined, memberId: run?.member || member || "shua", runtime: run?.runtime || runtime || undefined } }))}>Voice mode</button>
+            {!run && <Toggle on={race} onClick={() => setRace((v) => !v)} icon={<Swords size={12} />} label="Race" title="Send this to Claude and Codex at once, each in its own branch — compare and keep the better one" />}
+            {!run && <Toggle on={task} onClick={() => setTask((v) => !v)} icon={<ListChecks size={12} />} label="Task" title="Plan into steps, validate each, retry failures, checkpoint as it goes" />}
+            {run?.worktree && (
+              <span className="mono flex items-center gap-1 text-[11.5px] text-fg-3" title={run.worktree.path}>
+                <GitBranch size={12} /> {run.worktree.branch}
+                {run.files.length > 0 && <span className="text-amber">· {run.files.length} changed</span>}
+              </span>
+            )}
+            {run && <ContextMeter used={run.usage.contextUsed} limit={run.usage.contextLimit} />}
+        </div>}
         {!run && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-[12px] text-fg-3">
+          <div className="composer-meta">
             {isMac() ? (
               <button onClick={() => void chooseFolder()} className="flex items-center gap-1.5 hover:text-fg" title={repo || "Runs in ShuaCrew's own workspace"}>
                 <Folder size={12} /> {repo ? repo.split("/").pop() : "default workspace"}
@@ -956,7 +1051,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             ) : (
               <label className="flex items-center gap-1.5">
                 <Folder size={12} />
-                <input list="composer-repos" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="default workspace" className="mono w-56 bg-transparent text-[11.5px] text-fg outline-none placeholder:text-fg-3" />
+                <input list="composer-repos" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="default workspace" className="mono w-56 max-w-full min-w-0 bg-transparent text-[11.5px] text-fg outline-none placeholder:text-fg-3" />
                 <datalist id="composer-repos">
                   {recent.map((r) => (
                     <option key={r} value={r} />
@@ -978,7 +1073,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                 }}
                 options={[{ value: "", label: "Auto agent" }, ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]}
               />
-              <Select
+              {optionsOpen && <><Select
                 value={model}
                 onChange={setModel}
                 options={[
@@ -986,7 +1081,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.unavailable ? `${m.label} · ${m.unavailable}` : m.label, disabled: Boolean(m.unavailable) })),
                 ]}
               />
-              <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} />
+              <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} /></>}
             </span>
           </div>
         )}
@@ -1250,7 +1345,7 @@ function GettingStarted() {
 function TodayBriefing() {
   const briefing = useLive((s) => s.crew.briefing);
   const navigate = useNavigate();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const today = new Date();
   const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -1286,7 +1381,7 @@ function TodayBriefing() {
         </button>
       </div>
       {open && briefing.sections.length > 0 && (
-        <div className="mt-3 grid gap-3">
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 [overflow-wrap:anywhere]">
           {briefing.sections.map((section) => (
             <div key={section.title}>
               <div className="brief-title">{section.title}</div>

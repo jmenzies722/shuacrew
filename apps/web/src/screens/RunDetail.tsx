@@ -358,7 +358,7 @@ function Cost({ run }: { run: RunView }) {
       <Line label="Input tokens" value={run.usage.inputTokens.toLocaleString()} />
       <Line label="Output tokens" value={run.usage.outputTokens.toLocaleString()} />
       <Line label="Context" value={run.usage.contextUsed ? `${run.usage.contextUsed.toLocaleString()} / ${run.usage.contextLimit?.toLocaleString()}` : "—"} />
-      <Line label="Spend" value={run.usage.costUsd > 0 ? `$${run.usage.costUsd.toFixed(4)}` : "on your plan"} />
+      <Line label="Reported API cost" value={run.usage.costUsd != null ? `$${run.usage.costUsd.toFixed(4)}` : "Unknown · not subscription billing"} />
       <Line label="Tool calls" value={`${run.toolCalls} (${run.failedTools} failed)`} />
       <Line label="Started" value={since(run.createdAt)} />
       <p className="mt-4 text-[12px] leading-relaxed text-fg-3">

@@ -7,6 +7,10 @@
 import { randomBytes } from "node:crypto";
 import type { CrewState } from "@shuacrew/core";
 import type { Library } from "./library.js";
+import type { RoomCoordinator } from "./rooms.js";
+import { ROOM_TOOLS, callRoomTool } from "./room-tools.js";
+import { createCrewMember } from "./crew-create.js";
+import type { Crew } from "./crew.js";
 
 export const TOOL_SERVER = "shuacrew";
 
@@ -14,10 +18,22 @@ export const TOOL_SERVER = "shuacrew";
 export const LIBRARY_HINT = [
   "ShuaCrew library tools (the `shuacrew` MCP server):",
   "- search_library / read_library: the user's own documents and everything the crew made before. Check it before researching from scratch or asking the user something they may have written down.",
+  "- list_crew / add_crew_member: see the user's crew, and add a new member when they ask for one (it needs their approval; new members can't be delegated to until the user opts them in).",
   "- save_artifact: save each real deliverable (a report, spec, plan, landing page, copy, dataset) as an artifact with a clear title, so it lands in the user's Library. To revise one, pass its id to save a new version rather than a duplicate.",
 ].join("\n");
 
+const CREW_TOOLS = new Set(["list_crew", "add_crew_member"]);
 const TOOLS = [
+  {
+    name: "list_crew",
+    description: "List the user's crew members: id, name, role, agent, and whether they can take delegated work.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "add_crew_member",
+    description: "Add a NEW crew member when the user asks for one. The user approves this. Never changes an existing member. New members can't take delegated work until the user opts them in.",
+    inputSchema: { type: "object", properties: { name: { type: "string", description: "Short first name, e.g. Nova" }, role: { type: "string", description: "e.g. Security reviewer" }, persona: { type: "string", description: "How they work, in second person: 'You check every diff for…'" }, runtime: { type: "string", description: "Optional agent id, e.g. claude or codex" } }, required: ["name", "role", "persona"], additionalProperties: false },
+  },
   {
     name: "save_artifact",
     description:
@@ -73,6 +89,10 @@ export class ToolServer {
   constructor(
     private library: Library,
     private state: () => CrewState,
+    public rooms?: RoomCoordinator,
+    /** For list_crew / add_crew_member, and the agents a new member may use. */
+    public crew?: Crew,
+    public runtimeIds: () => string[] = () => [],
   ) {}
 
   /** One stable token per run for this gateway's life. */
@@ -110,12 +130,13 @@ export class ToolServer {
           protocolVersion: typeof m.params?.protocolVersion === "string" ? m.params.protocolVersion : "2025-06-18",
           capabilities: { tools: { listChanged: false } },
           serverInfo: { name: TOOL_SERVER, title: "ShuaCrew Library", version: "0.1.0" },
-          instructions: LIBRARY_HINT,
+          instructions: [LIBRARY_HINT, this.rooms?.hint(run)].filter(Boolean).join("\n\n"),
         });
       case "ping":
         return ok({});
       case "tools/list":
-        return ok({ tools: TOOLS });
+        // Crew tools only when a crew is attached; room tools only inside a room.
+        return ok({ tools: [...TOOLS.filter((t) => this.crew || !CREW_TOOLS.has(t.name)), ...(this.rooms?.roomFor(run) ? ROOM_TOOLS : [])] });
       case "tools/call": {
         const name = String(m.params?.name ?? "");
         const args = (m.params?.arguments ?? {}) as Record<string, unknown>;
@@ -131,8 +152,21 @@ export class ToolServer {
   }
 
   private call(name: string, args: Record<string, unknown>, run: string): string {
+    if (name.startsWith("crew_")) {
+      if (!this.rooms) throw new Error("Crew rooms unavailable");
+      return callRoomTool(this.rooms, name, args, run);
+    }
     const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : undefined);
     switch (name) {
+      case "list_crew": {
+        if (!this.crew) throw new Error("Crew unavailable");
+        return JSON.stringify(this.crew.list().map((m) => ({ id: m.id, name: m.name, role: m.role, runtime: m.runtime ?? "auto", delegatable: m.delegatable })));
+      }
+      case "add_crew_member": {
+        if (!this.crew) throw new Error("Crew unavailable");
+        const m = createCrewMember(this.crew, { name: str("name") ?? "", role: str("role"), persona: str("persona"), runtime: str("runtime") }, this.runtimeIds());
+        return `Added ${m.name} (${m.role}) to the crew as "${m.id}". The user can talk to them with @${m.id}; to let rooms delegate to ${m.name}, they turn on "Available for delegation" in Crew.`;
+      }
       case "save_artifact": {
         const view = this.state().runs[run];
         const saved = this.library.save({
@@ -141,7 +175,7 @@ export class ToolServer {
           filename: str("filename"),
           summary: str("summary"),
           id: str("id"),
-          run: view?.parent ?? run, // a subagent's work belongs to the session you see
+          run: view?.labels.includes("crew-room") ? run : view?.parent ?? run,
           member: view?.member,
         });
         return `Saved "${saved.title}" to the Library as ${saved.id} (version ${saved.version}, ${saved.kind}). The user can open it from the Library.`;

@@ -1,0 +1,804 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		27A8A1C0726488733F892649 /* ShuaCrewWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		30B2DC64B1C0A6AA77D663FC /* PhoneNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE5A820775E9BF5FA7623433 /* PhoneNotifications.swift */; };
+		3CFE4B0124D9D178C46064E4 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFCFF83093186660C1D0AA5C /* TodayView.swift */; };
+		44D3E6853CDA1603DEB18B12 /* MobileModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A42D081D1DCF32EFE38088F /* MobileModelTests.swift */; };
+		670D810815E394F41E21683F /* WatchModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8A26E6FB51E7EC63DA4C15 /* WatchModelTests.swift */; };
+		6A7D387DF7AE36FF71FA4480 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D3283703D66A9BFB44ECEB /* SettingsView.swift */; };
+		6E0494090FE27E2F9AB253D1 /* ShuaCrewWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D27A7D2FA09061C8A150F530 /* ShuaCrewWatchApp.swift */; };
+		7531069D72A58DE6C7ED4F3E /* ShuaCrewApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB17EECD4F91FAF99439190E /* ShuaCrewApp.swift */; };
+		7D60BD1ADFEB6B6F423BAFA7 /* CrewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 518EF07C6987A5237AFF5235 /* CrewView.swift */; };
+		890106C728C1A23CD17F2B75 /* ApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */; };
+		9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */; };
+		B2CF8D8F3DF039ADFAABBE8D /* ShuaCrewMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 8AEB27639D0437F84DFAC4D0 /* ShuaCrewMobile */; };
+		DC0F51F65071976D0AF7B8FE /* WatchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212EE2F56C882B15B9A10BA3 /* WatchModel.swift */; };
+		DCCDE9AAA8F86A477C4A74E9 /* CompanionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BB0BEAE4C15D865694F919 /* CompanionUITests.swift */; };
+		DD170CB355D436AC90DE99C3 /* ShuaCrewMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 8A9E27C92184F23D3BE7AEDF /* ShuaCrewMobile */; };
+		F8CA7A5BDFA537F02CE550F5 /* MobileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630FEE223256A8F1F1E23593 /* MobileModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		172A2FFBC1FE724276D24472 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7EF8ED7CCD7A0D2CC175A3F5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 826142AA58E05D541CB085EF;
+			remoteInfo = ShuaCrew;
+		};
+		1CCE569550325417199400C1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7EF8ED7CCD7A0D2CC175A3F5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8A7D070A8EDB818DFA6A4DA3;
+			remoteInfo = ShuaCrewWatch;
+		};
+		2F3EFE0FED7A6CC5F7A19F25 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7EF8ED7CCD7A0D2CC175A3F5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 826142AA58E05D541CB085EF;
+			remoteInfo = ShuaCrew;
+		};
+		81FE3969ABF737CAE5D9A799 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7EF8ED7CCD7A0D2CC175A3F5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8A7D070A8EDB818DFA6A4DA3;
+			remoteInfo = ShuaCrewWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		842181D9064C513C415CA312 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				27A8A1C0726488733F892649 /* ShuaCrewWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		19D3283703D66A9BFB44ECEB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1A42D081D1DCF32EFE38088F /* MobileModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModelTests.swift; sourceTree = "<group>"; };
+		1A8A26E6FB51E7EC63DA4C15 /* WatchModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModelTests.swift; sourceTree = "<group>"; };
+		212EE2F56C882B15B9A10BA3 /* WatchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModel.swift; sourceTree = "<group>"; };
+		2B58F80156C9C259ABB27417 /* apple */ = {isa = PBXFileReference; lastKnownFileType = folder; name = apple; path = ../../packages/apple; sourceTree = SOURCE_ROOT; };
+		42BB0BEAE4C15D865694F919 /* CompanionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionUITests.swift; sourceTree = "<group>"; };
+		498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShuaCrewWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		518EF07C6987A5237AFF5235 /* CrewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrewView.swift; sourceTree = "<group>"; };
+		630FEE223256A8F1F1E23593 /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
+		93ED7261823C9AA050E21A63 /* ShuaCrew.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ShuaCrew.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AE0B56317AD72D45321735D /* ShuaCrewUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ShuaCrewUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB17EECD4F91FAF99439190E /* ShuaCrewApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaCrewApp.swift; sourceTree = "<group>"; };
+		AD2A012F25E3B975CCAB5DEC /* ShuaCrewWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShuaCrewWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AFCFF83093186660C1D0AA5C /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalView.swift; sourceTree = "<group>"; };
+		C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppDelegate.swift; sourceTree = "<group>"; };
+		D27A7D2FA09061C8A150F530 /* ShuaCrewWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaCrewWatchApp.swift; sourceTree = "<group>"; };
+		ECA9AE331B6B0918A9D7A3BD /* ShuaCrewTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ShuaCrewTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE5A820775E9BF5FA7623433 /* PhoneNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNotifications.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		807955881DCD7CAFA60E52F5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B2CF8D8F3DF039ADFAABBE8D /* ShuaCrewMobile in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E83ADF1F12D475467D7EAFAC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DD170CB355D436AC90DE99C3 /* ShuaCrewMobile in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2E06EC56B2E22632B742D571 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */,
+				518EF07C6987A5237AFF5235 /* CrewView.swift */,
+				C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */,
+				630FEE223256A8F1F1E23593 /* MobileModel.swift */,
+				FE5A820775E9BF5FA7623433 /* PhoneNotifications.swift */,
+				19D3283703D66A9BFB44ECEB /* SettingsView.swift */,
+				AB17EECD4F91FAF99439190E /* ShuaCrewApp.swift */,
+				AFCFF83093186660C1D0AA5C /* TodayView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		33AEE9980E921801F41AD80F /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				D27A7D2FA09061C8A150F530 /* ShuaCrewWatchApp.swift */,
+				212EE2F56C882B15B9A10BA3 /* WatchModel.swift */,
+			);
+			name = Sources;
+			path = ../watch/Sources;
+			sourceTree = "<group>";
+		};
+		60C417E7794C910052CF6E00 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				42BB0BEAE4C15D865694F919 /* CompanionUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		673228804D071CF8A0E9ABFD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				93ED7261823C9AA050E21A63 /* ShuaCrew.app */,
+				ECA9AE331B6B0918A9D7A3BD /* ShuaCrewTests.xctest */,
+				9AE0B56317AD72D45321735D /* ShuaCrewUITests.xctest */,
+				498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */,
+				AD2A012F25E3B975CCAB5DEC /* ShuaCrewWatchTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6B0127AD7169F5F226E80399 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				1A42D081D1DCF32EFE38088F /* MobileModelTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		AFA485120F9C139DB20EB8F1 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				1A8A26E6FB51E7EC63DA4C15 /* WatchModelTests.swift */,
+			);
+			name = Tests;
+			path = ../watch/Tests;
+			sourceTree = "<group>";
+		};
+		B837B8BDE4AF6C9993992A17 = {
+			isa = PBXGroup;
+			children = (
+				D26C68F7185FB0990CF170E5 /* Packages */,
+				2E06EC56B2E22632B742D571 /* Sources */,
+				33AEE9980E921801F41AD80F /* Sources */,
+				6B0127AD7169F5F226E80399 /* Tests */,
+				AFA485120F9C139DB20EB8F1 /* Tests */,
+				60C417E7794C910052CF6E00 /* UITests */,
+				673228804D071CF8A0E9ABFD /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D26C68F7185FB0990CF170E5 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				2B58F80156C9C259ABB27417 /* apple */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		68E6708E0FDB7BC8DEF94263 /* ShuaCrewUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6DF9583095F15B5F8003A7C2 /* Build configuration list for PBXNativeTarget "ShuaCrewUITests" */;
+			buildPhases = (
+				69E73F4F47D78E49ED2AA0A5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				85795F6F1E4F7D2D8F458E27 /* PBXTargetDependency */,
+			);
+			name = ShuaCrewUITests;
+			packageProductDependencies = (
+			);
+			productName = ShuaCrewUITests;
+			productReference = 9AE0B56317AD72D45321735D /* ShuaCrewUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		826142AA58E05D541CB085EF /* ShuaCrew */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D2F179A72844CC32BE01D895 /* Build configuration list for PBXNativeTarget "ShuaCrew" */;
+			buildPhases = (
+				D705804D0B1FBFBD408A7E08 /* Sources */,
+				E83ADF1F12D475467D7EAFAC /* Frameworks */,
+				842181D9064C513C415CA312 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A0B296419AEAA4A487955BBE /* PBXTargetDependency */,
+			);
+			name = ShuaCrew;
+			packageProductDependencies = (
+				8A9E27C92184F23D3BE7AEDF /* ShuaCrewMobile */,
+			);
+			productName = ShuaCrew;
+			productReference = 93ED7261823C9AA050E21A63 /* ShuaCrew.app */;
+			productType = "com.apple.product-type.application";
+		};
+		846F3C37DD37EB4ED2195405 /* ShuaCrewWatchTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 604BFF11E018C6CD6C53F49C /* Build configuration list for PBXNativeTarget "ShuaCrewWatchTests" */;
+			buildPhases = (
+				1D0D0E767EF36227FC2F657B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A6175FA0F3EE8639F41B0787 /* PBXTargetDependency */,
+			);
+			name = ShuaCrewWatchTests;
+			packageProductDependencies = (
+			);
+			productName = ShuaCrewWatchTests;
+			productReference = AD2A012F25E3B975CCAB5DEC /* ShuaCrewWatchTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8A7D070A8EDB818DFA6A4DA3 /* ShuaCrewWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 03C8480B4721081244EA7592 /* Build configuration list for PBXNativeTarget "ShuaCrewWatch" */;
+			buildPhases = (
+				5821752730EC12853B1983BA /* Sources */,
+				807955881DCD7CAFA60E52F5 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShuaCrewWatch;
+			packageProductDependencies = (
+				8AEB27639D0437F84DFAC4D0 /* ShuaCrewMobile */,
+			);
+			productName = ShuaCrewWatch;
+			productReference = 498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B44D1B6148D3A0F47586045E /* ShuaCrewTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 57E73DCF5BBD01DFCF6EF839 /* Build configuration list for PBXNativeTarget "ShuaCrewTests" */;
+			buildPhases = (
+				BD50154FA79BA76A489A176E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CEA66B933967F813035C768F /* PBXTargetDependency */,
+			);
+			name = ShuaCrewTests;
+			packageProductDependencies = (
+			);
+			productName = ShuaCrewTests;
+			productReference = ECA9AE331B6B0918A9D7A3BD /* ShuaCrewTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7EF8ED7CCD7A0D2CC175A3F5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					68E6708E0FDB7BC8DEF94263 = {
+						ProvisioningStyle = Manual;
+						TestTargetID = 826142AA58E05D541CB085EF;
+					};
+					826142AA58E05D541CB085EF = {
+						ProvisioningStyle = Manual;
+					};
+					846F3C37DD37EB4ED2195405 = {
+						ProvisioningStyle = Manual;
+					};
+					8A7D070A8EDB818DFA6A4DA3 = {
+						ProvisioningStyle = Manual;
+					};
+					B44D1B6148D3A0F47586045E = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = D310D52A52FA75BF6A0D4CBC /* Build configuration list for PBXProject "ShuaCrew" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B837B8BDE4AF6C9993992A17;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2576B348C18C8CC9CD130C6B /* XCLocalSwiftPackageReference "../../packages/apple" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 673228804D071CF8A0E9ABFD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				826142AA58E05D541CB085EF /* ShuaCrew */,
+				B44D1B6148D3A0F47586045E /* ShuaCrewTests */,
+				68E6708E0FDB7BC8DEF94263 /* ShuaCrewUITests */,
+				8A7D070A8EDB818DFA6A4DA3 /* ShuaCrewWatch */,
+				846F3C37DD37EB4ED2195405 /* ShuaCrewWatchTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1D0D0E767EF36227FC2F657B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				670D810815E394F41E21683F /* WatchModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5821752730EC12853B1983BA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E0494090FE27E2F9AB253D1 /* ShuaCrewWatchApp.swift in Sources */,
+				DC0F51F65071976D0AF7B8FE /* WatchModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		69E73F4F47D78E49ED2AA0A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DCCDE9AAA8F86A477C4A74E9 /* CompanionUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BD50154FA79BA76A489A176E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				44D3E6853CDA1603DEB18B12 /* MobileModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D705804D0B1FBFBD408A7E08 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				890106C728C1A23CD17F2B75 /* ApprovalView.swift in Sources */,
+				7D60BD1ADFEB6B6F423BAFA7 /* CrewView.swift in Sources */,
+				9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */,
+				F8CA7A5BDFA537F02CE550F5 /* MobileModel.swift in Sources */,
+				30B2DC64B1C0A6AA77D663FC /* PhoneNotifications.swift in Sources */,
+				6A7D387DF7AE36FF71FA4480 /* SettingsView.swift in Sources */,
+				7531069D72A58DE6C7ED4F3E /* ShuaCrewApp.swift in Sources */,
+				3CFE4B0124D9D178C46064E4 /* TodayView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		85795F6F1E4F7D2D8F458E27 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 826142AA58E05D541CB085EF /* ShuaCrew */;
+			targetProxy = 172A2FFBC1FE724276D24472 /* PBXContainerItemProxy */;
+		};
+		A0B296419AEAA4A487955BBE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8A7D070A8EDB818DFA6A4DA3 /* ShuaCrewWatch */;
+			targetProxy = 81FE3969ABF737CAE5D9A799 /* PBXContainerItemProxy */;
+		};
+		A6175FA0F3EE8639F41B0787 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8A7D070A8EDB818DFA6A4DA3 /* ShuaCrewWatch */;
+			targetProxy = 1CCE569550325417199400C1 /* PBXContainerItemProxy */;
+		};
+		CEA66B933967F813035C768F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 826142AA58E05D541CB085EF /* ShuaCrew */;
+			targetProxy = 2F3EFE0FED7A6CC5F7A19F25 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0189C9C8F847B989B97E0AA9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ShuaCrewWatchTests;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShuaCrewWatch.app/ShuaCrewWatch";
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		3D7EB44A61410B59224072E9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		40A33894006F06ACF005E26E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ShuaCrewTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShuaCrew.app/ShuaCrew";
+			};
+			name = Debug;
+		};
+		5BF8696395870B92FE4507AA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ShuaCrew;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.shuacrew.ios;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ios.watchkitapp;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		6C8D8637B8492EBA986B493E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShuaCrew;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before allowing a specific crew action on your Mac.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		778D7B1C050792CC319FAD6B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ShuaCrew;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.shuacrew.ios;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ios.watchkitapp;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		8F11FC28FDFCE2653AEDC9E4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ShuaCrewWatchTests;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShuaCrewWatch.app/ShuaCrewWatch";
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		99A483AA4D6D4719156CD463 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShuaCrew;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before allowing a specific crew action on your Mac.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9A7A3548991AA8C39D806881 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ShuaCrewUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ShuaCrew;
+			};
+			name = Release;
+		};
+		B23585CD4A636A2BA800EA1C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ShuaCrewTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShuaCrew.app/ShuaCrew";
+			};
+			name = Release;
+		};
+		C4985E365A7A1FD32E9F7B40 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.shuacrew.ShuaCrewUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ShuaCrew;
+			};
+			name = Debug;
+		};
+		DF39828A127C16B7F81FE49A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		03C8480B4721081244EA7592 /* Build configuration list for PBXNativeTarget "ShuaCrewWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5BF8696395870B92FE4507AA /* Debug */,
+				778D7B1C050792CC319FAD6B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		57E73DCF5BBD01DFCF6EF839 /* Build configuration list for PBXNativeTarget "ShuaCrewTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				40A33894006F06ACF005E26E /* Debug */,
+				B23585CD4A636A2BA800EA1C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		604BFF11E018C6CD6C53F49C /* Build configuration list for PBXNativeTarget "ShuaCrewWatchTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0189C9C8F847B989B97E0AA9 /* Debug */,
+				8F11FC28FDFCE2653AEDC9E4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6DF9583095F15B5F8003A7C2 /* Build configuration list for PBXNativeTarget "ShuaCrewUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C4985E365A7A1FD32E9F7B40 /* Debug */,
+				9A7A3548991AA8C39D806881 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D2F179A72844CC32BE01D895 /* Build configuration list for PBXNativeTarget "ShuaCrew" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6C8D8637B8492EBA986B493E /* Debug */,
+				99A483AA4D6D4719156CD463 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D310D52A52FA75BF6A0D4CBC /* Build configuration list for PBXProject "ShuaCrew" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3D7EB44A61410B59224072E9 /* Debug */,
+				DF39828A127C16B7F81FE49A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2576B348C18C8CC9CD130C6B /* XCLocalSwiftPackageReference "../../packages/apple" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/apple;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8A9E27C92184F23D3BE7AEDF /* ShuaCrewMobile */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ShuaCrewMobile;
+		};
+		8AEB27639D0437F84DFAC4D0 /* ShuaCrewMobile */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ShuaCrewMobile;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7EF8ED7CCD7A0D2CC175A3F5 /* Project object */;
+}

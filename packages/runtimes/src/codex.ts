@@ -87,6 +87,8 @@ export class CodexTranslator {
   private items = new Map<string, Json>();
   private streamed = new Set<string>();
   private lastMessage = "";
+  private usageTotal?: { inputTokens: number; outputTokens: number; cachedInputTokens: number };
+  private usageFingerprint = "";
   turnId?: string;
 
   paths(itemId: string): string[] {
@@ -169,13 +171,31 @@ export class CodexTranslator {
       case "thread/tokenUsage/updated": {
         const last = params.tokenUsage?.last ?? {};
         const total = params.tokenUsage?.total ?? {};
+        if (this.turnId && params.turnId && params.turnId !== this.turnId) return [];
+        const valid = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+        const complete = valid(total.inputTokens) && valid(total.outputTokens) && valid(total.cachedInputTokens);
+        const prior = this.usageTotal;
+        if (complete) this.usageTotal = { inputTokens: total.inputTokens, outputTokens: total.outputTokens, cachedInputTokens: total.cachedInputTokens };
+        // Resume may report the existing thread's counters before our new turn starts.
+        if (!this.turnId) return [];
+        const fingerprint = JSON.stringify([this.turnId, total, complete ? null : last]);
+        if (fingerprint === this.usageFingerprint) return [];
+        this.usageFingerprint = fingerprint;
+        const delta = complete && prior && total.inputTokens >= prior.inputTokens && total.outputTokens >= prior.outputTokens && total.cachedInputTokens >= prior.cachedInputTokens;
+        const inputTokens = delta ? total.inputTokens - prior.inputTokens : last.inputTokens;
+        const outputTokens = delta ? total.outputTokens - prior.outputTokens : last.outputTokens;
+        const cacheTokens = delta ? total.cachedInputTokens - prior.cachedInputTokens : last.cachedInputTokens ?? 0;
+        if (!valid(inputTokens) || !valid(outputTokens) || !valid(cacheTokens)) return [];
+        if (!inputTokens && !outputTokens && !cacheTokens) return [];
         return [
           {
             type: "usage",
-            inputTokens: last.inputTokens ?? 0,
-            outputTokens: (last.outputTokens ?? 0) + (last.reasoningOutputTokens ?? 0),
-            cacheTokens: last.cachedInputTokens ?? 0,
-            contextUsed: total.totalTokens ?? undefined,
+            inputTokens,
+            // Reasoning is a subset of generated output, not an additional charge.
+            outputTokens,
+            cacheTokens,
+            accounting: delta ? "codex-delta-v1" : "codex-last-v1",
+            // Thread lifetime totals are not current context occupancy.
             contextLimit: params.tokenUsage?.modelContextWindow ?? undefined,
           },
         ];
@@ -301,7 +321,10 @@ export class CodexRuntime implements Runtime {
         approvalPolicy: "untrusted",
         sandbox: "workspace-write",
         developerInstructions: run.system,
-        ...(run.mcpServers && !Array.isArray(run.mcpServers) && Object.keys(run.mcpServers).length ? { config: { mcp_servers: run.mcpServers } } : {}),
+        config: {
+          ...(run.mcpServers && !Array.isArray(run.mcpServers) && Object.keys(run.mcpServers).length ? { mcp_servers: run.mcpServers } : {}),
+          ...(run.disableNativeAgents ? { features: { multi_agent: false, multi_agent_v2: false } } : {}),
+        },
       };
       const thread = threadId ? await peer.request("thread/resume", { threadId, ...overrides }) : await peer.request("thread/start", overrides);
       threadId = String(thread.thread?.id ?? threadId);

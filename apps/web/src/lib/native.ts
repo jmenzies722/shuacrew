@@ -2,10 +2,63 @@
  * The Mac app's side of the bridge. In a browser none of this exists and every call is a no-op,
  * so the page works the same in both.
  */
-type Message = { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string };
+type Message = { type: "saveFile"; name: string; text: string } | { type: "pickFolder" } | { type: "noDrag"; rects: number[][] } | { type: "composeEmail"; subject: string; body: string; to?: string } | { type: "notificationSettings"; requestId: string; preferences?: NativeNotificationPreferences } | { type: "voiceSettings"; requestId: string; action: "read" | "save" | "preview" | "stop"; preferences?: NativeVoicePreferences };
+
+export interface NativeVoicePreferences { voiceID: string; speed: number }
+export interface NativeVoiceSnapshot {
+  requestId: string;
+  preferences: NativeVoicePreferences;
+  voices: Array<{ id: string; name: string; language: string; gender: string; quality: number }>;
+  selectedID?: string;
+  speaking: boolean;
+  error?: string;
+}
+
+export function voiceSettings(action: "read" | "save" | "preview" | "stop" = "read", preferences?: NativeVoicePreferences): string | null {
+  const native = handler();
+  if (!native) return null;
+  const requestId = crypto.randomUUID();
+  native.postMessage({ type: "voiceSettings", requestId, action, preferences });
+  return requestId;
+}
+
+export interface NativeNotificationPreferences {
+  enabled: boolean;
+  approvals: boolean;
+  completions: boolean;
+  reviews: boolean;
+  briefings: boolean;
+  sounds: boolean;
+  quietHours: boolean;
+  quietStart: number;
+  quietEnd: number;
+}
+
+/** Reading never prompts; only explicitly enabling notifications asks macOS for permission. */
+export function notificationSettings(preferences?: NativeNotificationPreferences): string | null {
+  const native = handler();
+  if (!native) return null;
+  const requestId = crypto.randomUUID();
+  native.postMessage({ type: "notificationSettings", requestId, preferences });
+  return requestId;
+}
+
+/** A refresh is not an acknowledgement of a pending write/permission prompt. */
+export function settleNotificationRequest(pending: string | null, responseId: string, nativeBusy: boolean) {
+  const next = pending === responseId ? null : pending;
+  return { pending: next, busy: next !== null || nativeBusy };
+}
 
 interface Handler {
-  postMessage(message: Message): void;
+  postMessage(message: Message | { type: "mobileSettings" }): void;
+}
+
+/** Opens a native window only; no key, credential or pairing authority crosses WebKit. */
+export function openMobileSettings(): boolean {
+  const native = handler();
+  if (!native) return false;
+  native.postMessage({ type: "mobileSettings" });
+  return true;
 }
 
 const handler = (): Handler | undefined =>
@@ -64,4 +117,36 @@ export function composeEmail(subject: string, body: string, to = "") {
   const native = handler();
   if (native) return native.postMessage({ type: "composeEmail", subject, body, to });
   window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0, 1800))}`;
+}
+
+/** Save text to a file the user chooses. The Mac app shows its Save panel; a browser downloads it. */
+export function saveTextFile(name: string, text: string, type = "application/json") {
+  const native = handler();
+  if (native) { native.postMessage({ type: "saveFile", name, text }); return; }
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/** A native macOS notification (Mac app); in a browser, the Notification API if you've allowed it. */
+export function notifyNative(title: string, body = "") {
+  const native = handler();
+  if (native) { native.postMessage({ type: "notify", title, body } as never); return; }
+  try { if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body }); } catch { /* ignore */ }
+}
+/** Your location once, from macOS Location (Mac app) or the browser — rounded to ~1 km. */
+export function requestLocation(timeoutMs = 20_000): Promise<{ lat: number; lon: number }> {
+  return new Promise((resolve, reject) => {
+    const native = handler();
+    if (native) {
+      const t = setTimeout(() => { window.removeEventListener("shuacrew:location", on as EventListener); reject(new Error("Location timed out.")); }, timeoutMs);
+      const on = (e: CustomEvent<{ lat?: number; lon?: number; error?: string }>) => {
+        clearTimeout(t); window.removeEventListener("shuacrew:location", on as EventListener);
+        if (typeof e.detail.lat === "number" && typeof e.detail.lon === "number") resolve({ lat: e.detail.lat, lon: e.detail.lon }); else reject(new Error(e.detail.error ?? "Location unavailable."));
+      };
+      window.addEventListener("shuacrew:location", on as EventListener);
+      native.postMessage({ type: "location" } as never); return;
+    }
+    if (!navigator.geolocation) { reject(new Error("Location isn't available here.")); return; }
+    navigator.geolocation.getCurrentPosition((p) => resolve({ lat: Math.round(p.coords.latitude * 100) / 100, lon: Math.round(p.coords.longitude * 100) / 100 }), (e) => reject(new Error(e.message)), { timeout: timeoutMs, maximumAge: 3_600_000 });
+  });
 }

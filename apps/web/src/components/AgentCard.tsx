@@ -1,3 +1,5 @@
+import { plain } from "../lib/plain";
+import { Check, X } from "lucide-react";
 import type { RunView } from "@shuacrew/core/projections";
 import { Chip, Gauge, StatusPill, formatTokens, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
@@ -40,7 +42,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
 
         {!compact && (
           <div className="mono mt-3 h-[34px] overflow-hidden text-[12px] leading-[17px] text-fg-2" aria-live="off">
-            {run.ticker ? <span className="line-clamp-2">{run.ticker}</span> : <span className="text-fg-3">{run.status === "queued" ? "Waiting for a free slot…" : run.statusReason ?? "—"}</span>}
+            {run.ticker ? <span className="line-clamp-2">{plain(run.ticker)}</span> : <span className="text-fg-3">{run.status === "queued" ? "Waiting for a free slot…" : run.statusReason ?? "—"}</span>}
           </div>
         )}
 
@@ -60,7 +62,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
           {subagents > 0 && <Chip mono>{subagents} subagents</Chip>}
           {run.checks.length > 0 && (
             <Chip tone={run.checks[run.checks.length - 1]?.passed ? "ok" : "bad"} mono>
-              {run.checks[run.checks.length - 1]?.passed ? "✓" : "✗"} checks
+              {run.checks[run.checks.length - 1]?.passed ? <Check size={11} className="inline" /> : <X size={11} className="inline" />} checks
             </Chip>
           )}
           {run.files.length > 0 && <Chip mono>{run.files.length} files</Chip>}
@@ -68,7 +70,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
             <Gauge used={run.usage.contextUsed} limit={run.usage.contextLimit} />
             <span className="mono text-[11px] tabular-nums text-fg-2" title="Tokens used by this run">
               {formatTokens(tokens)}
-              {run.usage.costUsd > 0 && <> · ${run.usage.costUsd.toFixed(2)}</>}
+              {run.usage.costUsd != null && <> · ${run.usage.costUsd.toFixed(2)} reported</>}
             </span>
             <span className="text-[11px] text-fg-3">{since(run.updatedAt)}</span>
           </span>

@@ -18,12 +18,14 @@ import {
   Bot,
   Check,
   ChevronRight,
+  ClipboardCopy,
   Copy,
   CornerDownLeft,
   Eraser,
   Folder,
   GitBranch,
   History,
+  House,
   Loader2,
   MessageSquarePlus,
   Plus,
@@ -32,7 +34,9 @@ import {
   Sparkles,
   SquareSplitHorizontal,
   SquareTerminal,
+  Star,
   TerminalSquare,
+  Trash2,
   Wand2,
   X,
 } from "lucide-react";
@@ -41,6 +45,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PALETTE } from "../lib/ansi";
 import { api, followUp, launchRun } from "../lib/api";
 import { conversation } from "../lib/conversation";
+import { repoName } from "../lib/crew";
 import { useLive } from "../lib/live";
 
 interface Where {
@@ -92,6 +97,7 @@ function themeFromPalette() {
     selectionInactiveBackground: `${accent}24`,
     scrollbarSliderBackground: "rgba(255, 255, 255, 0.10)",
     scrollbarSliderHoverBackground: "rgba(255, 255, 255, 0.18)",
+    overviewRulerBorder: "transparent", // xterm's default is a white line down the right edge
     black: PALETTE[0], red: PALETTE[1], green: PALETTE[2], yellow: PALETTE[3], blue: PALETTE[4], magenta: PALETTE[5], cyan: PALETTE[6], white: PALETTE[7],
     brightBlack: PALETTE[8], brightRed: PALETTE[9], brightGreen: PALETTE[10], brightYellow: PALETTE[11], brightBlue: PALETTE[12], brightMagenta: PALETTE[13], brightCyan: PALETTE[14], brightWhite: PALETTE[15],
   };
@@ -104,6 +110,41 @@ const took = (b: Block) => {
 };
 const home = (p: string) => p.replace(/^\/Users\/[^/]+/, "~");
 
+/** Commands you keep: saved from history or from English-to-command, kept on this Mac. */
+interface Snippet { id: string; command: string; label?: string; savedAt: number }
+const SNIPPETS_KEY = "shuacrew.terminalSnippets";
+const readSnippets = (): Snippet[] => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SNIPPETS_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((x) => x && typeof x.command === "string") : [];
+  } catch {
+    return [];
+  }
+};
+function useSnippets() {
+  const [list, setList] = useState<Snippet[]>(readSnippets);
+  useEffect(() => {
+    const sync = () => setList(readSnippets());
+    window.addEventListener("shuacrew:snippets", sync);
+    return () => window.removeEventListener("shuacrew:snippets", sync);
+  }, []);
+  const write = (next: Snippet[]) => {
+    try {
+      localStorage.setItem(SNIPPETS_KEY, JSON.stringify(next));
+    } catch {
+      /* storage blocked: keep them for this visit */
+    }
+    setList(next);
+    window.dispatchEvent(new Event("shuacrew:snippets"));
+  };
+  return {
+    list,
+    has: (command: string) => list.some((x) => x.command === command),
+    save: (command: string) => !list.some((x) => x.command === command) && write([{ id: `${Date.now()}`, command, savedAt: Date.now() }, ...list]),
+    remove: (command: string) => write(list.filter((x) => x.command !== command)),
+  };
+}
+
 export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?: string }; onClose: () => void; full?: boolean }) {
   const [terms, setTerms] = useState<TerminalInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -113,6 +154,9 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
   const [blocks, setBlocks] = useState<Record<string, Block[]>>({});
   const [where, setWhere] = useState<Record<string, Where>>({});
   const [side, setSide] = useState(Boolean(full));
+  const [panel, setPanel] = useState<"history" | "snippets">("history");
+  const [picking, setPicking] = useState(false);
+  const runs = useLive((s) => s.crew.runs);
   const [searching, setSearching] = useState(false);
   const [fontSize, setFontSize] = useState(() => {
     try {
@@ -125,8 +169,8 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
   const key = scope.run ?? "home";
   const target = focused && (focused === active || focused === split) ? focused : active;
 
-  const open = async (): Promise<TerminalInfo> => {
-    const created = await api<TerminalInfo>("/api/terminals", { body: { run: scope.run } });
+  const open = async (cwd?: string): Promise<TerminalInfo> => {
+    const created = await api<TerminalInfo>("/api/terminals", { body: { run: scope.run, cwd } });
     setTerms((t) => [...t, created]);
     return created;
   };
@@ -149,6 +193,7 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
 
   // ⌘F search, ⌘+/⌘- size — only while you're in the terminal.
   const box = useRef<HTMLDivElement>(null);
+  const shortcut = useRef({ newHere: () => undefined as void, split: () => undefined as void });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!box.current?.contains(document.activeElement)) return;
@@ -156,6 +201,10 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
       if (e.metaKey && (e.key === "=" || e.key === "+")) (e.preventDefault(), setFontSize((s) => Math.min(20, s + 1)));
       if (e.metaKey && e.key === "-") (e.preventDefault(), setFontSize((s) => Math.max(9, s - 1)));
       if (e.metaKey && e.key === "0") (e.preventDefault(), setFontSize(12.5));
+      // ⌘T new terminal here, ⌘D split, ⌘⇧H the side panel (⌘W stays the window's).
+      if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === "t") (e.preventDefault(), e.stopPropagation(), shortcut.current.newHere());
+      if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === "d") (e.preventDefault(), e.stopPropagation(), shortcut.current.split());
+      if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "h") (e.preventDefault(), e.stopPropagation(), setSide((v) => !v));
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -223,12 +272,21 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
   const history = target && target !== AGENT ? (blocks[target] ?? []) : [];
   const last = [...history].reverse().find((b) => b.exit !== undefined);
   const running = history.at(-1) && history.at(-1)!.exit === undefined ? history.at(-1) : undefined;
+  const newIn = (cwd?: string) => void open(cwd).then((t) => setActive(t.id));
+  shortcut.current = { newHere: () => newIn(here?.cwd), split: () => void toggleSplit() };
+  // Where a new terminal can open: your project repos and the folders you've worked in lately.
+  const folders = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of Object.values(runs)) if (r.repo) seen.set(r.repo, repoName(r.repo));
+    for (const list of Object.values(blocks)) for (const b of list.slice(-40)) if (b.cwd && home(b.cwd) !== "~" && !seen.has(b.cwd)) seen.set(b.cwd, home(b.cwd).split("/").pop() || "~");
+    return [...seen].slice(0, 12);
+  }, [runs, blocks]);
 
   return (
     <div className="terminal-drawer" ref={box}>
       <div className="terminal-bar">
         <SquareTerminal size={14} className="text-[var(--term-fg)] opacity-70" />
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Terminals">
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Terminals">
           {scope.run && (
             <div role="tab" aria-selected={active === AGENT} className={`terminal-tab ${active === AGENT ? "is-active" : ""}`} onClick={() => setActive(AGENT)} title="What the agent is running, live">
               <Bot size={12} />
@@ -237,8 +295,9 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
           )}
           {terms.map((t) => (
             <div key={t.id} role="tab" aria-selected={t.id === active || t.id === split} className={`terminal-tab ${t.id === active || t.id === split ? "is-active" : ""}`} onClick={() => (t.id !== split ? setActive(t.id) : setFocused(t.id))}>
-              <span className={`h-1.5 w-1.5 rounded-full ${exited[t.id] !== undefined || t.exited !== undefined ? "bg-fg-3" : "bg-ok"}`} />
+              <span className={`terminal-tab-dot ${exited[t.id] !== undefined || t.exited !== undefined ? "is-off" : ""}`} />
               <span className="mono truncate">{home(where[t.id]?.cwd ?? t.cwd).split("/").pop() || "~"}</span>
+              {where[t.id]?.branch && <span className="terminal-tab-branch mono truncate"><GitBranch size={10} />{where[t.id]!.branch}</span>}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -251,11 +310,34 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
               </button>
             </div>
           ))}
-          <button onClick={() => void open().then((t) => setActive(t.id))} className="terminal-action" title="New terminal" aria-label="New terminal">
+        </div>
+        <div className="term-new">
+          <button onClick={() => newIn(here?.cwd)} className="terminal-action" title="New terminal here (⌘T)" aria-label="New terminal">
             <Plus size={14} />
           </button>
+          <button onClick={() => setPicking((v) => !v)} className={`terminal-action term-new-more ${picking ? "is-on" : ""}`} title="New terminal in a folder" aria-label="New terminal in a folder" aria-expanded={picking}>
+            <Folder size={13} />
+          </button>
+          <AnimatePresence>
+            {picking && (
+              <motion.div className="term-folders" role="menu" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} onMouseLeave={() => setPicking(false)}>
+                <div className="term-folders-head">Open a terminal in</div>
+                <button role="menuitem" onClick={() => (setPicking(false), newIn(undefined))}>
+                  <House size={13} /> <span>Home</span> <small className="mono">~</small>
+                </button>
+                {folders.map(([path, name]) => (
+                  <button key={path} role="menuitem" onClick={() => (setPicking(false), newIn(path))} title={path}>
+                    <Folder size={13} /> <span>{name}</span> <small className="mono">{home(path)}</small>
+                  </button>
+                ))}
+                {!folders.length && <p>Projects you work on with the crew show up here.</p>}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        <button className={`terminal-action ${split ? "is-on" : ""}`} title={split ? "One pane" : "Split side by side"} aria-label="Split" onClick={() => void toggleSplit()}>
+        <span className="flex-1" />
+        <div className="term-tools">
+        <button className={`terminal-action ${split ? "is-on" : ""}`} title={split ? "One pane (⌘D)" : "Split side by side (⌘D)"} aria-label="Split" onClick={() => void toggleSplit()}>
           <SquareSplitHorizontal size={14} />
         </button>
         <button className="terminal-action" title="Search (⌘F)" aria-label="Search" onClick={() => setSearching(true)}>
@@ -275,9 +357,10 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
         <button className="terminal-action" title="Clear" aria-label="Clear" onClick={() => current?.term.clear()}>
           <Eraser size={14} />
         </button>
-        <button className={`terminal-action ${side ? "is-on" : ""}`} title="Command history" aria-label="Command history" onClick={() => setSide((v) => !v)}>
+        <button className={`terminal-action ${side ? "is-on" : ""}`} title="History and snippets (⌘⇧H)" aria-label="History and snippets" onClick={() => setSide((v) => !v)}>
           <History size={14} />
         </button>
+        </div>
         {!full && (
           <button className="terminal-action" title="Hide (shells keep running) — ⌃`" aria-label="Hide terminal" onClick={onClose}>
             <X size={15} />
@@ -318,7 +401,21 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
         <AnimatePresence initial={false}>
           {side && target && target !== AGENT && (
             <motion.aside className="term-side" initial={{ width: 0, opacity: 0 }} animate={{ width: 300, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
-              <HistoryList terminal={target} blocks={history} onJump={(b) => jump(target, b)} onRun={(c) => run(c)} run={scope.run} />
+              <div className="flex h-full min-w-[300px] flex-col">
+                <div className="term-side-tabs" role="tablist" aria-label="Side panel">
+                  <button role="tab" aria-selected={panel === "history"} className={panel === "history" ? "is-on" : ""} onClick={() => setPanel("history")}>
+                    <History size={12} /> History <em>{history.length}</em>
+                  </button>
+                  <button role="tab" aria-selected={panel === "snippets"} className={panel === "snippets" ? "is-on" : ""} onClick={() => setPanel("snippets")}>
+                    <Star size={12} /> Snippets
+                  </button>
+                </div>
+                {panel === "history" ? (
+                  <HistoryList terminal={target} blocks={history} onJump={(b) => jump(target, b)} onRun={(c) => run(c)} run={scope.run} />
+                ) : (
+                  <SnippetList onRun={(c, go) => run(c, go)} />
+                )}
+              </div>
             </motion.aside>
           )}
         </AnimatePresence>
@@ -326,21 +423,21 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
 
       {active !== AGENT && (
         <div className="term-status">
-          <span className="flex min-w-0 items-center gap-1.5" title={here?.cwd}>
+          <span className="term-chip min-w-0" title={here?.cwd}>
             <Folder size={11} /> <span className="mono truncate">{here ? home(here.cwd) : "…"}</span>
           </span>
           {here?.branch && (
-            <span className="flex items-center gap-1.5">
+            <span className="term-chip">
               <GitBranch size={11} /> <span className="mono">{here.branch}</span>
             </span>
           )}
           <span className="flex-1" />
           {running ? (
-            <span className="flex items-center gap-1.5 text-[var(--term-fg)]">
+            <span className="term-chip is-running">
               <Loader2 size={11} className="animate-spin" /> <span className="mono max-w-[240px] truncate">{running.command}</span>
             </span>
           ) : last ? (
-            <span className={`flex items-center gap-1.5 ${last.exit === 0 ? "text-ok" : "text-bad"}`}>
+            <span className={`term-chip ${last.exit === 0 ? "is-ok" : "is-bad"}`}>
               {last.exit === 0 ? <Check size={11} /> : <X size={11} />}
               <span className="mono">{last.exit === 0 ? took(last) : `exit ${last.exit} · ${took(last)}`}</span>
             </span>
@@ -375,6 +472,15 @@ function HistoryList({ terminal, blocks, onJump, onRun, run }: { terminal: strin
   const navigate = useNavigate();
   const [copied, setCopied] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [filter, setFilter] = useState("");
+  const [copiedOut, setCopiedOut] = useState<number | null>(null);
+  const snippets = useSnippets();
+  const copyOutput = async (b: Block) => {
+    const { output } = await api<{ output: string }>(`/api/terminals/${terminal}/blocks/${b.id}`);
+    await navigator.clipboard.writeText(output.trimEnd()).catch(() => undefined);
+    setCopiedOut(b.id);
+    setTimeout(() => setCopiedOut(null), 1000);
+  };
   const hand = async (b: Block, why: "explain" | "fix") => {
     setBusy(b.id);
     try {
@@ -392,14 +498,18 @@ function HistoryList({ terminal, blocks, onJump, onRun, run }: { terminal: strin
       setBusy(null);
     }
   };
-  const list = [...blocks].reverse();
+  const q = filter.trim().toLowerCase();
+  const list = [...blocks].reverse().filter((b) => !q || b.command.toLowerCase().includes(q) || b.cwd.toLowerCase().includes(q));
   return (
-    <div className="flex h-full min-w-[300px] flex-col">
-      <div className="term-side-head">
-        <History size={12} /> History <span className="ml-auto opacity-60">{blocks.length}</span>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <label className="term-filter">
+        <Search size={12} />
+        <input id="term-history-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter commands" aria-label="Filter commands" />
+        {filter && <button onClick={() => setFilter("")} aria-label="Clear filter"><X size={11} /></button>}
+      </label>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-        {!list.length && <div className="p-4 text-[12px] leading-relaxed text-[var(--term-dim)]">Commands you run show up here with how they went — click one to jump to it.</div>}
+        {!blocks.length && <div className="term-empty">Commands you run show up here with how they went. Click one to jump to it; a failed one gets a Fix button.</div>}
+        {blocks.length > 0 && !list.length && <div className="term-empty">Nothing matches “{filter}”.</div>}
         {list.map((b) => (
           <div key={b.id} className={`term-block ${b.exit === undefined ? "is-running" : b.exit === 0 ? "is-ok" : "is-bad"}`}>
             <button className="flex w-full min-w-0 items-start gap-2 text-left" onClick={() => onJump(b)} title="Jump to it">
@@ -420,6 +530,14 @@ function HistoryList({ terminal, blocks, onJump, onRun, run }: { terminal: strin
               <button title="Run it again" aria-label="Run it again" onClick={() => onRun(b.command)}>
                 <RotateCcw size={11} />
               </button>
+              <button className={snippets.has(b.command) ? "is-saved" : ""} title={snippets.has(b.command) ? "Saved to snippets" : "Save as a snippet"} aria-label="Save as a snippet" onClick={() => (snippets.has(b.command) ? snippets.remove(b.command) : snippets.save(b.command))}>
+                <Star size={11} />
+              </button>
+              {b.exit !== undefined && (
+                <button title="Copy the output" aria-label="Copy the output" onClick={() => void copyOutput(b)}>
+                  {copiedOut === b.id ? <Check size={11} /> : <ClipboardCopy size={11} />}
+                </button>
+              )}
               {b.exit !== undefined && (
                 <button title="Explain with the crew" aria-label="Explain" onClick={() => void hand(b, "explain")} disabled={busy === b.id}>
                   <Sparkles size={11} />
@@ -434,6 +552,42 @@ function HistoryList({ terminal, blocks, onJump, onRun, run }: { terminal: strin
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Saved commands: one click runs it here, or put it at the prompt to edit first. */
+function SnippetList({ onRun }: { onRun: (command: string, execute: boolean) => void }) {
+  const snippets = useSnippets();
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      {!snippets.list.length && (
+        <div className="term-empty">
+          Save commands you reach for often. Use the <Star size={11} className="inline" /> on any command in History, or <b>Save</b> on a command written from English.
+        </div>
+      )}
+      {snippets.list.map((x) => (
+        <div key={x.id} className="term-block term-snippet">
+          <button className="flex w-full min-w-0 items-start gap-2 text-left" onClick={() => onRun(x.command, false)} title="Put it at the prompt">
+            <span className="term-block-icon is-star"><Star size={11} /></span>
+            <span className="mono line-clamp-3 min-w-0 flex-1 break-all text-[12px] text-[var(--term-fg)]">{x.command}</span>
+          </button>
+          <div className="term-block-actions">
+            <button className="is-run" title="Run it" aria-label="Run it" onClick={() => onRun(x.command, true)}>
+              <CornerDownLeft size={11} /> Run
+            </button>
+            <button title="Put it at the prompt to edit" aria-label="Insert" onClick={() => onRun(x.command, false)}>
+              Insert
+            </button>
+            <button title="Copy" aria-label="Copy" onClick={() => void navigator.clipboard.writeText(x.command).catch(() => undefined)}>
+              <Copy size={11} />
+            </button>
+            <button title="Remove" aria-label="Remove snippet" onClick={() => snippets.remove(x.command)}>
+              <Trash2 size={11} />
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -488,6 +642,7 @@ function AskBar({ run, cwd, branch, last, onRun, context, full }: { run?: string
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const navigate = useNavigate();
   const field = useRef<HTMLInputElement>(null);
+  const snippets = useSnippets();
 
   const ask = async (question: string) => {
     const screen = context();
@@ -540,6 +695,9 @@ function AskBar({ run, cwd, branch, last, onRun, context, full }: { run?: string
             <button onClick={() => accept(false)} title="Put it at the prompt to edit (⇥)">
               Insert
             </button>
+            <button onClick={() => snippets.save(suggestion)} title={snippets.has(suggestion) ? "Saved to snippets" : "Save as a snippet"} className={snippets.has(suggestion) ? "is-saved" : ""}>
+              <Star size={11} /> {snippets.has(suggestion) ? "Saved" : "Save"}
+            </button>
             <button onClick={() => void navigator.clipboard.writeText(suggestion)} title="Copy" aria-label="Copy">
               <Copy size={11} />
             </button>
@@ -559,6 +717,7 @@ function AskBar({ run, cwd, branch, last, onRun, context, full }: { run?: string
           </button>
         </div>
         <input
+          id="term-ask"
           ref={field}
           value={text}
           onChange={(e) => (setText(e.target.value), setError(""))}
@@ -591,7 +750,7 @@ function AskBar({ run, cwd, branch, last, onRun, context, full }: { run?: string
             </button>
           </>
         ) : (
-          <span className="mono text-[10.5px] text-[var(--term-dim)]">↵ to write it</span>
+          <span className="term-hint"><kbd>↵</kbd> write it</span>
         )}
       </div>
     </div>

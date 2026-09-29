@@ -1,0 +1,101 @@
+/* Crew Floor stage — depth, glass and light. Only transform/opacity animate (GPU). */
+.stage { position:relative; isolation:isolate; margin-bottom:18px; border-radius:26px; overflow:hidden; flex-shrink:0;
+  background:radial-gradient(140% 100% at 50% 110%, color-mix(in srgb, var(--amber) 9%, transparent), transparent 55%), radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, var(--panel) 95%, transparent), var(--ink) 70%);
+  box-shadow:inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent), 0 30px 80px rgba(0,0,0,.45); }
+.floor-pods > .stage { flex-shrink:0; }
+
+.stage-aurora { position:absolute; inset:-20%; z-index:-1; filter:blur(60px); opacity:.55; pointer-events:none; }
+.stage-aurora i { position:absolute; width:46%; height:46%; border-radius:50%; will-change:transform; }
+.stage-aurora i:nth-child(1) { left:8%; top:20%; background:color-mix(in srgb, var(--amber) 22%, transparent); animation:aurora-a 24s ease-in-out infinite alternate; }
+.stage-aurora i:nth-child(2) { right:6%; top:10%; background:rgba(122,162,247,.16); animation:aurora-b 30s ease-in-out infinite alternate; }
+.stage-aurora i:nth-child(3) { left:34%; bottom:0; background:rgba(187,154,247,.12); animation:aurora-a 36s ease-in-out infinite alternate-reverse; }
+.stage.is-live .stage-aurora { opacity:.8; }
+
+/* The floor: a lit plane in perspective with concentric rings. */
+.stage-plane { position:absolute; left:50%; top:57%; width:86%; aspect-ratio:1; transform:translate(-50%,-50%) perspective(1100px) rotateX(71deg); pointer-events:none; }
+.stage-plane span { position:absolute; inset:0; border-radius:50%; border:1px solid color-mix(in srgb, var(--text) 9%, transparent); }
+.stage-plane span:nth-child(1) { background:radial-gradient(circle, color-mix(in srgb, var(--amber) 14%, transparent), transparent 62%), repeating-radial-gradient(circle, transparent 0 38px, color-mix(in srgb, var(--text) 4%, transparent) 38px 39px); box-shadow:0 0 120px color-mix(in srgb, var(--amber) 10%, transparent); }
+.stage-plane span:nth-child(2) { inset:22%; border-color:color-mix(in srgb, var(--amber) 22%, transparent); }
+.stage-plane span:nth-child(3) { inset:40%; border-style:dashed; border-color:color-mix(in srgb, var(--text) 14%, transparent); animation:stage-spin 60s linear infinite; }
+.stage.is-live .stage-plane span:nth-child(2) { animation:ring-pulse 3.2s ease-in-out infinite; }
+
+.stage-head { position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px 0; flex-wrap:wrap; }
+.stage-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.stage-chip { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px; font-size:11.5px; font-variant-numeric:tabular-nums; color:var(--text-3);
+  background:color-mix(in srgb, var(--panel) 55%, transparent); backdrop-filter:blur(14px) saturate(1.4); -webkit-backdrop-filter:blur(14px) saturate(1.4); box-shadow:inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent); }
+.stage-chip i { width:7px; height:7px; border-radius:50%; background:var(--text-3); }
+.stage-chip.is-ok { color:var(--ok); } .stage-chip.is-ok i { background:var(--ok); box-shadow:0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); animation:stage-blink 1.6s ease-in-out infinite; }
+.stage-chip.is-violet { color:#c4b5fd; } .stage-chip.is-wait { color:var(--wait); }
+.stage-legend { display:flex; gap:14px; font-size:11px; color:var(--text-3); }
+.stage-legend li { display:inline-flex; align-items:center; gap:6px; } .stage-legend i { width:18px; height:2px; border-radius:2px; }
+.stage-legend .is-session { background:linear-gradient(90deg, var(--amber), transparent); } .stage-legend .is-delegation { background:linear-gradient(90deg, #bb9af7, transparent); }
+
+.stage-canvas { position:relative; height:clamp(380px, 44vw, 500px); }
+.stage-canvas > svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+.stage-edge.is-live .stage-beam { stroke-dasharray:2 10; animation:stage-flow .9s linear infinite; }
+
+/* Members: glass spheres standing on the floor. */
+.stage-node { --c:var(--amber); --s:1; position:absolute; transform:translate(-50%,-62%) scale(var(--s)); display:flex; flex-direction:column; align-items:center; gap:6px; min-width:96px;
+  animation:node-in .7s cubic-bezier(.2,.9,.3,1.2) var(--d) both; transition:opacity .35s, filter .35s; }
+.stage-node:not(:disabled) { cursor:pointer; }
+.stage-node:focus-visible { outline:none; } .stage-node:focus-visible .stage-orb { outline:2px solid var(--amber); outline-offset:5px; }
+.stage-orb { position:relative; display:grid; place-items:center; width:58px; height:58px; border-radius:50%; color:#fff; transition:transform .35s cubic-bezier(.2,.9,.3,1.3), box-shadow .35s;
+  background:radial-gradient(circle at 32% 26%, color-mix(in srgb, #fff 55%, var(--c)) 0%, color-mix(in srgb, var(--c) 85%, #fff 5%) 22%, color-mix(in srgb, var(--c) 55%, #000) 70%, color-mix(in srgb, var(--c) 30%, #000) 100%);
+  box-shadow:inset 0 -6px 14px rgba(0,0,0,.45), inset 0 2px 3px color-mix(in srgb, #fff 45%, transparent), 0 0 0 1px color-mix(in srgb, var(--c) 50%, transparent), 0 12px 28px rgba(0,0,0,.5); }
+.stage-orb::before { content:""; position:absolute; left:18%; top:10%; width:42%; height:26%; border-radius:50%; background:radial-gradient(closest-side, rgba(255,255,255,.75), transparent); filter:blur(1px); pointer-events:none; }
+.stage-glyph { position:relative; display:grid; place-items:center; filter:drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+.stage-glyph b { font-size:19px; font-weight:700; }
+.stage-shadow { position:absolute; top:52px; left:50%; width:62px; height:14px; transform:translateX(-50%); border-radius:50%; background:radial-gradient(closest-side, rgba(0,0,0,.6), transparent); filter:blur(3px); pointer-events:none; transition:transform .35s, opacity .35s; }
+.stage-node.is-working .stage-shadow { background:radial-gradient(closest-side, color-mix(in srgb, var(--c) 55%, transparent), transparent); }
+.stage-node:not(:disabled):hover .stage-orb { transform:translateY(-6px) scale(1.06); }
+.stage-node:not(:disabled):hover .stage-shadow { transform:translateX(-50%) scale(.82); opacity:.7; }
+
+.stage-node.is-you .stage-orb { width:70px; height:70px; color:var(--text);
+  background:radial-gradient(circle at 32% 26%, color-mix(in srgb, #fff 30%, var(--raised)), var(--raised) 45%, var(--ink) 100%);
+  box-shadow:inset 0 -8px 16px rgba(0,0,0,.5), inset 0 2px 3px rgba(255,255,255,.2), 0 0 0 1px var(--line-strong), 0 0 0 10px color-mix(in srgb, var(--amber) 7%, transparent), 0 0 60px color-mix(in srgb, var(--amber) 16%, transparent); }
+.stage-node.is-you .stage-shadow { top:62px; width:80px; }
+.stage-node.is-idle { opacity:.5; filter:saturate(.55); } .stage-node.is-idle:hover { opacity:.9; filter:none; }
+.stage-node.is-working .stage-orb { animation:bob 3.2s ease-in-out infinite; box-shadow:inset 0 -6px 14px rgba(0,0,0,.4), inset 0 2px 3px rgba(255,255,255,.5), 0 0 0 1px color-mix(in srgb, var(--c) 70%, transparent), 0 0 38px color-mix(in srgb, var(--c) 55%, transparent), 0 12px 28px rgba(0,0,0,.5); }
+.stage-node.is-working .stage-orb::after { content:""; position:absolute; inset:-7px; border-radius:50%; background:conic-gradient(from 0deg, var(--c), transparent 35%, transparent 65%, var(--c));
+  -webkit-mask:radial-gradient(closest-side, transparent 86%, #000 88%); mask:radial-gradient(closest-side, transparent 86%, #000 88%); animation:stage-spin 1.8s linear infinite; }
+.stage-node.is-waiting .stage-orb { box-shadow:inset 0 -6px 14px rgba(0,0,0,.4), 0 0 0 2px var(--wait), 0 0 0 8px color-mix(in srgb, var(--wait) 18%, transparent), 0 0 40px color-mix(in srgb, var(--wait) 45%, transparent); animation:breathe 2s ease-in-out infinite; }
+.stage-node.is-recent .stage-orb { box-shadow:inset 0 -6px 14px rgba(0,0,0,.45), inset 0 2px 3px rgba(255,255,255,.4), 0 0 0 1px color-mix(in srgb, var(--ok) 55%, transparent), 0 0 22px color-mix(in srgb, var(--ok) 25%, transparent), 0 12px 28px rgba(0,0,0,.5); }
+
+.stage-name { margin-top:8px; font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; text-shadow:0 1px 8px rgba(0,0,0,.8); }
+.stage-role { margin-top:-5px; font-size:10.5px; color:var(--text-3); white-space:nowrap; max-width:130px; overflow:hidden; text-overflow:ellipsis; }
+.stage-node.is-working .stage-role { color:var(--c); } .stage-node.is-waiting .stage-role { color:var(--wait); } .stage-node.is-recent .stage-role { color:var(--ok); }
+.stage-node.is-on-stage .stage-name { color: var(--amber); }
+.stage-node.is-on-stage .stage-orb { box-shadow: inset 0 -6px 14px rgba(0,0,0,.4), 0 0 0 2px var(--amber), 0 0 0 10px color-mix(in srgb, var(--amber) 20%, transparent), 0 0 48px color-mix(in srgb, var(--amber) 40%, transparent); }
+
+.stage-spark, .stage-need { position:absolute; bottom:calc(100% + 4px); white-space:nowrap; border-radius:999px; font-size:11px; animation:pop .4s cubic-bezier(.2,.9,.3,1.35); }
+.stage-spark { padding:4px 10px; color:var(--text); background:color-mix(in srgb, var(--panel) 70%, transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 50%, transparent), 0 8px 22px rgba(0,0,0,.45); }
+.stage-spark em { font-style:normal; font-family:var(--font-mono); color:var(--text-3); }
+.stage-need { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; font-weight:600; color:#0b0b0c; background:var(--wait); box-shadow:0 6px 18px color-mix(in srgb, var(--wait) 40%, transparent); }
+.stage-sats { position:absolute; inset:-16px; animation:stage-spin 5s linear infinite; pointer-events:none; }
+.stage-sats i { position:absolute; left:50%; top:50%; width:7px; height:7px; margin:-3.5px; border-radius:50%; background:#fff; box-shadow:0 0 10px var(--c), 0 0 2px var(--c); transform:rotate(calc(var(--i) * 360deg / var(--n))) translateY(-45px); }
+
+.stage-card { --c:var(--amber); position:absolute; z-index:40; transform:translate(22px, -50%); min-width:200px; padding:12px 14px; border-radius:14px; pointer-events:none;
+  background:color-mix(in srgb, var(--panel) 78%, transparent); backdrop-filter:blur(18px) saturate(1.4); -webkit-backdrop-filter:blur(18px) saturate(1.4);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, var(--line)), 0 18px 40px rgba(0,0,0,.5); animation:pop .2s ease-out; }
+.stage-card strong { display:block; font-size:13px; } .stage-card small { font-size:11px; color:var(--text-3); }
+.stage-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin-top:10px; font-size:11.5px; } .stage-card dt { color:var(--text-3); } .stage-card dd { color:var(--text); text-transform:capitalize; }
+.stage-card dd.is-working { color:var(--c); } .stage-card dd.is-waiting { color:var(--wait); } .stage-card dd.is-recent { color:var(--ok); }
+.stage-card-cta { display:inline-flex; align-items:center; gap:4px; margin-top:10px; font-size:11.5px; color:var(--amber); }
+.stage-quiet { position:absolute; z-index:5; left:50%; bottom:16px; transform:translateX(-50%); width:min(460px, 90%); text-align:center; font-size:12px; color:var(--text-3); }
+
+@keyframes stage-flow { to { stroke-dashoffset:-24; } }
+@keyframes stage-spin { to { transform:rotate(360deg); } }
+@keyframes bob { 50% { transform:translateY(-5px); } }
+@keyframes breathe { 50% { transform:scale(1.06); } }
+@keyframes stage-blink { 50% { opacity:.4; } }
+@keyframes pop { from { opacity:0; transform:translateY(6px) scale(.92); } }
+@keyframes node-in { from { opacity:0; transform:translate(-50%,-40%) scale(calc(var(--s) * .6)); } }
+@keyframes ring-pulse { 50% { transform:scale(1.04); opacity:.6; } }
+@keyframes aurora-a { to { transform:translate(18%, 10%) scale(1.15); } }
+@keyframes aurora-b { to { transform:translate(-14%, 16%) scale(.9); } }
+@media (prefers-reduced-motion: reduce) {
+  .stage *, .stage *::before, .stage *::after { animation:none !important; }
+  .stage-comet { display:none; }
+}
+:root[data-motion="reduced"] .stage *, :root[data-motion="reduced"] .stage *::before, :root[data-motion="reduced"] .stage *::after { animation:none !important; }
+@media (max-width:760px) { .stage-legend { display:none; } .stage-orb { width:44px; height:44px; } .stage-role { display:none; } .stage-node { min-width:64px; } }

@@ -74,7 +74,7 @@ export class MergeQueue {
       return;
     }
     const check = this.checkFor(created.body.repo, created.body.runtime, events);
-    const result = await this.worktrees.land(created.body.repo, tree.body, check);
+    const result = await this.worktrees.land(created.body.repo, tree.body, check, created.body.title);
     if (result.ok) {
       this.store.append("merge.landed", { commit: result.commit, branch: tree.body.branch }, { run });
       this.store.append("run.status", { status: "merged", reason: `landed on ${tree.body.base}` }, { run });

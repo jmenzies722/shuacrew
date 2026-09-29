@@ -1,0 +1,153 @@
+/* ── The hub rail: five places and Settings, always labelled ─────────────────────────────────── */
+.hub-rail { position: relative; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 76px; min-height: 0; padding: 6px 8px 10px; overflow-y: auto; scrollbar-width: none; }
+.hub { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 60px; padding: 9px 0 7px; border-radius: 14px; color: var(--text-3);
+  transition: color .16s ease, background-color .16s ease, transform .16s cubic-bezier(.2,.9,.3,1.3); -webkit-tap-highlight-color: transparent; }
+.hub:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.hub:active { transform: scale(.95); }
+.hub:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.hub-on { position: absolute; inset: 0; border-radius: 14px; background: color-mix(in srgb, var(--amber) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 32%, transparent), 0 6px 18px -8px color-mix(in srgb, var(--amber) 55%, transparent); }
+.hub.is-on { color: var(--text); } .hub.is-on .hub-icon { color: var(--amber); }
+.hub-icon { position: relative; z-index: 1; display: grid; place-items: center; width: 24px; height: 22px; transition: transform .2s cubic-bezier(.2,.9,.3,1.4); }
+.hub:hover .hub-icon { transform: translateY(-1px); }
+.hub-label { position: relative; z-index: 1; font-size: 10.5px; font-weight: 550; letter-spacing: .01em; }
+.hub-badge { position: absolute; top: -5px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border-radius: 999px;
+  font-style: normal; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--on-accent, #111); box-shadow: 0 0 0 2px var(--ink); }
+.hub-badge.is-wait { background: var(--amber); } .hub-badge.is-live { color:#06150e; background: var(--ok, #34d399); animation: hub-live 1.8s ease-in-out infinite; }
+.hub-spacer { flex: 1; min-height: 12px; }
+@keyframes hub-live { 50% { box-shadow: 0 0 0 2px var(--ink), 0 0 0 5px color-mix(in srgb, var(--ok, #34d399) 30%, transparent); } }
+
+/* ── The tab strip at the top of every hub page ──────────────────────────────────────────────── */
+.hub-tabs { display: flex; align-items: center; gap: 2px; flex-shrink: 0; height: 46px; padding: 0 22px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.hub-title { font-size: 13px; font-weight: 650; letter-spacing: -.01em; color: var(--text); padding-right: 6px; }
+.hub-sep { width: 1px; height: 16px; margin: 0 8px 0 4px; background: var(--line-strong); }
+.hub-tab { position: relative; display: inline-flex; align-items: center; height: 30px; padding: 0 13px; border-radius: 9px; font-size: 12.5px; font-weight: 500; color: var(--text-3); white-space: nowrap; transition: color .15s ease; }
+.hub-tab:hover { color: var(--text); }
+.hub-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.hub-tab-label { position: relative; z-index: 1; }
+.hub-tab.is-on { color: var(--text); }
+.hub-tab-on { position: absolute; inset: 0; border-radius: 9px; background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset; }
+.hub-tab-on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -9px; height: 2px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent); }
+@media (prefers-reduced-motion: reduce) { .hub, .hub-icon { transition: none; } .hub-badge.is-live { animation: none; } }
+
+/* Spark in the app: a side panel that slides in from the right, and its button in the top bar. */
+.spark-side { flex-shrink: 0; min-height: 0; overflow: hidden; }
+.spark-side-inner { width: 400px; height: 100%; box-sizing:border-box; padding:var(--gutter) var(--gutter) var(--gutter) 0; }
+.spark-side .buddy.is-embedded { height: 100%; }
+.spark-btn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 5px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--text-2);
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); transition: color .15s, box-shadow .15s, background .15s; }
+.spark-btn:hover { color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spark-btn.is-on { color: var(--text); background: color-mix(in srgb, var(--spark-color) 14%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 40%, transparent); }
+.spark-btn .spark-character { border-radius: 50%; }
+
+/* ── The sidebar ─────────────────────────────────────────────────────────────────────────────── */
+.side { display: flex; flex-direction: column; gap: 2px; width: 240px; min-width: 0; min-height: 0; padding: 8px 10px 10px; overflow-y: auto; scrollbar-width: none; border-right: 1px solid var(--line); animation: side-in .22s cubic-bezier(.2,.8,.2,1) both; }
+.side kbd { margin-left: auto; flex-shrink: 0; font-family: inherit; font-size: 10.5px; color: var(--text-3); opacity: .8; }
+.side-spark { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px 10px 8px 8px; margin-bottom: 4px; border-radius: 12px; text-align: left; color: var(--text);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--spark-color) 13%, var(--panel)), var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 26%, var(--line)); transition: box-shadow .18s, transform .18s; }
+.side-spark:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 55%, transparent); }
+.side-spark:active { transform: scale(.985); }
+.side-spark.is-on { box-shadow: inset 0 0 0 1px var(--spark-color), 0 8px 24px -14px var(--spark-color); }
+.side-spark-av { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex-shrink: 0; }
+.side-spark-text { display: flex; flex-direction: column; min-width: 0; flex: 1; } .side-spark-text b, .side-spark-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .side-spark-text b { font-size: 13px; font-weight: 600; } .side-spark-text small { font-size: 11px; color: var(--text-3); }
+.side-new { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; height: 32px; padding: 0 10px; margin-bottom: 8px; border-radius: 9px; font-size: 13px; color: var(--text-2); transition: background .15s, color .15s; }
+.side-new:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.side-group { display: flex; flex-direction: column; gap: 1px; padding: 4px 0; }
+.side-row { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; height: 32px; padding: 0 10px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--text-2); text-align: left; transition: background .15s, color .15s; }
+.side-row:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.side-row > svg { color: var(--text-3); flex-shrink: 0; transition: color .15s; }
+.side-hub.is-on > .side-row, .side-row.is-on { color: var(--text); } .side-hub.is-on > .side-row > svg, .side-row.is-on > svg { color: var(--amber); }
+.side-row em { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--on-accent); }
+.side-row em.is-wait { background: var(--amber); } .side-row em.is-live { background: var(--ok, #34d399); color: #06150e; }
+.side-tabs { position: relative; display: flex; flex-direction: column; gap: 1px; margin: 1px 0 4px 18px; padding-left: 10px; border-left: 1px solid var(--line); overflow: hidden; }
+.side-tab { position: relative; display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--text-3); transition: color .15s; }
+.side-tab:hover { color: var(--text); }
+.side-tab.is-on { color: var(--text); }
+.side-tab-on { position: absolute; inset: 0; border-radius: 8px; background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.side-tab-on::before { content: ""; position: absolute; left: -11px; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: var(--amber); }
+.side-tab-label { position: relative; z-index: 1; }
+.side-label { padding: 10px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.side-run { display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--text-2); transition: background .15s, color .15s; }
+.side-run span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-run:hover, .side-run.is-on { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.side-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
+.side-dot.is-live { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent); animation: side-pulse 1.6s ease-in-out infinite; }
+.side-dot.is-wait { background: #f472b6; } .side-dot.is-bad { background: var(--bad); } .side-dot.is-done { background: color-mix(in srgb, var(--ok, #34d399) 70%, var(--text-3)); }
+.side-spacer { flex: 1; min-height: 12px; }
+.side-foot { display: flex; align-items: center; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
+.side-foot .side-row { flex: 1; }
+.side-foot .side-guide { flex: 0 0 auto; width: auto; } /* Guide stays compact so Settings keeps its label and ⌘, */
+.side-fold, .rail-unfold { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--text-3); transition: background .15s, color .15s; }
+.side-fold:hover, .rail-unfold:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.rail-wrap { display: flex; flex-direction: column; align-items: center; min-height: 0; border-right: 1px solid var(--line); }
+.rail-wrap .hub-rail { flex: 1; }
+.rail-unfold { margin: 0 0 10px; }
+@keyframes side-in { from { opacity: .4; } }
+@keyframes side-pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--amber) 8%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .side, .side-dot.is-live { animation: none; } }
+
+/* ── Sidebar, Kiro Crew style: a floating rounded panel, plain line icons, one violet selection. ── */
+.side { width: 244px; margin: var(--gutter-top) 0 var(--gutter) var(--gutter); padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
+  background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
+/* The ShuaCrew mark (same as the app icon): a lit core with three crew on an orbit, drawn in the theme's accent. */
+.side-logo { display:grid; place-items:center; width:32px; height:32px; border-radius:10px; flex-shrink:0; color:var(--amber);
+  background:radial-gradient(circle at 50% 50%, color-mix(in srgb,var(--amber) 26%,transparent), transparent 70%), linear-gradient(180deg, color-mix(in srgb,var(--amber) 10%,var(--raised)), var(--sunken));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--amber) 30%,var(--line-strong)), inset 0 1px 0 color-mix(in srgb,#fff 8%,transparent); }
+.side-logo-core { stroke:var(--amber); filter:drop-shadow(0 0 3px color-mix(in srgb,var(--amber) 70%,transparent)); }
+.side-logo-crew { fill:color-mix(in srgb,var(--amber) 35%,#fff); }
+.side-brand-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.side-brand-text b { font-size: 13px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--text-2); }
+.side-brand-text b em { font-style: normal; color: var(--amber); }
+.side-brand-text small { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-3); }
+.side-brand-text small i { width: 6px; height: 6px; border-radius: 50%; background: var(--idle); }
+.side-brand-text small.is-live i { background: #22c55e; } .side-brand-text small.is-connecting i { background: #e0b94d; } .side-brand-text small.is-offline i { background: #f94359; }
+.side-brand .side-fold { width: 26px; height: 26px; border-radius: 8px; }
+
+.side-spark { padding: 8px 10px 8px 8px; margin-bottom: 4px; border-radius: 12px; background: var(--raised); box-shadow: 0 0 0 1px var(--line-strong); }
+.side-spark:hover { box-shadow: 0 0 0 1px var(--active-line); }
+.side-spark.is-on { background: var(--active-bg); box-shadow: 0 0 0 1px var(--active-line); }
+.side-spark.is-on .side-spark-text b { color: var(--accent-text); }
+.side-spark-av { background: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
+.side-spark kbd, .side-new kbd, .side-foot kbd { padding: 1px 5px; border-radius: 5px; box-shadow: 0 0 0 1px var(--line-strong); opacity: 1; }
+.side-new { height: 34px; margin-bottom: 8px; border-radius: 10px; color: var(--on-accent, #fff); background: var(--amber); font-weight: 550; }
+.side-new:hover { background: var(--accent-hover); color: var(--on-accent, #fff); }
+.side-new kbd { color: inherit; opacity: .75; box-shadow: 0 0 0 1px currentColor; }
+
+.side-row { height: 36px; padding: 0 10px; gap: 11px; border-radius: 10px; color: var(--text-2); font-size: 13.5px; }
+.side-row > span:not(.side-hub-on) { position: relative; z-index: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-row em { position: relative; z-index: 1; }
+.side-row:hover { background: var(--raised); color: var(--text); }
+.side-hub-on { position: absolute; inset: 0; border-radius: 10px; background: var(--active-bg); box-shadow: inset 0 0 0 1px var(--active-line); }
+.side-hub.is-on > .side-row, .side-row.is-on { color: var(--accent-text); }
+.side-hub.is-on > .side-row:hover { background: transparent; }
+.side-row.is-on { background: var(--active-bg); box-shadow: inset 0 0 0 1px var(--active-line); }
+.side-ico { position: relative; z-index: 1; display: grid; place-items: center; width: 18px; height: 18px; flex-shrink: 0; font-style: normal; color: var(--text-3); transition: color .15s; }
+.side-row:hover .side-ico { color: var(--text); }
+.side-hub.is-on .side-ico, .side-row.is-on .side-ico { color: var(--accent-text); }
+.side-row em.is-wait { background: var(--amber); } .side-row em.is-live { background: #22c55e; color: #06150e; }
+
+.side-tabs { margin: 2px 0 6px 19px; padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.side-tab { height: 30px; color: var(--text-3); }
+.side-tab.is-on { color: var(--text); }
+.side-tab-on { background: var(--raised); box-shadow: none; }
+.side-tab-on::before { left: -13px; background: var(--amber); }
+.side-label { padding: 14px 10px 6px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); }
+.side-dot.is-live { background: var(--amber); }
+.side-foot { padding-top: 8px; border-top: 1px solid var(--line-strong); }
+.rail-wrap { margin: var(--gutter-top) 0 var(--gutter) var(--gutter); border-radius: 16px; border-right: 0; background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
+.hub-on { background: var(--active-bg); box-shadow: inset 0 0 0 1px var(--active-line); }
+.hub.is-on { color: var(--accent-text); } .hub.is-on .hub-icon { color: var(--accent-text); }
+/* Flat list: every page is a row; sections are quiet labels, nothing folds. */
+.side-group { padding: 0; gap: 1px; }
+.side .side-row { height: 32px; font-size: 13px; }
+.side .side-label { padding: 12px 10px 4px; font-size: 11.5px; }
+/* Pages scroll between the fixed top (brand, Ask, New) and the fixed Settings footer. */
+.side { overflow: hidden; }
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; margin: 0 -4px; padding: 0 4px; }
+.side-scroll::-webkit-scrollbar { display: none; }
+/* The actions (Ask, New session) are their own block, set apart from the page list. */
+.side > :not(.side-scroll) { flex-shrink: 0; }
+.side .side-spark { margin-bottom: 8px; }
+.side .side-new { margin-bottom: 0; }
+.side-scroll { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line-strong); }

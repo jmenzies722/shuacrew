@@ -1,0 +1,7 @@
+{
+  "publicKey": "BBJCPaRmEr4GGZ2rN95bEs2vU5LTbJHR65av5xGy6h1A56ei4S214Me26SGC3HIq5RjtdSy_Nn6Qw5fHEC419Vc",
+  "envelope": {
+    "payload": "{\"version\":1,\"commandId\":\"cmd_fixture\",\"deviceId\":\"phone_fixture\",\"installationId\":\"mac_fixture\",\"issuedAt\":1000,\"expiresAt\":2000,\"action\":{\"kind\":\"refresh\"}}",
+    "signature": "WF5cxIuFdar6GmEmsRvU1QCP0wM_sCHYw1gVguqQ1UcS8uvMHes5GNnIZd_0bqr6dwRbSQJhPPMvbcYIWf19Dg"
+  }
+}

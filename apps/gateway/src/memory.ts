@@ -9,6 +9,7 @@ import path from "node:path";
 import { decide, defaultContext, defaultRules, normalise, type AnyEvent } from "@shuacrew/core";
 import { applyMemory, correctionIn, foldMemory, live, recall, relevantSkills, render, runRecallEval, skillCandidates, type MemoryView } from "@shuacrew/memory";
 import { Cron } from "croner";
+import { queuedMessages } from "@shuacrew/core/queue";
 import type { EventStore } from "./store.js";
 
 export interface EvolveReport {
@@ -32,7 +33,12 @@ export class Memory {
     this.unsubscribe = store.subscribe((e) => {
       applyMemory(this.view, e);
       this.track(e);
-      if (e.kind === "run.followup" && e.run && e.body.by === "you") this.hear(e.run, e.body.text);
+      if (e.kind === "turn.started" && e.run) {
+        // Learn only what the agent actually receives, after queued edits and withdrawals.
+        // Exclude automation's own messages; they are not user preferences.
+        const prior = store.forRun(e.run).filter((event) => event.seq < e.seq && (event.kind !== "run.followup" || event.body.by === "you"));
+        for (const message of queuedMessages(prior)) this.hear(e.run, message.text);
+      }
     });
   }
 
@@ -97,6 +103,8 @@ export class Memory {
 
   /** A correction in a follow-up becomes a lesson for this repo — once. */
   private hear(run: string, text: string) {
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    if (created?.kind === "run.created" && created.body.incognito) return;
     const lesson = correctionIn(text);
     if (!lesson) return;
     const project = this.projects.get(run);

@@ -1,11 +1,18 @@
 import { COLUMNS, type RunView } from "@shuacrew/core/projections";
-import { Eyebrow, StatusGlyph, toneOf } from "@shuacrew/ui";
+import { Button, Eyebrow, StatusGlyph, toneOf } from "@shuacrew/ui";
 import { LayoutGroup } from "motion/react";
 import { useMemo, useState } from "react";
 import { AgentCard } from "../components/AgentCard";
 import { api } from "../lib/api";
-import { scopeRuns } from "../lib/crew";
+import { isTopLevelWork, scopeRuns } from "../lib/crew";
 import { useLive } from "../lib/live";
+import { PaneHeader } from "../components/Pane";
+import "./board.css";
+import { useNavigate } from "@tanstack/react-router";
+import { KanbanSquare } from "lucide-react";
+import { StatStrip } from "../components/StatStrip";
+
+const EMPTY: Record<string, string> = { queued: "Nothing waiting to start", running: "No one is working", awaiting: "Nothing needs you", reviewing: "Nothing to review", done: "Nothing finished yet" };
 
 /** Every run by where it stands. Cards glide between columns as their status changes. */
 export function Board() {
@@ -13,10 +20,11 @@ export function Board() {
   const scope = useLive((s) => s.scope);
   const runs = useMemo(() => scopeRuns(crewRuns, scope), [crewRuns, scope]);
   const [runtime, setRuntime] = useState("all");
-  const all = useMemo(() => Object.values(runs).filter((r) => !r.parent), [runs]);
+  const all = useMemo(() => Object.values(runs).filter((r) => isTopLevelWork(r, crewRuns)), [runs, crewRuns]);
   const runtimes = useMemo(() => [...new Set(all.map((r) => r.runtime))], [all]);
   const shown = all.filter((r) => runtime === "all" || r.runtime === runtime);
   const [dragging, setDragging] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const reprioritise = async (id: string, above?: RunView) => {
     const priority = above ? above.priority + 1 : 0;
@@ -25,9 +33,10 @@ export function Board() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-4 border-b border-line px-6 py-4">
-        <h1 className="text-[18px] font-semibold tracking-[-0.015em]">Board</h1>
-        <div className="ml-auto flex items-center gap-1.5 text-[12px]" role="radiogroup" aria-label="Filter by runtime">
+      <div className="px-8 pt-8">
+        <PaneHeader children={<StatStrip stats={[{ value: all.filter((r) => ["running", "planning", "queued"].includes(r.status)).length, label: "in flight", live: all.some((r) => ["running", "planning"].includes(r.status)) }, { value: all.filter((r) => r.status === "awaiting_approval").length, label: "need you", tone: "wait" }, { value: all.filter((r) => ["done", "merged"].includes(r.status) && r.updatedAt > Date.now() - 7 * 86_400_000).length, label: "done this week", tone: "ok" }]} />} eyebrow="Plan" icon={KanbanSquare} title="Board" description="Every session by where it stands. Drag a queued card to the top to run it next; cards move on their own as the work changes."
+          actions={runtimes.length > 1 ? <>
+        <div className="flex items-center gap-1.5 text-[12px]" role="radiogroup" aria-label="Filter by runtime">
           {["all", ...runtimes].map((r) => (
             <button
               key={r}
@@ -40,9 +49,10 @@ export function Board() {
             </button>
           ))}
         </div>
-      </header>
+          </> : undefined} />
+      </div>
       <LayoutGroup>
-        <div className="grid min-h-0 flex-1 grid-cols-5 gap-3 overflow-x-auto p-4 max-[1200px]:grid-cols-[repeat(5,300px)]">
+        <div className="grid min-h-0 flex-1 grid-cols-5 gap-3 overflow-x-auto px-8 pb-8 max-[1200px]:grid-cols-[repeat(5,300px)]">
           {COLUMNS.map((column) => {
             const cards = shown
               .filter((r) => column.statuses.includes(r.status))
@@ -50,7 +60,7 @@ export function Board() {
             return (
               <section
                 key={column.id}
-                className="flex min-h-0 flex-col rounded-[var(--radius-l)] bg-panel/60"
+                className={`board-col is-${column.id}`}
                 aria-label={column.title}
                 onDragOver={(e) => column.id === "queued" && e.preventDefault()}
                 onDrop={() => {
@@ -64,7 +74,9 @@ export function Board() {
                   <span className="mono ml-auto text-[11px] text-fg-3">{cards.length}</span>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
-                  {cards.length === 0 && <div className="rounded-[var(--radius-m)] border border-dashed border-line px-3 py-6 text-center text-[12px] text-fg-3">Empty</div>}
+                  {cards.length === 0 && (column.id === "queued" && all.length === 0
+                    ? <div className="board-start"><strong>Start the board</strong><span>Every session you start lands here and moves right on its own: Running → Awaiting me → Reviewing → Done.</span><Button variant="primary" onClick={() => void navigate({ to: "/" })}>Start a session</Button></div>
+                    : <div className="board-empty">{EMPTY[column.id] ?? "Nothing here"}</div>)}
                   {cards.map((run) => (
                     <div
                       key={run.id}

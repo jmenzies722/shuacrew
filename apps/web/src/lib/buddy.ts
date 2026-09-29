@@ -1,0 +1,545 @@
+import { PANES } from "./settings-panes";
+import { noEmoji } from "./no-emoji";
+/** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
+export interface Point { x: number; y: number; label: string; target?: string }
+
+/** One step of a guided walkthrough: where to look (a box, as fractions of the screenshot) and what to do there. */
+export interface GuideStep { x: number; y: number; w: number; h: number; label: string; step: number; done: false; target?: string }
+export type Guide = GuideStep | { done: true };
+
+/** A shape Spark sketches on your screen (fractions of the screenshot, from the top-left). */
+export type Shape =
+  | { shape: "box"; x: number; y: number; w: number; h: number; label?: string; target?: string; corner?: "circle" | "pill" | "rounded" }
+  | { shape: "circle"; x: number; y: number; r: number; label?: string; target?: string }
+  | { shape: "arrow"; from: [number, number]; to: [number, number]; label?: string; target?: string }
+  | { shape: "text"; x: number; y: number; text: string };
+
+/** One line of on-device OCR: exact text and its box (fractions, from the top-left). */
+export interface ScreenLine { t: string; x: number; y: number; w: number; h: number }
+
+/** What Spark may do on your Mac. The Mac app checks every one again before doing it. */
+export type Action =
+  | { type: "open_app"; name: string }
+  | { type: "open_url"; url: string }
+  | { type: "open_path"; path: string }
+  | { type: "focus"; minutes: number }
+  | { type: "crew"; ask: string }
+  | { type: "note"; text: string }
+  | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "open_query" | "volume" | "volume_up" | "volume_down" | "mute" | "playlist" | "shuffle" | "repeat" | "love" | "add_to_library" | "seek"; query?: string; app?: string; level?: number; on?: boolean; mode?: "off" | "one" | "all"; seconds?: number }
+  | { type: "system"; what: "dark_mode" | "sleep_display"; on?: boolean }
+  | { type: "shortcut"; name: string }
+  | { type: "settings"; changes: SparkChanges }
+  | { type: "learn"; topic?: string; drill?: boolean }
+  | { type: "venture"; name: string; pitch?: string; validate?: boolean }
+  | { type: "playbook"; playbook: string; idea?: string; venture?: string }
+  | { type: "remember"; text: string }
+  | { type: "run"; command: string }
+  | { type: "go"; path: string }
+  | { type: "card"; front: string; back: string }
+  | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
+  | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
+  | { type: "open_settings"; pane: string }
+  | { type: "mac"; op: "find" | "read" | "recent" | "calendar" | "reminders" | "add_reminder" | "notes" | "contacts" | "status" | "music_now" | "music_playlists" | "notes_new" | "calendar_add" | "new_folder" | "reveal" | "open_file" | "browser_tabs"; query?: string; path?: string; kind?: string; days?: number; title?: string; due?: string; body?: string; start?: string; end?: string; location?: string; name?: string; in?: string };
+/** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
+export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
+  { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky" },
+  { path: "/activity", name: "Today", hub: "Home", about: "your day: the morning brief, what needs you, what finished, focus time" },
+  { path: "/crew", name: "Team", hub: "Crew", about: "your AI crew members (each has a role, model, voice, memory and lessons); create or edit them" },
+  { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
+  { path: "/floor", name: "Floor", hub: "Crew", about: "a live map of who is working on what right now" },
+  { path: "/studio", name: "Studio (ShuaCrew Radio)", hub: "Crew", about: "the radio: the user's own lofi files as stations plus live YouTube lofi jazz / hip-hop stations, ambience (rain, café, brown noise)" },
+  { path: "/ventures", name: "Ventures", hub: "Build", about: "business ideas as a pipeline (idea → validate → build → launch → grow) with revenue" },
+  { path: "/playbooks", name: "Playbooks", hub: "Build", about: "multi-step plans the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
+  { path: "/specs", name: "Specs", hub: "Build", about: "written specs the crew builds from" },
+  { path: "/board", name: "Board", hub: "Build", about: "every session by status: queued, running, awaiting you, reviewing, done" },
+  { path: "/schedules", name: "Schedules", hub: "Build", about: "work that runs on its own on a schedule" },
+  { path: "/library", name: "Library", hub: "Know", about: "everything the crew made: reports, pages, specs, images, saved knowledge (searchable)" },
+  { path: "/memory", name: "Memory", hub: "Know", about: "what every agent has learned about the user: lessons, preferences, corrections" },
+  { path: "/teach", name: "Visual teaching", hub: "Know", about: "shared step-by-step explanations, source-grounded diagrams, editable canvas and capture-bound screen annotations; use this for visual lessons" },
+  { path: "/learn", name: "Learning", hub: "Know", about: "courses and spaced-repetition quizzes toward the user's career goal" },
+  { path: "/integrations", name: "Tools & Skills", hub: "System", about: "MCP tools, connected services and Claude Code skills (including the radio skill)" },
+  { path: "/policy", name: "Policy & Audit", hub: "System", about: "what agents may never touch, what needs approval, and the full audit trail" },
+  { path: "/observability", name: "Insights", hub: "System", about: "usage, tokens, cost, health and throughput over time" },
+  { path: "/terminal", name: "Terminal", hub: "System", about: "a real terminal on the Mac, with an agent that can help" },
+  { path: "/guide", name: "Guide", hub: "", about: "the ShuaCrew guide: what the app is, every hub and page, Spark, engines, privacy, shortcuts and what is not finished yet; open it when someone asks how ShuaCrew works" },
+  { path: "/settings", name: "Settings", hub: "", about: "appearance/theme and accent, workspace, widgets, chat, agents, automation, safety, Spark, voice, notifications, mobile, data" },
+];
+/** What the app holds right now, for Spark to answer from (names only — never invented). */
+export function shuacrewNow(input: { members: Array<{ name: string; role?: string }>; ventures: string[]; radio: { on: string | null; stations: string[] } }) {
+  return [
+    "SHUACREW — THE APP YOU LIVE IN (you know it inside out; explain any part and take them there):",
+    ...SHUACREW_PAGES.map((p) => `- ${p.name}${p.hub ? ` (${p.hub})` : ""} ${p.path}: ${p.about}`),
+    "Keys: ⌘J opens you (Spark) inside the app, ⌃⌥Space from anywhere; ⌘K search; ⌘N new session; ⌘1–5 the hubs; ⌘\\ folds the sidebar; ⌘⇧F Flow mode (hides everything but the work).",
+    input.members.length ? `Crew members: ${input.members.map((m) => (m.role ? `${m.name} (${m.role})` : m.name)).join(", ")}.` : "No crew members yet.",
+    input.ventures.length ? `Ventures: ${input.ventures.slice(0, 12).join(", ")}.` : "",
+    `Radio: ${input.radio.on ? `playing ${input.radio.on}` : "off"}${input.radio.stations.length ? `; stations: ${input.radio.stations.slice(0, 10).join(", ")}` : ""}.`,
+    'Take them to a page: ```do [{"type":"go","path":"/studio"}]``` · radio: ```do [{"type":"radio","cmd":"play","station":"lofi jazz"}]``` (cmd: play | pause | resume | next | previous | stop). Use radio for ShuaCrew Radio; media is only for Music/Spotify.',
+  ].filter(Boolean).join("\n");
+}
+
+/** The playbooks Spark can start by id (the built-in library). */
+export const PLAYBOOKS = ["validate-idea", "landing-page", "mvp", "launch", "growth-review"] as const;
+
+/** What you can change about Spark just by asking it ("talk faster", "be the fox", "call yourself Nova"). */
+export interface SparkChanges {
+  name?: string; character?: "spark" | "orb" | "byte" | "kit" | "blob"; color?: string; size?: "s" | "m" | "l";
+  tone?: "cheerful" | "chill" | "direct" | "coach"; length?: "brief" | "detailed";
+  talks?: boolean; voice?: string; speed?: number; conversation?: boolean; interrupt?: boolean;
+  control?: "off" | "ask" | "auto"; guide?: "click" | "manual"; hotkey?: "ctrl-opt-space" | "ctrl-shift-space" | "opt-shift-space" | "ctrl-opt-s";
+}
+const NAMED_COLORS: Record<string, string> = { amber: "#f5b544", orange: "#ff7a59", coral: "#ff7a59", pink: "#f472b6", purple: "#a78bfa", violet: "#a78bfa", blue: "#60a5fa", green: "#34d399", mint: "#34d399", white: "#e5e7eb", silver: "#e5e7eb", red: "#f87171", yellow: "#facc15", teal: "#2dd4bf" };
+export function parseChanges(v: unknown): SparkChanges | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>, out: SparkChanges = {};
+  const pick = <T extends string>(k: string, opts: readonly T[]) => (opts as readonly string[]).includes(o[k] as string) ? (o[k] as T) : undefined;
+  const name = str(o.name, 24); if (name) out.name = name;
+  const character = pick("character", ["spark", "orb", "byte", "kit", "blob"] as const); if (character) out.character = character;
+  if (typeof o.color === "string") { const c = o.color.trim().toLowerCase(); const hex = /^#[0-9a-f]{6}$/.test(c) ? c : NAMED_COLORS[c]; if (hex) out.color = hex; }
+  const size = pick("size", ["s", "m", "l"] as const); if (size) out.size = size;
+  const tone = pick("tone", ["cheerful", "chill", "direct", "coach"] as const); if (tone) out.tone = tone;
+  const length = pick("length", ["brief", "detailed"] as const); if (length) out.length = length;
+  for (const k of ["talks", "conversation", "interrupt"] as const) if (typeof o[k] === "boolean") out[k] = o[k] as boolean;
+  const voice = str(o.voice, 40); if (voice && /^[a-z0-9_-]+$/i.test(voice)) out.voice = voice.toLowerCase();
+  if (typeof o.speed === "number") out.speed = [0.9, 1, 1.15].reduce((a, b) => Math.abs(b - (o.speed as number)) < Math.abs(a - (o.speed as number)) ? b : a);
+  const control = pick("control", ["off", "ask", "auto"] as const); if (control) out.control = control;
+  const guide = pick("guide", ["click", "manual"] as const); if (guide) out.guide = guide;
+  const hotkey = pick("hotkey", ["ctrl-opt-space", "ctrl-shift-space", "opt-shift-space", "ctrl-opt-s"] as const); if (hotkey) out.hotkey = hotkey;
+  return Object.keys(out).length ? out : null;
+}
+
+/** One step of Spark using the mouse and keyboard, or the end of the task. Coordinates are screenshot fractions. */
+export type Act =
+  | { type: "press"; label: string }
+  | { type: "click"; x: number; y: number; label: string; double?: boolean; button?: "right" }
+  | { type: "type"; text: string; label: string }
+  | { type: "key"; keys: string; label: string }
+  | { type: "scroll"; x?: number; y?: number; amount: number; label: string }
+  | { type: "done"; summary: string };
+
+/** A ```point {"x":0..1,"y":0..1,"label":"…"}``` block (normalized to the screenshot), validated. */
+export function parsePoint(text: string): Point | null {
+  const m = /```point\s*([\s\S]*?)```/i.exec(text);
+  if (!m) return null;
+  try {
+    const v = JSON.parse(m[1]!.trim()) as { x?: unknown; y?: unknown; label?: unknown; target?: unknown };
+    const target = targetId(v.target);
+    const x = Number(v.x ?? (target ? 0.5 : NaN)), y = Number(v.y ?? (target ? 0.5 : NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return null;
+    return { x, y, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "", ...(target ? { target } : {}) };
+  } catch { return null; }
+}
+
+const frac = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null; };
+/** A picked on-screen item: "#12" (a control) or "T40" (a text line), from the numbered lists Spark was given. */
+function targetId(v: unknown): string | undefined { return typeof v === "string" && /^(#|T)\d{1,4}$/i.test(v.trim()) ? v.trim().toUpperCase() : undefined; }
+/** A ```guide {...}``` block: the next step (centre x,y and size w,h as fractions), or {"done": true}. */
+export function parseGuide(text: string): Guide | null {
+  const m = /```guide\s*([\s\S]*?)```/i.exec(text);
+  if (!m) return null;
+  try {
+    const v = JSON.parse(m[1]!.trim()) as Record<string, unknown>;
+    if (v.done === true) return { done: true };
+    const target = targetId(v.target);
+    const x = frac(v.x ?? (target ? 0.5 : undefined)), y = frac(v.y ?? (target ? 0.5 : undefined));
+    if (x === null || y === null) return null;
+    const w = Math.max(0.01, Math.min(0.6, frac(v.w) ?? 0.04)), h = Math.max(0.01, Math.min(0.6, frac(v.h) ?? 0.04));
+    const step = Number.isInteger(v.step) && (v.step as number) > 0 && (v.step as number) < 100 ? (v.step as number) : 1;
+    return { x, y, w, h, label: typeof v.label === "string" ? v.label.trim().slice(0, 60) : "", step, done: false, ...(target ? { target } : {}) };
+  } catch { return null; }
+}
+
+const unit = (v: unknown) => typeof v === "number" && v >= 0 && v <= 1;
+const lab = (v: unknown) => (typeof v === "string" && v.trim() ? { label: v.trim().slice(0, 60) } : {});
+/** A ```draw [...]``` block: up to 12 validated shapes. */
+export function parseDraw(text: string): Shape[] {
+  const m = /```draw\s*([\s\S]*?)```/i.exec(text);
+  if (!m) return [];
+  try {
+    const v = JSON.parse(m[1]!.trim()) as unknown, list = Array.isArray(v) ? v : [v], out: Shape[] = [];
+    for (const raw of list) {
+      const o = raw as Record<string, unknown>;
+      // A picked target ("#12" / "T40") can stand in for coordinates: Spark draws around the real thing.
+      const target = targetId(o?.target), tg = target ? { target } : {};
+      if (o?.shape === "box" && ([o.x, o.y, o.w, o.h].every(unit) || target)) out.push({ shape: "box", x: unit(o.x) ? o.x as number : 0.5, y: unit(o.y) ? o.y as number : 0.5, w: unit(o.w) ? o.w as number : 0.04, h: unit(o.h) ? o.h as number : 0.04, ...lab(o.label), ...tg });
+      else if (o?.shape === "circle" && ([o.x, o.y, o.r].every(unit) || target)) out.push({ shape: "circle", x: unit(o.x) ? o.x as number : 0.5, y: unit(o.y) ? o.y as number : 0.5, r: unit(o.r) ? o.r as number : 0.03, ...lab(o.label), ...tg });
+      else if (o?.shape === "arrow" && target && Array.isArray(o.from) && o.from.length === 2 && o.from.every(unit)) out.push({ shape: "arrow", from: o.from as [number, number], to: [0.5, 0.5], ...lab(o.label), target });
+      else if (o?.shape === "arrow" && Array.isArray(o.from) && Array.isArray(o.to) && [...o.from, ...o.to].length === 4 && [...o.from, ...o.to].every(unit)) out.push({ shape: "arrow", from: o.from as [number, number], to: o.to as [number, number], ...lab(o.label) });
+      else if (o?.shape === "text" && [o.x, o.y].every(unit) && typeof o.text === "string" && o.text.trim()) out.push({ shape: "text", x: o.x as number, y: o.y as number, text: o.text.trim().slice(0, 60) });
+    }
+    return out.slice(0, 12);
+  } catch { return []; }
+}
+
+/** A reply as text and diagram parts, in order, so diagrams render as diagrams. */
+export function splitDiagrams(text: string): Array<{ kind: "text" | "diagram"; value: string }> {
+  const out: Array<{ kind: "text" | "diagram"; value: string }> = [];
+  let last = 0;
+  for (const m of text.matchAll(/```mermaid\s*\n([\s\S]*?)```/gi)) {
+    if (m.index! > last) out.push({ kind: "text", value: text.slice(last, m.index) });
+    out.push({ kind: "diagram", value: m[1]!.trim() });
+    last = m.index! + m[0].length;
+  }
+  if (last < text.length) out.push({ kind: "text", value: text.slice(last) });
+  return out.filter((p) => p.value.trim());
+}
+
+/** Is this a system-design question? Those get the careful model, more room, and a diagram. */
+export function isDesign(question: string) {
+  return /\b(system design|design (a|an|the|me)|architect(ure)?|how would you (build|design|scale)|scal(e|ing|able)|high[- ]level design|hld|lld|distributed|microservices?|data (model|pipeline)|infra(structure)?|diagram|draw (a|an|me|the))\b/i.test(question);
+}
+
+/** The frontmost app's real controls, from macOS accessibility: exact names and positions. */
+export interface ScreenContext { app?: string; window?: string; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
+export function elementsText(ctx: ScreenContext | undefined, max = 120) {
+  if (!ctx?.app && !ctx?.elements?.length) return "";
+  const rows = (ctx.elements ?? []).slice(0, max).map((e, i) => `#${i + 1} ${e.name} [${e.role}] @${e.x.toFixed(3)},${e.y.toFixed(3)}`);
+  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility, including the menu bar, the Dock and the menu-bar icons ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates. The ids and numbers are ONLY for blocks: never say or write them; name things the way they see them ("the Share button, top right", "Wi-Fi in the menu bar", "Music in the Dock"):\n${rows.join("\n")}` : ""}`;
+}
+
+/** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
+export function completedBlocks(text: string): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw"; raw: string }> {
+  const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw"; raw: string }> = [];
+  for (const m of text.matchAll(/```(do|act|point|guide|draw)\s*([\s\S]*?)```/gi)) out.push({ key: `${m.index}:${m[1]!.toLowerCase()}`, kind: m[1]!.toLowerCase() as "do", raw: m[0] });
+  return out;
+}
+
+/** OCR lines as a compact, exact block for the model (reading order, with centres). */
+export function screenText(lines: ScreenLine[] | undefined, max = 9000) {
+  if (!lines?.length) return "";
+  const rows = lines.map((l, i) => ({ l, i })).sort((a, b) => (Math.abs(a.l.y - b.l.y) < 0.006 ? a.l.x - b.l.x : a.l.y - b.l.y)).map(({ l, i }) => `T${i} ${l.t} @${l.x.toFixed(3)},${l.y.toFixed(3)}`);
+  let out = "", n = 0;
+  for (const r of rows) { if (out.length + r.length > max) break; out += r + "\n"; n++; }
+  return `SCREEN TEXT — read off their screen by on-device OCR, not typed by the user (never quote or comment on stray lines unless asked); exact, from the full-resolution screen (${n}${n < rows.length ? ` of ${rows.length}` : ""} lines; "Tid text @x,y" = centre as fractions from the top-left; to point or guide at a line, give "target":"T<id>" for its exact box). Quote numbers and names from here, not from the image; use these positions to point precisely:\n${out}`;
+}
+
+const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+function toAction(v: unknown): Action | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  switch (o.type) {
+    case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
+    case "open_url": { const url = str(o.url, 2000); try { return url && /^https?:$/.test(new URL(url).protocol) ? { type: "open_url", url } : null; } catch { return null; } }
+    case "open_path": { const path = str(o.path, 500); return path && /^~?\//.test(path) && !path.split("/").includes("..") ? { type: "open_path", path } : null; }
+    case "focus": { const minutes = Number(o.minutes); return [5, 10, 15, 25, 45, 50, 60, 90].includes(minutes) ? { type: "focus", minutes } : null; }
+    case "crew": { const ask = str(o.ask, 4000); return ask ? { type: "crew", ask } : null; }
+    case "mail": {
+      // Their mail through the Mail app: read and draft only. The Mac app checks every field again.
+      const op = (["unread", "search", "read", "draft"] as const).find((x) => x === o.op);
+      if (!op) return null;
+      const limit = Number.isInteger(o.limit) && (o.limit as number) >= 1 && (o.limit as number) <= 25 ? (o.limit as number) : undefined;
+      if (op === "unread") return { type: "mail", op, ...(limit ? { limit } : {}) };
+      if (op === "search") { const query = str(o.query, 120); return query ? { type: "mail", op, query, ...(limit ? { limit } : {}) } : null; }
+      if (op === "read") return Number.isInteger(o.id) && (o.id as number) > 0 ? { type: "mail", op, id: o.id as number } : null;
+      const to = str(o.to, 200) ?? "", subject = str(o.subject, 300) ?? "", body = str(o.body, 20_000) ?? "";
+      return (to === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) && (subject || body) ? { type: "mail", op, to, subject, body } : null;
+    }
+    case "open_settings": { const pane = PANES.find((p) => p.key === o.pane); return pane ? { type: "open_settings", pane: pane.key } : null; }
+    case "mac": {
+      // Your Mac, read on this Mac: files (Spotlight), calendar, reminders, notes, contacts, status. The Mac app checks again.
+      const op = (["find", "read", "recent", "calendar", "reminders", "add_reminder", "notes", "contacts", "status", "music_now", "music_playlists", "notes_new", "calendar_add", "new_folder", "reveal", "open_file", "browser_tabs"] as const).find((x) => x === o.op);
+      if (!op) return null;
+      const days = Number.isInteger(o.days) && (o.days as number) >= 1 && (o.days as number) <= 30 ? { days: o.days as number } : {};
+      if (op === "find") { const query = str(o.query, 120); const kind = ["pdf", "images", "apps", "folders", "documents"].includes(o.kind as string) ? { kind: o.kind as string } : {}; return query ? { type: "mac", op, query, ...kind } : null; }
+      if (op === "read") { const path = str(o.path, 500); return path ? { type: "mac", op, path } : null; }
+      if (op === "contacts") { const query = str(o.query, 80); return query ? { type: "mac", op, query } : null; }
+      if (op === "notes") { const query = str(o.query, 80); return { type: "mac", op, ...(query ? { query } : {}) }; }
+      if (op === "notes_new") { const title = str(o.title, 200), body = str(o.body, 20_000); return title || body ? { type: "mac", op, ...(title ? { title } : {}), ...(body ? { body } : {}) } : null; }
+      if (op === "calendar_add") { const title = str(o.title, 200), start = str(o.start, 40), end = str(o.end, 40), location = str(o.location, 200); return title && start ? { type: "mac", op, title, start, ...(end ? { end } : {}), ...(location ? { location } : {}) } : null; }
+      if (op === "new_folder") { const name = str(o.name, 120), dir = str(o.in, 500); return name ? { type: "mac", op, name, ...(dir ? { in: dir } : {}) } : null; }
+      if (op === "reveal" || op === "open_file") { const path = str(o.path, 500); return path ? { type: "mac", op, path } : null; }
+      if (op === "add_reminder") { const title = str(o.title, 200); const due = str(o.due, 40); return title ? { type: "mac", op, title, ...(due ? { due } : {}) } : null; }
+      return { type: "mac", op, ...days };
+    }
+    case "note": { const text = str(o.text, 2000); return text ? { type: "note", text } : null; }
+    case "media": {
+      const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "open_query", "volume", "volume_up", "volume_down", "mute", "playlist", "shuffle", "repeat", "love", "add_to_library", "seek"] as const;
+      const command = cmds.find((c) => c === o.command); if (!command) return null;
+      const level = Number(o.level), query = str(o.query, 200), app = str(o.app, 20), seconds = Number(o.seconds);
+      if ((command === "play_query" || command === "open_query" || command === "playlist") && !query) return null;
+      if (command === "seek" && !(Number.isFinite(seconds) && seconds >= 0)) return null;
+      return { type: "media", command, ...(query ? { query } : {}), ...(app ? { app } : {}), ...(Number.isFinite(level) ? { level: Math.max(0, Math.min(100, Math.round(level))) } : {}),
+        ...(typeof o.on === "boolean" ? { on: o.on } : {}), ...(o.mode === "off" || o.mode === "one" || o.mode === "all" ? { mode: o.mode } : {}), ...(command === "seek" ? { seconds: Math.min(36_000, seconds) } : {}) };
+    }
+    case "system": return o.what === "dark_mode" || o.what === "sleep_display" ? { type: "system", what: o.what, ...(typeof o.on === "boolean" ? { on: o.on } : {}) } : null;
+    case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
+    case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
+    case "learn": { const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
+    case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
+    case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
+    case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
+    case "card": { const front = str(o.front, 240), back = str(o.back, 800); return front && back ? { type: "card", front, back } : null; }
+    case "go": { const path = str(o.path, 80); return path && SHUACREW_PAGES.some((p) => p.path === path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}#`)) ? { type: "go", path } : null; }
+    case "radio": { const cmds = ["play", "pause", "resume", "next", "previous", "stop"] as const; const cmd = cmds.find((c) => c === o.cmd); const station = str(o.station, 80); return cmd ? { type: "radio", cmd, ...(station ? { station } : {}) } : null; }
+    case "run": { const command = str(o.command, 2000); return command && !/[\u0000-\u0008]/.test(command) ? { type: "run", command } : null; }
+    default: return null;
+  }
+}
+/** Every ```do``` block: one action or a list; anything unknown or unsafe-looking is dropped. At most 5. */
+export function parseActions(text: string): Action[] {
+  const out: Action[] = [];
+  for (const m of text.matchAll(/```do\s*([\s\S]*?)```/gi)) {
+    try { const v = JSON.parse(m[1]!.trim()) as unknown; for (const a of Array.isArray(v) ? v : [v]) { const ok = toAction(a); if (ok) out.push(ok); } } catch { /* skip a malformed block */ }
+  }
+  return out.slice(0, 5);
+}
+export function describeAction(a: Action): string {
+  switch (a.type) {
+    case "open_app": return `Open ${a.name}`;
+    case "open_url": { try { return `Open ${new URL(a.url).host}`; } catch { return "Open link"; } }
+    case "open_path": return `Open ${a.path.split("/").filter(Boolean).at(-1) ?? a.path}`;
+    case "focus": return `${a.minutes}-minute focus`;
+    case "crew": return "Hand to the crew";
+    case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
+    case "open_settings": return `Open ${PANES.find((p) => p.key === a.pane)?.name ?? "Settings"}`;
+    case "mac": return a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : a.op === "music_now" ? "Check what's playing" : a.op === "music_playlists" ? "Check your playlists" : a.op === "notes_new" ? `New note: ${a.title ?? "…"}` : a.op === "calendar_add" ? `Add “${a.title}” to your calendar` : a.op === "new_folder" ? `New folder “${a.name}”` : a.op === "reveal" ? `Show ${a.path?.split("/").pop()} in Finder` : a.op === "open_file" ? `Open ${a.path?.split("/").pop()}` : a.op === "browser_tabs" ? "Check your open tabs" : "Check your Mac";
+    case "note": return "Add to your note";
+    case "media": return a.command === "play_query" ? `Play “${a.query}”` : a.command === "playlist" ? `Play your ${a.query} playlist` : a.command === "open_query" ? `Open ${a.query}` : a.command === "shuffle" ? `Shuffle ${a.on === false ? "off" : "on"}` : a.command === "repeat" ? `Repeat ${a.mode ?? "all"}` : a.command === "love" ? "Favourite this song" : a.command === "add_to_library" ? "Add this song to your library" : `Music: ${a.command.replace(/_/g, " ")}`;
+    case "system": return a.what === "dark_mode" ? "Dark mode" : "Sleep display";
+    case "shortcut": return `Run “${a.name}”`;
+    case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
+    case "learn": return a.drill ? "Quiz drill" : `Course: ${a.topic}`;
+    case "venture": return `Venture: ${a.name}`;
+    case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
+    case "remember": return "Taught the crew";
+    case "card": return "Added a quiz card";
+    case "go": return `Open ${SHUACREW_PAGES.find((p) => a.path === p.path || a.path.startsWith(p.path + "/"))?.name ?? a.path}`;
+    case "radio": return a.cmd === "play" ? `Radio: ${a.station ?? "on"}` : `Radio: ${a.cmd}`;
+    case "run": return `Run ${a.command.length > 48 ? `${a.command.slice(0, 48)}…` : a.command}`;
+  }
+}
+
+/** An ```act {...}``` block: Spark's next mouse/keyboard step, or {"type":"done"}. Validated; ⌘Q and friends are the Mac's call. */
+export function parseAct(text: string): Act | null {
+  const m = /```act\s*([\s\S]*?)```/i.exec(text);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[1]!.trim()) as Record<string, unknown>;
+    const label = typeof o.label === "string" ? o.label.trim().slice(0, 60) : "";
+    switch (o.type) {
+      case "press": return label ? { type: "press", label } : null;
+      case "click": return unit(o.x) && unit(o.y) ? { type: "click", x: o.x as number, y: o.y as number, label, ...(o.double === true ? { double: true } : {}), ...(o.button === "right" ? { button: "right" as const } : {}) } : null;
+      case "type": return typeof o.text === "string" && o.text.length > 0 && o.text.length <= 2000 ? { type: "type", text: o.text, label } : null;
+      case "key": return typeof o.keys === "string" && /^[a-z0-9⌘⇧⌥⌃+ ,./\-=\[\]]{1,40}$/i.test(o.keys) ? { type: "key", keys: o.keys, label } : null;
+      case "scroll": { const amount = Math.max(-30, Math.min(30, Math.round(Number(o.amount) || -5))); return { type: "scroll", amount, label, ...(unit(o.x) && unit(o.y) ? { x: o.x as number, y: o.y as number } : {}) }; }
+      case "done": return { type: "done", summary: typeof o.summary === "string" ? o.summary.slice(0, 200) : "" };
+      default: return null;
+    }
+  } catch { return null; }
+}
+export function describeAct(a: Act): string {
+  switch (a.type) {
+    case "press": return `Press “${a.label}”`;
+    case "click": return `${a.double ? "Double-click" : a.button === "right" ? "Right-click" : "Click"} ${a.label ? `“${a.label}”` : "there"}`;
+    case "type": return `Type “${a.text.length > 40 ? `${a.text.slice(0, 40)}…` : a.text}”`;
+    case "key": return `Press ${a.keys}`;
+    case "scroll": return `Scroll ${a.amount < 0 ? "down" : "up"}`;
+    case "done": return "Done";
+  }
+}
+
+/** During a walkthrough every reply is one short line: say the step, never narrate or quote the screen text. */
+const STEP_STYLE = " Reply in ONE short sentence (under 15 words) plus the block — no recap, no commentary. The screen text below is read off their screen by OCR, not typed by them: never quote it or comment on stray lines in it.";
+
+/** What goes back after Spark does a step: what happened, a fresh look, and the ask for the next step. */
+export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }, step: number, max: number) {
+  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${Number.isFinite(max) && step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next single step as one act block, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
+}
+
+/** What the bubble shows: the reply without machine-readable blocks. */
+export function speakable(text: string) { return withoutPositions(noEmoji(text).replace(/```(point|do|guide|draw|act|next)[\s\S]*?(```|$)/gi, "")).trim(); }
+/**
+ * "Switched it for you." — with nothing actually done. True when a reply says it did (or is doing) something on the
+ * Mac but carries no block that would do it. Spark gets sent straight back to either do it or say it can't.
+ */
+export function claimsWithoutAction(text: string): boolean {
+  if (/```(do|act|guide|point|draw)\b/i.test(text)) return false;
+  const said = speakable(text).toLowerCase();
+  if (/\b(can'?t|cannot|couldn'?t|unable|not able|won'?t|isn'?t possible|don'?t have)\b/.test(said)) return false;
+  return /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)
+    && /^(ok|okay|sure|done|got it|on it|alright|all set|there you go|switched|opened|opening|paused|playing|turned|toggled|enabled|disabled|i'?ve|i have|i'?m|i )/.test(said.trim());
+}
+
+/**
+ * The numbered ids and coordinates Spark is given are for pointing, never for talking: "#12", "T40", "@0.82,0.07",
+ * "(0.82, 0.07)", "at x 0.8". Strip any that slip into what it says or shows.
+ */
+export function withoutPositions(text: string): string {
+  return text
+    .replace(/\s*\(\s*(?:#|T)\d{1,4}\s*\)/g, "")
+    .replace(/(?<![\w#])(?:item |element |control |line )?(?:#|T)\d{1,4}\b(?!\s*(?:%|minutes?|hours?|px))/g, "")
+    .replace(/\s*(?:\b(?:at|near|around)\s+)?@\s*0?\.\d+\s*,\s*0?\.\d+/gi, "")
+    .replace(/\s*(?:\b(?:at|near|around)\s+)?\(?\s*(?:x\s*[=:]?\s*)?0?\.\d{2,}\s*,\s*(?:y\s*[=:]?\s*)?0?\.\d{2,}\s*\)?/gi, "")
+    .replace(/\b(?:at|near)?\s*(?:the\s+)?(?:coordinates?|position)\s*(?=[.,;!?]|$)/gi, "")
+    .replace(/[ \t]{2,}/g, " ").replace(/\s+([.,;!?])/g, "$1");
+}
+/** Next moves: a ```next ["…","…"]``` block of 2–3 short things they could say next (shown as chips; never spoken). */
+export function parseNext(text: string): string[] {
+  const m = /```next\s*([\s\S]*?)```/i.exec(text);
+  if (!m) return [];
+  try { const v = JSON.parse(m[1]!.trim()) as unknown; return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 1).map((x) => x.trim().slice(0, 60)).slice(0, 3) : []; } catch { return []; }
+}
+
+/** Plain words for the voice: no markdown, no code, no link targets. */
+export function spoken(text: string) {
+  return speakable(text).replace(/```[\s\S]*?(```|$)/g, " ").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/`([^`]*)`/g, "$1")
+    .replace(/^\s*(#+|[-*]|\d+\.)\s+/gm, "").replace(/[*_~>#]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** Real-time speech: the whole sentences that arrived since `from` in a streaming reply. Stops at any code block. */
+export function nextSentences(text: string, from: number, final = false): { chunks: string[]; upto: number } {
+  const rule = text.search(/\n-{3,}\s*\n/), tick = text.indexOf("```");
+  const fence = rule >= 0 && (tick < 0 || rule < tick) ? rule : tick;
+  const end = fence >= 0 ? fence : text.length;
+  if (from >= end) return { chunks: [], upto: from };
+  const tail = text.slice(from, end);
+  let cut = 0;
+  for (const m of tail.matchAll(/[.!?:](?=\s)|\n/g)) cut = m.index! + 1;
+  if (final || fence >= 0) cut = tail.length;
+  // Start talking sooner: at the very start of a reply, the first clause (6+ words, up to a comma) goes out on its own.
+  if (!cut && from === 0) { const clause = /^\s*(?:\S+\s+){5,}?\S+?[,;—–](?=\s)/.exec(tail); if (clause) cut = clause[0].length; }
+  const chunks = tail.slice(0, cut).split(/(?<=[.!?:])\s+|\n+/).map(spoken).filter((s) => /\w/.test(s));
+  return { chunks, upto: from + cut };
+}
+
+export interface Persona { name: string; tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed"; control?: "off" | "ask" | "auto"; shortcuts?: string[]; voice?: boolean; voices?: string[]; memory?: string[]; goal?: string }
+const TONES: Record<Persona["tone"], string> = {
+  cheerful: "warm, upbeat and encouraging",
+  chill: "relaxed and easygoing, a calm friend",
+  direct: "straight to the point, no filler, no pleasantries",
+  coach: "a patient teacher: explain the why briefly so they learn it for next time",
+};
+
+const DESIGN = [
+  "SYSTEM DESIGN — this is a design question. Answer like a principal engineer in a design review, high quality and specific:",
+  "Start with ONE or two spoken sentences summarising the design, then a line with just ---, then the written design (not read aloud).",
+  "Cover, tersely, with headings: Requirements (functional + the non-functional numbers that drive the design) · Back-of-envelope estimates (QPS, storage, bandwidth, with the arithmetic) · Architecture (components and why each exists) · Data model & storage choices (and why not the alternatives) · APIs (the few that matter) · Scaling & bottlenecks (sharding keys, caching, queues, hot spots) · Reliability (failure modes, retries/idempotency, consistency choices) · Trade-offs & what you'd do next.",
+  "Draw it: include one Mermaid diagram in a ```mermaid block — `flowchart LR`, a first line `%% title: <name>`, subgraph per tier/boundary (client, edge, services, data, async), cylinders [(DB)] for stores, queues as [[Queue]], labelled edges for protocols/flows (e.g. -->|gRPC|), and classDef accents for critical paths using stroke only (e.g. classDef hot stroke:#f5b544,stroke-width:2.5px) — never a fill colour, the diagram renders on a dark canvas. Keep it readable: 8–18 nodes. Add a second diagram (sequenceDiagram) only when a request flow is the crux.",
+  "Use real technologies where they fit (Postgres, Redis, Kafka, S3, CDN, etc.) and say why. No filler.",
+].join("\n");
+
+export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "", appNow = "") {
+  const design = isDesign(question);
+  return [
+    `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read an attached screenshot.`,
+    "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
+    '```do [{"type":"open_app","name":"Safari"}]```',
+    'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
+    'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist) | open_query (open an artist, album or search without playing), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
+    [
+      "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, learning, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
+      'Learn anything: ```do [{"type":"learn","topic":"Kubernetes"}]``` · quiz what is due: ```do [{"type":"learn","drill":true}]```',
+      'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
+      'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
+      'Building software, writing code in a repo, or long research reports: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
+      "YOU STAY WITH THEM. When they want to learn, find, set up or do something on their Mac or a website, YOU walk them through it yourself, live, one step at a time (guide), or do it for them (act) when they ask you to: never hand that to the crew, never say you can't, never stop after one step. After each step you'll get a fresh screenshot automatically; give the next step until it's done, then the done block. If something unexpected shows up, adapt and keep going.",
+      'Their email (Gmail or any account in the Mac Mail app), read and draft only, NEVER send: unread ```do [{"type":"mail","op":"unread"}]``` · search ```do [{"type":"mail","op":"search","query":"invoice"}]``` · read one (id from a list) ```do [{"type":"mail","op":"read","id":123}]``` · draft a reply ```do [{"type":"mail","op":"draft","to":"a@b.com","subject":"…","body":"…"}]``` (it opens in Mail for them to send). You get the results back; then say the gist in a sentence or two.',
+      `SYSTEM SETTINGS — take them to the exact page, never a hunt: \`\`\`do [{"type":"open_settings","pane":"displays"}]\`\`\` (pane: ${PANES.map((p) => p.key).join(" | ")}). Night Shift, brightness, resolution are in displays; dark mode in appearance; permissions like screen-recording, full-disk-access, microphone, accessibility-access open right on that switch. Then point at the exact control if they need to change something there.`,
+      'THEIR MAC — look before you guess (read on this Mac): find files ```do [{"type":"mac","op":"find","query":"lease agreement","kind":"pdf"}]``` (kind?: pdf|images|documents|folders|apps) · read a file or folder ```do [{"type":"mac","op":"read","path":"~/Documents/plan.md"}]``` · recent files {"op":"recent","days":3} · calendar {"op":"calendar","days":2} · reminders {"op":"reminders"} · add a reminder {"op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"} · Apple Notes {"op":"notes","query":"passport"} · contacts {"op":"contacts","query":"Sam"} · this Mac now (apps, battery, storage, Wi-Fi) {"op":"status"}. DO THINGS DIRECTLY (never click through an app for these): new Apple Note {"op":"notes_new","title":"…","body":"…"} · calendar event {"op":"calendar_add","title":"Dentist","start":"2026-10-02T15:00","end?":"…","location?":"…"} · new folder {"op":"new_folder","name":"test","in?":"~/Desktop"} · open a file {"op":"open_file","path":"~/…"} · show it in Finder {"op":"reveal","path":"~/…"} · their open Safari/Chrome tabs {"op":"browser_tabs"}. You get the result back; answer from it with the specifics. Use these whenever the answer lives on their Mac (their files, schedule, people, notes) instead of saying you don\'t know.',
+      'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
+      'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
+      'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
+      'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',
+      '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
+      "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
+    ].join("\n"),
+    'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
+    "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
+    "NEVER say you did, are doing, or turned something on/off unless the matching block (do / act / guide / settings) is in this SAME reply. No block, no claim: if you can't do it, say so plainly and offer the closest thing you can do.",
+    'NEXT MOVES: when you finish a task, a lesson, a lookup or a workflow, end with ```next ["…","…"]``` — 2 or 3 short, specific things they could ask you next (under 8 words each, phrased as they would say them, e.g. "Quiz me on this", "Set it up on my Mac too"). Skip it for small talk and quick commands.',
+    "RESEARCH: if you don't know, or it depends on current or specific facts, look it up (WebSearch, then WebFetch the best page) before you answer or teach, and name the source in a few words. Then teach it: point, guide or draw on their screen when that makes it clearer.",
+    persona.goal || persona.memory?.length ? [
+      "WHAT YOU KNOW ABOUT THEM (their memory in ShuaCrew — use it naturally, never recite it):",
+      persona.goal ? `- Career goal: ${persona.goal}` : "",
+      ...(persona.memory ?? []).slice(0, 25).map((m) => `- ${m}`),
+    ].filter(Boolean).join("\n") : "",
+    persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
+    persona.control && persona.control !== "off" && screen
+      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something), do it ONE step per reply: a short sentence, then one act block. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. Otherwise by position: \`\`\`act {"type":"click","x":0-1,"y":0-1,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
+      : persona.control && persona.control !== "off" ? "You can also use their mouse and keyboard, but only with the eye on (you need to see the screen) — ask them to turn it on for tasks inside an app." : "You can't click or type inside other apps: SHOW them instead (point, guide, draw).",
+    screen
+      ? [
+        `The attached image is the user's screen right now (${screen.width}×${screen.height}). Ground your answer in what is actually visible.`,
+        `To show one thing, add: \`\`\`point {"x": 0.0-1.0, "y": 0.0-1.0, "label": "2–5 words"}\`\`\` (x,y = its CENTER as fractions of the image width/height).`,
+        `To SKETCH on their screen (circle a problem, box a region, arrow from cause to effect, a short note), add \`\`\`draw [{"shape":"box","x":0.5,"y":0.4,"w":0.2,"h":0.1,"label":"this total is wrong"},{"shape":"arrow","from":[0.3,0.6],"to":[0.45,0.42],"label":"comes from here"},{"shape":"circle","x":0.7,"y":0.2,"r":0.03},{"shape":"text","x":0.5,"y":0.9,"text":"note"}]\`\`\` (centres/sizes as fractions; up to 12 shapes). It draws itself in live and fades after ~15s. When a shape is about a listed control or text line, give its id instead of coordinates — {"shape":"box","target":"#12","label":"…"}, {"shape":"circle","target":"T40"}, {"shape":"arrow","from":[x,y],"target":"#3"} — and Spark draws exactly around it, in its shape.`,
+        screen.text?.length ? screenText(screen.text) : "",
+        elementsText(screen.context),
+        `GUIDE MODE — when they want to be shown how to do something on screen ("how do I…", "show me", "walk me through"), guide ONE step at a time: say just that step in a sentence, then add \`\`\`guide {"x": centre 0-1, "y": centre 0-1, "w": width 0-1, "h": height 0-1, "label": "Click Share", "step": 1}\`\`\` boxing exactly the control to use. Their Mac spotlights it; after an attempt you get a fresh screenshot. A click is not evidence of success. Verify the resulting visible state first. If the attempt is wrong or unclear, keep the same goal, explain what happened gently, and repeat or clarify the current step. Stay with the user until the actual goal is achieved or they stop. If the thing isn't visible yet, guide them to what reveals it (a menu, a tab, scrolling). When the task is complete, say so and add \`\`\`guide {"done": true}\`\`\`.`,
+      ].join("\n")
+      : "No screenshot this time; answer from the question alone. If they want to be shown something on screen, ask them to turn on the eye so you can see.",
+    design ? DESIGN : "For anything with structure (an architecture, a flow, a data model), you can include a ```mermaid diagram — it renders as a real diagram.",
+    appNow,
+    crewNow ? `${crewNow}\nIf they ask what's going on, what's playing, or who is working, answer from CREW NOW. Don't invent sessions.` : "",
+    `\nThe user says: ${question}`,
+  ].join("\n");
+}
+
+/** What goes back after they do a guided step: a fresh look, and the ask for what's next. */
+export function guideFollowUp(label: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }) {
+  return `[guide] I attempted “${label}”; success is not yet verified. A fresh screenshot is attached (${screen.width}×${screen.height}). Check the visible result before advancing. If it is wrong or unclear, keep the same goal, explain the correction, and provide one guide block for another try. Use guide {"done": true} only when the requested outcome is visibly achieved.${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000) : ""}${screen.context ? `\n${elementsText(screen.context)}` : ""}` : ""}`;
+}
+
+/**
+ * Spark on a model running on this Mac: a compact prompt (a fraction of the full one) split into a STABLE part — the
+ * same text every time, so the local model reads it once and caches it — and a small live part per question.
+ */
+export function localSystem(p: Persona): string {
+  return [
+    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures, learning and radio. The MODEL line in each message says what you're running on.`,
+    `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Be accurate; if you don't know, say so.`,
+    "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
+    '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below} · radio {cmd: play|pause|resume|next|stop, station?: "lofi jazz"|"lofi hip hop"}',
+    "- media {command: play|pause|next|previous|play_query, query?, app?: Music|Spotify} · remember {text} · card {front, back} (a quiz card) · run {command} (a terminal command; risky ones ask first)",
+    "ShuaCrew pages (what each is for — answer questions about the app from this, never guess):",
+    ...SHUACREW_PAGES.map((x) => `- ${x.name} ${x.path}: ${x.about}`),
+    p.goal ? `Their career goal: ${p.goal}.` : "",
+    p.memory?.length ? `What you know about them: ${p.memory.slice(0, 8).join(" | ")}` : "",
+    "You can't see images; when the screen matters you're given its text.",
+    "Never claim something is playing, running or waiting unless the NOW line says so.",
+  ].filter(Boolean).join("\n");
+}
+/**
+ * After Spark opens something for a question ("what's the weather", "check the Lakers score"), it should read what
+ * opened and answer with the specifics, not stop at "opened it". Plain commands ("open Notes") need no look.
+ */
+export function looksForAnswer(q: string): boolean {
+  const t = q.toLowerCase();
+  return /\b(weather|forecast|temperature|rain|price|stock|score|news|headline|traffic|flight|hours|recipe|definition|meaning|who|what|when|where|which|how (much|many|long|far|old)|is it|are there|check|look up|find|search|compare|tell me|show me)\b/.test(t)
+    && !/^\s*(please\s+)?(open|launch|start|quit|close)\s+[\w .'-]{1,40}\s*$/.test(t);
+}
+
+/**
+ * How much model a turn needs: quick chat and commands stay fast; real thinking (code, debugging, planning, writing,
+ * comparing, anything long) gets the stronger model. The screen and design questions were already "balanced".
+ */
+export function turnTier(q: string, o: { screen: boolean; design: boolean }): "fast" | "balanced" | "frontier" {
+  if (o.design) return "balanced";
+  const t = q.toLowerCase();
+  const deep = /\b(debug|fix|refactor|implement|architecture|design|plan|strategy|write (a|an|the|me)|draft|essay|analy[sz]e|compare|trade-?offs?|explain why|prove|review|optimi[sz]e|algorithm|step[- ]by[- ]step)\b/.test(t)
+    || /```|\bfunction\b|=>|\bclass\b|stack trace|traceback/.test(q) || q.length > 280;
+  return deep || o.screen ? "balanced" : "fast";
+}
+
+const ENGINES: Record<string, string> = { claude: "Claude", codex: "Codex (OpenAI)", local: "a local model on this Mac" };
+/**
+ * Who Spark actually is this turn. Sent every turn so a conversation that moved model (Claude out → local) never
+ * keeps claiming the old one, and a fallback owns its limits instead of promising work it can't do.
+ */
+export function engineLine(runtime: string, model: string, fallback: boolean): string {
+  const who = `MODEL: You are running on ${ENGINES[runtime] ?? runtime} (${model}) this turn. If asked which model you are, say exactly that; never claim another.`;
+  if (runtime !== "local") return who;
+  return `${who} ${fallback ? "Claude and Codex are unavailable (usage limit or offline), so you're the stand-in. " : ""}You can chat, answer from what you know, and use the do-actions above; you can't see images, run crew sessions, write or edit code, or do long multi-step work. When asked for those, say plainly that it needs ${fallback ? "Claude or Codex once they're back" : "Claude or Codex (switch Spark's brain to Auto in Settings)"}, and offer what you can do now.`;
+}
+/** The question first (the chat shows only that part), then the live context after a [screen] marker. */
+export function localAsk(q: string, live: { now: Date; screen?: string; extra?: string[]; status?: string }): string {
+  const context = [
+    `NOW: ${live.now.toLocaleString([], { weekday: "long", hour: "numeric", minute: "2-digit" })}${live.status ? ` · ${live.status}` : ""}.`,
+    live.screen ? `Their screen now (text):\n${live.screen.slice(0, 2500)}` : "",
+    ...(live.extra ?? []).filter(Boolean).map((x) => x.slice(0, 2500)),
+  ].filter(Boolean).join("\n\n");
+  return `${q}\n\n[screen]\n${context}`;
+}
+
+/** Is this question about what's on screen? (Local answers only read the screen's text when it is — it's slow to read.) */
+export function aboutScreen(q: string) {
+  return /\b(this|that|these|here|screen|window|page|tab|error|warning|message|code|line|button|click|looking at|see|showing|selected|explain)\b/i.test(q);
+}

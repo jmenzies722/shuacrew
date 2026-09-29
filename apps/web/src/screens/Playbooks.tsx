@@ -1,7 +1,8 @@
+import { plain } from "../lib/plain";
 import type { PhaseView, PlayView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowRight, ArrowUp, Check, ChevronDown, CircleSlash, Copy, Hand, Loader2, Pencil, Play, Plus, RotateCcw, SkipForward, Trash2, X, Zap } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Check, ChevronDown, CircleSlash, Copy, Hand, Loader2, Pencil, Play, Plus, RotateCcw, SkipForward, Trash2, X, Zap, ListChecks } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "../components/Markdown";
@@ -9,6 +10,8 @@ import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { KIND } from "../lib/kinds";
 import { Glyph, IconPicker } from "../lib/glyphs";
+import { PaneHeader } from "../components/Pane";
+import { StatStrip } from "../components/StatStrip";
 
 interface Phase {
   id: string;
@@ -49,18 +52,9 @@ export function Playbooks() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-6 py-6">
-        <header className="mb-6 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Playbooks</h1>
-            <p className="mt-1 max-w-[660px] text-[13.5px] leading-relaxed text-fg-2">
-              Repeatable work in phases. Each phase goes to the right crew member, builds on the last, saves its output to the Library, and waits for you where it matters.
-            </p>
-          </div>
-          <Button onClick={() => setEditing({ emoji: "workflow", inputs: [{ key: "goal", label: "Goal", long: true }], phases: [{ id: "phase-1", name: "", prompt: "", gate: "approve" }] })}>
-            <Plus size={14} /> New playbook
-          </Button>
-        </header>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader children={<StatStrip stats={[{ value: books.length, label: "playbooks" }, { value: Object.values(plays).filter((p) => p.status === "running").length, label: "running", live: Object.values(plays).some((p) => p.status === "running") }, { value: Object.values(plays).filter((p) => p.status === "waiting").length, label: "waiting for you", tone: "wait" }, { value: Object.values(plays).filter((p) => p.status === "done" && p.updatedAt > Date.now() - 7 * 86_400_000).length, label: "finished this week", tone: "ok" }]} />} eyebrow="Plan" icon={ListChecks} title="Playbooks" description="Repeatable work in phases. Each phase goes to the right crew member, builds on the last, saves its output to the Library, and waits for you where it matters."
+          actions={<Button onClick={() => setEditing({ emoji: "workflow", inputs: [{ key: "goal", label: "Goal", long: true }], phases: [{ id: "phase-1", name: "", prompt: "", gate: "approve" }] })}><Plus size={14} /> New playbook</Button>} />
 
         {active.length > 0 && (
           <section className="mb-8">
@@ -468,7 +462,7 @@ function PhaseCard({ play, phase, index }: { play: PlayView; phase: PhaseView; i
               {member ? `${member.name} · ${member.role}` : "Any agent"}
               {" — "}
               {phase.status === "running" ? (
-                <span className="shimmer-text">{run?.currentTool ? `using ${run.currentTool}…` : run?.ticker || "working…"}</span>
+                <span className="shimmer-text">{run?.currentTool ? `using ${run.currentTool}…` : plain(run?.ticker) || "working…"}</span>
               ) : phase.status === "review" ? (
                 <span className="text-amber">ready for your review</span>
               ) : phase.status === "failed" ? (

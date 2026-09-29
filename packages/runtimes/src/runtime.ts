@@ -20,10 +20,16 @@ export interface RunSpec {
   system?: string;
   /** Subagents the runtime may delegate to. */
   agents?: Record<string, { description: string; prompt: string; model?: string; disallowedTools?: string[] }>;
+  disableNativeAgents?: boolean;
   /** MCP servers installed in ShuaCrew. Bearer headers stay in the gateway. Codex/Claude use a map; ACP uses a list. */
   mcpServers?: Record<string, unknown> | unknown[];
   /** Claude Code plugins to load (ShuaCrew's skills live in one). Other runtimes ignore this. */
   plugins?: Array<{ type: "local"; path: string; skipMcpDiscovery?: boolean }>;
+  /**
+   * A conversational turn (Spark): no coding-agent system prompt, no MCP servers, plugins or subagents, and only the
+   * tool it needs to look at an attached screenshot. Starts answering in a fraction of the time.
+   */
+  lean?: boolean;
 }
 
 export interface ApprovalAnswer {
@@ -51,7 +57,7 @@ export type RuntimeEvent =
   | { type: "check"; command: string; exitCode: number; output?: string }
   | { type: "subagent-start"; id: string; name: string; task: string }
   | { type: "subagent-end"; id: string; ok: boolean; summary?: string }
-  | { type: "usage"; inputTokens: number; outputTokens: number; cacheTokens?: number; costUsd?: number; contextUsed?: number; contextLimit?: number }
+  | { type: "usage"; inputTokens: number; outputTokens: number; cacheTokens?: number; costUsd?: number; contextUsed?: number; contextLimit?: number; accounting?: "codex-delta-v1" | "codex-last-v1" }
   | { type: "checkpoint"; note?: string }
   /** The subscription's usage window is exhausted; `until` is when it lifts (ms since epoch). */
   | { type: "limited"; until: number; message: string; model?: string; credits?: boolean }

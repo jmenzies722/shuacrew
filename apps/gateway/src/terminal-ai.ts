@@ -29,7 +29,8 @@ export function failure(stdout: string, stderr: string, error: Error & { killed?
 
 export type Ask =(args: string[], cwd: string) => Promise<string>;
 
-const claude: Ask = (args, cwd) =>
+/** One tool-less `claude -p` call through your logged-in CLI (your subscription, never an API key). */
+export const claude: Ask = (args, cwd) =>
   new Promise((resolve, reject) => {
     const file = bin();
     if (!file) return reject(new Error("the claude CLI isn't installed"));

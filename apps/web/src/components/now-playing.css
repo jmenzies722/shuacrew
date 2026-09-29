@@ -1,0 +1,23 @@
+.np-disc { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, color-mix(in srgb, var(--amber) 70%, #fff), var(--amber) 42%, #1a1208 43%, #0b0b0c 70%);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--amber) 35%, transparent), 0 0 10px color-mix(in srgb, var(--amber) 25%, transparent); }
+.np-disc.mood-quiet { background: radial-gradient(circle at 35% 35%, var(--text-3), var(--sunken) 42%, #0b0b0c 70%); box-shadow: inset 0 0 0 2px var(--line); }
+.np-disc.mood-review { background: radial-gradient(circle at 35% 35%, #f9c, #f472b6 42%, #1a0812 70%); box-shadow: inset 0 0 0 2px color-mix(in srgb, #f472b6 40%, transparent), 0 0 10px #f472b666; }
+.np-disc.mood-failed { background: radial-gradient(circle at 35% 35%, #fda, #f87171 42%, #1a0808 70%); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bad) 40%, transparent); }
+.np-disc.mood-working { animation: np-spin 4.8s linear infinite; }
+.np-disc.is-lg { position: relative; width: 56px; height: 56px; box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--amber) 30%, transparent), 0 8px 20px rgba(0,0,0,.35); }
+.np-disc.is-lg::after { content: ""; position: absolute; inset: 38%; border-radius: 50%; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.np-art { position: relative; display: grid; place-items: center; width: 56px; height: 56px; flex-shrink: 0; background: none; border: 0; padding: 0; }
+.np-cover { width: 56px; height: 56px; border-radius: 8px; display: grid; place-items: center; color: #fff;
+  background: radial-gradient(circle at 30% 25%, color-mix(in srgb, #fff 35%, var(--c)), var(--c));
+  box-shadow: 0 8px 18px rgba(0,0,0,.35); }
+.np-player { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: auto auto; gap: 8px 12px; align-items: center; min-width: 260px; }
+.np-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.np-meta small { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.np-meta strong { font-size: 15px; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-meta span { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-controls { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.np-player.mood-review .np-meta small { color: #f472b6; }
+.np-player.mood-working .np-meta small { color: var(--amber); }
+@keyframes np-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .np-disc.mood-working { animation: none; } }

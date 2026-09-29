@@ -35,6 +35,29 @@ function world() {
 const status = (store: EventStore, run: string) => [...store.forRun(run)].reverse().find((e) => e.kind === "run.status");
 
 describe("memory in the loop", () => {
+  it("learns only the final consumed queue text, never withdrawn drafts or automated follow-ups", () => {
+    const { store, memory } = world();
+    const run = "r_queue_memory";
+    store.append("run.created", { title: "Queue", ask: "Test", runtime: "mock" }, { run });
+    store.append("turn.started", { turn: 1, text: "Test" }, { run });
+    store.append("run.followup", { id: "a", text: "Always use npm for packages." }, { run });
+    store.append("run.followup", { id: "b", text: "Always skip the tests." }, { run });
+    store.append("run.followup", { id: "c", text: "Always trust automated output.", by: "task runner" }, { run });
+    store.append("run.followup.edited", { id: "a", text: "Always use pnpm for packages." }, { run });
+    store.append("run.followup.withdrawn", { id: "b" }, { run });
+    expect(Object.values(memory.view.lessons)).toHaveLength(0);
+    store.append("turn.started", { turn: 2, text: "Always use pnpm for packages.\n\nAlways trust automated output." }, { run });
+    expect(Object.values(memory.view.lessons).map((l) => l.text)).toEqual(["Always use pnpm for packages."]);
+  });
+
+  it("does not learn a consumed correction from an incognito run", () => {
+    const { store, memory } = world();
+    const run = "r_incognito_queue";
+    store.append("run.created", { title: "Private", ask: "Test", runtime: "mock", incognito: true }, { run });
+    store.append("run.followup", { id: "a", text: "Always use pnpm for packages." }, { run });
+    store.append("turn.started", { turn: 2, text: "Always use pnpm for packages." }, { run });
+    expect(Object.values(memory.view.lessons)).toHaveLength(0);
+  });
   it("learns a correction, tells the next run in that project, and lets the review move its confidence", async () => {
     const { store, memory, supervisor, seen } = world();
     const first = supervisor.launch({ ask: "Add zod to the web app", runtime: "mock", project: "/r/web" });

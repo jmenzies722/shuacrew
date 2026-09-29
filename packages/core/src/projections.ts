@@ -6,6 +6,8 @@
  * events up to a chosen sequence number. Nothing here stores anything of its own.
  */
 import type { PhaseDef, PlaybookDef, AnyEvent, RunStatus } from "./events.js";
+import type { MemberVoice } from "./voice.js";
+import { applyRoomEvent, type RoomView } from "./rooms.js";
 
 export interface RunView {
   id: string;
@@ -48,7 +50,7 @@ export interface RunView {
   checkpoints: Array<{ seq: number; turn: number; commit?: string }>;
   worktree?: { path: string; branch: string; base: string };
   review?: { comments: number; decided?: boolean; approved?: boolean; queued?: number; landed?: string; failed?: string; pr?: string };
-  usage: { inputTokens: number; outputTokens: number; costUsd: number; contextUsed?: number; contextLimit?: number };
+  usage: { inputTokens: number; outputTokens: number; costUsd: number | null; records?: number; contextUsed?: number; contextLimit?: number };
   lastSeq: number;
 }
 
@@ -70,6 +72,7 @@ export interface CrewMember {
   name: string;
   role: string;
   persona: string;
+  voice?: MemberVoice;
   /** Make this member available as a native Claude subagent. Opt-in. */
   delegatable?: boolean;
   runtime?: string;
@@ -190,6 +193,7 @@ export interface BriefingView {
 }
 
 export interface CrewState {
+  rooms: Record<string, RoomView>;
   head: number;
   members: Record<string, CrewMember>;
   artifacts: Record<string, ArtifactView>;
@@ -202,12 +206,12 @@ export interface CrewState {
   backup?: { file: string; bytes: number; at: number; error?: string };
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
-  limited: Record<string, { until: number; message: string; credits?: boolean }>;
-  today: { day: string; tokens: number; costUsd: number; runs: number };
+  limited: Record<string, { until: number; message: string; credits?: boolean; seq?: number; retrying?: boolean }>;
+  today: { day: string; tokens: number; costUsd: number | null; records?: number; runs: number };
 }
 
 export function emptyState(): CrewState {
-  return { head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, sites: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: 0, runs: 0 } };
+  return { rooms: {}, head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, sites: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: null, records: 0, runs: 0 } };
 }
 
 /** Titles read as text: pictographic emoji (from older data) are dropped, symbols like ✓ kept. */
@@ -225,6 +229,9 @@ const ACTIVE: RunStatus[] = ["planning", "running", "awaiting_approval"];
 export function apply(state: CrewState, event: AnyEvent): CrewState {
   if (event.seq <= state.head) return state; // replays and reconnect overlaps are idempotent
   state.head = event.seq;
+  const currentDay = dayOf(Date.now());
+  if (state.today.day !== currentDay) state.today = { day: currentDay, tokens: 0, costUsd: null, records: 0, runs: 0 };
+  applyRoomEvent(state.rooms ??= {}, event);
   const run = event.run ? state.runs[event.run] : undefined;
   if (run) {
     run.updatedAt = event.at;
@@ -264,7 +271,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         lessons: [],
         subagents: [],
         checkpoints: [],
-        usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        usage: { inputTokens: 0, outputTokens: 0, costUsd: null, records: 0 },
         lastSeq: event.seq,
       };
       if (dayOf(event.at) === state.today.day) state.today.runs += 1;
@@ -529,17 +536,24 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       break;
     case "usage.recorded": {
       const b = event.body;
+      if (b.runtime === "mock") break;
       if (run) {
         run.usage.inputTokens += b.inputTokens;
         run.usage.outputTokens += b.outputTokens;
-        run.usage.costUsd += b.costUsd ?? 0;
         if (b.contextUsed !== undefined) run.usage.contextUsed = b.contextUsed;
         if (b.contextLimit !== undefined) run.usage.contextLimit = b.contextLimit;
       }
+      const contextOnly = b.inputTokens === 0 && b.outputTokens === 0 && b.cacheTokens === 0 && b.costUsd === undefined && (b.contextUsed !== undefined || b.contextLimit !== undefined);
+      if (contextOnly) break;
+      if (run) {
+        run.usage.costUsd = b.costUsd === undefined || (run.usage.records && run.usage.costUsd === null) ? null : (run.usage.costUsd ?? 0) + b.costUsd;
+        run.usage.records = (run.usage.records ?? 0) + 1;
+      }
       const day = dayOf(event.at);
-      if (day !== state.today.day) state.today = { day, tokens: 0, costUsd: 0, runs: 0 };
+      if (day !== currentDay) break;
       state.today.tokens += b.inputTokens + b.outputTokens;
-      state.today.costUsd += b.costUsd ?? 0;
+      state.today.costUsd = b.costUsd === undefined || (state.today.records && state.today.costUsd === null) ? null : (state.today.costUsd ?? 0) + b.costUsd;
+      state.today.records = (state.today.records ?? 0) + 1;
       break;
     }
     case "review.comment":
@@ -564,9 +578,19 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       if (run && !run.lessons.includes(event.body.id)) run.lessons.push(event.body.id);
       break;
     case "runtime.limited":
-      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message, credits: event.body.credits };
+      state.limited[event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime] = { until: event.body.until, message: event.body.message, credits: event.body.credits, seq: event.seq };
       break;
+    case "runtime.retrying": {
+      const key = event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime;
+      if (state.limited[key]?.seq === event.body.limitSeq) state.limited[key]!.retrying = true;
+      break;
+    }
     case "runtime.restored":
+      if (event.body.limitSeq !== undefined) {
+        const key = event.body.model ? `${event.body.runtime} · ${event.body.model}` : event.body.runtime;
+        if (state.limited[key]?.seq === event.body.limitSeq) delete state.limited[key];
+        break;
+      }
       // A restore without a model lifts everything on that agent; with one, just that model.
       for (const key of Object.keys(state.limited)) {
         if (event.body.model ? key === `${event.body.runtime} · ${event.body.model}` : key === event.body.runtime || key.startsWith(`${event.body.runtime} · `)) delete state.limited[key];

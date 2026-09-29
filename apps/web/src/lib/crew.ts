@@ -9,6 +9,19 @@ export function runRepo(run: RunView, runs: Record<string, RunView>): string | u
   return run.repo ?? (run.parent ? runs[run.parent]?.repo : undefined);
 }
 
+/**
+ * The one rule every pane (Board, Today, Floor) uses for "is this a session you'd see on its own?".
+ * `runs` is the full, unscoped run map so a child's parent can be looked up even when it's out of scope or archived.
+ */
+export function isTopLevelWork(run: RunView, runs: Record<string, RunView>): boolean {
+  // A child (delegation/subagent) belongs to its parent's thread. In the full run map a parent is always created
+  // before its children, and the projection deletes archived runs — so a missing parent means it was archived,
+  // and archiving a session hides its whole thread.
+  void runs;
+  // Learning sessions (coach, courses, drills, resume) live in Learning, not in your work views.
+  return !run.parent && !run.labels?.includes("learning") && !run.labels?.includes("buddy");
+}
+
 export function inScope(repo: string | undefined, scope: string | null): boolean {
   return scope === null || repo === scope;
 }

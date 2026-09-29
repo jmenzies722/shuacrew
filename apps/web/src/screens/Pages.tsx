@@ -1,19 +1,22 @@
+import { SparkToday } from "../components/SparkToday";
+import "./policy.css";
 import type { Decision } from "@shuacrew/core/policy-types";
-import { Button, Eyebrow, Panel, StatusGlyph } from "@shuacrew/ui";
-import { useEffect, useState, type ReactNode } from "react";
+import { Button, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { ACCENTS, PALETTES, resolvePalette, type Palette } from "../lib/appearance";
 import { useLive } from "../lib/live";
+import { PaneHeader } from "../components/Pane";
+import { ShieldCheck } from "lucide-react";
 
 export { Specs } from "./Specs";
 
 function Page({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] px-6 py-6">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{title}</h1>
-        <p className="mt-1 text-[13px] text-fg-2">{subtitle}</p>
-        <div className="mt-6 flex flex-col gap-5">{children}</div>
+      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+        <PaneHeader eyebrow="System" icon={ShieldCheck} title={title} description={subtitle} />
+        <div className="flex flex-col gap-5">{children}</div>
       </div>
     </div>
   );
@@ -35,55 +38,50 @@ function Starter({ items }: { items: Array<{ title: string; detail: string; onCl
 
 export { Integrations } from "./Integrations";
 
+const TRY = ["git push --force origin main", "rm -rf ~/Developer", "curl https://get.example.sh | sh", "cat .env", "npm install left-pad", "git commit -am wip"];
 export function Policy() {
   const [verify, setVerify] = useState<{ ok: boolean; count: number; brokenAt?: number; why?: string } | null>(null);
-  const [command, setCommand] = useState("git push --force origin main");
+  const [command, setCommand] = useState(TRY[0]!);
   const [explained, setExplained] = useState<Decision | null>(null);
-  const explain = async () => setExplained(await api<Decision>("/api/policy/explain", { body: { tool: "Bash", input: { command } } }));
-  useEffect(() => {
-    void explain();
-  }, []);
+  const activity = useLive((s) => s.activity);
+  const explain = async (c = command) => { setCommand(c); setExplained(await api<Decision>("/api/policy/explain", { body: { tool: "Bash", input: { command: c } } })); };
+  useEffect(() => { void explain(); void api<typeof verify>("/api/audit/verify").then(setVerify).catch(() => {}); }, []);
+  // Real decisions, newest first: what the policy decided on its own, and what you decided when it asked.
+  const decisions = useMemo(() => activity.filter((e) => e.kind === "policy.decided" || e.kind === "approval.decided").slice(-40).reverse(), [activity]);
+  const asked = useMemo(() => new Map(activity.filter((e) => e.kind === "approval.requested").map((e) => { const b = e.body as { id: string; tool: string }; return [b.id, b.tool]; })), [activity]);
+  const counts = useMemo(() => { const c = { allow: 0, deny: 0, ask: 0 }; for (const e of activity) if (e.kind === "policy.decided") c[(e.body as { verdict: "allow" | "deny" | "ask" }).verdict]++; return c; }, [activity]);
+  const tone = (v?: string) => (v === "allow" ? "ok" : v === "deny" ? "bad" : "wait");
   return (
-    <Page title="Policy & Audit" subtitle="One policy for every runtime, tightest rule wins. Every decision says which rule made it.">
-      <Panel className="p-5">
+    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1280px] px-8 pb-12 pt-6">
+      <PaneHeader title="Policy & Audit" description="One policy for every runtime; the tightest rule wins; every decision says which rule made it."
+        actions={<span className={`pol-chain is-${verify ? (verify.ok ? "ok" : "bad") : "wait"}`}><StatusGlyph tone={verify ? (verify.ok ? "ok" : "bad") : "wait"} />{verify ? (verify.ok ? `Audit chain intact · ${verify.count.toLocaleString()} events` : `Chain broken at #${verify.brokenAt}`) : "Checking the chain…"}</span>} />
+      <SparkToday />
+      <section className="pol-tester">
         <Eyebrow className="mb-3">Why would this be allowed?</Eyebrow>
         <div className="flex gap-2">
-          <input
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void explain()}
-            className="mono h-9 flex-1 rounded-[var(--radius-m)] border border-line-strong bg-raised px-3 text-[12.5px] outline-none focus:border-amber"
-            aria-label="Command to explain"
-          />
-          <Button onClick={() => void explain()}>Explain</Button>
+          <input value={command} onChange={(e) => setCommand(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void explain()} className="pol-input mono" aria-label="Command to explain" />
+          <Button variant="primary" onClick={() => void explain()}>Explain</Button>
         </div>
-        {explained && (
-          <div className="mt-4 text-[13px]">
-            <div className="flex items-center gap-2">
-              <StatusGlyph tone={explained.verdict === "allow" ? "ok" : explained.verdict === "deny" ? "bad" : "wait"} />
-              <span className="font-medium capitalize">{explained.verdict}</span>
-              <span className="text-fg-2">— {explained.reason}</span>
-            </div>
-            <div className="mt-2 text-[12px] text-fg-3">
-              Rule <span className="mono text-fg-2">{explained.rule}</span> in the <span className="mono text-fg-2">{explained.layer}</span> layer · risk {explained.risk}
-            </div>
-          </div>
-        )}
-      </Panel>
-      <Panel className="p-5">
-        <Eyebrow className="mb-3">Audit log</Eyebrow>
-        <p className="text-[13px] text-fg-2">Every event is chained to the one before it with SHA-256. Changing, deleting or reordering any of them breaks the chain.</p>
-        <div className="mt-3 flex items-center gap-3">
-          <Button onClick={async () => setVerify(await api("/api/audit/verify"))}>Verify the chain</Button>
-          {verify && (
-            <span className={`flex items-center gap-2 text-[13px] ${verify.ok ? "text-ok" : "text-bad"}`}>
-              <StatusGlyph tone={verify.ok ? "ok" : "bad"} />
-              {verify.ok ? `Intact — ${verify.count.toLocaleString()} events verified` : `Broken at event #${verify.brokenAt}: ${verify.why}`}
-            </span>
-          )}
-        </div>
-      </Panel>
-    </Page>
+        <div className="pol-try">{TRY.map((t) => <button key={t} type="button" className={`mono ${t === command ? "is-on" : ""}`} onClick={() => void explain(t)}>{t}</button>)}</div>
+        {explained && <div className={`pol-verdict is-${tone(explained.verdict)}`}>
+          <strong>{explained.verdict}</strong>
+          <div><div>{explained.reason}</div><small>Rule <span className="mono">{explained.rule}</span> · <span className="mono">{explained.layer}</span> layer · risk {explained.risk}</small></div>
+        </div>}
+      </section>
+      <div className="pol-grid">
+        <section className="pol-card">
+          <header><Eyebrow>Decisions</Eyebrow><span className="pol-counts"><i className="is-ok">{counts.allow} allowed</i><i className="is-wait">{counts.ask} asked</i><i className="is-bad">{counts.deny} denied</i></span></header>
+          {decisions.length === 0 && <p className="pol-empty">Decisions appear here as your crew works: every tool call the policy allowed, asked about or blocked, and what you decided.</p>}
+          {decisions.map((e) => { const b = e.body as { tool?: string; verdict?: string; rule?: string; reason?: string; allow?: boolean; by?: string }; const v = e.kind === "approval.decided" ? (b.allow ? "allow" : "deny") : b.verdict;
+            return <div key={e.seq} className="pol-row"><StatusGlyph tone={tone(v)} /><span className="pol-row-main"><b>{e.kind === "approval.decided" ? `${b.by?.startsWith("you") ? "You" : "Policy"} ${b.allow ? "allowed" : "denied"} ${asked.get((b as { id?: string }).id ?? "") ?? "a tool call"}` : b.tool}</b><small>{e.kind === "approval.decided" ? (b.by === "timeout" ? "timed out" : `decided ${b.by?.includes("(") ? b.by.slice(b.by.indexOf("(") + 1, -1) : "in the app"}`) : `${b.rule} · ${b.reason}`}</small></span><span className="pol-when">{since(e.at)}</span></div>; })}
+        </section>
+        <section className="pol-card">
+          <header><Eyebrow>Audit chain</Eyebrow><Button onClick={async () => setVerify(await api("/api/audit/verify"))}>Verify now</Button></header>
+          <p className="pol-note">Every event is chained to the one before it with SHA-256. Changing, deleting or reordering any of them breaks the chain, and this says where.</p>
+          <div className="pol-chainlist">{activity.slice(-8).reverse().map((e) => <div key={e.seq} className="pol-link"><span className="mono">#{e.seq}</span><span className="pol-row-main"><b className="mono">{e.kind}</b></span><span className="pol-when">{since(e.at)}</span></div>)}</div>
+        </section>
+      </div>
+    </div></div>
   );
 }
 

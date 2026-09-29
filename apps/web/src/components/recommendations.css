@@ -1,0 +1,14 @@
+/* "Works better with": connections and skills that fit what you asked, one tap each. */
+.recs { display: grid; gap: 6px; margin: 6px 0 2px; padding: 10px; border-radius: 14px; background: var(--accent-grad-soft, color-mix(in srgb, var(--amber) 8%, var(--raised))); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 25%, var(--line)); }
+.recs-head { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
+.recs-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; align-items: center; gap: 9px; }
+.recs-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; background: var(--accent-grad, var(--amber)); }
+.recs-icon.is-skill { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--raised)); }
+.recs-text { display: grid; min-width: 0; }
+.recs-text b { font-size: 12.5px; }
+.recs-text small { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recs-go { height: 26px; padding: 0 11px; border-radius: 8px; font-size: 11.5px; font-weight: 600; color: #fff; background: var(--accent-grad, var(--amber)); white-space: nowrap; }
+.recs-go:disabled { opacity: .6; }
+.recs-done { font-style: normal; font-size: 11.5px; color: var(--ok, #30d158); white-space: nowrap; }
+.recs-x { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--text-3); }
+.recs-x:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }

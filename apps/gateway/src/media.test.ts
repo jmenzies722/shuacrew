@@ -3,13 +3,17 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { kindOf, status, tools } from "./media.js";
+import { kindOf, status, tools, transcribe } from "./media.js";
 import { Uploads } from "./uploads.js";
 
 const t = tools(path.join(os.homedir(), ".shuacrew", "models"));
 const real = Boolean(t.ffmpeg && t.whisper && t.model && process.platform === "darwin");
 
 describe("media", () => {
+  it("does not start conversion when transcription was cancelled", async () => {
+    const abort = new AbortController(); abort.abort();
+    await expect(transcribe("/missing-voice.webm", { signal: abort.signal }, { ffmpeg: "/usr/bin/false", whisper: "/usr/bin/false", model: "/unused" })).rejects.toThrow(/abort/i);
+  });
   it("knows what each file is", () => {
     expect(kindOf("IMG_0042.HEIC")).toBe("photo");
     expect(kindOf("memo.m4a")).toBe("audio");
@@ -50,4 +54,10 @@ describe("media", () => {
     expect(execFileSync("sips", ["-g", "pixelWidth", photo.agentPath!]).toString()).toContain("2400");
     writeFileSync(path.join(dir, "done"), "");
   }, 180_000);
+});
+
+import { languageArg } from "./media.js";
+it("transcribes English by default, auto-detects on request, and refuses anything odd", () => {
+  expect(languageArg()).toBe("en"); expect(languageArg("auto")).toBe("auto"); expect(languageArg("es")).toBe("es");
+  expect(languageArg("es; rm -rf /")).toBe("en"); expect(languageArg("english")).toBe("en");
 });

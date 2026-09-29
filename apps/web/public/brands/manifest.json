@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "source": "https://brand.github.com/GitHub_Logos.zip",
+      "usage": "https://brand.github.com/foundations/logo",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Unmodified vendor light/dark assets with original clear space.",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "github-light.svg",
+        "sha256": "b5e2f4b3f953f075de7016faa952d6ce3ec7492aa7b32408505ec25857962d89"
+      },
+      "dark": {
+        "file": "github-dark.svg",
+        "sha256": "ed102562e49ca3ea6e7d79ea10d54360dbecc5beb33de6a60fa578b6c0fac803"
+      }
+    },
+    {
+      "id": "chrome-devtools",
+      "name": "Google Chrome",
+      "source": "https://www.google.com/chrome",
+      "usage": "https://partnermarketinghub.withgoogle.com/brands/chrome",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "chrome-devtools-light.svg",
+        "sha256": "3d890118d89858a85091409807fa5ced664ad68441f0f086609f7ebea6d8ce13"
+      },
+      "dark": {
+        "file": "chrome-devtools-dark.svg",
+        "sha256": "3d890118d89858a85091409807fa5ced664ad68441f0f086609f7ebea6d8ce13"
+      }
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "source": "https://github.com/supabase/supabase/blob/4031a7549f5d46da7bc79c01d56be4177dc7c114/packages/common/assets/images/supabase-logo-wordmark--light.svg",
+      "usage": "https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "supabase-light.svg",
+        "sha256": "97d50860107a5f6afd629e4f7fb2c0ec6174fd2e8786f7258bef6ae48a76af8c"
+      },
+      "dark": {
+        "file": "supabase-dark.svg",
+        "sha256": "97d50860107a5f6afd629e4f7fb2c0ec6174fd2e8786f7258bef6ae48a76af8c"
+      }
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "source": "https://neon.com/brand",
+      "usage": "https://neon.com/brand",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "neon-light.svg",
+        "sha256": "5ead57d4e570d2b0a7ae349ef411d54d5fd9740e292bf23c3d6fbc0a4f180f59"
+      },
+      "dark": {
+        "file": "neon-dark.svg",
+        "sha256": "5ead57d4e570d2b0a7ae349ef411d54d5fd9740e292bf23c3d6fbc0a4f180f59"
+      }
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "source": "https://vercel.com/geist/brands",
+      "usage": "https://vercel.com/geist/brands",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "vercel-light.svg",
+        "sha256": "89a089bc1b4efe549690545808ae12611c44cec2a6f9138aeb01064414d18cfe"
+      },
+      "dark": {
+        "file": "vercel-dark.svg",
+        "sha256": "0a8781c91f52b0de897bd0b764d63402c412d0d128a9c283f92b94d33160fba8"
+      }
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "source": "https://www.cloudflare.com/logo/",
+      "usage": "https://www.cloudflare.com/trademark/",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "cloudflare-light.svg",
+        "sha256": "6cc36c03944d62e7355bf07f9c99014626003a92eda2f331681b40030babf472"
+      },
+      "dark": {
+        "file": "cloudflare-dark.svg",
+        "sha256": "6cc36c03944d62e7355bf07f9c99014626003a92eda2f331681b40030babf472"
+      }
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "source": "https://sentry.io/branding/",
+      "usage": "https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "sentry-light.svg",
+        "sha256": "dbb8cf99528134a30e3a76e7b0b5738ea45fd0de6bb4cc297025434bda70bd94"
+      },
+      "dark": {
+        "file": "sentry-dark.svg",
+        "sha256": "004c8a9a72485b07fb015ce56131105e4cd24ed09b376f76293f57ddcf0da52d"
+      }
+    },
+    {
+      "id": "posthog",
+      "name": "PostHog",
+      "source": "https://posthog.com/handbook/company/brand-assets",
+      "usage": "https://posthog.com/handbook/company/brand-assets",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "posthog-light.svg",
+        "sha256": "66f5eb6f70f8c4de22b76847e77f8a7c1bd0e57184759a534005572156f15fa7"
+      },
+      "dark": {
+        "file": "posthog-dark.svg",
+        "sha256": "dbb897a7297a46b721b937ae42e5bddd2cf47d439477b93fed9074a27e13b287"
+      }
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "source": "https://stripe.com/newsroom/information",
+      "usage": "https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "stripe-light.svg",
+        "sha256": "e9a877cc5d7c1f9f0f15b7ab3c5fc5d921e3320f8154fd78b4f9e43b53b19414"
+      },
+      "dark": {
+        "file": "stripe-dark.svg",
+        "sha256": "e9a877cc5d7c1f9f0f15b7ab3c5fc5d921e3320f8154fd78b4f9e43b53b19414"
+      }
+    },
+    {
+      "id": "paypal",
+      "name": "PayPal",
+      "source": "https://www.paypal.com/us",
+      "usage": "https://newsroom.paypal-corp.com/media-resources",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "paypal-light.svg",
+        "sha256": "68090017f6ce4d4b54a7d15246834fd0bccbc71f528fa0da214a232338d8b477"
+      },
+      "dark": {
+        "file": "paypal-dark.svg",
+        "sha256": "27be99262ca8c4907f4e3450942f168047ddda7e8150b1a922a564b58b921975"
+      }
+    },
+    {
+      "id": "figma",
+      "name": "Figma",
+      "source": "https://www.figma.com/using-the-figma-brand/",
+      "usage": "https://www.figma.com/using-the-figma-brand/",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "figma-light.svg",
+        "sha256": "e4ee62f62107c73dd1ca862326b13d5e77ddeac906c6fda3daf87854cdb5e5b0"
+      },
+      "dark": {
+        "file": "figma-dark.svg",
+        "sha256": "e4ee62f62107c73dd1ca862326b13d5e77ddeac906c6fda3daf87854cdb5e5b0"
+      }
+    },
+    {
+      "id": "linear",
+      "name": "Linear",
+      "source": "https://linear.app",
+      "usage": "https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "linear-light.svg",
+        "sha256": "f7b9225384c1a0c133eb855e660762c29cf1843a19079158628182008409f39f"
+      },
+      "dark": {
+        "file": "linear-dark.svg",
+        "sha256": "f7b9225384c1a0c133eb855e660762c29cf1843a19079158628182008409f39f"
+      }
+    },
+    {
+      "id": "notion",
+      "name": "Notion",
+      "source": "https://www.notion.so",
+      "usage": "https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "notion-light.svg",
+        "sha256": "f0a1767923445c6f05607f95cfdb652f4951879540120bd1d0730093769b052a"
+      },
+      "dark": {
+        "file": "notion-dark.svg",
+        "sha256": "b1f0730d6fa554c216a9ed8ef5dd486bdba06780e9be027b71411ee79ed53646"
+      }
+    },
+    {
+      "id": "atlassian",
+      "name": "Atlassian",
+      "source": "https://atlassian.design/resources/logo-library",
+      "usage": "https://atlassian.design/foundations/logos",
+      "license": "simple-icons 16.32.0 (CC0-1.0 path data; marks remain their owners' trademarks)",
+      "purpose": "Secondary integration identification only; no endorsement or affiliation implied. Single-colour mark in the brand colour (white/near-black where the colour fails 1.8:1 contrast (logotypes are exempt from WCAG text contrast)).",
+      "retrievedAt": "2026-09-25",
+      "light": {
+        "file": "atlassian-light.svg",
+        "sha256": "5f43aa353f9d313763e61d12f4b65614784f622d4da36a6c9a211638cc952049"
+      },
+      "dark": {
+        "file": "atlassian-dark.svg",
+        "sha256": "5f43aa353f9d313763e61d12f4b65614784f622d4da36a6c9a211638cc952049"
+      }
+    }
+  ],
+  "runtimeIcons": "Disabled: no vetted bounded decoder. No icon network requests or runtime SVG rendering.",
+  "coverageGaps": [
+    "Playwright",
+    "Context7",
+    "Canva"
+  ]
+}

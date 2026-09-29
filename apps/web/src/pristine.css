@@ -1,0 +1,42 @@
+/*
+ * Pristine: the default look. Calm graphite layers, hairline edges, one accent used sparingly,
+ * nothing glows or drifts. Scoped to the palette so the other palettes keep their character.
+ */
+:root[data-palette="pristine"] { --radius-s: 6px; --radius-m: 8px; --radius-l: 12px; --shadow: 0 12px 32px -12px rgba(0,0,0,.6), 0 0 0 1px var(--line); }
+[data-palette="pristine"] body, [data-palette="pristine"] [data-frame] { background: var(--ink); }
+[data-palette="pristine"] .living-bg, [data-palette="pristine"] #main::before { display: none !important; }
+
+/* Surfaces: flat, opaque, a hairline instead of a glow. */
+[data-palette="pristine"] .settings-card, [data-palette="pristine"] .pane-state, [data-palette="pristine"] .card,
+[data-palette="pristine"] .vn-card, [data-palette="pristine"] .pb-card, [data-palette="pristine"] .member-card, [data-palette="pristine"] .art-card,
+[data-palette="pristine"] .island-tile, [data-palette="pristine"] .pol-card, [data-palette="pristine"] .pol-tester, [data-palette="pristine"] .today-lanes-box,
+[data-palette="pristine"] .board-col, [data-palette="pristine"] .vn-lane, [data-palette="pristine"] .wg-tile {
+  border-radius: 12px; background-image: none; box-shadow: inset 0 0 0 1px var(--line);
+}
+[data-palette="pristine"] .vn-card:hover, [data-palette="pristine"] .member-card:hover, [data-palette="pristine"] .art-card:hover, [data-palette="pristine"] .pb-card:hover {
+  transform: none; box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* The rail and tabs: quiet selection, no halo. */
+[data-palette="pristine"] .hub-on { background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+[data-palette="pristine"] .hub.is-on .hub-icon { color: var(--text); }
+[data-palette="pristine"] .hub-badge.is-live { animation: none; }
+[data-palette="pristine"] .hub-tab-on::after { box-shadow: none; height: 1.5px; bottom: -8px; }
+[data-palette="pristine"] .hub-tabs { height: 44px; }
+
+/* Status island and floating panels: solid, crisp. */
+[data-palette="pristine"] .island-pill { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+[data-palette="pristine"] .island-dot.is-live { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #34d399) 18%, transparent); }
+[data-palette="pristine"] .island-panel, [data-palette="pristine"] .tb-panel { background: var(--panel); border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line-strong), 0 24px 60px -16px rgba(0,0,0,.7); }
+
+/* Buttons and inputs: the accent is for the one primary action on a screen. */
+[data-palette="pristine"] .composer-box:focus-within { box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 55%, transparent); }
+[data-palette="pristine"] .today-bar.is-live { box-shadow: none; }
+[data-palette="pristine"] .board-start, [data-palette="pristine"] .vn-new { background: color-mix(in srgb, var(--amber) 7%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 28%, transparent); }
+[data-palette="pristine"] .vn-new:hover { transform: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 50%, transparent); }
+[data-palette="pristine"] .pane-header h1 { font-weight: 600; letter-spacing: -.025em; }
+
+/* Scrollbars that don't shout. */
+[data-palette="pristine"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-palette="pristine"] ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--text) 14%, transparent) padding-box; }
+[data-palette="pristine"] ::-webkit-scrollbar-track { background: transparent; }

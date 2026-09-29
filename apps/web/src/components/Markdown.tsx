@@ -1,3 +1,4 @@
+import { noEmoji } from "../lib/no-emoji";
 import { Check, CircleDot, Copy, FileCode2, GitPullRequest, Ticket } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { Token } from "../lib/highlight";
@@ -8,7 +9,8 @@ import type { Token } from "../lib/highlight";
  * agent output can't smuggle markup into the page.
  */
 export function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
-  return <div className="prose-agent">{blocks(streaming ? closeOpen(text) : text, streaming)}</div>;
+  const clean = noEmoji(text); // agents write prose; the app shows no emoji
+  return <div className="prose-agent">{blocks(streaming ? closeOpen(clean) : clean, streaming)}</div>;
 }
 
 /**

@@ -1,10 +1,13 @@
+import { listenForCommands } from "../lib/radio";
+import { startDj } from "../lib/radio-dj";
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users } from "lucide-react";
+import { Rocket, ListChecks, LibraryBig, SquareTerminal, Waypoints, Users, Activity, BarChart3, GraduationCap, Disc3 } from "lucide-react";
 import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSquare, MessagesSquare, Radar, Search, Settings, ShieldCheck } from "lucide-react";
-import { MotionConfig, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Milestones, useSpotlight } from "../lib/motion";
+import { createPortal } from "react-dom";
+import { LogoMark, Milestones, useSpotlight } from "../lib/motion";
 import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
@@ -13,11 +16,37 @@ import { ApprovalToasts } from "./ApprovalToasts";
 import { CommandPalette } from "./CommandPalette";
 import { KeymapOverlay } from "./KeymapOverlay";
 import { LaunchSheet } from "./LaunchSheet";
+import { VoiceConversationHost } from "../components/VoiceConversation";
+import { CompanionHost } from "../components/Companion";
+import { DevHud } from "../components/DevHud";
+import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
+import { getPower, savePower, usePower } from "../lib/power";
+import { navKey } from "../lib/keys";
+import { WinsHost } from "../components/Wins";
+import { SoundsHost } from "../components/Sounds";
+import { StatusIsland } from "../components/TopBarWidgets";
+import { SparkCharacter } from "../components/SparkCharacter";
+import { useCompanion } from "../lib/companion";
+import { sparkVars } from "../lib/spark-color";
+import { CompactRail, HubSidebar, HubTabs, setSidebarWide, useSidebarWide } from "./HubNav";
+import { Welcome, welcomed } from "../components/Welcome";
+import { Buddy } from "../screens/Buddy";
+import { setSparkFull, setSparkPanel, toggleSparkFull, toggleSparkPanel, useSparkFull, useSparkPanel } from "../lib/spark-panel";
+import { WorkspaceSpark } from "../components/WorkspaceSpark";
+import "../polish.css";
+import { RadioHost } from "../components/NowPlaying";
+import { AutomationsHost } from "../components/Automations";
+import "../components/settings-command.css";
+import "../components/surfaces.css";
+import "../alive.css"; // last: the accent gradient and the touches that make it feel lit
+import "../lib/look";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
+  { to: "/studio", label: "Studio", hint: "Now playing, mix, tonight's set", icon: Disc3, key: "j", group: "Work" },
   { to: "/ventures", label: "Ventures", hint: "Your startups, idea → revenue", icon: Rocket, key: "v", group: "Work" },
   { to: "/crew", label: "Crew", hint: "Your standing team", icon: Users, key: "r", group: "Work" },
+  { to: "/rooms", label: "Crew rooms", hint: "Shared conversation and real delegation", icon: MessagesSquare, key: "g", group: "Work" },
   { to: "/floor", label: "Crew floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
   { to: "/terminal", label: "Terminal", hint: "Your shells + ask the crew", icon: SquareTerminal, key: "t", group: "Work" },
   { to: "/playbooks", label: "Playbooks", hint: "Idea → shipped, in phases", icon: ListChecks, key: "w", group: "Plan" },
@@ -25,10 +54,15 @@ export const NAV = [
   { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
   { to: "/activity", label: "Today", hint: "Everything at a glance", icon: Radar, key: "m", group: "Plan" },
   { to: "/library", label: "Library", hint: "What the crew made + knows", icon: LibraryBig, key: "l", group: "Brain" },
+  { to: "/learn", label: "Learning", hint: "Skill up from your own work", icon: GraduationCap, key: "e", group: "Brain" },
   { to: "/memory", label: "Memory", hint: "Lessons and skills", icon: BookOpen, key: "y", group: "Brain" },
   { to: "/schedules", label: "Schedules", hint: "Runs while you're away", icon: CalendarClock, key: "c", group: "Brain" },
   { to: "/integrations", label: "Tools & Skills", hint: "MCP servers and skills", icon: Cable, key: "i", group: "Brain" },
   { to: "/policy", label: "Policy & Audit", hint: "What agents may do", icon: ShieldCheck, key: "a", group: "System" },
+  { to: "/observability", label: "Observability", hint: "Health, latency and recorded activity", icon: Activity, key: "o", group: "System" },
+  { to: "/usage", label: "Usage", hint: "Recorded tokens and honest coverage", icon: BarChart3, key: "u", group: "System" },
+  { to: "/developer", label: "Developer", hint: "Gateway diagnostics and audit integrity", icon: SquareTerminal, key: "d", group: "System" },
+  { to: "/guide", label: "Guide", hint: "Everything ShuaCrew can do", icon: BookOpen, key: "h", group: "System" },
   { to: "/settings", label: "Settings", hint: "Agents, look, data", icon: Settings, key: ",", group: "System" },
 ] as const;
 
@@ -39,28 +73,64 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 
 export function Shell() {
   const motionPreference = useLive((s) => s.appearance.motion);
+  useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
+  const { flow } = usePower();
   useGlobalKeys();
   useSpotlight();
   // One section, one entrance: switching sessions inside the chat doesn't re-animate the page.
   const section = useRouterState({ select: (s) => (s.location.pathname.startsWith("/sessions") ? "/" : `/${s.location.pathname.split("/")[1] ?? ""}`) });
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
-    <div className="workspace-frame grid h-full grid-cols-[56px_1fr] grid-rows-[38px_1fr] bg-ink" data-frame>
+    <div className="workspace-frame grid h-full grid-cols-[auto_1fr] grid-rows-[48px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
+      <div className="living-bg" aria-hidden="true"><i /><i /><i /></div>
+      {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
-      <IconRail />
-      <main className="min-h-0 min-w-0 overflow-hidden" id="main">
-        <motion.div key={section} className="h-full" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}>
+      <Sidebar />
+      <main className="min-h-0 min-w-0 overflow-hidden flex" id="main">
+        <div className="workspace-card min-h-0 min-w-0 flex flex-1 flex-col">
+        {/* WebKit may suspend animations while the native window is occluded. Core content
+            must be visible on its first frame, independent of animation scheduling. */}
+        <HubTabs />
+        {!flow && <WorkspaceSpark section={section} />}
+        <motion.div key={section} className="workspace-scene min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
+        </div>
+        <SparkSide />
+        {/* In the Mac app Spark lives on the desktop (over every app), so the in-window one steps aside. */}
+        {document.documentElement.dataset.shell !== "mac" && <CompanionHost />}
       </main>
       <Milestones />
       <CommandPalette />
       <LaunchSheet />
       <ApprovalToasts />
       <KeymapOverlay />
+      <VoiceConversationHost />
+      <WinsHost />
+      <SoundsHost />
+      <RadioHost />
+      <AutomationsHost />
+      <DevHud />
+      <FirstRun />
     </div>
     </MotionConfig>
   );
+}
+
+/** Spark inside the app: the same assistant and conversation as on the desktop, as a side panel. ⌘J. */
+function SparkSide() {
+  const open = useSparkPanel(), full = useSparkFull();
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); if (e.shiftKey) toggleSparkFull(); else toggleSparkPanel(); }
+      else if (e.key === "Escape" && full && !e.defaultPrevented) setSparkFull(false);
+    };
+    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
+  }, [full]);
+  return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Spark"
+    initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
+    <div className="spark-side-inner"><Buddy embedded full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
+  </motion.aside>}</AnimatePresence>;
 }
 
 /** Kiro Crew's top bar: where you are, search for anything, and what needs you. */
@@ -68,21 +138,23 @@ function TopBar() {
   const bar = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const connection = useLive((s) => s.connection);
-  const crew = useLive((s) => s.crew);
+  // Narrow selectors: a streamed token must not re-render the top bar.
+  const crewApprovals = useLive((s) => s.crew.approvals), crewLimited = useLive((s) => s.crew.limited), crewToday = useLive((s) => s.crew.today);
+  const runningCount = useLive((s) => selectLiveRuns(s.crew).filter((r) => r.status === "running" || r.status === "planning").length);
   const setPalette = useLive((s) => s.setPalette);
-  const approvals = Object.values(crew.approvals).sort((a, b) => a.seq - b.seq);
-  const running = selectLiveRuns(crew).filter((r) => r.status === "running" || r.status === "planning").length;
-  const limited = Object.entries(crew.limited).filter(([, l]) => !l.credits); // "needs credits" isn't a window; the model picker says it
+  const approvals = Object.values(crewApprovals).sort((a, b) => a.seq - b.seq);
+  const running = runningCount;
+  const limited = Object.entries(crewLimited).filter(([, l]) => !l.credits); // "needs credits" isn't a window; the model picker says it
   useEffect(() => (bar.current ? watchTitleBar(bar.current) : undefined), []);
 
   return (
-    <header ref={bar} className="col-span-2 flex items-center gap-3 px-3 [[data-shell=mac]_&]:pl-[84px]" aria-label="Top bar">
-      <img src="/icon.svg" alt="ShuaCrew" className="h-6 w-6 [[data-shell=mac]_&]:hidden" />
+    <header ref={bar} className="relative col-span-2 flex items-center gap-3 px-3 [[data-shell=mac]_&]:pl-[84px]" aria-label="Top bar">
+      <span className="tb-logo [[data-shell=mac]_&]:hidden" role="img" aria-label="ShuaCrew"><LogoMark size={24} spin={false} /></span>
       <span className="flex h-7 items-center gap-1.5 rounded-[8px] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] px-2.5 text-[12px] font-medium text-fg-2" data-no-drag>
         <House size={13} className="text-fg-3" /> Local
       </span>
       <RepoChip />
-      <div className="flex flex-1 justify-center">
+      <div className="tb-center" data-no-drag>
         <button
           onClick={() => setPalette(true)}
           className="flex h-8 w-full max-w-[460px] items-center gap-2 rounded-[9px] border border-line bg-panel px-3 text-[12.5px] text-fg-3 transition hover:border-line-strong hover:text-fg-2"
@@ -92,37 +164,14 @@ function TopBar() {
           <Kbd>⌘K</Kbd>
         </button>
       </div>
-      {limited.map(([key, info]) => {
-        const [runtime, model] = key.split(" · ");
-        const soon = info.until - Date.now() < 86_400_000;
-        const until = new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
-        return (
-          <button
-            key={key}
-            className="limit-chip hidden min-[1000px]:flex"
-            title={`${info.message}\nClick to try again now — if it's still limited, the next message will say so.`}
-            onClick={() => void api(`/api/runtimes/${runtime}/restore`, { body: { model } })}
-          >
-            <StatusGlyph tone="live" size={7} /> {model ?? runtime} out until {until}
-            <span className="limit-try">Try now</span>
-          </button>
-        );
-      })}
-      <span className="hidden items-center gap-3 text-[12px] text-fg-3 min-[900px]:flex" data-no-drag>
-        <span className="flex items-center gap-1.5" title="Agents working now">
-          <StatusGlyph tone={running ? "live" : "idle"} size={7} />
-          <span className="tabular-nums text-fg-2">{running}</span> running
-        </span>
-        <span className="mono tabular-nums" title="Tokens used today across every runtime">
-          {formatTokens(crew.today.tokens)} today
-        </span>
-      </span>
-      <span
-        className={`h-2 w-2 rounded-full ${connection === "live" ? "bg-ok" : connection === "connecting" ? "bg-amber" : "bg-bad"}`}
-        title={connection === "live" ? "Gateway online" : connection === "connecting" ? "Connecting to the gateway" : "Reconnecting to the gateway"}
-        role="status"
-        data-no-drag
-      />
+      <span className="flex-1" />
+      <StatusIsland ctx={{ go: (path) => void navigate({ to: path }) }} running={running} connection={connection}
+        limits={limited.map(([key, info]) => {
+          const [runtime, model] = key.split(" · "), soon = info.until - Date.now() < 86_400_000;
+          return { key, label: model ?? runtime ?? key, message: info.message, retrying: info.retrying, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
+        })}
+        tokens={formatTokens(crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0)} />
+      <SparkButton />
       <button
         onClick={() => approvals[0]?.run && navigate({ to: "/sessions/$id", params: { id: approvals[0].run } })}
         className="relative grid h-8 w-8 place-items-center rounded-[8px] text-fg-3 hover:bg-panel hover:text-fg"
@@ -190,51 +239,8 @@ function RepoChip() {
 }
 
 /**
- * The rail: icons grouped by purpose. Hover (or focus) opens it into a labelled panel over the
- * page — every icon explains itself, and the page never reflows.
+ * Collapsed navigation stays fixed; only the hovered/focused item's label appears.
  */
-function IconRail() {
-  const labeled = useLive((s) => s.appearance.navigation === "labels");
-  const path = useRouterState({ select: (s) => s.location.pathname });
-  const awaiting = useLive((s) => Object.keys(s.crew.approvals).length);
-  const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
-  const [open, setOpen] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const hover = (on: boolean) => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setOpen(on), on ? 280 : 120);
-  };
-  const groups = ["Work", "Plan", "Brain", "System"] as const;
-  const badge = (to: string) => (to === "/" && awaiting > 0 ? { tone: "wait", n: awaiting } : to === "/floor" && working > 0 ? { tone: "live", n: working } : null);
-  return (
-    <nav aria-label="Primary" className={`rail ${open || labeled ? "is-open" : ""} ${labeled ? "is-pinned" : ""}`} onMouseEnter={() => hover(true)} onMouseLeave={() => hover(false)} onFocus={() => hover(true)} onBlur={() => hover(false)}>
-      {groups.map((group) => (
-        <div key={group} className={`rail-group ${group === "System" ? "mt-auto" : ""}`}>
-          <div className="rail-label">{group}</div>
-          {NAV.filter((n) => n.group === group).map(({ to, label, hint, icon: Icon }) => {
-            const active = to === "/" ? path === "/" || path.startsWith("/sessions") : path.startsWith(to);
-            const b = badge(to);
-            return (
-              <Link key={to} to={to} aria-label={label} aria-current={active ? "page" : undefined} className={`rail-item ${active ? "is-active" : ""}`} onClick={() => setOpen(false)}>
-                {active && <motion.span layoutId="rail-active" className="rail-active" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
-                <span className="rail-icon">
-                  <Icon size={18} strokeWidth={1.75} />
-                  {b && <span className={`rail-dot is-${b.tone}`} />}
-                </span>
-                <span className="rail-text">
-                  <span className="rail-name">{label}</span>
-                  <span className="rail-hint">{hint}</span>
-                </span>
-                {b && <span className={`rail-count is-${b.tone}`}>{b.n}</span>}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
-    </nav>
-  );
-}
-
 function useGlobalKeys() {
   const navigate = useNavigate();
   useEffect(() => {
@@ -243,6 +249,11 @@ function useGlobalKeys() {
       const target = event.target as HTMLElement | null;
       const typing = target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       const s = useLive.getState();
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === "KeyF") {
+        event.preventDefault();
+        savePower({ flow: !getPower().flow });
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         s.setPalette(!s.paletteOpen);
@@ -263,7 +274,7 @@ function useGlobalKeys() {
         return;
       }
       if (Date.now() - pendingG < 1200) {
-        const item = NAV.find((n) => n.key === event.key);
+        const item = NAV.find((n) => navKey(n) === event.key);
         if (item) navigate({ to: item.to });
         pendingG = 0;
       }
@@ -271,4 +282,39 @@ function useGlobalKeys() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
+}
+
+/** Today's recorded tokens; turns amber past your daily budget and red at twice it (Settings → Workspace). */
+function TokensToday({ tokens }: { tokens: number }) {
+  const { dailyTokenBudget } = useWorkspace();
+  const used = budgetUse(tokens, dailyTokenBudget);
+  const tone = used >= 2 ? "text-bad" : used >= 1 ? "text-amber" : "";
+  return <Link to="/settings" hash="budget" className={`mono tabular-nums ${tone}`} title={`Recorded input and output tokens today (UTC); excludes demo usage. Not remaining subscription quota.${dailyTokenBudget ? ` Budget: ${formatTokens(dailyTokenBudget)} (${Math.round(used * 100)}%).` : ""}`}>
+    {formatTokens(tokens)}{dailyTokenBudget ? ` / ${formatTokens(dailyTokenBudget)}` : ""} today
+  </Link>;
+}
+
+function SparkButton() {
+  const open = useSparkPanel(), prefs = useCompanion(), sidebarWide = useSidebarWide();
+  if (sidebarWide) return null; // the sidebar's "Ask" row is the way in
+  return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={sparkVars(prefs.color)}>
+    <SparkCharacter preferences={prefs} size={22} crop="portrait" /><span>{prefs.nickname || "Spark"}</span>
+  </button>;
+}
+
+/** The welcome tour, once (and again after a big release, or from Settings → Spark). */
+function FirstRun() {
+  const [show, setShow] = useState(() => !welcomed());
+  useEffect(() => { const on = () => setShow(true); window.addEventListener("shuacrew:welcome", on); return () => window.removeEventListener("shuacrew:welcome", on); }, []);
+  return show ? <Welcome onDone={() => setShow(false)} /> : null;
+}
+
+/** The full sidebar or the slim rail; ⌘\\ switches between them. */
+function Sidebar() {
+  const wide = useSidebarWide();
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSidebarWide(!wide); } };
+    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
+  }, [wide]);
+  return wide ? <HubSidebar /> : <CompactRail />;
 }

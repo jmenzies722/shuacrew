@@ -6,6 +6,7 @@
  * uses, batched to one state update per animation frame — ten agents streaming tokens still cost
  * one render per frame. A dropped socket reconnects and resumes from the last sequence it applied.
  */
+import { slicesFor } from "./slices";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { apply, emptyState, type CrewState } from "@shuacrew/core/projections";
 import { create } from "zustand";
@@ -136,6 +137,18 @@ function schedule(): void {
   fallback = setTimeout(flush, 250);
 }
 
+/** Usage limits that still apply. A limit carries its reset time; once that passes it no longer pauses anything, so
+ * it must not keep showing as "paused" in the top bar (the scheduler already ignores expired ones). */
+export function inForce<T extends { until: number }>(limited: Record<string, T>, now = Date.now()): Record<string, T> {
+  return Object.fromEntries(Object.entries(limited).filter(([, l]) => l.until > now));
+}
+// Limits expire on their own, without an event: drop them the minute they lapse.
+if (typeof window !== "undefined") setInterval(() => {
+  const { crew } = useLive.getState();
+  const now = Date.now();
+  if (Object.values(crew.limited).some((l) => l.until <= now)) useLive.setState({ crew: { ...crew, limited: inForce(crew.limited, now) } });
+}, 60_000);
+
 function flush(): void {
   if (frame) cancelAnimationFrame(frame);
   clearTimeout(fallback);
@@ -159,23 +172,28 @@ function flush(): void {
       loadedChanged[event.run] = [...(loadedChanged[event.run] ?? []), event];
     }
   }
-  // New references only for what changed, so each component re-renders only for its own run.
+  // New references only for what changed: a streamed token re-renders its own run, not every screen.
   const runs = { ...crew.runs };
   for (const id of touched) if (runs[id]) runs[id] = { ...runs[id] };
+  const changed = slicesFor(batch.map((e) => e.kind));
+  const fresh = <T extends object>(slice: string, value: T, copy: (v: T) => T): T => (changed.has(slice) ? copy(value) : value);
+  const shallow = <T extends object>(v: T) => ({ ...v });
+  const deep = <T extends Record<string, object>>(v: T) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, { ...x }])) as T;
   useLive.setState({
     crew: {
       ...crew,
       runs,
-      approvals: approvalsChanged ? { ...crew.approvals } : crew.approvals,
-      limited: { ...crew.limited },
-      members: { ...crew.members },
-      artifacts: { ...crew.artifacts },
-      knowledge: { ...crew.knowledge },
-      playbooks: { ...crew.playbooks },
-      ventures: Object.fromEntries(Object.entries(crew.ventures).map(([k, v]) => [k, { ...v }])),
-      sites: { ...crew.sites },
-      plays: Object.fromEntries(Object.entries(crew.plays).map(([k, v]) => [k, { ...v }])),
-      today: { ...crew.today },
+      rooms: fresh("rooms", crew.rooms ?? {}, (r) => Object.fromEntries(Object.entries(r).filter(([, room]) => !room.archived).map(([id, room]) => [id, { ...room }]))),
+      approvals: fresh("approvals", crew.approvals, shallow),
+      limited: fresh("limited", crew.limited, inForce),
+      members: fresh("members", crew.members, shallow),
+      artifacts: fresh("artifacts", crew.artifacts, shallow),
+      knowledge: fresh("knowledge", crew.knowledge, shallow),
+      playbooks: fresh("playbooks", crew.playbooks, shallow),
+      ventures: fresh("ventures", crew.ventures, deep),
+      sites: fresh("sites", crew.sites, shallow),
+      plays: fresh("plays", crew.plays, deep),
+      today: fresh("today", crew.today, shallow),
     },
     ...(loadedChanged ? { runEvents: loadedChanged } : {}),
     ...(acted.length ? { activity: [...activity, ...acted].slice(-1500) } : {}),
@@ -187,7 +205,7 @@ const ACTIVITY = new Set(["run.created", "run.status", "turn.started", "turn.com
 export async function connect(): Promise<void> {
   try {
     const [snapshot, activity] = await Promise.all([api<CrewState>("/api/snapshot"), api<AnyEvent[]>("/api/activity").catch(() => [])]);
-    useLive.setState({ crew: snapshot, activity });
+    useLive.setState({ crew: { ...snapshot, limited: inForce(snapshot.limited) }, activity });
   } catch {
     useLive.setState({ connection: "offline" });
   }
