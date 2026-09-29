@@ -7,7 +7,7 @@ import { Learning, analyze, parseBlock, parseCards, type Grade } from "./learnin
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MODEL = { runtime: "claude", model: "claude-haiku-4-5", effort: "low" } as const; // efficient on your plan
-const DEEP = { runtime: "claude", model: "claude-sonnet-5", effort: "low" } as const; // one careful call for plans and resumes
+const DEEP = { runtime: "claude", model: "claude-sonnet-5", effort: "low" } as const; // one careful call for what you use for weeks: course plans, roadmaps, interview prep, resumes
 /** Separates your words from the hidden coach reminder; the chat shows only what precedes it. */
 export const COACH_MARK = "\n\n[coach] ";
 const str = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "");
@@ -150,7 +150,7 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const ask = ["You design a focused engineering course. Do not use any tools.", who(), `Topic: ${topic}. The learner's level in it: ${level}/5.`,
       "Plan 5–8 lessons that build on each other toward real, job-relevant competence (not trivia). Each lesson: a clear title and a one-sentence summary of what they'll be able to do.",
       'Reply with a short intro, then exactly one ```course fenced JSON object: {"title": "...", "lessons": [{"title": "...", "summary": "..."}]}.'].join("\n");
-    const run = supervisor.launch({ ask, title: `Course plan · ${topic}`.slice(0, 90), ...MODEL, labels: ["learning", "learn-kind:course-plan", `learn-course:${id}`, `learn-track:${id}`] });
+    const run = supervisor.launch({ ask, title: `Course plan · ${topic}`.slice(0, 90), ...DEEP, labels: ["learning", "learn-kind:course-plan", `learn-course:${id}`, `learn-track:${id}`] });
     learning.edit((s) => ({ ...s, courses: [...s.courses, { id, topic, level, title: "", plan: run, created: Date.now(), lessons: [] }] }));
     return { id, run };
   });
@@ -208,7 +208,7 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const ask = ["You are an interviewer at a strong engineering company. Do not use any tools.", who(), `Role: ${role}. Focus: ${focus}.`,
       "Write 6 realistic questions for this round, increasing in difficulty. For each: what a great answer covers, a model answer outline, and the follow-up an interviewer would push on.",
       'Finish with 5–8 flashcards as a ```cards fenced JSON array of {"front": "...", "back": "..."}.'].join("\n");
-    const run = supervisor.launch({ ask, title: `Interview prep · ${focus} · ${role}`.slice(0, 90), ...MODEL, labels: ["learning", "learn-kind:interview", "learn-track:interview"] });
+    const run = supervisor.launch({ ask, title: `Interview prep · ${focus} · ${role}`.slice(0, 90), ...DEEP, labels: ["learning", "learn-kind:interview", "learn-track:interview"] });
     const id = `d_${randomUUID().slice(0, 8)}`;
     learning.edit((s) => ({ ...s, docs: [...s.docs, { id, kind: "interview", title: `Interview prep · ${focus}`, run, created: Date.now() }] }));
     return { id, run };
