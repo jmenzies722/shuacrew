@@ -17,9 +17,21 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { AuthMode, Runtime, RunContext, RunSpec, RuntimeEvent, RuntimeStatus } from "./runtime.js";
 import { isCheck, limitFrom, overridingKeys, textOf } from "./shared.js";
+import { ClaudeAccounts } from "./claude-accounts.js";
 
 const exec = promisify(execFile);
 const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+/**
+ * Spark's quick conversational turns, cold or warm — one definition, so the two can't drift (the warm path
+ * once kept web search blocked while Spark was told it could search). Read is for attached images.
+ */
+const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Use Read to look at attached images. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching.";
+/** Claude Code defers loading tools until the model searches for them: a whole extra round trip (~2 s) before every web search. */
+const LEAN_ENV = { ENABLE_TOOL_SEARCH: "false" };
+const LEAN_TOOLS = {
+  allowedTools: ["Read", "WebSearch", "WebFetch"],
+  disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"],
+};
 
 type Json = Record<string, any>; // SDK message shapes are wide unions; the translator reads them defensively.
 
@@ -149,6 +161,7 @@ export interface ClaudeOptions {
   authMode?: AuthMode;
   /** The Claude Code binary; defaults to the person's own `claude` so both share one login. */
   executable?: string;
+  accounts?: ClaudeAccounts;
 }
 
 export class ClaudeRuntime implements Runtime {
@@ -163,29 +176,34 @@ export class ClaudeRuntime implements Runtime {
     { id: "claude-haiku-4-5", label: "Haiku 4.5", tier: "fast" as const },
   ];
   private executable?: string;
+  /** Your Claude accounts; with one it behaves exactly as a single login. */
+  readonly accounts: ClaudeAccounts;
   /** Spark's conversations stay warm: one live agent process per conversation, fed each new turn. */
   private warm = new Map<string, WarmSession>();
 
   constructor(options: ClaudeOptions = {}) {
     this.authMode = options.authMode ?? "subscription";
     this.executable = options.executable ?? findBinary("claude");
+    this.accounts = options.accounts ?? new ClaudeAccounts({ executable: this.executable });
   }
 
   async status(): Promise<RuntimeStatus> {
     const overriding = overridingKeys(process.env, this.authMode, ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]);
     if (!this.executable) return { installed: false, signedIn: null, detail: "Claude Code isn't installed — see claude.com/code", overridingKeys: overriding };
     try {
-      const [{ stdout: version }, { stdout: auth }] = await Promise.all([
-        exec(this.executable, ["--version"], { timeout: 10_000 }),
-        exec(this.executable, ["auth", "status"], { timeout: 10_000 }),
-      ]);
-      const info = JSON.parse(auth) as { loggedIn?: boolean; authMethod?: string; email?: string };
+      const [{ stdout: version }, list] = await Promise.all([exec(this.executable, ["--version"], { timeout: 10_000 }), this.accounts.refresh(true)]);
+      const signed = list.filter((a) => a.signedIn);
+      const accounts = list.map((a) => ({ dir: a.dir, email: a.email, plan: a.plan, signedIn: a.signedIn, limitedUntil: this.accounts.limitedUntil(a) }));
+      const plans = signed.map((a) => a.plan ?? "claude.ai").join(" + ");
       return {
         installed: true,
-        signedIn: Boolean(info.loggedIn),
-        account: info.email,
+        signedIn: signed.length > 0,
+        account: signed.map((a) => a.email).filter(Boolean).join(", ") || undefined,
+        accounts,
         version: version.trim().split(" ")[0],
-        detail: info.loggedIn ? `signed in via ${info.authMethod ?? "claude.ai"}` : "not signed in — run `claude` and /login",
+        detail: signed.length === 0 ? "not signed in — run `claude` and /login"
+          : signed.length === 1 ? `signed in via claude.ai (${plans})`
+          : `${signed.length} accounts pooled (${plans}) — a limit on one moves work to the next`,
         overridingKeys: overriding,
       };
     } catch (error) {
@@ -193,8 +211,55 @@ export class ClaudeRuntime implements Runtime {
     }
   }
 
+  /**
+   * One turn, on whichever of your Claude accounts is free. An account that hits its usage limit hands the turn
+   * to the next: untouched, it starts over there; mid-way, the next account resumes the same conversation (the
+   * accounts share it). Only when every account is out does the run see "limited", with the earliest reset.
+   */
   async *start(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent> {
-    if (run.lean) { yield* this.startWarm(run, ctx); return; }
+    await this.accounts.refresh();
+    const tried: string[] = [];
+    let turn = run;
+    for (;;) {
+      const account = this.accounts.pick(run.model, tried);
+      if (!account && this.accounts.accounts.some((a) => a.signedIn)) {
+        const until = this.accounts.nextFree(run.model);
+        yield { type: "limited", until, message: `Every Claude account is at its usage limit until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, model: run.model };
+        return;
+      }
+      if (account) this.accounts.use(account);
+      // No account could be read (status failed): run as before on the default login and let Claude Code say.
+      const env = { ...ClaudeAccounts.env(account, ctx.env), CLAUDE_AGENT_SDK_CLIENT_APP: "shuacrew/0.1.0", ...(run.lean ? LEAN_ENV : {}) };
+      let session: string | undefined, progressed = false, handoff: RunSpec | undefined;
+      for await (const event of run.lean ? this.startWarm(turn, ctx, env, account?.dir ?? "") : this.startCold(turn, ctx, env)) {
+        if (event.type === "session") session = event.id;
+        if (event.type === "text" || event.type === "tool-call") progressed = true;
+        if (event.type === "limited" && account) {
+          // Without a model asked for, the limit is the account's own (the default model is whatever it runs).
+          this.accounts.markLimited(account.dir, event.until, run.model ? event.model ?? run.model : undefined);
+          tried.push(account.dir);
+          const next = this.accounts.pick(run.model, tried);
+          if (next) {
+            yield { type: "thinking", text: `${account.email ?? "This Claude account"} hit its usage limit — carrying on with ${next.email ?? "your other account"}.` };
+            handoff = progressed && session
+              ? { ...run, resume: session, ask: "A usage limit cut you off just now. Carry on exactly where you left off; don't repeat what you already did or said." }
+              : turn;
+            break;
+          }
+          yield { ...event, until: this.accounts.nextFree(run.model) || event.until };
+          return;
+        }
+        yield event;
+      }
+      if (!handoff) return;
+      turn = handoff;
+    }
+  }
+
+  /** A pooled account's limits lift early ("Try now"): the next run finds out for real. */
+  restore(model?: string): void { this.accounts.clearLimits(model); }
+
+  private async *startCold(run: RunSpec, ctx: RunContext, env: Record<string, string | undefined>): AsyncIterable<RuntimeEvent> {
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
     const abort = new AbortController();
     ctx.signal.addEventListener("abort", () => abort.abort(), { once: true });
@@ -230,7 +295,7 @@ export class ClaudeRuntime implements Runtime {
         model: run.model,
         effort: run.effort as never,
         resume: run.resume,
-        env: { ...ctx.env, CLAUDE_AGENT_SDK_CLIENT_APP: "shuacrew/0.1.0" },
+        env,
         abortController: abort,
         permissionMode: "default",
         includePartialMessages: true,
@@ -241,8 +306,8 @@ export class ClaudeRuntime implements Runtime {
         pathToClaudeCodeExecutable: this.executable,
         // Claude Code's own system prompt, with ShuaCrew's lessons and context appended — or, for a lean
         // conversational turn, a short one of its own (the ask carries the persona and context).
-        systemPrompt: run.lean ? "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Use Read to look at attached images. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching." : { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
-        ...(run.lean ? { allowedTools: ["Read", "WebSearch", "WebFetch"], disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"] } : {}),
+        systemPrompt: run.lean ? LEAN_SYSTEM : { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
+        ...(run.lean ? LEAN_TOOLS : {}),
         agents: run.agents,
         ...(run.lean ? {} : { disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined }),
         mcpServers: run.mcpServers,
@@ -311,11 +376,11 @@ export class ClaudeRuntime implements Runtime {
    * A lean conversational turn on a warm session. The first turn starts the agent; every later turn is just a message
    * into it, so there's no process to launch and it starts answering almost at once. Quiet for 10 minutes: it closes.
    */
-  private async *startWarm(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent> {
+  private async *startWarm(run: RunSpec, ctx: RunContext, env: Record<string, string | undefined>, account: string): AsyncIterable<RuntimeEvent> {
     let w = this.warm.get(run.id);
-    if (!w || w.dead || w.model !== run.model) {
+    if (!w || w.dead || w.model !== run.model || w.account !== account) {
       w?.close();
-      w = await this.openWarm(run, ctx);
+      w = await this.openWarm(run, ctx, env, account);
       this.warm.set(run.id, w);
     }
     const session = w;
@@ -343,7 +408,7 @@ export class ClaudeRuntime implements Runtime {
     }
   }
 
-  private async openWarm(run: RunSpec, first: RunContext): Promise<WarmSession> {
+  private async openWarm(run: RunSpec, first: RunContext, env: Record<string, string | undefined>, account: string): Promise<WarmSession> {
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
     const abort = new AbortController();
     const queue: string[] = [];
@@ -360,6 +425,7 @@ export class ClaudeRuntime implements Runtime {
       translator: new ClaudeTranslator(),
       ctx: first,
       model: run.model,
+      account,
       dead: false,
       close: () => { if (session.dead) return; session.dead = true; closed = true; wake?.(); abort.abort(); },
       interrupt: async () => { await (conversation as unknown as { interrupt?: () => Promise<void> }).interrupt?.(); },
@@ -371,15 +437,14 @@ export class ClaudeRuntime implements Runtime {
         model: run.model,
         effort: run.effort as never,
         resume: run.resume,
-        env: { ...first.env, CLAUDE_AGENT_SDK_CLIENT_APP: "shuacrew/0.1.0" },
+        env,
         abortController: abort,
         permissionMode: "default",
         includePartialMessages: true,
         enableFileCheckpointing: false,
         pathToClaudeCodeExecutable: this.executable,
-        systemPrompt: "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Only use the Read tool to look at attached images.",
-        allowedTools: ["Read"],
-        disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"],
+        systemPrompt: LEAN_SYSTEM,
+        ...LEAN_TOOLS,
         // Approvals go to whichever turn is running now.
         canUseTool: async (tool: string, input: Record<string, unknown>) => {
           const answer = await session.ctx.approve(tool, input, {});
@@ -401,6 +466,8 @@ interface WarmSession {
   translator: ClaudeTranslator;
   ctx: RunContext;
   model?: string;
+  /** The account (config dir) it's signed in as: a turn on another account opens a fresh session. */
+  account: string;
   idle?: NodeJS.Timeout;
   close(): void;
   interrupt(): Promise<void>;

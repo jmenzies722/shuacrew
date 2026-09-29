@@ -90,7 +90,7 @@ export function fixNames(text: string, names: string[]): string {
 /** "en" (default), "auto" (Whisper detects it), or a two-letter language code; anything else falls back to English. */
 export function languageArg(language?: string) { return language === "auto" || (language && /^[a-z]{2}$/.test(language)) ? language : "en"; }
 
-export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean; language?: string } = {}, t = tools(undefined, options.fast ? "fast" : "accurate")): Promise<string> {
+export async function transcribe(file: string, options: { timestamps?: boolean; signal?: AbortSignal; timeoutMs?: number; prompt?: string; fast?: boolean; language?: string; model?: "fast" | "accurate" } = {}, t = tools(undefined, options.model ?? (options.fast ? "fast" : "accurate"))): Promise<string> {
   options.signal?.throwIfAborted();
   if (!t.ffmpeg || !t.whisper || !t.model) throw new Error(`voice needs ${status(t).missing.join(", ")}`);
   const wav = path.join(os.tmpdir(), `shuacrew-${randomUUID().slice(0, 8)}.wav`);

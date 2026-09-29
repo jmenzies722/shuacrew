@@ -89,7 +89,8 @@ interface RuntimeRow {
   id: string;
   label: string;
   authMode: string;
-  status: { installed: boolean; signedIn: boolean | null; account?: string; version?: string; detail: string; overridingKeys: string[] };
+  status: { installed: boolean; signedIn: boolean | null; account?: string; version?: string; detail: string; overridingKeys: string[];
+    accounts?: Array<{ dir: string; email?: string; plan?: string; signedIn: boolean; limitedUntil: number }> };
   limitedUntil: number | null;
 }
 
@@ -97,6 +98,12 @@ export function RuntimeSettings() {
   const [runtimes, setRuntimes] = useState<RuntimeRow[]>([]);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
+  const [adding, setAdding] = useState("");
+  // A Terminal window opens to sign the new account in; "Test connections" afterwards picks it up.
+  const addAccount = async () => {
+    try { setAdding((await api<{ login: string }>("/api/runtimes/claude/accounts", { body: {} })).login); }
+    catch (e) { setError((e as Error).message); }
+  };
   const test = async () => {
     setTesting(true);
     setError("");
@@ -132,9 +139,21 @@ export function RuntimeSettings() {
                 {r.status.detail}
               </span>
               {r.status.overridingKeys.length > 0 && <span className="text-[12px] text-bad">{r.status.overridingKeys.join(", ")} would override your plan</span>}
+              {r.id === "claude" && r.authMode === "subscription" && <Button size="s" onClick={() => void addAccount()}>Add account</Button>}
             </div>
           ))}
         </div>
+        {runtimes.find((r) => r.id === "claude")?.status.accounts?.map((a) => (
+          <div key={a.dir || "default"} className="flex items-center gap-3 py-1.5 pl-6 text-[12px] text-fg-2">
+            <StatusGlyph tone={!a.signedIn ? "bad" : a.limitedUntil ? "live" : "ok"} />
+            <span className="w-56 truncate">{a.email ?? "not signed in"}</span>
+            <span className="mono w-16">{a.plan ?? "—"}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {!a.signedIn ? `sign in: CLAUDE_CONFIG_DIR=${a.dir} claude auth login` : a.limitedUntil ? `at its limit until ${new Date(a.limitedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "ready"}
+            </span>
+          </div>
+        ))}
+        {adding && <p className="mt-2 text-[12px] text-fg-2">Sign in to your other Claude account in the Terminal window that opened (<code className="mono">{adding}</code>), then press Test connections.</p>}
       </Panel>
   );
 }

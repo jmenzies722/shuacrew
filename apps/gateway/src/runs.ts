@@ -607,6 +607,17 @@ export class Supervisor {
     this.pump();
   }
 
+  /**
+   * A different set of accounts is signed in: their usage windows are their own, so every limit recorded before
+   * is lifted outright (not merely retried), and runs paused on them go again.
+   */
+  accountsChanged(runtime: string): void {
+    const stale = this.unresolvedLimits(runtime);
+    if (!stale.length) return;
+    for (const l of stale) this.rec("runtime.restored", { runtime, model: l.model, limitSeq: l.seq });
+    this.restore(runtime);
+  }
+
   private isRetrying(seq: number): boolean {
     return this.store.ofKinds("runtime.retrying", seq).some(e => e.kind === "runtime.retrying" && e.body.limitSeq === seq);
   }
