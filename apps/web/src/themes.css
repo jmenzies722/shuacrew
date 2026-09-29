@@ -40,22 +40,6 @@
   --term-bg: rgba(0, 0, 0, 0.55);
   --term-head: rgba(255, 255, 255, 0.04);
 }
-:root[data-theme][data-palette="cursor"] {
-  --ink: #0a0a0a;
-  --panel: #111111;
-  --raised: #181818;
-  --sunken: #070707;
-  --line: rgba(255, 255, 255, 0.07);
-  --line-strong: rgba(255, 255, 255, 0.12);
-  --highlight: rgba(255, 255, 255, 0.04);
-  --text: #ededed;
-  --text-2: #a3a3a3;
-  --text-3: #737373;
-  --idle: #737373;
-  --glass: rgba(17, 17, 17, 0.78);
-  --term-bg: #050505;
-  --term-head: #0e0e0e;
-}
 :root[data-theme][data-palette="graphite"] {
   --ink: #161618;
   --panel: #1c1c1f;

@@ -15,7 +15,7 @@ import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
@@ -777,8 +777,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const nookHover = useRef((_: boolean) => {});
   // Tuck in once you've moved away. If you're mid-typing or Spark is mid-reply, keep checking (not just once) and
   // tuck in the moment that's over, so it never stays stuck open. An empty, focused ask box doesn't hold it open.
-  const pointerInside = useRef(false), holdOpen = useRef<() => boolean>(() => false);
-  holdOpen.current = () => !!nookDraft.trim() || !!busy || working || !!pending;
+  const pointerInside = useRef(false), holdOpen = useRef<() => boolean>(() => false), scrubbing = useRef(false);
+  const scrubHold = useCallback((on: boolean) => { scrubbing.current = on; }, []);
+  holdOpen.current = () => !!nookDraft.trim() || !!busy || working || !!pending || scrubbing.current;
   nookHover.current = (inside: boolean) => {
     clearTimeout(nookTimer.current); pointerInside.current = inside;
     if (inside) { if (!open && prefs.desktopPlacement === "notch") setNook(true); return; }
@@ -966,7 +967,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             : streamText ? <div className="notch-heard is-open is-stream"><p>{streamText}<i className="notch-caret" /></p></div>
             : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? <>Thinking<span className="notch-dots"><i /><i /><i /></span></> : gist(lastSparkText)}</p>}
           {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
-          <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} activeMissions={activeMissions} runs={crew.runs}
+          <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
             task={task} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}
             stopTask={stopTask} advance={() => void advance()} stopGuide={stopGuide} radio={radio} setRadio={setRadio} timer={timer} now={now} focusPct={focusPct} workingRuns={workingRuns} approvals={approvals} />        </div>
       </div>

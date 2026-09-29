@@ -8,6 +8,9 @@ import { memo } from "react";
 import { pauseClock } from "../lib/crew";
 import { useLive } from "../lib/live";
 
+/** "claude-sonnet-5" → "sonnet-5", "gpt-5.6-terra" stays: the part you'd actually say. */
+const shortModel = (m?: string) => m?.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+
 /**
  * A live agent at a glance: breathing while it works, its current tool, the last line it wrote,
  * how full its context is, and what it has used — without opening anything.
@@ -32,9 +35,12 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
             <div className={`text-[13.5px] font-medium text-fg ${compact ? "line-clamp-2" : "truncate"}`}>{run.title}</div>
             <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-fg-3">
               {compact && <StatusPill status={run.status} reason={run.statusReason} />}
-              <span className="mono">{run.runtime}</span>
-              {run.model && <span className="mono truncate">· {run.model}</span>}
-              {run.worktree && <span className="mono truncate">· {run.worktree.branch}</span>}
+              {/* A narrow board column has room for one short name ("sonnet-5"), not runtime · full model · branch. */}
+              {compact ? <span className="mono truncate" title={[run.runtime, run.model, run.worktree?.branch].filter(Boolean).join(" · ")}>{shortModel(run.model) ?? run.runtime}</span> : <>
+                <span className="mono">{run.runtime}</span>
+                {run.model && <span className="mono truncate">· {run.model}</span>}
+                {run.worktree && <span className="mono truncate">· {run.worktree.branch}</span>}
+              </>}
             </div>
           </div>
           {!compact && <StatusPill status={run.status} reason={run.statusReason} />}
@@ -66,7 +72,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
             </Chip>
           )}
           {run.files.length > 0 && <Chip mono>{run.files.length} files</Chip>}
-          <span className="ml-auto flex items-center gap-3">
+          <span className={`flex items-center whitespace-nowrap ${compact ? "w-full justify-between gap-2 [&_[role=meter]]:w-10" : "ml-auto gap-3"}`}>
             <Gauge used={run.usage.contextUsed} limit={run.usage.contextLimit} />
             <span className="mono text-[11px] tabular-nums text-fg-2" title="Tokens used by this run">
               {formatTokens(tokens)}

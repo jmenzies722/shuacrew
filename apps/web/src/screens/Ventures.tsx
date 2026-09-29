@@ -678,7 +678,9 @@ function Dialog({ children, onClose, label }: { children: React.ReactNode; onClo
 
 /** Where the venture is live, and how many have joined — or the page that's ready to go live. */
 function LiveSites({ venture: v, pages }: { venture: VentureView; pages: Array<{ id: string; title: string; version: number }> }) {
-  const sites = useLive((s) => Object.values(s.crew.sites).filter((x) => x.venture === v.id || pages.some((p) => p.id === x.artifact)));
+  // Select the stable map, then filter: a selector that builds a new array on every read makes React loop forever.
+  const allSites = useLive((s) => s.crew.sites);
+  const sites = useMemo(() => Object.values(allSites).filter((x) => x.venture === v.id || pages.some((p) => p.id === x.artifact)), [allSites, v.id, pages]);
   const [open, setOpen] = useState<{ artifact: string; version: number } | null>(null);
   const unpublished = pages.filter((p) => !sites.some((s) => s.artifact === p.id));
   if (!sites.length && !unpublished.length) return null;

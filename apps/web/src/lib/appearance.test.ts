@@ -17,8 +17,11 @@ describe("workspace preferences", () => {
     expect(normalizeAppearance({ sendShortcut: "auto", spellcheck: false, turnMap: "bad" })).toMatchObject({ sendShortcut: "enter", spellcheck: "on", turnMap: "show" });
   });
   it("preserves deliberate palettes while migrating older preferences", () => {
-    vi.stubGlobal("localStorage", { getItem: (key: string) => key === "shuacrew.appearance" ? JSON.stringify({ palette: "night", dark: "night", accent: "blue" }) : null });
-    expect(loadAppearance()).toEqual({ ...DEFAULT_APPEARANCE, palette: "night", dark: "night", accent: "blue" });
+    vi.stubGlobal("localStorage", { getItem: (key: string) => key === "shuacrew.appearance" ? JSON.stringify({ palette: "midnight", dark: "midnight", accent: "blue" }) : null });
+    expect(loadAppearance()).toEqual({ ...DEFAULT_APPEARANCE, palette: "midnight", dark: "midnight", accent: "blue" });
+  });
+  it("moves a retired palette to its twin rather than the default", () => {
+    expect(normalizeAppearance({ palette: "night", dark: "cursor" })).toMatchObject({ palette: "midnight", dark: "frost" });
   });
   it("recovers invalid values independently", () => {
     expect(normalizeAppearance({ palette: "missing", dark: "paper", light: "night", accent: null, navigation: "labels", startPage: "https://example.com" })).toEqual({ ...DEFAULT_APPEARANCE, navigation: "labels" });
@@ -47,6 +50,6 @@ describe("the Pristine move", () => {
     const moved = migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "frost", palette: "frost", accent: "amber" }, true, s);
     expect(moved).toMatchObject({ dark: "pristine", palette: "pristine", accent: "iris" });
     expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "frost", accent: "amber" }, true, s)).toMatchObject({ dark: "frost", accent: "amber" }); // already moved once
-    expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "night", accent: "blue" }, true, store())).toMatchObject({ dark: "night", accent: "blue" }); // yours stays
+    expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "midnight", accent: "blue" }, true, store())).toMatchObject({ dark: "midnight", accent: "blue" }); // yours stays
   });
 });
