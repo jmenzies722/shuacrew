@@ -3,6 +3,7 @@
  * playing (with artwork and transport), a mission, a task Spark is doing for you (approve, let it run, stop), a guided
  * step, the radio, a focus block, and crew at work or decisions waiting.
  */
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AudioLines, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { radioCommand, radioNow, type RadioNow } from "../../lib/radio";
 import { remainingFocusMs, setFocus } from "../../lib/focus-timer";
@@ -10,10 +11,39 @@ import { describeAct, type Act, type GuideStep } from "../../lib/buddy";
 import type { Mission } from "../../lib/missions";
 import { post } from "./bridge";
 
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+/**
+ * Scrub the song: drag (or tap, or ←/→ for 10 s) anywhere on the line. Between the Mac's position checks the time runs
+ * on locally, so the line moves smoothly; right after a seek, stale positions from the Mac are ignored so it never
+ * jumps back.
+ */
+function Scrubber({ tab, position, duration, playing, onSeek }: { tab: 0 | -1; position: number; duration: number; playing: boolean; onSeek: (s: number) => void }) {
+  const [drag, setDrag] = useState<number | null>(null), [base, setBase] = useState({ pos: position, at: performance.now() }), [, tick] = useState(0);
+  const track = useRef<HTMLDivElement>(null), seekedAt = useRef(0);
+  useEffect(() => { if (performance.now() - seekedAt.current > 2500) setBase({ pos: position, at: performance.now() }); }, [position]);
+  useEffect(() => { if (!playing || drag !== null) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t); }, [playing, drag]);
+  const live = drag ?? Math.min(duration, base.pos + (playing ? (performance.now() - base.at) / 1000 : 0));
+  const pct = Math.min(100, (live / duration) * 100);
+  const at = (x: number) => { const r = track.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)) * duration; };
+  const seek = (s: number) => { seekedAt.current = performance.now(); setBase({ pos: s, at: performance.now() }); onSeek(s); };
+  return <div className="nook-scrub">
+    <div ref={track} className={`nook-scrub-track ${drag !== null ? "is-drag" : ""}`} role="slider" tabIndex={tab} aria-label="Song position"
+      aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(live)} aria-valuetext={`${clock(live)} of ${clock(duration)}`}
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setDrag(at(e.clientX)); }}
+      onPointerMove={(e) => { if (drag !== null) setDrag(at(e.clientX)); }}
+      onPointerUp={(e) => { if (drag === null) return; setDrag(null); seek(at(e.clientX)); }}
+      onPointerCancel={() => setDrag(null)}
+      onKeyDown={(e) => { const d = e.key === "ArrowRight" ? 10 : e.key === "ArrowLeft" ? -10 : 0; if (d) { e.preventDefault(); seek(Math.max(0, Math.min(duration - 1, live + d))); } }}>
+      <span><i style={{ width: `${pct}%` }} /></span><b style={{ left: `${pct}%` }} />
+    </div>
+    <small>{clock(live)}</small><small>-{clock(Math.max(0, duration - live))}</small>
+  </div>;
+}
+
 export interface Media { app: string; playing: boolean; title: string; artist: string; position: number; duration: number; art: string }
 export interface LiveActivitiesProps {
   tab: 0 | -1;
-  showMedia: boolean; media: Media | null; mediaCmd: (c: "toggle" | "next" | "previous") => void;
+  showMedia: boolean; media: Media | null; mediaCmd: (c: "toggle" | "next" | "previous") => void; mediaSeek: (seconds: number) => void;
   activeMissions: Mission[]; runs: Record<string, { title?: string; status: string } | undefined>;
   task: { step: number } | null; pending: Act | null; guide: GuideStep | null; busy: boolean; working: boolean;
   runAct: (a: Act, step: number) => void; doAll: () => void; stopTask: (why?: string) => void; advance: () => void; stopGuide: () => void;
@@ -23,17 +53,17 @@ export interface LiveActivitiesProps {
 }
 
 export function LiveActivities(p: LiveActivitiesProps) {
-  const { tab, showMedia, media, mediaCmd, activeMissions, runs, task, pending, guide, busy, working, runAct, stopTask, advance, stopGuide, radio, setRadio, timer, now, focusPct, workingRuns, approvals } = p;
+  const { tab, showMedia, media, mediaCmd, mediaSeek, activeMissions, runs, task, pending, guide, busy, working, runAct, stopTask, advance, stopGuide, radio, setRadio, timer, now, focusPct, workingRuns, approvals } = p;
   return <>
-          {showMedia && media && <div className="spark-nook-media">
+          {showMedia && media && <div className="spark-nook-media" style={media.art ? { "--art": `url("${media.art.replace(/"/g, "%22")}")` } as CSSProperties : undefined}>
             {media.art ? <img src={media.art} alt="" /> : <i><AudioLines size={16} /></i>}
-            <div className="spark-nook-media-text"><b>{media.title}</b><small>{[media.artist, media.app].filter(Boolean).join(" · ")}</small>
-              <span className="spark-nook-bar"><i style={{ width: `${media.duration ? Math.min(100, (media.position / media.duration) * 100) : 0}%` }} /></span></div>
+            <div className="spark-nook-media-text"><b>{media.title}</b><small>{[media.artist, media.app].filter(Boolean).join(" · ")}</small></div>
             <div className="spark-nook-ctl is-media">
               <button type="button" tabIndex={tab} onClick={() => mediaCmd("previous")} aria-label="Previous"><SkipBack size={12} /></button>
               <button type="button" tabIndex={tab} className="is-main" onClick={() => mediaCmd("toggle")} aria-label={media.playing ? "Pause" : "Play"}>{media.playing ? <Pause size={13} /> : <Play size={13} />}</button>
               <button type="button" tabIndex={tab} onClick={() => mediaCmd("next")} aria-label="Next"><SkipForward size={12} /></button>
             </div>
+            {media.duration > 0 && <Scrubber key={`${media.app}:${media.title}`} tab={tab} position={media.position} duration={media.duration} playing={media.playing} onSeek={mediaSeek} />}
           </div>}
           {activeMissions.length > 0 && <button type="button" className="spark-nook-mission" tabIndex={tab} onClick={() => post({ type: "buddyOpen", path: `/sessions/${activeMissions.at(-1)!.run}` })}>
             <i className="is-live" /><span><small>Mission</small><b>{runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task}</b></span><em>{runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</em></button>}

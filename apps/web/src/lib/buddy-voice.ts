@@ -23,7 +23,10 @@ export function getBuddyVoice() { return current; }
 const AHEAD = 2;          // sentences generating in parallel (more lets the engine finish them out of order)
 const LEAD = 0.18;        // seconds of buffer before the first sound; absorbs network/generation jitter
 
-interface Line { text: string; voiceId: string; speed: number; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean; heard?: boolean }
+interface Line { key: number; text: string; voiceId: string; speed: number; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean; heard?: boolean; shown?: boolean; dur: number }
+/** A sentence for the captions. `durationMs` arrives once the whole sentence is generated, so words can keep time with the real audio. */
+export interface CaptionLine { key: number; text: string; speed: number; durationMs?: number }
+let lineKeys = 0;
 
 export class SpeechQueue {
   private context?: AudioContext;
@@ -39,7 +42,8 @@ export class SpeechQueue {
   private idleTimer?: ReturnType<typeof setTimeout>;
   onSpeaking?: (speaking: boolean) => void;
   /** Each sentence the moment its sound starts (captions follow the voice, not the text stream); null when Spark stops. */
-  onCaption?: (line: { text: string; speed: number } | null) => void;
+  onCaption?: (line: CaptionLine | null) => void;
+  private captionOf(line: Line): CaptionLine { return { key: line.key, text: line.text, speed: line.speed, ...(line.done && !line.failed ? { durationMs: Math.round(line.dur * 1000) } : {}) }; }
   private captionTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private master?: GainNode;
@@ -67,7 +71,7 @@ export class SpeechQueue {
   say(text: string, as?: { voiceId: string; speed: number }) {
     const v = getBuddyVoice();
     if (!v.on || !text.trim()) return;
-    this.lines.push({ text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, buffers: [], done: false, failed: false, started: false });
+    this.lines.push({ key: ++lineKeys, text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, buffers: [], done: false, failed: false, started: false, dur: 0 });
     this.pump();
   }
 
@@ -117,10 +121,12 @@ export class SpeechQueue {
         source.buffer = buffer; source.connect(this.out()); // the engine already spoke at the chosen speed
         source.onended = () => { this.sources.delete(source); source.disconnect(); this.maybeIdle(); };
         source.start(this.at); this.sources.add(source);
-        if (!line.heard) { line.heard = true; const caption = { text: line.text, speed: line.speed }; const t = setTimeout(() => { this.captionTimers.delete(t); this.onCaption?.(caption); }, Math.max(0, (this.at - now) * 1000)); this.captionTimers.add(t); }
-        this.at += buffer.duration;
+        // The caption goes up the moment its sound starts; read at that time, so it carries the length if it's known by then.
+        if (!line.heard) { line.heard = true; const t = setTimeout(() => { this.captionTimers.delete(t); line.shown = true; this.onCaption?.(this.captionOf(line)); }, Math.max(0, (this.at - now) * 1000)); this.captionTimers.add(t); }
+        this.at += buffer.duration; line.dur += buffer.duration;
       }
       if (!line.done) return;       // wait for more of this sentence before moving on
+      if (line.shown && !line.failed) this.onCaption?.(this.captionOf(line)); // already on screen: now with its real length
       this.lines.shift();           // finished (or failed): the next sentence may already be waiting
     }
     this.maybeIdle();
