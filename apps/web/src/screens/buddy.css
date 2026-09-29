@@ -491,14 +491,16 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .shua-island.is-live .shua-island-shape { --r: 22px; }
 /* The whole reply as a rolling transcript: anchored to the newest words, earlier lines fade out above. Nothing is cut
    off mid-sentence; what's still to come in this sentence shows faintly ahead of the voice. */
-.notch-caption { display: flex; flex-direction: column; justify-content: flex-end; max-height: 58px; overflow: hidden; font-size: 12.5px; line-height: 1.4; text-align: center;
-  -webkit-mask-image: linear-gradient(transparent, #000 14px); mask-image: linear-gradient(transparent, #000 14px); }
-.notch-caption p { margin: 0; }
+/* Exactly N whole lines tall (the box is a multiple of the line height, anchored to the bottom), so no line is ever
+   cut in half; the oldest line fades only when there's more text above it. */
+.notch-roll { --lh: 1.45em; display: flex; flex-direction: column; justify-content: flex-end; max-height: calc(var(--lh) * var(--lines, 3)); overflow: hidden;
+  font-size: 12.5px; line-height: var(--lh); text-align: center; }
+.notch-roll > p { margin: 0; }
+.notch-roll.is-full { -webkit-mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9)); mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9)); }
 .notch-caption .is-past { color: #bdb6c8; }
 .notch-caption .is-next { color: #5b5566; transition: color .16s ease; }
 .notch-caption .is-said { color: #f4f1f8; transition: color .16s ease; }
-.shua-island-body .notch-caption { max-height: 110px; text-align: left; padding: 0 2px; }
-.shua-chat-caption .notch-caption { max-height: 76px; }
+.shua-island-body .notch-roll { text-align: left; padding: 0 2px; }
 @keyframes nook-in { from { opacity: 0; transform: translateY(-4px); } }
 
 /* Artwork in the tucked-in ear while music plays. */
@@ -594,10 +596,8 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .buddy-send.is-stop { color: var(--text); background: color-mix(in srgb, var(--text) 12%, var(--raised)) !important; background-image: none !important; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .spark-nook-ask button.is-stop { color: #000; background: #f1eef5; }
 /* What you're saying, live and in full: anchored to the newest words, older lines scroll up out of view. */
-.notch-heard { display: flex; flex-direction: column; justify-content: flex-end; max-height: 58px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 14px); mask-image: linear-gradient(transparent, #000 14px); }
-.notch-heard p { margin: 0; font-size: 12.5px; line-height: 1.4; color: #f4f1f8; text-align: center; }
-.notch-heard.is-open { max-height: 110px; }
-.notch-heard.is-open p { text-align: left; padding: 0 2px; }
+.notch-heard { color: #f4f1f8; }
+.notch-heard.is-open { text-align: left; padding: 0 2px; }
 /* Live activities: your notch widgets as a swipeable row of dark tiles (the island is always night-black). */
 .notch-widgets { --panel: #141218; --raised: #1d1a22; --sunken: #0c0b0f; --text: #f1eef5; --text-2: #bdb6c8; --text-3: #8d8797; --line: #26222d; --line-strong: #35303d; color-scheme: dark;
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(190px, 46%); gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; padding-bottom: 2px; }

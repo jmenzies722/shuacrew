@@ -74,6 +74,20 @@ export function toWav(chunks: Float32Array[], rate: number, target = 16000): Blo
 
 export type Phase = "off" | "starting" | "listening" | "hearing" | "transcribing" | "error";
 
+/**
+ * Live captions that don't flicker (the "local agreement" trick used by streaming Whisper): a word is locked once two
+ * guesses in a row agree on it, and locked words never change; only the newest few words can still move.
+ */
+export interface Steady { locked: string[]; last: string[] }
+export const STEADY: Steady = { locked: [], last: [] };
+export function steady(prev: Steady, text: string): Steady & { shown: string } {
+  const cur = text.trim().split(/\s+/).filter(Boolean), key = (w: string) => w.toLowerCase().replace(/[^a-z0-9']/g, "");
+  let agree = 0;
+  while (agree < cur.length && agree < prev.last.length && key(cur[agree]!) === key(prev.last[agree]!)) agree++;
+  const locked = agree > prev.locked.length ? cur.slice(0, agree) : prev.locked;
+  return { locked, last: cur, shown: [...locked, ...cur.slice(locked.length)].join(" ") };
+}
+
 export class HandsFree {
   private stream?: MediaStream;
   private ctx?: AudioContext;
@@ -108,7 +122,7 @@ export class HandsFree {
   outputLevel?: () => number;
   private coupling = 0.6;
   private yielded = false;
-  private lastCaption = "";
+  private lastCaption = ""; private steadied: Steady = STEADY;
   /** Turns already transcribed but not yet sent: if you pause and carry on, they go as one message. */
   private pending: string[] = [];
   private inflight = 0;
@@ -140,7 +154,7 @@ export class HandsFree {
       const echo = this.speaking && this.outputLevel ? out * this.coupling : undefined;
       const r = vadStep(this.state, rms, frameMs, endsSentence(this.lastCaption) ? { ...VAD, endMs: 750 } : VAD, this.speaking, echo);
       this.state = r.state;
-      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
+      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.steadied = STEADY; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
       // Still talking over Spark after ~0.6 s of real speech: a real interruption — Spark stops, like a person would.
       // Counted in time you were actually speaking (not just elapsed since a start), so a false start never cuts Spark off.
       if (this.turn && this.speaking && !this.yielded && this.state.talk >= 600) { this.yielded = true; this.onYield?.(); }
@@ -166,7 +180,7 @@ export class HandsFree {
     if (!this.stream || this.holding || this.paused) return;
     this.holding = true;
     if (this.speaking) this.onBargeIn?.();
-    this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now();
+    this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.steadied = STEADY; this.captionAt = performance.now();
     this.onPartial?.(""); this.onPhase?.("hearing");
   }
   /** Push-to-talk: you let go — send what you said (a tap under ~0.3 s is ignored). */
@@ -182,18 +196,24 @@ export class HandsFree {
   /** The words so far, quickly (the fast model); the accurate transcript still comes when you stop. */
   private async caption() {
     if (!this.turn || !this.ctx || this.lang !== "en") return;
-    const id = this.turnId, audio = this.turn.slice(-Math.ceil((20 * this.ctx.sampleRate) / 2048)); // the last 20 s is plenty
+    const span = Math.ceil((20 * this.ctx.sampleRate) / 2048), sliding = this.turn.length > span;
+    const id = this.turnId, audio = this.turn.slice(-span); // the last 20 s is plenty
     this.captionBusy = true; this.captionAt = performance.now();
     try {
       const r = await fetch("/api/transcribe?voice=1&fast=1&name=live.wav", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/octet-stream" }, body: toWav(audio, this.ctx.sampleRate) });
       const { text = "" } = await r.json() as { text?: string };
-      if (id === this.turnId && this.turn && meaningful(text)) { this.lastCaption = text.trim(); this.onPartial?.(text.trim()); }
+      if (id === this.turnId && this.turn && meaningful(text)) {
+        this.lastCaption = text.trim();
+        // Past 20 s the window slides, so the start of each guess moves: show it as is rather than lock the wrong words.
+        if (sliding) { this.steadied = STEADY; this.onPartial?.(text.trim()); }
+        else { const s = steady(this.steadied, text); this.steadied = s; this.onPartial?.(s.shown); }
+      }
     } catch { /* a missed caption is fine; the final transcript is what counts */ }
     finally { this.captionBusy = false; }
   }
 
   private async finish(keep: boolean) {
-    const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = "";
+    const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = ""; this.steadied = STEADY;
     if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); if (!this.inflight) this.onPhase?.("listening"); return; }
     // Push-to-talk still pauses while it transcribes; open mic keeps listening, so you can carry on talking.
     if (this.mode === "hold") this.paused = true;

@@ -13,6 +13,22 @@ import { perform } from "./actions";
 const INSTANT = new Set(["player", "play", "browse", "settings", "folder", "music", "whatsong", "radio", "stop-radio", "scape", "focus"]);
 export const isInstant = (move: ProducerMove | null): boolean => !!move && INSTANT.has(move.kind);
 
+/**
+ * Send a radio command and wait until the player really is in that state (it reports every change to the gateway).
+ * One retry if it isn't; only then say it happened. "Delivered" is not "done": the reply is what actually changed.
+ */
+async function radioTo(cmd: "stop" | "pause" | "resume" | "play", playing: boolean, extra: { station?: string } = {}): Promise<{ ok: boolean; error?: string }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const sent = await radioCommand({ cmd, ...extra });
+    if (!sent.ok) return { ok: false, error: sent.error };
+    for (let i = 0; i < 12; i++) { // up to ~3 s: a live YouTube stream can take a moment to start
+      await new Promise((r) => setTimeout(r, 250));
+      if ((await radioNow().catch(() => null))?.playing === playing) return { ok: true };
+    }
+  }
+  return { ok: false, error: playing ? "I asked the radio to start, but it isn't playing yet." : "I asked the radio to stop, but it's still playing — tap pause in the notch." };
+}
+
 /** Do it and say the result. */
 export async function runInstant(move: ProducerMove, done: (said: string) => void, deps: { setRadio: (r: RadioNow) => void; soundsVolume: number }): Promise<void> {
   const { setRadio } = deps;
@@ -23,14 +39,14 @@ export async function runInstant(move: ProducerMove, done: (said: string) => voi
     if (move.kind === "player") {
       const { radioOn, media: m } = await player();
       if (move.cmd === "pause") {
-        if (radioOn) { await radioCommand({ cmd: "pause" }); void radioNow().then(setRadio); done("Paused."); return; }
+        if (radioOn) { const r = await radioTo("pause", false); void radioNow().then(setRadio); done(r.ok ? "Paused." : r.error!); return; }
         if (m?.playing) { const r = await perform({ type: "media", command: "pause", app: m.app }); done(r.ok ? "Paused." : r.message); return; }
         done("Nothing's playing."); return;
       }
       if (move.cmd === "resume") {
         if (m && !m.playing && m.title) { const r = await perform({ type: "media", command: "play", app: m.app }); done(r.ok ? `Back to ${m.title}.` : r.message); return; }
         if (m?.playing || radioOn) { done("It's already playing."); return; }
-        const r = await radioCommand({ cmd: getRadio().station ? "resume" : "play" }); done(r.ok ? "Putting the radio on." : r.error); return;
+        const r = await radioTo(getRadio().station ? "resume" : "play", true); void radioNow().then(setRadio); done(r.ok ? "Radio's on." : r.error!); return;
       }
       // next / previous: whichever is playing
       if (radioOn) { await radioCommand({ cmd: move.cmd }); done(move.cmd === "next" ? "Next one." : "Going back."); return; }
@@ -61,7 +77,16 @@ export async function runInstant(move: ProducerMove, done: (said: string) => voi
     }
 
   if (move.kind === "scape") { playScape(move.scape, deps.soundsVolume); done(`Putting on ${move.scape}.`); return; }
-  if (move.kind === "stop-radio") { stopScape(); void radioCommand({ cmd: "stop" }); done("Radio off."); return; }
+  if (move.kind === "stop-radio") {
+    stopScape();
+    if (!(await radioNow().catch(() => null))?.playing) { done("The radio's already off."); return; }
+    const r = await radioTo("stop", false); void radioNow().then(setRadio); done(r.ok ? "Radio off." : r.error!); return;
+  }
+  if (move.kind === "radio" && move.cmd !== "next" && move.cmd !== "previous") {
+    const r = await radioTo(move.cmd, move.cmd !== "pause", move.station ? { station: move.station } : {}); void radioNow().then(setRadio);
+    done(r.ok ? (move.cmd === "play" ? (move.station ? `Putting on lofi ${move.station}.` : "Radio's on.") : move.cmd === "pause" ? "Paused." : "Back on.") : r.error!);
+    return;
+  }
   if (move.kind === "radio") {
     const r = await radioCommand({ cmd: move.cmd, station: move.station });
     done(r.ok ? (move.cmd === "play" ? (move.station ? `Putting on lofi ${move.station}.` : "Putting the radio on.") : move.cmd === "next" ? "Next one." : move.cmd === "previous" ? "Going back." : move.cmd === "pause" ? "Paused." : "Back on.") : r.error);

@@ -46,3 +46,15 @@ it("ignores Spark's own voice echoing back, but still hears a real interruption"
   expect(run(s, 0.05, 300, true).events).toEqual([]);        // a short loud blip while Spark talks: echo, not you
   expect(run(s, 0.05, 700, true).events).toEqual(["start"]); // you, clearly and for more than half a second
 });
+
+import { STEADY, steady } from "./handsfree";
+it("keeps live captions steady: words lock once two guesses agree, and locked words never flicker", () => {
+  let s = steady(STEADY, "Can you turn the");
+  expect(s.shown).toBe("Can you turn the");
+  s = steady(s, "Can you turn the radio of"); // agrees on the first four: those lock
+  expect(s.locked).toEqual(["Can", "you", "turn", "the"]);
+  s = steady(s, "Can you learn the radio off and"); // a wobble in a locked word is ignored
+  expect(s.shown).toBe("Can you turn the radio off and");
+  s = steady(s, "Can you"); // a shorter guess never takes words away
+  expect(s.shown).toBe("Can you turn the");
+});

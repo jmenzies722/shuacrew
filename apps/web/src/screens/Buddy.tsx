@@ -9,7 +9,7 @@ import { earlierToday, rememberAsk } from "../lib/spark-day";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
-import { NotchCaption } from "../components/NotchCaption";
+import { NotchCaption, Rolling } from "../components/NotchCaption";
 import { Recommendations } from "../components/Recommendations";
 import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
@@ -39,7 +39,7 @@ import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
-import { ctx, capture, claim, fitShape, KEY, macContext, mine, SEE, native, post, readSee, screenFacts, webAct } from "./spark/bridge";
+import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, webAct } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
 import { MiniCard, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
@@ -578,7 +578,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
-      const [selected, personal] = await Promise.all([selectIntelligence(intelligence), macContext()]); if (stale()) return; setChoice(selected); setChoiceError("");
+      const [selected, mac, playing] = await Promise.all([selectIntelligence(intelligence), macContext(), playingContext(radioNow)]); const personal = [mac, playing].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError("");
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
@@ -599,7 +599,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       });
       const earlier = earlierToday(); rememberAsk(q);
       const language = prefs.language === "auto" ? "LANGUAGE: answer in the same language the user wrote or spoke (your voice can speak it)." : "";
-      const rightNow = personal ? `\nRIGHT NOW ON THEIR MAC (use it when it helps: mention a meeting that's coming up, the file they just worked on, a heads-up; never recite it):\n${personal}` : "";
+      const rightNow = personal ? `\nRIGHT NOW ON THEIR MAC (use it when it helps: mention a meeting that's coming up, the file they just worked on, a heads-up; asked what's playing or about the song, answer straight from this — it's live; never recite it unprompted):\n${personal}` : "";
       const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}${rightNow}`;
       const appNow = [appNowBase, identity, remembered, earlier, language].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
@@ -913,7 +913,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           <button type="button" onClick={() => setOpen(false)} aria-label="Tuck into the notch" title="Tuck into the notch"><Minimize2 size={13} /></button>
         </span>
       </div>}
-      {notched && speaking && prefs.notchCaptions && caption && <div className="shua-chat-caption"><NotchCaption line={caption} /></div>}
+      {notched && speaking && prefs.notchCaptions && caption && <div className="shua-chat-caption"><NotchCaption line={caption} lines={4} /></div>}
       {card}</motion.div>}</AnimatePresence>
     {!open && mini && <MiniCard name={prefs.nickname || "Spark"} prefs={prefs} mood={mood}
       state={phase === "hearing" ? "listening" : phase === "transcribing" || busy || working ? "thinking" : speaking ? "speaking" : "ready"}
@@ -944,7 +944,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <div className="notch-heard"><p>{heard}</p></div> : streamingNow && prefs.notchCaptions ? <div className="notch-heard is-stream"><p>{streamText}<i className="notch-caret" /></p></div> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
@@ -962,9 +962,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-toggle ${liveOn ? "is-on" : ""}`} aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive} title={liveOn ? "Watching your screen: tap to stop" : "Let Spark watch your screen"} aria-label="Watch my screen">{liveOn ? <Eye size={14} /> : <EyeOff size={14} />}</button>
             </>}
           </div>
-          {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} />
-            : hearingNow || phase === "hearing" ? <div className="notch-heard is-open"><p>{heard || "Listening…"}</p></div>
-            : streamText ? <div className="notch-heard is-open is-stream"><p>{streamText}<i className="notch-caret" /></p></div>
+          {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} lines={6} />
+            : hearingNow || phase === "hearing" ? <Rolling className="notch-heard is-open" lines={6}>{heard || "Listening…"}</Rolling>
+            : streamText ? <Rolling className="notch-heard is-open is-stream" lines={6}>{streamText}<i className="notch-caret" /></Rolling>
             : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? <>Thinking<span className="notch-dots"><i /><i /><i /></span></> : gist(lastSparkText)}</p>}
           {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
