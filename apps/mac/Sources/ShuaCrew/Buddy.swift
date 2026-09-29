@@ -116,6 +116,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         pointer.onGuideClick = { [weak self] in
             (self?.guideTarget ?? self?.web)?.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:guideClick'))")
         }
+        // A click on one of Spark's labels or cards: Spark takes it from there (does that step, or tells you more).
+        pointer.onMarkClick = { [weak self] text in
+            guard let data = try? JSONSerialization.data(withJSONObject: ["text": text]), let json = String(data: data, encoding: .utf8) else { return }
+            self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:mark', { detail: \(json) }))")
+        }
         grip.onMoved = { [weak self] in self?.rememberCorner() }
         web.uiDelegate = self
         web.navigationDelegate = self
@@ -759,7 +764,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let context = ScreenElements.read(on: screen)
             // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
             async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
-            guard let small = ScreenText.scaled(full, longest: 1568),
+            // The model points in pixels of the image it sees, so it must see exactly this image: under both of the API's
+            // limits (1568 px long edge AND ~1.15 MP), or it's shrunk again server-side and every coordinate drifts.
+            let area = sqrt(1_150_000 / Double(full.width * full.height)), long = Double(max(full.width, full.height))
+            guard let small = ScreenText.scaled(full, longest: Int(min(1568, long * min(1, area)).rounded(.down))),
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
                 reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
@@ -829,6 +837,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         guard let colon = spec.firstIndex(of: ":") else { return }
         let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
         guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("marks:") { // every mark in Spark's visual language at once, to check the overlay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDraw', color: '#a78bfa', shapes: [{ shape: 'spotlight', x: 0.3, y: 0.3, w: 0.2, h: 0.12, label: 'look here' }, { shape: 'highlight', x: 0.7, y: 0.2, w: 0.16, h: 0.03 }, { shape: 'underline', x: 0.7, y: 0.28, w: 0.16, h: 0.03, label: 'typo' }, { shape: 'step', n: 1, x: 0.15, y: 0.62, label: 'Open settings' }, { shape: 'step', n: 2, x: 0.3, y: 0.7, label: 'Pick a size' }, { shape: 'path', points: [[0.5, 0.55], [0.6, 0.75], [0.8, 0.6]], label: 'data flows here' }, { shape: 'card', x: 0.8, y: 0.42, title: 'Why this matters', body: 'This total feeds the invoice, so a wrong cell here bills the client wrong.', items: ['Check row 14', 'Re-run the sum'] }, { shape: 'check', x: 0.55, y: 0.9, label: 'correct' }, { shape: 'cross', x: 0.65, y: 0.9, label: 'wrong' }] })")
+            }
+            return
+        }
         if spec.hasPrefix("draw:") { // sketch a sample annotation, to check on-screen drawing
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDraw', color: '#34d399', shapes: [{ shape: 'box', x: 0.5, y: 0.35, w: 0.3, h: 0.12, label: 'this total looks off' }, { shape: 'arrow', from: [0.25, 0.7], to: [0.38, 0.42], label: 'it comes from here' }, { shape: 'circle', x: 0.75, y: 0.62, r: 0.04 }, { shape: 'text', x: 0.5, y: 0.86, text: \(String(reflecting: String(spec.dropFirst(5)))) }] })")
@@ -960,6 +974,9 @@ final class PointerOverlay {
     /// The spotlighted area in global screen coordinates, while a guide step waits for your click.
     private var target: NSRect?
     var onGuideClick: (() -> Void)?
+    /// Clickable marks: each label or card gets its own tiny window that takes the click (the drawing itself never does).
+    var onMarkClick: ((String) -> Void)?
+    private var catchers: [NSPanel] = []
 
     static func color(_ hex: String?) -> NSColor {
         guard let hex, hex.count == 7, hex.hasPrefix("#"), let v = UInt32(hex.dropFirst(), radix: 16) else { return NSColor(srgbRed: 0.96, green: 0.71, blue: 0.27, alpha: 1) }
@@ -1211,19 +1228,95 @@ final class PointerOverlay {
         DispatchQueue.main.asyncAfter(deadline: .now() + 900, execute: work)
     }
 
-    /// Spark sketching on your screen: boxes, circles, arrows and notes that draw themselves in, one after another.
-    /// Shapes use fractions of the screenshot (0–1, from the top-left), like everything else Spark shows you.
+    /// Spark sketching on your screen, one mark after another: boxes, circles, arrows and notes, plus a spotlight that
+    /// dims everything else, marker highlights and underlines on text, numbered steps, a route across the screen,
+    /// explainer cards, and ticks and crosses. Shapes use fractions of the screenshot (0–1, from the top-left), like
+    /// everything else Spark shows you. `stay` (seconds) keeps them up longer, for a plan you're working through.
     func draw(on screen: NSScreen, shapes: [[String: Any]], color hex: String?, from: NSPoint?) {
         hide()
         let frame = screen.frame, color = Self.color(hex), W = frame.width, H = frame.height
         let (panel, root) = makePanel(frame)
         let pt = { (x: Double, y: Double) in CGPoint(x: x * W, y: H - y * H) }
         let num = { (d: [String: Any], k: String) -> Double? in (d[k] as? Double).flatMap { (0...1).contains($0) ? $0 : nil } }
-        var layers: [CALayer] = [], labels: [(NSView, CGRect)] = [], firstSpot: CGPoint?
-        for shape in shapes.prefix(12) {
+        let good = NSColor(srgbRed: 0.2, green: 0.83, blue: 0.6, alpha: 1), bad = NSColor(srgbRed: 0.97, green: 0.44, blue: 0.44, alpha: 1)
+        var layers: [CALayer] = [], labels: [(NSView, CGRect)] = [], firstSpot: CGPoint?, holes: [CGRect] = [], fills: [CALayer] = []
+        var clickable: [ObjectIdentifier: String] = [:]
+        var stay = 16.0
+        for shape in shapes.prefix(16) {
+            if let s = shape["stay"] as? Double { stay = max(stay, min(300, s)) }
             let path = CGMutablePath()
-            var anchor = CGRect.zero
+            var anchor = CGRect.zero, stroke = color, badge: Int?
+            let box = { () -> CGRect? in
+                guard let x = num(shape, "x"), let y = num(shape, "y"), let w = num(shape, "w"), let h = num(shape, "h") else { return nil }
+                return Highlight.box(x: x, y: y, w: w, h: h, in: CGSize(width: W, height: H))
+            }
             switch shape["shape"] as? String {
+            case "spotlight":
+                // Everything else dims; this stays bright, ringed in the accent.
+                guard let r = box() else { continue }
+                anchor = r.insetBy(dx: -10, dy: -10); holes.append(anchor)
+                path.addRoundedRect(in: anchor, cornerWidth: 14, cornerHeight: 14)
+            case "highlight":
+                // A marker stroke over text: a soft fill, no outline.
+                guard let r = box() else { continue }
+                anchor = r.insetBy(dx: -3, dy: -2)
+                let fill = CAShapeLayer()
+                fill.path = CGPath(roundedRect: anchor, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                fill.fillColor = color.withAlphaComponent(0.3).cgColor
+                fill.opacity = 0
+                let show = CABasicAnimation(keyPath: "opacity"); show.fromValue = 0; show.toValue = 1; show.duration = 0.35
+                show.beginTime = CACurrentMediaTime() + 0.5 + Double(layers.count + fills.count) * 0.25; show.fillMode = .forwards; show.isRemovedOnCompletion = false
+                fill.add(show, forKey: "show"); fills.append(fill)
+            case "underline":
+                // A hand-drawn wave under a line of text.
+                guard let r = box() else { continue }
+                anchor = r
+                let y0 = r.minY - 3, steps = max(4, Int(r.width / 14))
+                path.move(to: CGPoint(x: r.minX, y: y0))
+                for i in 1...steps {
+                    let x = r.minX + r.width * CGFloat(i) / CGFloat(steps), mid = r.minX + r.width * (CGFloat(i) - 0.5) / CGFloat(steps)
+                    path.addQuadCurve(to: CGPoint(x: x, y: y0), control: CGPoint(x: mid, y: y0 + (i % 2 == 0 ? 4 : -4)))
+                }
+            case "step", "check", "cross":
+                guard let x = num(shape, "x"), let y = num(shape, "y") else { continue }
+                let c = pt(x, y)
+                if shape["shape"] as? String == "step" {
+                    // A numbered marker; with w/h (a real control) it rings it too.
+                    badge = (shape["n"] as? Double).map { Int($0) } ?? (shape["n"] as? Int) ?? 1
+                    if let r = box() { anchor = r.insetBy(dx: -4, dy: -4); path.addRoundedRect(in: anchor, cornerWidth: 8, cornerHeight: 8) }
+                    else { anchor = CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28); path.addEllipse(in: anchor) }
+                } else if shape["shape"] as? String == "check" {
+                    stroke = good; anchor = CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)
+                    path.move(to: CGPoint(x: c.x - 11, y: c.y + 1)); path.addLine(to: CGPoint(x: c.x - 3, y: c.y - 8)); path.addLine(to: CGPoint(x: c.x + 12, y: c.y + 11))
+                } else {
+                    stroke = bad; anchor = CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)
+                    path.move(to: CGPoint(x: c.x - 10, y: c.y - 10)); path.addLine(to: CGPoint(x: c.x + 10, y: c.y + 10))
+                    path.move(to: CGPoint(x: c.x + 10, y: c.y - 10)); path.addLine(to: CGPoint(x: c.x - 10, y: c.y + 10))
+                }
+            case "path":
+                // A route across the screen (where data flows, the order to click things): a smooth line and an arrowhead.
+                guard let raw = shape["points"] as? [[Double]] else { continue }
+                let pts = raw.prefix(8).filter { $0.count == 2 && $0.allSatisfy { (0...1).contains($0) } }.map { pt($0[0], $0[1]) }
+                guard pts.count >= 2 else { continue }
+                path.move(to: pts[0])
+                for i in 1..<pts.count {
+                    if i == pts.count - 1 { path.addLine(to: pts[i]) }
+                    else { path.addQuadCurve(to: CGPoint(x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2), control: pts[i]) }
+                }
+                let b = pts[pts.count - 1], a = pts[pts.count - 2], angle = atan2(b.y - a.y, b.x - a.x), len: CGFloat = 16
+                path.move(to: CGPoint(x: b.x - len * cos(angle - 0.45), y: b.y - len * sin(angle - 0.45))); path.addLine(to: b)
+                path.addLine(to: CGPoint(x: b.x - len * cos(angle + 0.45), y: b.y - len * sin(angle + 0.45)))
+                anchor = CGRect(x: pts[0].x - 4, y: pts[0].y - 4, width: 8, height: 8)
+            case "card":
+                // An explainer pinned beside what it's about: a title, a line or two, a few points.
+                guard let x = num(shape, "x"), let y = num(shape, "y") else { continue }
+                anchor = box() ?? CGRect(origin: pt(x, y), size: CGSize(width: 1, height: 1))
+                let items = (shape["items"] as? [String])?.prefix(4).map { String($0.prefix(80)) } ?? []
+                let title = String((shape["title"] as? String ?? "").prefix(50)), body = String((shape["body"] as? String ?? "").prefix(220))
+                let view = card(title: title, body: body, items: items, color: color)
+                labels.append((view, anchor)); clickable[ObjectIdentifier(view)] = title.isEmpty ? body : title
+                firstSpot = firstSpot ?? CGPoint(x: anchor.midX, y: anchor.midY)
+                continue
             case "box":
                 guard let x = num(shape, "x"), let y = num(shape, "y"), let w = num(shape, "w"), let h = num(shape, "h") else { continue }
                 anchor = Highlight.box(x: x, y: y, w: w, h: h, in: CGSize(width: W, height: H))
@@ -1254,10 +1347,10 @@ final class PointerOverlay {
                 let line = CAShapeLayer()
                 line.path = path
                 line.fillColor = NSColor.clear.cgColor
-                line.strokeColor = color.cgColor
+                line.strokeColor = stroke.cgColor
                 line.lineWidth = 3.5
                 line.lineCap = .round; line.lineJoin = .round
-                line.shadowColor = color.cgColor; line.shadowRadius = 6; line.shadowOpacity = 0.8; line.shadowOffset = .zero
+                line.shadowColor = stroke.cgColor; line.shadowRadius = 6; line.shadowOpacity = 0.8; line.shadowOffset = .zero
                 let sketch = CABasicAnimation(keyPath: "strokeEnd")
                 sketch.fromValue = 0; sketch.toValue = 1; sketch.duration = 0.55
                 sketch.beginTime = CACurrentMediaTime() + 0.5 + Double(layers.count) * 0.35
@@ -1267,9 +1360,24 @@ final class PointerOverlay {
                 layers.append(line)
             }
             if let text = (shape["label"] as? String ?? shape["text"] as? String).map({ String($0.prefix(60)) }), !text.isEmpty {
-                labels.append((pill(text, color: color), anchor))
+                let view = pill(text, color: stroke, badge: badge)
+                labels.append((view, anchor))
+                if shape["shape"] as? String != "text" { clickable[ObjectIdentifier(view)] = badge.map { "step \($0): \(text)" } ?? text }
+            } else if let badge {
+                labels.append((pill("Step \(badge)", color: stroke, badge: nil), anchor))
             }
         }
+        // The spotlight's dimmer goes under everything: the whole screen darkened, with a window over each spot.
+        if !holes.isEmpty {
+            let scrim = CAShapeLayer(), p = CGMutablePath()
+            p.addRect(CGRect(x: 0, y: 0, width: W, height: H))
+            for h in holes { p.addRoundedRect(in: h, cornerWidth: 14, cornerHeight: 14) }
+            scrim.path = p; scrim.fillRule = .evenOdd; scrim.fillColor = NSColor.black.withAlphaComponent(0.55).cgColor
+            let dim = CABasicAnimation(keyPath: "opacity"); dim.fromValue = 0; dim.toValue = 1; dim.duration = 0.4
+            scrim.add(dim, forKey: "dim")
+            root.layer?.addSublayer(scrim)
+        }
+        for f in fills { root.layer?.addSublayer(f) }
         if let spot = firstSpot { _ = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: spot, color: color) }
         for l in layers { root.layer?.addSublayer(l) }
         for (view, anchor) in labels {
@@ -1280,10 +1388,46 @@ final class PointerOverlay {
         }
         panel.orderFrontRegardless()
         self.panel = panel
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) { [weak self] in
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.3; for (v, _) in labels { v.animator().alphaValue = 1 } }
+            guard let self, self.panel === panel, self.onMarkClick != nil else { return }
+            for (v, _) in labels { if let text = clickable[ObjectIdentifier(v)] { self.addClickTarget(NSRect(x: frame.minX + v.frame.minX, y: frame.minY + v.frame.minY, width: v.frame.width, height: v.frame.height), text: text) } }
         }
-        hideWhenDone(after: 16)
+        hideWhenDone(after: stay)
+    }
+
+    /// A tiny window exactly over one label or card: the pointer turns into a hand, and a click goes to Spark.
+    private func addClickTarget(_ rect: NSRect, text: String) {
+        let catcher = NSPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        catcher.level = .popUpMenu; catcher.hidesOnDeactivate = false; catcher.backgroundColor = .clear; catcher.isOpaque = false; catcher.hasShadow = false
+        catcher.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]; catcher.isReleasedWhenClosed = false
+        let view = MarkHit(frame: NSRect(origin: .zero, size: rect.size))
+        view.onClick = { [weak self] in self?.onMarkClick?(text); self?.fadeOut() }
+        catcher.contentView = view
+        catcher.orderFrontRegardless()
+        catchers.append(catcher)
+    }
+
+    /// A small explainer card: dark glass, a title in the accent, a line or two, and up to four points.
+    private func card(title: String, body: String, items: [String], color: NSColor) -> NSView {
+        let width: CGFloat = 300, pad: CGFloat = 14
+        let view = NSView(); view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(srgbRed: 0.09, green: 0.08, blue: 0.11, alpha: 0.94).cgColor
+        view.layer?.cornerRadius = 14; view.layer?.borderWidth = 1; view.layer?.borderColor = color.withAlphaComponent(0.55).cgColor
+        view.layer?.shadowOpacity = 0.5; view.layer?.shadowRadius = 18; view.layer?.shadowOffset = CGSize(width: 0, height: -4)
+        var fields: [NSTextField] = []
+        let add = { (text: String, font: NSFont, tint: NSColor) in
+            let f = NSTextField(wrappingLabelWithString: text); f.font = font; f.textColor = tint
+            f.preferredMaxLayoutWidth = width - pad * 2; f.frame.size = f.fittingSize; fields.append(f)
+        }
+        if !title.isEmpty { add(title, .systemFont(ofSize: 13, weight: .bold), color) }
+        if !body.isEmpty { add(body, .systemFont(ofSize: 12.5), NSColor(white: 0.9, alpha: 1)) }
+        for item in items { add("•  " + item, .systemFont(ofSize: 12), NSColor(white: 0.78, alpha: 1)) }
+        let height = fields.reduce(pad * 2) { $0 + $1.frame.height + 5 } - 5
+        var y = height - pad
+        for f in fields { y -= f.frame.height; f.frame.origin = NSPoint(x: pad, y: y); y -= 5; view.addSubview(f) }
+        view.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        return view
     }
 
     private func fadeOut() {
@@ -1295,12 +1439,22 @@ final class PointerOverlay {
 
     func hide() {
         hideWork?.cancel()
+        for c in catchers { c.orderOut(nil) }
+        catchers.removeAll()
         for m in monitors { NSEvent.removeMonitor(m) }
         monitors.removeAll()
         target = nil
         panel?.orderOut(nil)
         panel = nil
     }
+}
+
+/// The click target over one of Spark's labels or cards: a pointing hand, and a click (never a drag-through).
+final class MarkHit: NSView {
+    var onClick: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseDown(with event: NSEvent) { onClick?() }
 }
 
 /// The things Spark can do on your Mac, each checked here — the page's word is never enough.

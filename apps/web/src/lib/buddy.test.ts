@@ -131,7 +131,7 @@ it("routes each turn to the model it needs", () => {
   expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
   expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });
-import { deleteQuestion, isDestructive, localSystem, parseNext, progressLine } from "./buddy";
+import { completedBlocks, deleteQuestion, isDestructive, localSystem, parseNext, pixelsToFractions, progressLine } from "./buddy";
 it("reads next moves (2–3 short suggestions) and keeps them out of speech", () => {
   const reply = 'Done: Night Shift is on.\n```next ["Schedule it for sunset", "Make it warmer", "Quiz me on this", "extra"]```';
   expect(parseNext(reply)).toEqual(["Schedule it for sunset", "Make it warmer", "Quiz me on this"]);
@@ -222,5 +222,42 @@ describe("Siri-style actions ask first when they reach someone or can't be undon
     expect(isDestructive({ type: "mac", op: "directions", to: "JFK" })).toBe(false);
     expect(deleteQuestion([{ type: "mac", op: "send_message", to: "Mom", text: "Running late" }, { type: "mac", op: "delete_reminder", title: "dentist" }]))
       .toBe("Delete the reminder “dentist” and send “Running late” to Mom");
+  });
+});
+
+describe("Spark points in screenshot pixels, precisely", () => {
+  const size = { width: 1330, height: 864 };
+  it("turns a pixel block into fractions of the screen before anything reads it", () => {
+    const out = pixelsToFractions('```point {"x": 665, "y": 432, "label": "Save"}```', "point", size);
+    expect(JSON.parse(out.replace(/```point\s*|```/g, ""))).toEqual({ x: 0.5, y: 0.5, label: "Save" });
+  });
+  it("converts every coordinate a mark can carry: boxes, radii, arrows and routes", () => {
+    const raw = '```draw [{"shape":"spotlight","x":133,"y":86.4,"w":266,"h":172.8},{"shape":"circle","x":1330,"y":0,"r":13.3},{"shape":"arrow","from":[0,864],"to":[665,432]},{"shape":"path","points":[[0,0],[1330,864]]}]```';
+    const shapes = JSON.parse(pixelsToFractions(raw, "draw", size).replace(/```draw\s*|```/g, ""));
+    expect(shapes[0]).toMatchObject({ x: 0.1, y: 0.1, w: 0.2, h: 0.2 });
+    expect(shapes[1]).toMatchObject({ x: 1, y: 0, r: 0.01 });
+    expect(shapes[2]).toMatchObject({ from: [0, 1], to: [0.5, 0.5] });
+    expect(shapes[3].points).toEqual([[0, 0], [1, 1]]);
+  });
+  it("leaves blocks already in fractions (or with only targets) alone, and never touches do blocks", () => {
+    for (const raw of ['```point {"x": 0.4, "y": 0.2}```', '```guide {"target": "#12", "label": "Share"}```']) expect(pixelsToFractions(raw, "point", size)).toBe(raw);
+    const [b] = completedBlocks('```do [{"type":"media","command":"volume","level":40}]```', size);
+    expect(b!.raw).toContain('"level":40');
+  });
+  it("applies it in completedBlocks when the screenshot size is known", () => {
+    const [b] = completedBlocks('Here. ```act {"type":"click","x":1330,"y":432,"label":"Send"}```', size);
+    expect(JSON.parse(b!.raw.replace(/```act\s*|```/g, ""))).toMatchObject({ x: 1, y: 0.5 });
+  });
+});
+
+describe("Spark's visual language", () => {
+  it("reads spotlight, highlight, underline, numbered steps, routes, cards and ticks, with how long to stay", () => {
+    const shapes = parseDraw('```draw [{"shape":"spotlight","target":"#3","label":"here","stay":60},{"shape":"highlight","x":0.2,"y":0.3,"w":0.1,"h":0.02},{"shape":"underline","target":"T4"},{"shape":"step","n":2,"x":0.5,"y":0.5,"label":"Pick a size"},{"shape":"path","points":[[0.1,0.1],[0.4,0.2],[0.9,0.9]],"label":"flow"},{"shape":"card","x":0.6,"y":0.4,"title":"Why","body":"Because.","items":["a","b"]},{"shape":"check","x":0.1,"y":0.9},{"shape":"cross","target":"#9"}]```');
+    expect(shapes.map((s) => s.shape)).toEqual(["spotlight", "highlight", "underline", "step", "path", "card", "check", "cross"]);
+    expect(shapes[0]).toMatchObject({ target: "#3", stay: 60 });
+    expect(shapes[3]).toMatchObject({ n: 2, label: "Pick a size" });
+  });
+  it("drops malformed marks instead of drawing garbage", () => {
+    expect(parseDraw('```draw [{"shape":"path","points":[[0.1,0.1]]},{"shape":"card","x":0.5,"y":0.5},{"shape":"laser"}]```')).toEqual([]);
   });
 });

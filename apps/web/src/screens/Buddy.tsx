@@ -29,7 +29,7 @@ import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
-import { HandsFree, yesOrNo, type Phase } from "../lib/handsfree";
+import { echoOf, HandsFree, wakeOnly, yesOrNo, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
 import { SparkWidgets } from "../components/TopBarWidgets";
@@ -42,7 +42,7 @@ import "./buddy.css";
 /** Mac actions whose result Spark says out loud when it lands (you'd otherwise have to go and check). */
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
-import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, webAct } from "./spark/bridge";
+import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, webAct } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
 import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
@@ -193,6 +193,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const handled = useRef<number | null>(null), spokenUpto = useRef(0), streamId = useRef("");
   const crew = useLive((s) => s.crew), loadRun = useLive((s) => s.loadRun);
   const events = useLive((s) => (convo ? s.runEvents[convo.run] : undefined)), status = convo ? crew.runs[convo.run]?.status : undefined;
+  // How full this conversation is (the newest turn's report): past the limit, the next turn starts fresh with a recap.
+  const contextUsed = useMemo(() => { for (let i = (events?.length ?? 0) - 1; i >= 0; i--) { const e = events![i]!; if (e.kind === "usage.recorded") return Number((e.body as { contextUsed?: number }).contextUsed) || 0; } return 0; }, [events]);
   const recorded = convo ? crew.runs[convo.run] : undefined;
   const actualRuntime = recorded?.runtime ?? convo?.runtime;
   const actualModel = recorded?.model ?? convo?.model;
@@ -309,7 +311,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const runBlocks = (text: string, key: string, final: boolean) => {
     const seen = ran.current.get(key) ?? new Set<string>(); ran.current.set(key, seen);
     if (ran.current.size > 40) ran.current.delete(ran.current.keys().next().value!);
-    for (const b of completedBlocks(text)) {
+    for (const b of completedBlocks(text, screenSize())) {
       if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
       seen.add(b.key);
       if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, screenFacts()); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
@@ -692,7 +694,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
-      const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status } : null, selected);
+      const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status, contextUsed } : null, selected);
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
@@ -718,7 +720,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Keep the live part tiny (it's what the local model must read fresh): earlier-today only when you refer back.
       const runningNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
       const liveStatus = `radio ${playingNow.playing ? `playing ${playingNow.title ?? playingNow.station ?? "a station"}` : "off"} · ${runningNow} crew session${runningNow === 1 ? "" : "s"} working · ${Object.keys(crew.approvals).length} decision${Object.keys(crew.approvals).length === 1 ? "" : "s"} waiting`;
-      const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (you were on another model; carry on naturally):\n${recap}` : ""] });
+      const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (carry on naturally):\n${recap}` : ""] });
       // A replaced paused Spark turn must not wake later and repeat the same actions.
       if (convo && status === "paused" && disposition === "new") await cancelRun(convo.run);
       if (wantLocal && disposition === "new") {
@@ -735,7 +737,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (you were on another model; carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
@@ -743,6 +745,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   };
   // Open mic: every turn you speak is a message; talking over Spark stops it.
   const askRef = useRef(ask); askRef.current = ask;
+  // You clicked one of Spark's labels or cards on the screen: it looks again and takes it from there.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const text = (e as CustomEvent<{ text?: string }>).detail?.text?.trim(); if (!text) return;
+      setArmed(true); speech.current.unlock();
+      void askRef.current(`[mark] I clicked “${text.slice(0, 200)}” on your drawing. If it's a step or an action, do it now (act if you can use my mouse and keyboard, otherwise guide me to it exactly); if it's information, tell me more about it in a sentence or two, and mark what you mean on the screen.`, { look: true });
+    };
+    window.addEventListener("shuacrew:mark", on);
+    return () => window.removeEventListener("shuacrew:mark", on);
+  }, []);
   useEffect(() => {
     const m = mic.current;
     m.onPhase = (p, detail) => { setPhase(p); if (p === "error" && detail) setError(detail); };
@@ -752,6 +764,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     // a cough, a door or its own voice through the speakers no longer cuts it off mid-sentence.
     m.onTurn = (t) => {
       if (wakeTurn.current) { wakeTurn.current = false; m.mode = prefsRef.current.listen; if (!prefsRef.current.conversation && prefsRef.current.listen !== "hold") m.stop(); }
+      // "Okay, Spark." with a pause after it: that's you getting its attention, not the question. Sent on its own it
+      // cancelled the work in progress and the rest of what you said arrived as fragments. Keep listening instead.
+      if (wakeOnly(t)) { logSense("heard", "Heard its name", t); return; }
+      // Its own voice, transcribed back through the speakers ("Checking your calendar."): not you.
+      if (echoOf(t, speech.current.recent(10_000))) { logSense("heard", "Ignored its own voice", t); return; }
       logSense("heard", "Heard you", t); setLastHeard(t); if (prefsRef.current.interrupt) speech.current.stop();
       const waiting = askingRef.current;
       if (waiting) { const said = yesOrNo(t); if (said !== null) { waiting.answer(said); return; } waiting.answer(false); } // anything else: keep it, and carry on with what you said

@@ -68,9 +68,13 @@ export class SpeechQueue {
   duck(on: boolean) { const g = this.out().gain, t = this.ctx().currentTime; g.cancelScheduledValues(t); g.setTargetAtTime(on ? 0.45 : 1, t, 0.08); }
 
   /** Speak a sentence — in Spark's voice, or `as` a crew member's own voice. */
+  /** What Spark said lately (for telling its own echo from you). */
+  private said: Array<{ text: string; at: number }> = [];
+  recent(ms: number): string[] { const since = Date.now() - ms; return this.said.filter((x) => x.at >= since).map((x) => x.text); }
   say(text: string, as?: { voiceId: string; speed: number }) {
     const v = getBuddyVoice();
     if (!v.on || !text.trim()) return;
+    this.said = [...this.said.filter((x) => x.at > Date.now() - 30_000), { text, at: Date.now() }];
     this.lines.push({ key: ++lineKeys, text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, buffers: [], done: false, failed: false, started: false, dur: 0 });
     this.pump();
   }

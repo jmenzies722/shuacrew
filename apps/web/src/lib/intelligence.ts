@@ -3,7 +3,10 @@ import { api } from "./api";
 export type { IntelligenceChoice, IntelligenceRequest };
 export const selectIntelligence = (request: IntelligenceRequest) => api<IntelligenceChoice>("/api/intelligence/select", { body: request });
 /** Model and provider identity belong to a conversation. Switch only between turns. */
-export function turnDisposition(current: { runtime?: string; model?: string; status?: string } | null, next: { runtime: string; model: string }): "resume" | "new" | "wait" {
+/** Past this, Spark starts a fresh session (with a recap): a conversation once grew to 506K tokens (limit 200K) and every turn died. */
+export const CONTEXT_REFRESH = 110_000;
+export function turnDisposition(current: { runtime?: string; model?: string; status?: string; contextUsed?: number } | null, next: { runtime: string; model: string }): "resume" | "new" | "wait" {
   if (current?.status && ["queued", "running", "planning", "awaiting_approval"].includes(current.status)) return "wait";
+  if ((current?.contextUsed ?? 0) > CONTEXT_REFRESH) return "new";
   return current?.status === "done" && current.runtime === next.runtime && current.model === next.model ? "resume" : "new";
 }

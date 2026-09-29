@@ -262,3 +262,8 @@ describe("Mac controls, instantly", () => {
     expect(producerMove("unmute")).toEqual({ kind: "sys", what: "mute", on: false });
   });
 });
+
+it("turns Bluetooth on and off instantly", () => {
+  expect(producerMove("Can you turn on Bluetooth")).toEqual({ kind: "sys", what: "bluetooth", on: true });
+  expect(producerMove("bluetooth off")).toEqual({ kind: "sys", what: "bluetooth", on: false });
+});

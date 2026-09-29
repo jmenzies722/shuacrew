@@ -366,6 +366,16 @@ enum SparkHands {
             guard (try? p.run()) != nil else { return (false, "Couldn't change Wi-Fi.") }
             p.waitUntilExit()
             return p.terminationStatus == 0 ? (true, "Wi-Fi \(on ? "on" : "off")") : (false, "Couldn't change Wi-Fi.")
+        case "bluetooth":
+            // macOS has no command for Bluetooth power; the small free `blueutil` does it (brew install blueutil).
+            let on = a["on"] as? Bool ?? true
+            guard let tool = ["/opt/homebrew/bin/blueutil", "/usr/local/bin/blueutil"].first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+                return (false, "Turning Bluetooth on and off needs a small free helper. Run “brew install blueutil” in Terminal once, then ask me again.")
+            }
+            let p = Process(); p.executableURL = URL(fileURLWithPath: tool); p.arguments = ["--power", on ? "1" : "0"]
+            guard (try? p.run()) != nil else { return (false, "Couldn't change Bluetooth.") }
+            p.waitUntilExit()
+            return p.terminationStatus == 0 ? (true, "Bluetooth \(on ? "on" : "off")") : (false, "Couldn't change Bluetooth.")
         case "empty_trash":
             return run("tell application \"Finder\" to empty the trash") ? (true, "Emptied the Trash") : (false, "Couldn't empty the Trash. Allow ShuaCrew to control Finder in Privacy & Security → Automation.")
         default:

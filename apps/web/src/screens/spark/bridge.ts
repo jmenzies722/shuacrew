@@ -56,6 +56,14 @@ export function fitShape(sh: Shape): Shape {
     // r is a fraction of the screen's width: ring the whole thing with a little room.
     return r.exact ? { ...sh, x: r.x, y: r.y, r: Math.min(0.3, (Math.max(r.w, r.h / (lastScreen?.aspect ?? 1.6)) / 2) * 1.25 + 0.004) } : sh;
   }
+  // Region marks snap to the real thing's frame, like boxes.
+  if ((sh.shape === "spotlight" || sh.shape === "highlight" || sh.shape === "underline") && (sh.target || sh.label)) { const r = locate({ x: sh.x, y: sh.y, w: sh.w, h: sh.h, label: sh.label ?? "", target: sh.target }, lastScreen); return r.exact ? { ...sh, x: r.x, y: r.y, w: r.w, h: r.h } : sh; }
+  // Point marks land on the real control's centre; a step also rings it.
+  if ((sh.shape === "step" || sh.shape === "check" || sh.shape === "cross" || sh.shape === "card") && sh.target) {
+    const r = locate({ x: sh.x, y: sh.y, w: sh.w ?? 0.03, h: sh.h ?? 0.03, label: "", target: sh.target }, lastScreen);
+    if (!r.exact) return sh;
+    return sh.shape === "step" ? { ...sh, x: r.x, y: r.y, w: r.w, h: r.h } : sh.shape === "card" ? { ...sh, x: r.x, y: r.y, w: r.w, h: r.h } : { ...sh, x: r.x + r.w / 2 + 0.012, y: r.y };
+  }
   if (sh.shape === "arrow" && sh.target) { const r = locate({ x: sh.to[0], y: sh.to[1], w: 0.03, h: 0.03, label: sh.label ?? "", target: sh.target }, lastScreen); return { ...sh, to: [r.x, r.y] }; }
   return sh;
 }
@@ -89,7 +97,7 @@ export function webAct(kind: "locate" | "click" | "type", text: string, value?: 
   return api<WebHit>("/api/web/act", { body: { kind, text, ...(value !== undefined ? { value } : {}) } }).then((r) => (r.found ? r : null), () => null);
 }
 /** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
-let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number } | null = null;
+let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number; width?: number; height?: number } | null = null;
 export function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
   return new Promise((resolve, reject) => {
     if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
@@ -98,7 +106,7 @@ export function capture(): Promise<{ file: File; width: number; height: number; 
       clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
       const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
       logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
-      lastScreen = { text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined };
+      lastScreen = { text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined, width: d.width, height: d.height };
       const bytes = Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0));
       resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
     };
@@ -110,3 +118,5 @@ export function capture(): Promise<{ file: File; width: number; height: number; 
 
 /** The last screen Spark looked at (text lines, controls, proportions), for snapping highlights onto the real thing. */
 export const screenFacts = () => lastScreen;
+/** The pixel size of the screenshot Spark last sent the model: its answers' pixel coordinates are in this space. */
+export const screenSize = () => (lastScreen?.width && lastScreen.height ? { width: lastScreen.width, height: lastScreen.height } : null);

@@ -62,6 +62,20 @@ export function frameAction(event: "start" | "end" | "discard" | undefined, f: {
 /** A sentence that sounds finished lets the turn end sooner (0.75 s instead of 1.1 s). */
 export const endsSentence = (caption: string) => /[.?!]["')\]]?\s*$/.test(caption.trim());
 
+/** Just its name ("Okay, Spark.", "Hey Shua"): getting its attention, not a request. */
+export function wakeOnly(text: string, names = ["spark", "shua"]): boolean {
+  const t = text.toLowerCase().replace(/[.!?,…]+/g, " ").replace(/\s+/g, " ").trim();
+  return new RegExp(`^(?:(?:hey|hi|ok|okay|yo|oh|um|so)\\s+)?(?:${names.join("|")})$`).test(t);
+}
+
+/** Spark hearing itself: a transcript that's mostly words Spark just said (echo through the speakers). */
+export function echoOf(text: string, recent: string[]): boolean {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]/g, " ").split(/\s+/).filter(Boolean);
+  const heard = words(text); if (heard.length < 2 || !recent.length) return false;
+  const said = new Set(recent.flatMap(words));
+  return heard.filter((w) => said.has(w)).length / heard.length >= 0.8;
+}
+
 /** A spoken answer to "…? Say yes or no.": true, false, or null when it's something else entirely. */
 export function yesOrNo(text: string): boolean | null {
   const t = text.trim().toLowerCase().replace(/[.!?,…]+/g, "").replace(/\s+/g, " ");
