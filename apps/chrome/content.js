@@ -90,8 +90,10 @@
   function placeNear(el, rect, w, h) {
     const x = Math.min(Math.max(8, rect.right - w / 2), innerWidth - w - 8);
     const below = rect.bottom + 8 + h < innerHeight;
+    // Below the selection if it fits, else above; either way never past the bottom of the window.
+    const top = Math.max(8, Math.min(below ? rect.bottom + 8 : rect.top - h - 8, innerHeight - h - 8));
     el.style.left = `${x}px`;
-    el.style.top = `${below ? rect.bottom + 8 : Math.max(8, rect.top - h - 8)}px`;
+    el.style.top = `${top}px`;
   }
   function check() {
     if (!card.hidden) return;
@@ -107,11 +109,16 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !card.hidden) close(); });
 
   function close() { card.hidden = true; card.innerHTML = ""; delete card.dataset.busy; }
+  // The card grows as the answer arrives: re-place it whenever its size changes, so the end never falls off-screen.
+  let anchor = null;
+  const place = () => { if (!card.hidden && anchor) placeNear(card, anchor, Math.min(380, innerWidth - 24), Math.min(card.offsetHeight || 300, innerHeight - 24)); };
+  new ResizeObserver(place).observe(card);
+  addEventListener("resize", place);
   function open(rect) {
     fab.hidden = true;
     card.hidden = false;
-    const r = rect || { right: innerWidth - 24, bottom: 60, top: 60 };
-    requestAnimationFrame(() => placeNear(card, r, Math.min(380, innerWidth - 24), Math.min(card.offsetHeight || 300, innerHeight - 24)));
+    anchor = rect || { right: innerWidth - 24, bottom: 60, top: 60 };
+    requestAnimationFrame(place);
   }
   function header(sub) {
     return `<header><svg width="20" height="20" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="4.8" stroke="#8e48ff" stroke-width="3"/><circle cx="16" cy="6" r="2.6" fill="#efe7ff"/><circle cx="24.7" cy="21" r="2.6" fill="#efe7ff"/><circle cx="7.3" cy="21" r="2.6" fill="#efe7ff"/></svg><b>Spark</b><small>${esc(sub)}</small><button class="close" aria-label="Close">×</button></header>`;

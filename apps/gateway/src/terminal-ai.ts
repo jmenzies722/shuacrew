@@ -37,7 +37,8 @@ export const claude: Ask = (args, cwd) =>
     const env = { ...process.env };
     delete env.ANTHROPIC_API_KEY; // your subscription, never a stray key
     delete env.ANTHROPIC_AUTH_TOKEN;
-    const child = execFile(file, args, { cwd, env, timeout: 60_000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) =>
+    // No personal settings: your own Claude Code output style or CLAUDE.md would leak into ShuaCrew's answers.
+    const child = execFile(file, [...args, "--setting-sources", ""], { cwd, env, timeout: 60_000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) =>
       error ? reject(new Error(failure(stdout.toString(), stderr.toString(), error))) : resolve(stdout.toString()),
     );
     child.stdin?.end();
