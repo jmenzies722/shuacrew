@@ -526,7 +526,8 @@ const ENGINES: Record<string, string> = { claude: "Claude", codex: "Codex (OpenA
  */
 export function engineLine(runtime: string, model: string, fallback: boolean): string {
   const who = `MODEL: You are running on ${ENGINES[runtime] ?? runtime} (${model}) this turn. If asked which model you are, say exactly that; never claim another.`;
-  if (runtime !== "local") return who;
+  // Both Claude and Codex can search the web on Spark's turns: say so, so it never claims it "can't browse".
+  if (runtime !== "local") return `${who} You have live web search this turn (WebSearch, then WebFetch a page): use it for anything current or that you're unsure of, and never tell them you're unable to browse or look things up.`;
   return `${who} ${fallback ? "Claude and Codex are unavailable (usage limit or offline), so you're the stand-in. " : ""}You can chat, answer from what you know, and use the do-actions above; you can't see images, run crew sessions, write or edit code, or do long multi-step work. When asked for those, say plainly that it needs ${fallback ? "Claude or Codex once they're back" : "Claude or Codex (switch Spark's brain to Auto in Settings)"}, and offer what you can do now.`;
 }
 /** The question first (the chat shows only that part), then the live context after a [screen] marker. */
