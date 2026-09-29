@@ -496,7 +496,13 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .notch-roll { --lh: 1.45em; display: flex; flex-direction: column; justify-content: flex-end; max-height: calc(var(--lh) * var(--lines, 3)); overflow: hidden;
   font-size: 12.5px; line-height: var(--lh); text-align: center; }
 .notch-roll > p { margin: 0; }
-.notch-roll.is-full { -webkit-mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9)); mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9)); }
+/* The oldest line dims, never fades to nothing: no line ever looks cut off, even mid-glide. */
+.notch-roll.is-full { -webkit-mask-image: linear-gradient(rgba(0, 0, 0, .42), #000 var(--lh)); mask-image: linear-gradient(rgba(0, 0, 0, .42), #000 var(--lh)); }
+/* The glide never shows a sliver of the line above: the box clips at exact line edges. */
+.notch-roll > p { padding: 0; }
+/* The open island never cuts off what's at the bottom: past its tallest, it scrolls. */
+.shua-island.is-open .shua-island-body { max-height: var(--drop); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.shua-island.is-open .shua-island-body::-webkit-scrollbar { display: none; }
 .notch-caption .is-past { color: #bdb6c8; }
 .notch-caption .is-next { color: #5b5566; transition: color .16s ease; }
 .notch-caption .is-said { color: #f4f1f8; transition: color .16s ease; }
