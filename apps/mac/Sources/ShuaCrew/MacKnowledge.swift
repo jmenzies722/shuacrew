@@ -59,7 +59,9 @@ enum MacKnowledge {
     // MARK: files
 
     /// Build output, caches and package folders: never what you meant.
-    private static let noise = ["/Library/", "/node_modules/", "/.git/", "/dist/", "/build/", "/.build/", "/.next/", "/DerivedData/", "/Caches/", "/.cache/", "/__pycache__/", "/.venv/", "/venv/", "/target/", "/Pods/", "/.Trash/", "/go/pkg/", "/.cargo/", "/.rustup/", "/.npm/", "/.pnpm-store/", "/.gradle/", "/.m2/"]
+    private static let noise = ["/Library/", "/node_modules/", "/.git/", "/dist/", "/build/", "/.build/", "/.next/", "/DerivedData/", "/Caches/", "/.cache/", "/__pycache__/", "/.venv/", "/venv/", "/target/", "/Pods/", "/.Trash/", "/go/pkg/", "/.cargo/", "/.rustup/", "/.npm/", "/.pnpm-store/", "/.gradle/", "/.m2/",
+        // App-managed libraries and scratch space: the Music/Photos databases change constantly but are never "your file".
+        ".musiclibrary", ".photoslibrary", ".tvlibrary", "/tmp/"]
     private static func spotlight(_ args: [String], limit: Int) -> [String] {
         let p = Process(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind"); p.arguments = args; p.standardOutput = out; p.standardError = Pipe()
@@ -79,8 +81,16 @@ enum MacKnowledge {
     }
     private static func find(_ a: [String: Any], _ done: Done) {
         guard let q = (a["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty, q.count < 120 else { done(false, "What should I look for?", ""); return }
-        let kinds: [String: String] = ["pdf": "com.adobe.pdf", "images": "public.image", "apps": "com.apple.application", "folders": "public.folder", "documents": "public.content"]
-        var args = ["-onlyin", home]
+        let kinds: [String: String] = ["pdf": "com.adobe.pdf", "image": "public.image", "images": "public.image", "photos": "public.image", "apps": "com.apple.application", "folders": "public.folder", "documents": "public.content"]
+        let args = ["-onlyin", home]
+        // "Find my PDFs" names a kind, not a word to match: list that kind, newest first.
+        let lower = q.lowercased()
+        if a["kind"] == nil, let kind = kinds[lower] ?? kinds[String(lower.dropLast())] {
+            let hits = spotlight(args + ["kMDItemContentTypeTree == '\(kind)'"], limit: 200)
+                .map { ($0, (try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date) ?? .distantPast) }
+                .sorted { $0.1 > $1.1 }.prefix(25).map(\.0)
+            done(true, hits.isEmpty ? "No \(q) found" : "Your \(q), newest first", hits.isEmpty ? "No \(q) found in your home folder." : "Your \(q), newest first:\n" + hits.map(describe).joined(separator: "\n")); return
+        }
         // Files NAMED like what you asked come first, then files that mention it; one list, no repeats.
         let safe = q.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "\\", with: "")
         let type = (a["kind"] as? String).flatMap { kinds[$0] }.map { "kMDItemContentTypeTree == '\($0)' && " } ?? ""

@@ -17,11 +17,15 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
  * on locally, so the line moves smoothly; right after a seek, stale positions from the Mac are ignored so it never
  * jumps back.
  */
-function Scrubber({ tab, position, duration, playing, onSeek }: { tab: 0 | -1; position: number; duration: number; playing: boolean; onSeek: (s: number) => void }) {
+function Scrubber({ tab, position, duration, playing, onSeek, onHold }: { tab: 0 | -1; position: number; duration: number; playing: boolean; onSeek: (s: number) => void; onHold: (dragging: boolean) => void }) {
   const [drag, setDrag] = useState<number | null>(null), [base, setBase] = useState({ pos: position, at: performance.now() }), [, tick] = useState(0);
   const track = useRef<HTMLDivElement>(null), seekedAt = useRef(0);
   useEffect(() => { if (performance.now() - seekedAt.current > 2500) setBase({ pos: position, at: performance.now() }); }, [position]);
   useEffect(() => { if (!playing || drag !== null) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t); }, [playing, drag]);
+  // Mid-drag the island stays open even if the pointer wanders out of it; let go and it tucks in as usual.
+  const dragging = drag !== null;
+  useEffect(() => { onHold(dragging); }, [dragging, onHold]);
+  useEffect(() => () => onHold(false), [onHold]);
   const live = drag ?? Math.min(duration, base.pos + (playing ? (performance.now() - base.at) / 1000 : 0));
   const pct = Math.min(100, (live / duration) * 100);
   const at = (x: number) => { const r = track.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)) * duration; };
@@ -43,7 +47,7 @@ function Scrubber({ tab, position, duration, playing, onSeek }: { tab: 0 | -1; p
 export interface Media { app: string; playing: boolean; title: string; artist: string; position: number; duration: number; art: string }
 export interface LiveActivitiesProps {
   tab: 0 | -1;
-  showMedia: boolean; media: Media | null; mediaCmd: (c: "toggle" | "next" | "previous") => void; mediaSeek: (seconds: number) => void;
+  showMedia: boolean; media: Media | null; mediaCmd: (c: "toggle" | "next" | "previous") => void; mediaSeek: (seconds: number) => void; scrubHold: (dragging: boolean) => void;
   activeMissions: Mission[]; runs: Record<string, { title?: string; status: string } | undefined>;
   task: { step: number } | null; pending: Act | null; guide: GuideStep | null; busy: boolean; working: boolean;
   runAct: (a: Act, step: number) => void; doAll: () => void; stopTask: (why?: string) => void; advance: () => void; stopGuide: () => void;
@@ -53,7 +57,7 @@ export interface LiveActivitiesProps {
 }
 
 export function LiveActivities(p: LiveActivitiesProps) {
-  const { tab, showMedia, media, mediaCmd, mediaSeek, activeMissions, runs, task, pending, guide, busy, working, runAct, stopTask, advance, stopGuide, radio, setRadio, timer, now, focusPct, workingRuns, approvals } = p;
+  const { tab, showMedia, media, mediaCmd, mediaSeek, scrubHold, activeMissions, runs, task, pending, guide, busy, working, runAct, stopTask, advance, stopGuide, radio, setRadio, timer, now, focusPct, workingRuns, approvals } = p;
   return <>
           {showMedia && media && <div className="spark-nook-media" style={media.art ? { "--art": `url("${media.art.replace(/"/g, "%22")}")` } as CSSProperties : undefined}>
             {media.art ? <img src={media.art} alt="" /> : <i><AudioLines size={16} /></i>}
@@ -63,7 +67,7 @@ export function LiveActivities(p: LiveActivitiesProps) {
               <button type="button" tabIndex={tab} className="is-main" onClick={() => mediaCmd("toggle")} aria-label={media.playing ? "Pause" : "Play"}>{media.playing ? <Pause size={13} /> : <Play size={13} />}</button>
               <button type="button" tabIndex={tab} onClick={() => mediaCmd("next")} aria-label="Next"><SkipForward size={12} /></button>
             </div>
-            {media.duration > 0 && <Scrubber key={`${media.app}:${media.title}`} tab={tab} position={media.position} duration={media.duration} playing={media.playing} onSeek={mediaSeek} />}
+            {media.duration > 0 && <Scrubber key={`${media.app}:${media.title}`} tab={tab} position={media.position} duration={media.duration} playing={media.playing} onSeek={mediaSeek} onHold={scrubHold} />}
           </div>}
           {activeMissions.length > 0 && <button type="button" className="spark-nook-mission" tabIndex={tab} onClick={() => post({ type: "buddyOpen", path: `/sessions/${activeMissions.at(-1)!.run}` })}>
             <i className="is-live" /><span><small>Mission</small><b>{runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task}</b></span><em>{runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</em></button>}

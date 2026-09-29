@@ -2,7 +2,9 @@
  * How ShuaCrew looks: a palette (surfaces and text) and an accent. "Follow system" pairs a dark
  * palette with a light one. Applied as attributes on <html>; themes.css does the rest.
  */
-export type PaletteId = "pristine" | "frost" | "night" | "cursor" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
+export type PaletteId = "pristine" | "frost" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
+/** Palettes folded into a near-identical one: a saved choice moves to its twin instead of snapping back to the default. */
+const RETIRED: Record<string, PaletteId> = { night: "midnight", cursor: "frost" };
 export type AccentId = "iris" | "amber" | "mono" | "blue" | "green" | "coral";
 
 export interface Palette {
@@ -17,8 +19,6 @@ export interface Palette {
 export const PALETTES: Palette[] = [
   { id: "pristine", name: "Pristine", mode: "dark", blurb: "Graphite layers, hairline edges", swatch: ["#0c0c0e", "#131316", "#19191d", "#ededf0"] },
   { id: "frost", name: "Frost Black", mode: "dark", blurb: "Frosted glass on true black", swatch: ["#050506", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "#f2f2f4"] },
-  { id: "night", name: "Night", mode: "dark", blurb: "Blue-black instrument panel", swatch: ["#0b0d10", "#12151a", "#181c22", "#e8eaed"] },
-  { id: "cursor", name: "Cursor Black", mode: "dark", blurb: "True neutral black", swatch: ["#0a0a0a", "#111111", "#181818", "#ededed"] },
   { id: "graphite", name: "Graphite", mode: "dark", blurb: "Soft neutral grey", swatch: ["#161618", "#1c1c1f", "#242428", "#e8e8ea"] },
   { id: "carbon", name: "Carbon", mode: "dark", blurb: "Warm black", swatch: ["#0f0e0c", "#161412", "#1e1b18", "#ece6de"] },
   { id: "midnight", name: "Midnight", mode: "dark", blurb: "Deep navy", swatch: ["#0a0f1c", "#0f1626", "#151e33", "#e4e9f4"] },
@@ -56,7 +56,8 @@ const KEY = "shuacrew.appearance";
 export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "pristine", light: "daylight", accent: "iris", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
 
 export function normalizeAppearance(value: unknown): Appearance {
-  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const raw = { ...(value && typeof value === "object" ? value as Record<string, unknown> : {}) };
+  for (const key of ["palette", "dark"] as const) if (typeof raw[key] === "string" && RETIRED[raw[key]]) raw[key] = RETIRED[raw[key]];
   const choices: Record<keyof Appearance, readonly string[]> = {
     palette: ["system", ...PALETTES.map((p) => p.id)],
     dark: PALETTES.filter((p) => p.mode === "dark").map((p) => p.id),
@@ -92,7 +93,7 @@ export function loadAppearance(): Appearance {
     // The old setting was just "dark" / "light" / "system".
     const legacy = localStorage.getItem("shuacrew.theme");
     const base = normalizeAppearance(saved);
-    if (!saved && legacy === "dark") base.palette = "night";
+    if (!saved && legacy === "dark") base.palette = "pristine";
     if (!saved && legacy === "light") base.palette = "daylight";
     return migrateToPristine(base, Boolean(saved));
   } catch {
