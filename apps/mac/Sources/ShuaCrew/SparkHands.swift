@@ -223,23 +223,62 @@ enum SparkHands {
                 NSWorkspace.shared.open(URL(string: "spotify:search:\(term)")!)
                 return (true, "Searching Spotify for “\(safe)”")
             }
+            // 1. Your library, if the ask is an artist, album or title as you'd type it ("Drake", "Views").
             let script = """
             tell application "Music"
               set hits to (every track of library playlist 1 whose name contains "\(safe)" or artist contains "\(safe)" or album contains "\(safe)")
               if (count of hits) > 0 then
                 play item 1 of hits
-                return "ok"
+                return (name of item 1 of hits) & " by " & (artist of item 1 of hits)
               end if
             end tell
             return "none"
             """
-            if timed("Music", script) == "ok" { return (true, "Playing “\(safe)” in Music") }
+            if let r = timed("Music", script), r != "none" { return (true, "Playing “\(r)”.") }
+            // 2. The exact song, from Apple's catalog: fixes misheard names ("Sleepy Hollow" → Sleepy Hallow) and splits
+            //    "Ain't Nun by Sleepy Hallow" into title and artist, then plays it from your library if it's there.
+            if let song = catalogSong(safe) {
+                let title = SongMatch.coreTitle(song.title).replacingOccurrences(of: "\"", with: ""), artist = (song.artist.components(separatedBy: CharacterSet(charactersIn: "&,")).first ?? song.artist).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\"", with: "")
+                let exact = """
+                tell application "Music"
+                  set hits to (every track of library playlist 1 whose name contains "\(title)" and artist contains "\(artist)")
+                  if (count of hits) > 0 then
+                    play item 1 of hits
+                    return "ok"
+                  end if
+                end tell
+                return "none"
+                """
+                if timed("Music", exact) == "ok" { return (true, "Playing “\(song.title)” by \(song.artist).") }
+                // 3. Not in your library: Apple doesn't let any app start a catalog song, so open that exact song in Music.
+                if let link = song.link, let url = URL(string: link.replacingOccurrences(of: "https://", with: "music://")),
+                   let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
+                    NSWorkspace.shared.open([url], withApplicationAt: music, configuration: NSWorkspace.OpenConfiguration())
+                    return (true, "“\(song.title)” by \(song.artist) isn't in your library, so I opened it in Music — press play there. Add it to your library and I can play it straight away next time.")
+                }
+            }
             let term = safe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? safe
             NSWorkspace.shared.open(URL(string: "https://music.apple.com/search?term=\(term)")!)
-            return (true, "Not in your library, so I opened Apple Music search for “\(safe)”")
+            return (true, "I couldn't find that exact song, so I opened Apple Music search for “\(safe)”.")
         }
         let verb = ["play": "play", "pause": "pause", "toggle": "playpause", "next": "next track", "previous": "previous track"][command] ?? "playpause"
         return timed(app, "tell application \"\(app)\" to \(verb)") != nil ? (true, "\(app): \(command)") : (false, "\(app) didn't answer. If it asks, allow ShuaCrew in Privacy & Security → Automation.")
+    }
+
+    /// The song someone meant, from Apple's public catalog search (no account needed, 3 s at most).
+    nonisolated static func catalogSong(_ query: String) -> (title: String, artist: String, link: String?)? {
+        var c = URLComponents(string: "https://itunes.apple.com/search")!
+        c.queryItems = [URLQueryItem(name: "term", value: query), URLQueryItem(name: "entity", value: "song"), URLQueryItem(name: "limit", value: "10"),
+                        URLQueryItem(name: "country", value: Locale.current.region?.identifier ?? "US")]
+        guard let url = c.url else { return nil }
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var body: Data?
+        URLSession.shared.dataTask(with: URLRequest(url: url, timeoutInterval: 3)) { d, _, _ in body = d; done.signal() }.resume()
+        guard done.wait(timeout: .now() + 3.5) == .success, let body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any], let results = json["results"] as? [[String: Any]] else { return nil }
+        let candidates = results.map { SongMatch.Candidate(title: $0["trackName"] as? String ?? "", artist: $0["artistName"] as? String ?? "") }
+        guard let i = SongMatch.best(for: query, in: candidates) else { return nil }
+        return (candidates[i].title, candidates[i].artist, results[i]["trackViewUrl"] as? String)
     }
 
     static func system(_ a: [String: Any]) -> (ok: Bool, message: String) {

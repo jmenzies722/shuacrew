@@ -161,3 +161,12 @@ it("reads Mac lookups: files, calendar, reminders, notes, contacts, status", () 
   expect(parseActions('```do [{"type":"mac","op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"}]```')).toEqual([{ type: "mac", op: "add_reminder", title: "Call the dentist", due: "2026-10-01T09:00" }]);
   expect(parseActions('```do [{"type":"mac","op":"delete_everything"},{"type":"mac","op":"find"}]```')).toEqual([]);
 });
+
+import { liveLookup } from "./buddy";
+it("shows what Spark is looking up only while it's looking", () => {
+  const search = { kind: "tool.called", body: { tool: "WebSearch", input: { query: "best lofi for focus" } } };
+  expect(liveLookup([{ kind: "turn.started" }, search])).toBe("Searching: best lofi for focus");
+  expect(liveLookup([search, { kind: "tool.called", body: { tool: "WebFetch", input: { url: "https://www.theverge.com/x" } } }])).toBe("Reading theverge.com");
+  expect(liveLookup([search, { kind: "agent.delta" }])).toBeNull(); // writing the answer now
+  expect(liveLookup(undefined)).toBeNull();
+});
