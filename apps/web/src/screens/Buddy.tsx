@@ -16,7 +16,7 @@ import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stu
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowUp, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, Pause, Play, SkipBack, SkipForward, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -27,7 +27,7 @@ import { upload, withAttachments } from "../lib/attachments";
 import { aboutScreen, actFollowUp, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice } from "../lib/buddy-voice";
-import { remainingFocusMs, setFocus, useFocusTimer } from "../lib/focus-timer";
+import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
 import { HandsFree, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
@@ -43,6 +43,7 @@ import { ctx, capture, claim, fitShape, KEY, macContext, mine, SEE, native, post
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
 import { MiniCard, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
+import { LiveActivities } from "./spark/LiveActivities";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -961,36 +962,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             : streamText ? <div className="notch-heard is-open is-stream"><p>{streamText}<i className="notch-caret" /></p></div>
             : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? <>Thinking<span className="notch-dots"><i /><i /><i /></span></> : gist(lastSparkText)}</p>}
           {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
-          {showMedia && media && <div className="spark-nook-media">
-            {media.art ? <img src={media.art} alt="" /> : <i><AudioLines size={16} /></i>}
-            <div className="spark-nook-media-text"><b>{media.title}</b><small>{[media.artist, media.app].filter(Boolean).join(" · ")}</small>
-              <span className="spark-nook-bar"><i style={{ width: `${media.duration ? Math.min(100, (media.position / media.duration) * 100) : 0}%` }} /></span></div>
-            <div className="spark-nook-ctl is-media">
-              <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => mediaCmd("previous")} aria-label="Previous"><SkipBack size={12} /></button>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className="is-main" onClick={() => mediaCmd("toggle")} aria-label={media.playing ? "Pause" : "Play"}>{media.playing ? <Pause size={13} /> : <Play size={13} />}</button>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => mediaCmd("next")} aria-label="Next"><SkipForward size={12} /></button>
-            </div>
-          </div>}
-          {activeMissions.length > 0 && <button type="button" className="spark-nook-mission" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: `/sessions/${activeMissions.at(-1)!.run}` })}>
-            <i className="is-live" /><span><small>Mission</small><b>{crew.runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task}</b></span><em>{crew.runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</em></button>}
-          {/* What Spark is doing for you, driven from here: approve, let it run, or stop. */}
-          {task && <div className="spark-nook-live is-task"><i className="is-crew">{task.step}</i><span><small>{pending ? "Can I?" : "Doing it"}</small><b>{pending ? describeAct(pending) : `Step ${task.step}`}</b></span>
-            <div className="spark-nook-ctl">{pending && <><button type="button" className="is-go" tabIndex={islandOpen ? 0 : -1} onClick={() => void runAct(pending, task.step)}>Do it</button><button type="button" tabIndex={islandOpen ? 0 : -1} title="Do the rest without asking" onClick={() => { setAutoTask(true); void runAct(pending, task.step); }}>All</button></>}
-              <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => stopTask("Stopped.")}>Stop</button></div></div>}
-          {guide && !task && <div className="spark-nook-live is-task"><i className="is-focus">{guide.step}</i><span><small>Step {guide.step}</small><b>{guide.label}</b></span>
-            <div className="spark-nook-ctl"><button type="button" tabIndex={islandOpen ? 0 : -1} disabled={!!busy || working} onClick={() => void advance()}>Next</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={stopGuide}>Stop</button></div></div>}
-          {/* Live activities: only what's happening right now; each one leaves when it ends. */}
-          {radio.playing && !(showMedia && media?.playing) && <div className="spark-nook-live">
-            <i className="is-radio"><AudioLines size={14} /></i><span><small>Radio</small><b>{radio.title ?? radio.station ?? "ShuaCrew Radio"}</b></span>
-            <div className="spark-nook-ctl is-media"><button type="button" tabIndex={islandOpen ? 0 : -1} className="is-main" onClick={() => void radioCommand({ cmd: "pause" }).then(() => radioNow().then(setRadio))} aria-label="Pause radio"><Pause size={13} /></button>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void radioCommand({ cmd: "next" })} aria-label="Next station track"><SkipForward size={12} /></button></div></div>}
-          {timer && <div className="spark-nook-live">
-            <i className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}</i><span><small>Focus</small><b>{Math.ceil(remainingFocusMs(timer, now) / 60000)} min left</b><span className="spark-nook-bar"><i style={{ width: `${focusPct * 100}%` }} /></span></span>
-            <div className="spark-nook-ctl"><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => setFocus(null)}>End</button></div></div>}
-          {(workingRuns.length > 0 || approvals > 0) && <div className="spark-nook-live">
-            <i className={approvals ? "is-wait" : "is-crew"}>{approvals || workingRuns.length}</i><span><small>{approvals ? "Needs you" : "Crew working"}</small><b>{approvals ? `${approvals} decision${approvals === 1 ? "" : "s"} waiting` : workingRuns.at(-1)!.title || `${workingRuns.length} sessions`}</b></span>
-            <div className="spark-nook-ctl">{approvals ? <button type="button" className="is-wait" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: "/activity" })}>Review</button>
-              : <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => post({ type: "buddyOpen", path: `/sessions/${workingRuns.at(-1)!.id}` })}>Open</button>}</div></div>}
+          <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} activeMissions={activeMissions} runs={crew.runs}
+            task={task} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}
+            stopTask={stopTask} advance={() => void advance()} stopGuide={stopGuide} radio={radio} setRadio={setRadio} timer={timer} now={now} focusPct={focusPct} workingRuns={workingRuns} approvals={approvals} />
           <footer><button type="button" onClick={() => { setNook(false); setOpen(true); }}>Open chat</button><span>Move away to tuck it in</span></footer>
         </div>
       </div>
