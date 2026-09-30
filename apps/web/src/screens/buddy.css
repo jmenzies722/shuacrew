@@ -688,6 +688,13 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 :root[data-motion="reduced"] .buddy .spk-think i, :root[data-motion="reduced"] .buddy .notch-heard.is-processing, :root[data-motion="reduced"] .buddy .shua-island.is-processing .shua-island-shape::before { animation: none; }
 /* Ready for you (fn held): the island drops the instant the key goes down — your mic level in bars, "Listening…", and
    a white line breathing along its lower edge, like the Talk button's glow. Your words replace it as they come in. */
+/* The waveform while you talk: 17 bars, white with an accent glow, tallest in the middle (lib/wave.ts). */
+.notch-wave { display: flex; align-items: center; justify-content: center; gap: 3px; height: 26px; margin: 1px 0 3px; }
+.notch-wave i { flex: none; width: 3px; height: 100%; border-radius: 3px; background: linear-gradient(180deg, #fff, color-mix(in srgb, #fff 70%, var(--amber, #8e48ff)));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--amber, #8e48ff) 55%, transparent); transform: scaleY(.12); transform-origin: center; will-change: transform; }
+.notch-hearing { display: flex; align-items: center; gap: 10px; }
+.notch-hearing > .spk-bars { flex: none; color: #fff; }
+.notch-hearing > .notch-heard { flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%); mask-image: linear-gradient(90deg, transparent, #000 18%); }
 .notch-ready { margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: #f4f1f8; }
 .notch-ready .spk-bars { color: #fff; }
 .shua-island.is-ready .shua-island-shape::before { content: ""; position: absolute; left: 18%; right: 18%; bottom: 0; height: 2px; border-radius: 2px; pointer-events: none;
@@ -797,6 +804,47 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spk-v-score > div span { font-size: 12px; color: color-mix(in srgb, #f1eef5 70%, transparent); } .spk-v-score > div b { font-size: 30px; font-weight: 700; }
 .spk-v-score > div.is-win { box-shadow: inset 0 0 0 1px var(--amber, #8e48ff); } .spk-v-score > div.is-win b { color: var(--amber, #c19aff); }
 .spk-v-score em { grid-column: 1 / -1; font-style: normal; font-size: 11px; color: color-mix(in srgb, #f1eef5 55%, transparent); }
+/* Teaching cards: math steps, code, a trade-off table, a quiz. */
+.spk-v-math { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: step; }
+.spk-v-math li { display: grid; gap: 1px; padding: 6px 10px; border-radius: 9px; background: color-mix(in srgb, #f1eef5 5%, transparent); animation: spk-v-in .4s both; animation-delay: calc(var(--i, 0) * 180ms); }
+.spk-v-math b { font: 500 16px/1.35 "STIX Two Math", "Cambria Math", "Latin Modern Math", "Times New Roman", serif; letter-spacing: .01em; }
+.spk-v-math small { font-size: 11px; color: color-mix(in srgb, #f1eef5 55%, transparent); }
+.spk-v-math .is-answer { grid-template-columns: auto 1fr; align-items: baseline; gap: 8px; background: color-mix(in srgb, var(--amber, #8e48ff) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber, #8e48ff) 45%, transparent); }
+.spk-v-math .is-answer span { font-weight: 600; color: var(--amber, #8e48ff); }
+.spk-v-code pre { margin: 0; padding: 8px 0; border-radius: 9px; background: #0a090c; font: 12px/1.55 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; max-height: 260px; }
+.spk-v-code pre span { display: block; padding: 0 10px 0 0; white-space: pre; animation: spk-v-in .3s both; animation-delay: calc(var(--i, 0) * 30ms); transition: opacity .3s; }
+.spk-v-code pre span i { display: inline-block; width: 26px; margin-right: 8px; text-align: right; font-style: normal; color: color-mix(in srgb, #f1eef5 28%, transparent); user-select: none; }
+.spk-v-code pre .is-dim { opacity: .45; }
+.spk-v-code pre .is-focus { background: color-mix(in srgb, var(--amber, #8e48ff) 16%, transparent); box-shadow: inset 2px 0 0 var(--amber, #8e48ff); }
+.spk-v-code em { display: flex; gap: 6px; align-items: baseline; margin-top: 6px; font-style: normal; font-size: 11.5px; color: color-mix(in srgb, #f1eef5 70%, transparent); }
+.spk-v-code em code { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, #f1eef5 10%, transparent); }
+.spk-v-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.spk-v-table th, .spk-v-table td { padding: 5px 7px; text-align: left; vertical-align: top; border-bottom: 1px solid color-mix(in srgb, #f1eef5 9%, transparent); }
+.spk-v-table thead th { font-size: 11px; font-weight: 600; color: color-mix(in srgb, #f1eef5 60%, transparent); }
+.spk-v-table tbody th { font-weight: 600; color: color-mix(in srgb, #f1eef5 80%, transparent); }
+.spk-v-table tbody tr { animation: spk-v-in .35s both; animation-delay: calc(var(--i, 0) * 90ms); }
+.spk-v-table tr.is-best { background: color-mix(in srgb, var(--amber, #8e48ff) 14%, transparent); }
+.spk-v-quiz { display: grid; gap: 8px; }
+.spk-v-quiz p { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.4; }
+.spk-v-quiz ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.spk-v-quiz li { animation: spk-v-in .35s both; animation-delay: calc(var(--i, 0) * 70ms); }
+.spk-v-quiz button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: 9px; font: inherit; font-size: 12.5px; text-align: left; color: #f1eef5; cursor: pointer;
+  background: color-mix(in srgb, #f1eef5 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #f1eef5 10%, transparent); transition: background .2s, box-shadow .2s, opacity .2s; }
+.spk-v-quiz button:hover:not(:disabled) { background: color-mix(in srgb, var(--amber, #8e48ff) 16%, transparent); }
+.spk-v-quiz button i { font-style: normal; font-size: 11px; font-weight: 600; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 6px; background: color-mix(in srgb, #f1eef5 10%, transparent); }
+.spk-v-quiz button svg { margin-left: auto; }
+.spk-v-quiz button.is-right { background: color-mix(in srgb, #4ade80 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #4ade80 55%, transparent); }
+.spk-v-quiz button.is-wrong { background: color-mix(in srgb, #f87171 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #f87171 50%, transparent); }
+.spk-v-quiz button.is-dim { opacity: .45; }
+.spk-v-quiz em { font-style: normal; font-size: 11.5px; line-height: 1.4; color: color-mix(in srgb, #f1eef5 70%, transparent); animation: spk-v-in .3s both; }
+.spk-v-quiz em.is-right { color: #86efac; }
+.spk-v-countdown { display: grid; gap: 6px; }
+.spk-v-countdown ol { display: flex; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.spk-v-countdown li { display: flex; align-items: baseline; gap: 2px; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--amber, #8e48ff) 14%, transparent); animation: spk-v-in .45s both; animation-delay: calc(var(--i, 0) * 70ms); }
+.spk-v-countdown li b { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.spk-v-countdown li small { font-size: 12px; color: color-mix(in srgb, #f1eef5 60%, transparent); }
+.spk-v-countdown .is-now { font-size: 22px; font-weight: 600; color: var(--amber, #8e48ff); }
+.spk-v-countdown em { font-style: normal; font-size: 11px; color: color-mix(in srgb, #f1eef5 50%, transparent); }
 .spk-v-gauge { display: flex; align-items: center; gap: 14px; }
 .spk-v-gauge svg { width: 78px; height: 78px; transform: rotate(-90deg); }
 .spk-v-gauge circle { fill: none; stroke: color-mix(in srgb, #f1eef5 10%, transparent); stroke-width: 9; }

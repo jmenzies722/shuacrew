@@ -13,6 +13,21 @@ public enum CursorMotion {
         return CGPoint(x: x, y: y)
     }
 
+    /// The waveform the buddy becomes while you talk: bar heights (points) for your live mic level (0–1) at time `t`.
+    /// The middle bars reach highest, each bar ripples at its own pace so it reads as a voice rather than a meter, and
+    /// silence leaves a small, calm ripple — still listening, never a flat line.
+    public static func waveBars(level: Double, t: Double, count: Int = 5, minHeight: CGFloat = 4, maxHeight: CGFloat = 26) -> [CGFloat] {
+        let lv = min(1, max(0, level)), mid = Double(count - 1) / 2
+        return (0..<count).map { i in
+            let d = mid == 0 ? 0 : abs(Double(i) - mid) / mid          // 0 at the centre, 1 at the edges
+            let envelope = 1 - 0.45 * d * d
+            let ripple = 0.72 + 0.28 * sin(t * (7.3 + 1.9 * Double(i)) + Double(i) * 1.7)
+            let idle = 0.12 * (0.5 + 0.5 * sin(t * 2.4 + Double(i) * 0.9))
+            let k = min(1, idle + pow(lv, 0.7) * envelope * ripple)  // pow: quiet speech still moves the bars
+            return minHeight + (maxHeight - minHeight) * CGFloat(k)
+        }
+    }
+
     /// One frame of following, independent of frame rate: `response` is how long it takes to close ~63% of the gap
     /// (0.07 s feels attached but alive). Two 120 Hz frames land exactly where one 60 Hz frame does.
     public static func follow(current: CGPoint, target: CGPoint, dt: Double, response: Double = 0.07) -> CGPoint {

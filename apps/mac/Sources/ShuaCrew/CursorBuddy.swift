@@ -23,6 +23,8 @@ final class CursorBuddy: NSObject {
     private let glow = CAGradientLayer(), sphere = CAGradientLayer(), rim = CAShapeLayer(), spec = CAShapeLayer()
     private let listenHalo = CAShapeLayer(), sweep = CAGradientLayer(), sweepMask = CAShapeLayer()
     private let trail = CAShapeLayer()
+    /// While you talk, the orb becomes a waveform: bars that move with your voice.
+    private let wave = CALayer(), bars = (0..<5).map { _ in CALayer() }
     private var link: CADisplayLink?
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
@@ -40,6 +42,8 @@ final class CursorBuddy: NSObject {
     private var inking = false, inked: [CGPoint] = [], injected = false, inkVisible = true
     var isInking: Bool { inking }
     private let ink = CAShapeLayer(), halo = CAShapeLayer() // halo: a soft dark edge under the ink, for white pages
+    /// Exact boxes round what you picked or circled (snapped to real edges), replacing the rough ink.
+    private let picks = CAShapeLayer(), picksHalo = CAShapeLayer()
     private(set) var state: State = .idle
     var color: NSColor = NSColor(calibratedRed: 0.56, green: 0.28, blue: 1, alpha: 1) { didSet { restyle() } }
     var active: Bool { panel != nil }
@@ -75,7 +79,11 @@ final class CursorBuddy: NSObject {
         sweep.removeAnimation(forKey: "spin")
         CATransaction.begin(); CATransaction.setAnimationDuration(0.3)
         sweep.opacity = new == .thinking ? 1 : 0
-        if new != .listening { listenHalo.opacity = 0 }
+        // Listening: the orb melts into the waveform (and back when you stop).
+        let listening = new == .listening
+        wave.opacity = listening ? 1 : 0; pulse.opacity = listening ? 0 : 1
+        wave.setAffineTransform(listening ? .identity : CGAffineTransform(scaleX: 0.4, y: 0.4))
+        pulse.setAffineTransform(listening ? CGAffineTransform(scaleX: 0.4, y: 0.4) : .identity)
         if new == .thinking { // a light sweeping round the orb: working on it
             let spin = CABasicAnimation(keyPath: "transform.rotation.z"); spin.fromValue = 0; spin.toValue = -2 * Double.pi
             spin.duration = 1.1; spin.repeatCount = .infinity
@@ -109,6 +117,26 @@ final class CursorBuddy: NSObject {
         fade.beginTime = CACurrentMediaTime() + 1.4; fade.duration = 0.5; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
         ink.add(fade, forKey: "fade"); halo.add(fade, forKey: "fade")
     }
+
+    /// Box exactly these (global rects): drawn on, in place of the rough ink, then fading after a while.
+    func showPicks(_ rects: [CGRect], add: Bool = false, hold: CFTimeInterval = 6) {
+        guard let panel, !rects.isEmpty else { return }
+        let path = add ? (picks.path.map { CGMutablePath() .appending($0) } ?? CGMutablePath()) : CGMutablePath()
+        for r in rects {
+            let local = r.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY).insetBy(dx: -5, dy: -4)
+            path.addRoundedRect(in: local, cornerWidth: min(8, local.height / 2), cornerHeight: min(8, local.height / 2))
+        }
+        for l in [ink, halo] { l.removeAllAnimations(); l.opacity = 0 } // the rough stroke gives way to the exact boxes
+        for l in [picks, picksHalo] { l.removeAllAnimations(); l.opacity = 1 }
+        CATransaction.begin(); CATransaction.setDisableActions(true); picks.path = path; picksHalo.path = path; CATransaction.commit()
+        let draw = CABasicAnimation(keyPath: "strokeEnd"); draw.fromValue = add ? 0.6 : 0; draw.toValue = 1; draw.duration = 0.35
+        draw.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        picks.add(draw, forKey: "draw"); picksHalo.add(draw, forKey: "draw")
+        let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 1; fade.toValue = 0
+        fade.beginTime = CACurrentMediaTime() + hold; fade.duration = 0.5; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        picks.add(fade, forKey: "fade"); picksHalo.add(fade, forKey: "fade")
+    }
+    func clearPicks() { for l in [picks, picksHalo] { l.removeAllAnimations(); l.opacity = 0; l.path = nil } }
 
     /// Self-test: points as if drawn with the cursor (global), without touching the real mouse.
     func injectInk(_ points: [CGPoint]) {
@@ -239,9 +267,8 @@ final class CursorBuddy: NSObject {
         levelNow += (levelTarget - levelNow) * (1 - exp(-dt / 0.07))
         CATransaction.begin(); CATransaction.setDisableActions(true)
         let lv = CGFloat(levelNow)
-        if state == .listening { listenHalo.opacity = Float(0.35 + 0.65 * lv); listenHalo.setAffineTransform(CGAffineTransform(scaleX: 1 + 0.9 * lv, y: 1 + 0.9 * lv)) }
-        let s = state == .speaking ? 1 + 0.35 * lv : 1
-        pulse.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
+        if state == .listening { layoutWave(heights: CursorMotion.waveBars(level: levelNow, t: now)) }
+        else { let s = state == .speaking ? 1 + 0.35 * lv : 1; pulse.setAffineTransform(CGAffineTransform(scaleX: s, y: s)) }
         if bubble.opacity > 0 { revealBubble(now: now) }
         CATransaction.commit()
 
@@ -325,13 +352,20 @@ final class CursorBuddy: NSObject {
         sweepMask.fillColor = NSColor.clear.cgColor; sweepMask.strokeColor = NSColor.black.cgColor; sweepMask.lineWidth = 2.6
         sweep.mask = sweepMask
         body.addSublayer(listenHalo); body.addSublayer(sweep); body.addSublayer(pulse)
+        wave.bounds = box; wave.position = c; wave.opacity = 0
+        for b in bars { b.cornerRadius = 1.75; b.borderWidth = 0.8; b.shadowOpacity = 0.55; b.shadowRadius = 3; b.shadowOffset = .zero; wave.addSublayer(b) }
+        layoutWave(heights: CursorMotion.waveBars(level: 0, t: 0))
+        body.addSublayer(wave)
         // The flight tail, the ink you draw, and the bubble.
         trail.fillColor = NSColor.clear.cgColor; trail.lineWidth = 5; trail.lineCap = .round; trail.lineJoin = .round
         ink.fillColor = NSColor.clear.cgColor; ink.lineWidth = 4; ink.lineCap = .round; ink.lineJoin = .round
         ink.shadowRadius = 6; ink.shadowOpacity = 0.9; ink.shadowOffset = .zero
         halo.fillColor = NSColor.clear.cgColor; halo.lineWidth = 7; halo.lineCap = .round; halo.lineJoin = .round
         halo.strokeColor = NSColor.black.withAlphaComponent(0.3).cgColor
-        root.addSublayer(halo); root.addSublayer(ink); root.addSublayer(trail)
+        for (l, w) in [(picksHalo, CGFloat(6)), (picks, CGFloat(2.5))] { l.fillColor = NSColor.clear.cgColor; l.lineWidth = w; l.lineJoin = .round; l.lineCap = .round; l.opacity = 0 }
+        picksHalo.strokeColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        picks.shadowRadius = 5; picks.shadowOpacity = 0.8; picks.shadowOffset = .zero
+        root.addSublayer(halo); root.addSublayer(ink); root.addSublayer(picksHalo); root.addSublayer(picks); root.addSublayer(trail)
         bubble.backgroundColor = NSColor(calibratedRed: 0.07, green: 0.065, blue: 0.09, alpha: 0.95).cgColor
         bubble.cornerRadius = 12; bubble.borderWidth = 1; bubble.opacity = 0
         bubble.shadowColor = NSColor.black.cgColor; bubble.shadowOpacity = 0.35; bubble.shadowRadius = 12; bubble.shadowOffset = CGSize(width: 0, height: -4)
@@ -341,6 +375,15 @@ final class CursorBuddy: NSObject {
         root.addSublayer(body)
         root.addSublayer(bubble)
         restyle()
+    }
+
+    /// Bars centred in the orb's box, 3.5 pt wide with 2.5 pt gaps, growing up and down from the middle.
+    private func layoutWave(heights: [CGFloat]) {
+        let w: CGFloat = 3.5, gap: CGFloat = 2.5, total = CGFloat(bars.count) * w + CGFloat(bars.count - 1) * gap
+        for (i, b) in bars.enumerated() {
+            let h = i < heights.count ? heights[i] : 4
+            b.frame = CGRect(x: 22 - total / 2 + CGFloat(i) * (w + gap), y: 22 - h / 2, width: w, height: h)
+        }
     }
 
     private func restyle() {
@@ -355,9 +398,12 @@ final class CursorBuddy: NSObject {
         glow.colors = [aura.withAlphaComponent(0.5).cgColor, aura.withAlphaComponent(0).cgColor]
         let ringColor = light ? NSColor(calibratedWhite: 0.55, alpha: 1) : c.withAlphaComponent(0.95) // a white ring would vanish on white
         listenHalo.strokeColor = ringColor.cgColor
+        // Waveform bars: the accent (pearl for mono) with a thin dark edge and glow, so they read on white and on black.
+        for b in bars { b.backgroundColor = (light ? NSColor.white : hi).cgColor; b.borderColor = NSColor.black.withAlphaComponent(0.45).cgColor; b.shadowColor = aura.cgColor }
         sweep.colors = [ringColor.withAlphaComponent(0).cgColor, ringColor.withAlphaComponent(0.2).cgColor, ringColor.cgColor]
         trail.strokeColor = aura.withAlphaComponent(0.35).cgColor
         ink.strokeColor = color.withAlphaComponent(0.9).cgColor; ink.shadowColor = (light ? aura : color).cgColor
+        picks.strokeColor = (light ? NSColor.white : color).cgColor; picks.shadowColor = (light ? aura : color).cgColor
         bubble.borderColor = aura.withAlphaComponent(0.5).cgColor; bubbleTail.strokeColor = bubble.borderColor
     }
 
@@ -369,9 +415,9 @@ final class CursorBuddy: NSObject {
         ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 1).cgColor); ctx.fill(CGRect(x: w / 2, y: 0, width: w / 2, height: h))
         for x in [w / 4, 3 * w / 4] {
             ctx.saveGState(); ctx.translateBy(x: x - 22 * scale, y: h / 2 - 22 * scale); ctx.scaleBy(x: scale, y: scale)
-            if state == .listening { listenHalo.render(in: ctx) }
+            if state == .listening { wave.render(in: ctx) }
             if state == .thinking { sweep.render(in: ctx) }
-            orb.render(in: ctx)
+            if state != .listening { orb.render(in: ctx) }
             ctx.restoreGState()
         }
         guard let image = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return false }
@@ -382,4 +428,8 @@ final class CursorBuddy: NSObject {
         let p = NSEvent.mouseLocation
         return NSScreen.screens.first { $0.frame.contains(p) } ?? NSScreen.main
     }
+}
+
+private extension CGMutablePath {
+    func appending(_ other: CGPath) -> CGMutablePath { addPath(other); return self }
 }

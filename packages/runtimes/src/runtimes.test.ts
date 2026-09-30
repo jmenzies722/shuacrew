@@ -190,3 +190,12 @@ new acp.AgentSideConnection((conn) => ({
     expect(events.at(-1)).toMatchObject({ type: "done" });
   });
 });
+
+import { leanMcp } from "./claude.js";
+it("Spark's quick turns get only the MCP servers chosen for it, allowed without an approval stall", () => {
+  expect(leanMcp(undefined)).toEqual({ mcpServers: {}, allowedTools: ["Read", "WebSearch", "WebFetch"] });
+  expect(leanMcp([{ name: "x" }])).toEqual({ mcpServers: {}, allowedTools: ["Read", "WebSearch", "WebFetch"] }); // ACP-style lists aren't Claude's
+  const r = leanMcp({ memory: { command: "npx", args: [] } });
+  expect(r.mcpServers).toEqual({ memory: { command: "npx", args: [] } });
+  expect(r.allowedTools).toEqual(["Read", "WebSearch", "WebFetch", "mcp__memory"]);
+});

@@ -1268,6 +1268,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         return reply.code(404).send({ error: (error as Error).message });
       }
     });
+    app.post<{ Params: { id: string }; Body: { on?: boolean } }>("/api/mcp/:id/spark", async (request, reply) => {
+      if (typeof request.body?.on !== "boolean") return reply.code(400).send({ error: "on: true or false" });
+      try { return mcp.setSpark(request.params.id, request.body.on); } catch (e) { return reply.code(404).send({ error: (e as Error).message }); }
+    });
     app.post<{ Params: { id: string } }>("/api/mcp/:id/probe", async (request, reply) => {
       try {
         return await mcp.probe(request.params.id);

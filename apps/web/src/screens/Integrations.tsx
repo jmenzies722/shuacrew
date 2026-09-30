@@ -16,6 +16,7 @@ interface Server {
   url?: string;
   auth: "none" | "oauth";
   signedIn: boolean;
+  spark?: boolean;
   brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" };
 }
 interface Tool {
@@ -251,6 +252,11 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
             <X size={11} /> {conn.error?.slice(0, 48) ?? "Can't connect"}
           </span>
         ) : null}
+        <button className={`tl-status ${server.spark ? "is-ok" : ""}`} aria-pressed={!!server.spark}
+          title={server.spark ? "Spark can use these tools by voice, without asking. Click to stop." : "Let Spark (the notch) use these tools by voice, without asking. Each server adds a little to Spark's first word."}
+          onClick={() => void api(`/api/mcp/${server.id}/spark`, { body: { on: !server.spark } }).then(onChange)}>
+          <Sparkles size={11} /> {server.spark ? "In Spark" : "Use in Spark"}
+        </button>
         {needsSignIn ? (
           <Button size="s" variant="primary" onClick={() => void api(`/api/mcp/${server.id}/signin`, { body: {} }).then(() => (onChange(), test()))}>
             Sign in

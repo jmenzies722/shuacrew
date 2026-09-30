@@ -21,7 +21,14 @@ export type Visual =
   | { type: "chart"; title: string; points: Array<{ label: string; value: number }>; prefix?: string; unit?: string }
   | { type: "score"; title: string; home: { name: string; score: number }; away: { name: string; score: number }; status?: string }
   | { type: "gauge"; title: string; value: number; max: number; unit?: string; label?: string }
-  | { type: "proscons"; title: string; pros: string[]; cons: string[] };
+  | { type: "proscons"; title: string; pros: string[]; cons: string[] }
+  // Live: ticks down in the notch until the moment (a launch, a flight, kickoff).
+  | { type: "countdown"; title: string; target: string; sub?: string }
+  // Teaching, engineer-first: the working, not just the picture.
+  | { type: "math"; title: string; steps: Array<{ expr: string; note?: string }>; answer?: string }
+  | { type: "code"; title: string; lang?: string; code: string; focus: number[]; note?: string }
+  | { type: "table"; title: string; columns: string[]; rows: string[][]; best?: number }
+  | { type: "quiz"; title: string; question: string; options: string[]; answer: number; why?: string };
 
 export const NODE_KINDS = ["user", "client", "cdn", "lb", "api", "service", "server", "worker", "cache", "db", "queue", "storage", "search", "external", "auth"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
@@ -120,8 +127,54 @@ export function parseVisual(raw: string): Visual | null {
       const pros = arr(o.pros, 4).map((x) => s(x, 60)).filter((x): x is string => !!x), cons = arr(o.cons, 4).map((x) => s(x, 60)).filter((x): x is string => !!x);
       return pros.length && cons.length ? { type: "proscons", title, pros, cons } : null;
     }
+    case "countdown": {
+      // Local wall-clock time ("2026-10-01T11:10:00"), as Spark writes dates; a zone suffix is fine too.
+      const target = s(o.target ?? o.at, 40), sub = s(o.sub, 60);
+      return target && Number.isFinite(new Date(target).getTime()) ? { type: "countdown", title, target, ...(sub ? { sub } : {}) } : null;
+    }
+    case "math": {
+      const steps = arr(o.steps, 8).map(rec).map((st) => ({ expr: s(st.expr, 120), note: s(st.note, 60) }))
+        .filter((st): st is { expr: string; note: string | undefined } => !!st.expr).map(({ note, ...st }) => ({ ...st, ...(note ? { note } : {}) }));
+      const answer = s(o.answer, 80);
+      return steps.length ? { type: "math", title, steps, ...(answer ? { answer } : {}) } : null;
+    }
+    case "code": {
+      const code = typeof o.code === "string" ? o.code.replace(/\t/g, "  ").replace(/\s+$/, "") : "", lines = code.split("\n");
+      if (!code.trim() || lines.length > 24 || code.length > 1600) return null;
+      const focus = arr(o.focus, 24).map(n).filter((x): x is number => x !== undefined && Number.isInteger(x) && x >= 1 && x <= lines.length);
+      const lang = s(o.lang, 16), note = s(o.note, 140);
+      return { type: "code", title, code, focus, ...(lang ? { lang } : {}), ...(note ? { note } : {}) };
+    }
+    case "table": {
+      // A blank corner header ("" over the row labels) is a real column: keep it, or every row shifts.
+      const columns = arr(o.columns, 5).map((c) => s(c, 24) ?? "");
+      if (!columns.some(Boolean)) return null;
+      const rows = arr(o.rows, 7).map((r) => arr(r, columns.length).map((c) => s(typeof c === "number" ? String(c) : c, 40) ?? "")).filter((r) => r.length === columns.length && r.some(Boolean));
+      const best = n(o.best);
+      return columns.length >= 2 && rows.length ? { type: "table", title, columns, rows, ...(best !== undefined && Number.isInteger(best) && best >= 0 && best < rows.length ? { best } : {}) } : null;
+    }
+    case "quiz": {
+      const question = s(o.question, 160), options = arr(o.options, 4).map((x) => s(x, 60)).filter((x): x is string => !!x), answer = n(o.answer), why = s(o.why, 160);
+      return question && options.length >= 2 && answer !== undefined && Number.isInteger(answer) && answer >= 0 && answer < options.length
+        ? { type: "quiz", title, question, options, answer, ...(why ? { why } : {}) } : null;
+    }
     default: return null;
   }
+}
+
+/**
+ * How much of the time left a countdown shows, biggest unit first — e.g. 20 h 47 m 3 s → [{value:20,unit:"h"},…].
+ * Past the moment it returns []: the card says it's happening.
+ */
+export function countdownParts(ms: number): Array<{ value: number; unit: "d" | "h" | "m" | "s" }> {
+  if (!(ms > 0)) return [];
+  const sec = Math.floor(ms / 1000), d = Math.floor(sec / 86_400), h = Math.floor(sec / 3600) % 24, m = Math.floor(sec / 60) % 60, s = sec % 60;
+  // A day or more out, seconds are noise: days, hours, minutes. Under a day it's a launch clock, to the second.
+  // Zeros inside the row stay (1 d 0 h 5 m reads right); a leading zero unit never shows.
+  const all = d ? [{ value: d, unit: "d" as const }, { value: h, unit: "h" as const }, { value: m, unit: "m" as const }]
+    : [{ value: h, unit: "h" as const }, { value: m, unit: "m" as const }, { value: s, unit: "s" as const }];
+  const first = all.findIndex((p) => p.value > 0);
+  return all.slice(first === -1 ? all.length - 1 : first);
 }
 
 /**
@@ -155,5 +208,7 @@ export const VISUAL_GUIDE = [
   '```visual {"type":"score","title":"NBA · final","home":{"name":"Knicks","score":112},"away":{"name":"Celtics","score":104},"status":"Final"}```',
   '```visual {"type":"gauge","title":"Battery","value":64,"max":100,"unit":"%","label":"about 5 h left"}```',
   '```visual {"type":"proscons","title":"Renting vs buying","pros":["Flexible","No repairs"],"cons":["No equity","Rent rises"]}```',
+  "ENGINEER-FIRST TEACHING (math, science, CS, system design, AI — show the working, then check it): worked math, one line per step, Unicode math (², √, π, ≤, →, ∑, ∫) ```visual {\"type\":\"math\",\"title\":\"Solve x² − 5x + 6 = 0\",\"steps\":[{\"expr\":\"x² − 5x + 6 = 0\"},{\"expr\":\"(x − 2)(x − 3) = 0\",\"note\":\"factor: 2 × 3 = 6, 2 + 3 = 5\"},{\"expr\":\"x = 2 or x = 3\",\"note\":\"each factor = 0\"}],\"answer\":\"x = 2, 3\"}``` · real code (≤24 lines) with the lines that matter lit ```visual {\"type\":\"code\",\"title\":\"Binary search\",\"lang\":\"ts\",\"code\":\"let lo = 0, hi = a.length - 1\\nwhile (lo <= hi) {\\n  const mid = (lo + hi) >> 1\\n  if (a[mid] === x) return mid\\n  a[mid] < x ? (lo = mid + 1) : (hi = mid - 1)\\n}\",\"focus\":[3,5],\"note\":\"Halves the range each step: O(log n)\"}``` · trade-offs as a table ```visual {\"type\":\"table\",\"title\":\"Postgres vs DynamoDB\",\"columns\":[\"\",\"Postgres\",\"DynamoDB\"],\"rows\":[[\"Queries\",\"Any SQL, joins\",\"Key lookups\"],[\"Scale\",\"Vertical + replicas\",\"Horizontal, automatic\"],[\"Cost at idle\",\"Instance hours\",\"~$0 on demand\"]]}``` · then check they got it (tap to answer) ```visual {\"type\":\"quiz\",\"title\":\"Quick check\",\"question\":\"Binary search on 1M sorted items takes about how many steps?\",\"options\":[\"20\",\"1,000\",\"500,000\"],\"answer\":0,\"why\":\"log₂(1,000,000) ≈ 20\"}```. One card per reply; a quiz only after you've taught something.",
+  '```visual {"type":"countdown","title":"SpaceX Crew-13 launch","target":"2026-10-01T11:10:00","sub":"Kennedy Space Center"}``` (a live countdown to a real moment: local time, from their calendar or your search)',
   "TEACHING (explaining a system, a design or a concept — ALWAYS add one so they can see it while you talk): system design as an animated flow (kinds: user client cdn lb api service server worker cache db queue storage search external auth) ```visual {\"type\":\"flow\",\"title\":\"URL shortener\",\"nodes\":[{\"id\":\"u\",\"label\":\"User\",\"kind\":\"user\"},{\"id\":\"lb\",\"label\":\"Load balancer\",\"kind\":\"lb\"},{\"id\":\"api\",\"label\":\"API\",\"kind\":\"api\"},{\"id\":\"c\",\"label\":\"Redis\",\"kind\":\"cache\"},{\"id\":\"db\",\"label\":\"Postgres\",\"kind\":\"db\"}],\"edges\":[{\"from\":\"u\",\"to\":\"lb\"},{\"from\":\"lb\",\"to\":\"api\"},{\"from\":\"api\",\"to\":\"c\",\"label\":\"hit?\"},{\"from\":\"api\",\"to\":\"db\",\"label\":\"miss\"}]}``` (≤9 nodes) · who-talks-to-whom in order ```visual {\"type\":\"sequence\",\"title\":\"TCP handshake\",\"actors\":[\"Client\",\"Server\"],\"messages\":[{\"from\":0,\"to\":1,\"label\":\"SYN\"},{\"from\":1,\"to\":0,\"label\":\"SYN-ACK\"},{\"from\":0,\"to\":1,\"label\":\"ACK\"}]}``` · a stack ```visual {\"type\":\"layers\",\"title\":\"Web app\",\"layers\":[{\"label\":\"UI\",\"detail\":\"React\"},{\"label\":\"API\"},{\"label\":\"Database\"}]}``` · a loop ```visual {\"type\":\"cycle\",\"title\":\"Event loop\",\"steps\":[\"Call stack\",\"Web APIs\",\"Task queue\",\"Next tick\"]}``` · one idea ```visual {\"type\":\"concept\",\"title\":\"Concept\",\"term\":\"Idempotency\",\"definition\":\"Doing it twice has the same effect as once.\",\"points\":[\"Safe retries\",\"PUT, not POST\"],\"analogy\":\"Pressing an elevator button again\"}```. Talk through it in the order it animates.",
 ].join(" ");

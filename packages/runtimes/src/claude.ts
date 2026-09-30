@@ -25,7 +25,7 @@ const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
  * Spark's quick conversational turns, cold or warm — one definition, so the two can't drift (the warm path
  * once kept web search blocked while Spark was told it could search). Read is for attached images.
  */
-const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Screenshots come attached as images you can already see: never Read them. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching.";
+const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Screenshots come attached as images you can already see: never Read them. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching. Before a search, write ONE short sentence naming exactly what you're checking (\"Checking tonight's Sixers score.\") — it's spoken while you look, so they're never left in silence; never a vague \"let me check\".";
 /**
  * Spark's quick turns see only their three tools. Tool search off (it cost a round trip before every web search) —
  * which also means every tool present loads up front, so nothing of your own Claude setup comes along: your claude.ai
@@ -51,6 +51,15 @@ export function withImages(text: string, uploads = path.join(os.homedir(), ".shu
     } catch { return line; }
   });
   return images.length ? [{ type: "text", text: kept }, ...images] : text;
+}
+
+/**
+ * The MCP servers you've let Spark use (Tools & Skills → Use in Spark) join its quick turns, allowed without asking
+ * (you chose them for Spark, and a voice turn can't sit in an approval queue). Nothing else of your setup comes along.
+ */
+export function leanMcp(servers: RunSpec["mcpServers"]): { mcpServers: Record<string, unknown>; allowedTools: string[] } {
+  const picked = servers && !Array.isArray(servers) ? servers : {};
+  return { mcpServers: picked, allowedTools: [...LEAN_TOOLS.allowedTools, ...Object.keys(picked).map((name) => `mcp__${name}`)] };
 }
 
 const LEAN_TOOLS = {
@@ -330,12 +339,12 @@ export class ClaudeRuntime implements Runtime {
         enableFileCheckpointing: !run.lean,
         // Spark's quick turns load none of your personal Claude Code setup (output styles, hooks, CLAUDE.md, plugins):
         // faster to start, and Spark sounds like Spark rather than like a coding session.
-        ...(run.lean ? LEAN_ISOLATION : {}),
+        ...(run.lean ? { ...LEAN_ISOLATION, ...leanMcp(run.mcpServers) } : {}),
         pathToClaudeCodeExecutable: this.executable,
         // Claude Code's own system prompt, with ShuaCrew's lessons and context appended — or, for a lean
         // conversational turn, a short one of its own (the ask carries the persona and context).
         systemPrompt: run.lean ? LEAN_SYSTEM : { type: "preset", preset: "claude_code", ...(run.system ? { append: run.system } : {}) },
-        ...(run.lean ? LEAN_TOOLS : {}),
+        ...(run.lean ? { ...LEAN_TOOLS, allowedTools: leanMcp(run.mcpServers).allowedTools } : {}),
         agents: run.agents,
         ...(run.lean ? {} : { disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined }),
         ...(run.lean ? {} : { mcpServers: run.mcpServers }),
@@ -406,9 +415,12 @@ export class ClaudeRuntime implements Runtime {
    */
   private async *startWarm(run: RunSpec, ctx: RunContext, env: Record<string, string | undefined>, account: string): AsyncIterable<RuntimeEvent> {
     let w = this.warm.get(run.id);
-    if (!w || w.dead || w.model !== run.model || w.account !== account) {
+    // A changed set of Spark's MCP servers needs a fresh session (tools are fixed when one opens).
+    const tools = Object.keys(leanMcp(run.mcpServers).mcpServers).sort().join(",");
+    if (!w || w.dead || w.model !== run.model || w.account !== account || w.tools !== tools) {
       w?.close();
       w = await this.openWarm(run, ctx, env, account);
+      w.tools = tools;
       this.warm.set(run.id, w);
     }
     const session = w;
@@ -474,6 +486,7 @@ export class ClaudeRuntime implements Runtime {
         systemPrompt: LEAN_SYSTEM,
         ...LEAN_TOOLS,
         ...LEAN_ISOLATION,
+        ...leanMcp(run.mcpServers),
         // Approvals go to whichever turn is running now.
         canUseTool: async (tool: string, input: Record<string, unknown>) => {
           const answer = await session.ctx.approve(tool, input, {});
@@ -491,6 +504,8 @@ export class ClaudeRuntime implements Runtime {
 /** A live conversational session: its input stays open, so each turn is a message into a running agent. */
 interface WarmSession {
   push(text: string): void;
+  /** Spark's MCP servers when it opened ("" for none). */
+  tools?: string;
   iterator: AsyncIterator<Json>;
   translator: ClaudeTranslator;
   ctx: RunContext;

@@ -14,3 +14,14 @@ it("validates input, rounds coordinates, and caches upstream calls", async () =>
   expect((await app.inject("/api/weather/geocode?q=Brooklyn")).statusCode).toBe(200);
   await app.close();
 });
+
+it("gives the top bar two days by default and Spark up to a week, never more", async () => {
+  const calls: string[] = [];
+  const app = Fastify();
+  weatherRoutes(app, (async (url: string) => { calls.push(url); return new Response("{}", { status: 200 }); }) as never);
+  await app.inject("/api/weather/forecast?lat=40.7&lon=-73.3");
+  await app.inject("/api/weather/forecast?lat=40.7&lon=-73.3&days=7");
+  await app.inject("/api/weather/forecast?lat=41.2&lon=-73.3&days=30"); // capped to the week (a new place, so not the cache)
+  expect(calls.map((u) => /forecast_days=(\d+)/.exec(u)?.[1])).toEqual(["2", "7", "7"]);
+  expect(calls[1]).toContain("precipitation_probability_max");
+});

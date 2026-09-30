@@ -199,6 +199,8 @@ export const bodies = {
     auth: z.enum(["none", "oauth"]).default("none"),
   }),
   "mcp.removed": z.object({ id: z.string() }),
+  // Whether Spark (the desktop buddy's quick voice turns) may use this server's tools, without asking.
+  "mcp.spark": z.object({ id: z.string(), on: z.boolean() }),
 
   // library: what the crew made (artifacts, versioned) and what you gave it to know (knowledge).
   // Only metadata is logged; the bytes live under the data home and the text in the search index.

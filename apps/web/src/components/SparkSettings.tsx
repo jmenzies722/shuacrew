@@ -16,6 +16,7 @@ import "../screens/buddy.css";
 import "../alive.css";
 import { summary, useSparkLog } from "../lib/spark-log";
 import { resetWelcome } from "./Welcome";
+import { earcon } from "../lib/earcons";
 
 /** Where Spark reaches your mail and Notion: Mail on this Mac (read and draft only), Notion through the crew. */
 function SparkReach({ name }: { name: string }) {
@@ -133,7 +134,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
     {(searching || category === "voice") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Personality &amp; voice</h4>
       <SettingRow name="Personality" detail="How it talks to you. Your instructions to the crew are unchanged." modified={prefs.tone !== "cheerful"}>
-        <Segmented label="Personality" value={prefs.tone} onChange={(tone) => set({ tone })} options={[["cheerful", "Cheerful"], ["chill", "Chill"], ["direct", "Direct"], ["coach", "Coach"]]} />
+        <Segmented label="Personality" value={prefs.tone} onChange={(tone) => set({ tone })} options={[["engineer", "Engineer"], ["cheerful", "Cheerful"], ["chill", "Chill"], ["direct", "Direct"], ["coach", "Coach"]]} />
       </SettingRow>
       <label className="spark-personality"><strong>Make it sound like your sidekick</strong><span>Favorite phrases, a sense of humor, or how you like to be encouraged. Used for future conversations.</span><textarea rows={4} maxLength={1000} value={prefs.personality} onChange={e => set({ personality: e.target.value })} placeholder="A curious co-pilot. Dry humor, clear explanations, and a tiny celebration when a tricky bug is gone." /><small>{prefs.personality.length} / 1000</small></label>
       <SettingRow name="Answers" modified={prefs.length !== "brief"}><Segmented label="Answer length" value={prefs.length} onChange={(length) => set({ length })} options={[["brief", "Brief"], ["detailed", "Detailed"]]} /></SettingRow>
@@ -220,9 +221,15 @@ function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pa
         </div>
       </div>
     </div>
-    <SettingRow name="Live captions" detail={`While ${name} talks, the notch shows the words as they're said, sentence by sentence, so you can read along when it says a lot.`} modified={!prefs.notchCaptions}><Switch label="Live captions" on={prefs.notchCaptions} onChange={(notchCaptions) => set({ notchCaptions })} /></SettingRow>
+    <SettingRow name="While you talk" detail={`A waveform moves with your voice, and your words appear the moment you stop — so you can catch a mishearing before ${name} answers. Or show your words live as you speak (they shift as it works out what you said).`} modified={prefs.notchHearing !== "wave"}>
+      <Segmented label="While you talk" value={prefs.notchHearing} onChange={(notchHearing) => set({ notchHearing })} options={[["wave", "Waveform"], ["words", "Waveform + words"]]} />
+    </SettingRow>
+    <SettingRow name={`${name}'s captions`} detail={`While ${name} talks, the notch shows the words as they're said, sentence by sentence, so you can read along when it says a lot.`} modified={!prefs.notchCaptions}><Switch label={`${name}'s captions`} on={prefs.notchCaptions} onChange={(notchCaptions) => set({ notchCaptions })} /></SettingRow>
     <SettingRow name="Now playing" detail="Music or Spotify in the notch: artwork, title, progress and play, pause and skip. It only reads a player that's already open." modified={!prefs.notchMedia}><Switch label="Now playing" on={prefs.notchMedia} onChange={(notchMedia) => set({ notchMedia })} /></SettingRow>
     <SettingRow name="Mic & screen controls" detail={`Turn the mic and live screen watching on or off right from the notch and the chat's top edge.`} modified={!prefs.notchControls}><Switch label="Mic and screen controls" on={prefs.notchControls} onChange={(notchControls) => set({ notchControls })} /></SettingRow>
+    <SettingRow name="Sounds" detail={`A soft sound when you start talking (hold fn or voice mode), when ${name} has heard you, and when something's done. Spatial places them up at the notch — best with headphones.`} modified={prefs.sounds !== "spatial"}>
+      <Segmented label="Sounds" value={prefs.sounds} onChange={(sounds) => { set({ sounds }); earcon("listen", sounds); setTimeout(() => earcon("sent", sounds), 650); }} options={[["spatial", "Spatial"], ["simple", "Simple"], ["off", "Off"]]} />
+    </SettingRow>
     <SettingRow name="Glow" detail="Accent lights the island's edge while it's open or talking; Spectrum runs your palette's gradient round it." modified={prefs.notchGlow !== "accent"}>
       <Segmented label="Glow" value={prefs.notchGlow} onChange={(notchGlow) => set({ notchGlow })} options={[["off", "Off"], ["accent", "Accent"], ["spectrum", "Spectrum"]]} />
     </SettingRow>

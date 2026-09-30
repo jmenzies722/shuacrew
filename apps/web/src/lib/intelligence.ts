@@ -11,5 +11,6 @@ export function turnDisposition(current: { runtime?: string; model?: string; sta
   // Spark's instructions changed since this conversation began (a new ability, a fixed rule): a conversation keeps the
   // instructions it started with, so it would never learn it — "connect my AirPods" was answered from this morning's.
   if (next.rules && current?.rules !== next.rules) return "new";
-  return current?.status === "done" && current.runtime === next.runtime && current.model === next.model ? "resume" : "new";
+  // Stopped mid-answer (you talked over it) is still the same conversation — resuming keeps what was said.
+  return (current?.status === "done" || current?.status === "cancelled") && current.runtime === next.runtime && current.model === next.model ? "resume" : "new";
 }

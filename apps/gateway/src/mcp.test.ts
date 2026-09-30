@@ -71,3 +71,19 @@ await s.connect(new StdioServerTransport());`);
     expect((await mcp.tools(broken.id)).ok).toBe(false);
   }, 30_000);
 });
+
+describe("servers in Spark", () => {
+  it("only the servers you let Spark use go to its quick turns, and the switch survives a restart", () => {
+    const store = new EventStore(":memory:"), auth = path.join(mkdtempSync(path.join(os.tmpdir(), "shua-mcp-")), "auth.json");
+    const mcp = new Mcp(store, auth);
+    const memory = mcp.add({ name: "memory", command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"] });
+    mcp.add({ name: "notion", url: "https://mcp.notion.com/mcp", auth: "oauth" });
+    expect(mcp.forClaude("spark")).toEqual({});
+    expect(Object.keys(mcp.forClaude())).toEqual(["memory", "notion"]); // the crew still gets everything
+    expect(mcp.setSpark(memory.id, true).spark).toBe(true);
+    expect(Object.keys(new Mcp(store, auth).forClaude("spark"))).toEqual(["memory"]);
+    mcp.setSpark(memory.id, false);
+    expect(mcp.forClaude("spark")).toEqual({});
+    expect(() => mcp.setSpark("m_nope", true)).toThrow("no such server");
+  });
+});

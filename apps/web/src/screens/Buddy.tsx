@@ -24,7 +24,10 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { earcon, warmSounds, type Earcon } from "../lib/earcons";
+import { crewDetail, crewFinished, statuses } from "../lib/crew-voice";
+import { asksWeather, weatherForSpark } from "../lib/weather";
+import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -43,9 +46,9 @@ import "./buddy.css";
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
 import { nativeLiveSpeech } from "../lib/live-speech";
-import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
+import { ctx, capture, shotFiles, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
-import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, getMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
+import { chime, TimeLeft, NotchWave, MicBars, MiniCard, setMicLevel, getMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
 import { LiveActivities } from "./spark/LiveActivities";
 import { VisualCard } from "./spark/Visual";
@@ -220,6 +223,18 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [caption, setCaption] = useState<CaptionLine | null>(null);
   // Voice mode, straight from the notch: a live spoken conversation with the chat closed. Never remembered across launches.
   const [voiceLive, setVoiceLive] = useState(false);
+  /** A sound for a moment in the conversation, in your chosen style (spatial by default). */
+  const sound = (k: Earcon) => earcon(k, prefsRef.current.sounds);
+  // Bounce every sound once, and wake the audio engine, as soon as you touch anything (browsers won't start audio before).
+  useEffect(() => {
+    const warm = () => warmSounds(prefsRef.current.sounds);
+    window.addEventListener("pointerdown", warm, { once: true }); window.addEventListener("keydown", warm, { once: true });
+    const t = setTimeout(warm, 1500); // the Mac app lets it start without a gesture
+    return () => { clearTimeout(t); window.removeEventListener("pointerdown", warm); window.removeEventListener("keydown", warm); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Voice mode on: you're live (the same sound as holding fn). Off: a closing note. Not on first load.
+  const voiceWas = useRef(voiceLive);
+  useEffect(() => { if (voiceWas.current !== voiceLive) { sound(voiceLive ? "listen" : "off"); if (voiceLive) macContext.prefetch(); } voiceWas.current = voiceLive; }, [voiceLive]); // eslint-disable-line react-hooks/exhaustive-deps
   // Noticing you're stuck (see lib/stuck): glances while live watching is on; one gentle offer, then quiet.
   const [stuck, setStuck] = useState<StuckOffer | null>(null), stuckState = useRef(STUCK_START), quiet = useRef(false);
   // What Music or Spotify is playing, for the notch (asked of the Mac app; faster while the island is open).
@@ -228,21 +243,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
    * Teach-with-drawing: each drawing in a reply waits for Spark's next spoken sentence, then joins what's already on
    * screen, so the picture builds up as it explains. With the voice off (or a slow voice) they appear straight away.
    */
-  const drawing = useRef<{ key: string; shapes: ReturnType<typeof parseDraw>; queue: ReturnType<typeof parseDraw>[]; timer?: ReturnType<typeof setTimeout> }>({ key: "", shapes: [], queue: [] });
+  const drawing = useRef<{ key: string; screen?: number; shapes: ReturnType<typeof parseDraw>; queue: ReturnType<typeof parseDraw>[]; timer?: ReturnType<typeof setTimeout> }>({ key: "", shapes: [], queue: [] });
   const releaseDraw = () => {
     const d = drawing.current, next = d.queue.shift(); if (!next) return;
     d.shapes = [...d.shapes, ...next].slice(-12);
-    post({ type: "buddyDraw", shapes: d.shapes, color: accentOf(prefsRef.current.color) });
+    post({ type: "buddyDraw", shapes: d.shapes, color: accentOf(prefsRef.current.color), ...(d.screen ? { screen: d.screen } : {}) });
     clearTimeout(d.timer); if (d.queue.length) d.timer = setTimeout(releaseDraw, 4000);
   };
-  const queueDraw = (key: string, shapes: ReturnType<typeof parseDraw>) => {
+  const queueDraw = (key: string, shapes: ReturnType<typeof parseDraw>, screen?: number) => {
     const d = drawing.current;
-    if (d.key !== key) { clearTimeout(d.timer); drawing.current = { key, shapes: [], queue: [] }; }
+    // A new reply, or the drawing moves to another display: start a fresh picture there.
+    if (d.key !== key || d.screen !== screen) { clearTimeout(d.timer); drawing.current = { key, screen, shapes: [], queue: [] }; }
     drawing.current.queue.push(shapes);
     if (!getBuddyVoice().on) { releaseDraw(); return; }
     clearTimeout(drawing.current.timer); drawing.current.timer = setTimeout(releaseDraw, 4000); // never stuck waiting
   };
-  useEffect(() => { speech.current.onSpeaking = (on) => { setSpeaking(on); mic.current.speaking = on; post({ type: "buddySpeaking", on }); /* what it points at stays while it explains */ if (!on) while (drawing.current.queue.length) releaseDraw(); }; speech.current.onCaption = (c) => { setCaption(c); if (c) releaseDraw(); post({ type: "buddyCaption", text: c?.text ?? "" }); }; }, []);
+  useEffect(() => { speech.current.onSpeaking = (on) => { setSpeaking(on); mic.current.speaking = on; post({ type: "buddySpeaking", on }); /* what it points at stays while it explains */ if (!on) { while (drawing.current.queue.length) releaseDraw(); releaseQuiz(); } }; speech.current.onCaption = (c) => { setCaption(c); if (c) releaseDraw(); post({ type: "buddyCaption", text: c?.text ?? "" }); }; }, []);
   useEffect(() => {
     const on = (e: Event) => setHands((e as CustomEvent<{ trusted: boolean; shortcuts: string[] }>).detail);
     window.addEventListener("shuacrew:hands", on); post({ type: "buddyHands" });
@@ -287,8 +303,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
         if (kind === "cancel") { mic.current.cool(); return; }
         if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
-        if (kind === "hold") { setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
-        setFnHeld(false); setFnSent(true); mic.current.release();
+        if (kind === "hold") { sound("listen"); macContext.prefetch(); setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
+        sound("sent"); setFnHeld(false); setFnSent(true); mic.current.release();
       } };
     post({ type: "buddyReady" });
   }, []);
@@ -324,11 +340,21 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const confirmed = useRef(new Set<string>());
   // A visual card: the notch drops open with it (animated) while Spark talks it through, then tucks away on its own.
   const [visual, setVisual] = useState<Visual | null>(null), visualTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const showVisual = (v: Visual) => {
-    setVisual(v); clearTimeout(visualTimer.current);
+  // A quiz after a lesson waits until Spark has finished explaining (it used to replace the worked steps at once).
+  const shownVisual = useRef<Visual | null>(null), laterQuiz = useRef<{ v: Visual; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const showVisual = (v: Visual, now = false) => {
+    if (!now && v.type === "quiz" && shownVisual.current && shownVisual.current.type !== "quiz") {
+      if (laterQuiz.current) clearTimeout(laterQuiz.current.timer);
+      laterQuiz.current = { v, timer: setTimeout(() => releaseQuiz(), 12_000) };
+      return;
+    }
+    shownVisual.current = v; setVisual(v); clearTimeout(visualTimer.current);
     if (!open && prefs.desktopPlacement === "notch") setNook(true);
-    visualTimer.current = setTimeout(() => { setVisual(null); if (!nookFocus.current) setNook(false); }, 25_000);
+    // Teaching cards stay long enough to read the working; the rest tuck away sooner.
+    const teach = ["math", "code", "table", "quiz", "flow", "sequence", "concept", "cycle", "layers"].includes(v.type);
+    visualTimer.current = setTimeout(() => { shownVisual.current = null; setVisual(null); if (!nookFocus.current) setNook(false); }, teach ? 45_000 : 25_000);
   };
+  const releaseQuiz = () => { const q = laterQuiz.current; if (!q) return; clearTimeout(q.timer); laterQuiz.current = null; showVisual(q.v, true); };
   const looked = useRef(new Set<string>()), recheck = useRef(new Set<string>());
   // "Open X and then Y": the do block runs mid-stream, so the look-again waits here until the reply has finished.
   const finished = useRef(new Set<string>()), carryOn = useRef(new Map<string, () => void>());
@@ -339,7 +365,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     for (const b of completedBlocks(text, screenSize())) {
       if (seen.has(b.key) || ((b.kind === "act" || b.kind === "zoom") && !final)) continue;
       seen.add(b.key);
-      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, screenFacts()); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
+      // On another display: its own coordinates, no snapping to the main display's text and controls.
+      const on = blockScreen(b.raw), where = on ? { screen: on } : {};
+      if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = on ? p : locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, screenFacts()); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color), ...where }); } }
       else if (b.kind === "visual") { const v = parseVisual(b.raw); if (v) showVisual(v); }
       else if (b.kind === "zoom") {
         // Spark asked to look closer: that region at full resolution goes straight back, and it carries on from there.
@@ -353,17 +381,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
         })();
       }
-      else if (b.kind === "draw") { const shapes = parseDraw(b.raw).map(fitShape); if (shapes.length) queueDraw(key, shapes); }
+      else if (b.kind === "draw") { const shapes = on ? parseDraw(b.raw) : parseDraw(b.raw).map(fitShape); if (shapes.length) queueDraw(key, shapes, on); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
         if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
         else if (g) void (async () => {
           // Snap to the real control — in a web page too: Shua reads the page's own elements into the look (ShuaWeb).
-          const r = locate(g, screenFacts());
-          const exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" });
+          const r = on ? { ...g, shape: undefined, exact: false } : locate(g, screenFacts());
+          const exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click", ...where });
         })();
       } else if (b.kind === "act") {
-        const acts = parseActs(b.raw), act = acts[0] ?? null;
+        const acts = parseActs(b.raw).map((a) => (on ? { ...a, ...where } as typeof a : a)), act = acts[0] ?? null;
         // A batch runs back to back when Spark may act on its own; asking first, it goes one step at a time.
         const batch = acts.length > 1 && act?.type !== "done" && (prefs.control === "auto" || autoTask) ? acts : null;
         if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
@@ -390,12 +418,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           // so a failure never passes as done. Once per reply.
           // Done is said, not just shown: the real result, in a few words ("Added “Launch” on Thu 1 Oct, 11:10 AM"),
           // for the things you'd otherwise have to go and check. Voice conversations only; once per reply.
-          const confirm = actions.map((a, i) => ({ a, r: results[i] })).filter(({ a, r }) => r?.ok && ((a.type === "mac" && CONFIRM_OPS.has(a.op)) || (a.type === "media" && (a.command === "play_query" || a.command === "play_similar" || a.command === "playlist")))).map(({ r }) => r!.message.replace(/[.\s]+$/, ""));
+          const confirm = actions.map((a, i) => ({ a, r: results[i] })).filter(({ a, r }) => r?.ok && (a.type === "quit_app" || a.type === "system" || (a.type === "mac" && CONFIRM_OPS.has(a.op)) || (a.type === "media" && (a.command === "play_query" || a.command === "play_similar" || a.command === "playlist")))).map(({ r }) => r!.message.replace(/[.\s]+$/, ""));
           if (confirm.length && !failed.length && (voiceLive || (prefs.conversation && prefs.listen !== "hold")) && !confirmed.current.has(key)) {
             confirmed.current.add(key);
-            sayOwn(`Done. ${confirm.slice(0, 2).join(". ")}.`);
+            sound("done"); sayOwn(`Done. ${confirm.slice(0, 2).join(". ")}.`);
           }
           if (failed.length && !corrected.current.has(key)) {
+            sound("error");
             corrected.current.add(key);
             speech.current.say(`Actually, that didn't work: ${failed[0]!.replace(/[.\s]+$/, "")}.`);
           }
@@ -623,8 +652,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     post({ type: "buddyGuideStop" }); setBusy("Looking at what changed…"); setError("");
     try {
       await new Promise((r) => setTimeout(r, 700)); // let the app you clicked finish drawing
-      const shot = await capture(), att = await upload(shot.file);
-      await followUp(convo.run, withAttachments(guideFollowUp(step.label, shot), [att]));
+      const shot = await capture(), atts = await Promise.all(shotFiles(shot).map(upload));
+      await followUp(convo.run, withAttachments(guideFollowUp(step.label, shot), atts));
     } catch (e) { setError((e as Error).message); } finally { checkingGuide.current = false; setBusy(""); }
   };
   const advanceRef = useRef(advance); advanceRef.current = advance;
@@ -645,6 +674,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const runAct = async (steps: Act | Act[], step: number) => {
     if (!convo) return;
     const list = (Array.isArray(steps) ? steps : [steps]).filter((a) => a.type !== "done");
+    if (step <= 1) failStreak.current = 0; // a new task starts clean
     setPending(null);
     try {
       const said: string[] = []; let ok = true;
@@ -658,13 +688,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (!r.ok) { ok = false; break; }
         if (i < list.length - 1) await new Promise((go) => setTimeout(go, a.type === "type" || a.type === "key" ? 250 : 450)); // let the app keep up
       }
+      // Failing in a row means the approach is wrong, not the wording: it used to re-aim at the same missing field five
+      // times, a new name each time, until you said stop. Two in a row: change tack. Three: stop and say what's blocking.
+      failStreak.current = ok ? 0 : failStreak.current + 1;
+      if (failStreak.current >= 3) { const why = said.at(-1)?.split(" — FAILED: ")[1] ?? "it isn't working"; failStreak.current = 0; stopTask(`Three steps in a row didn't work (${why.replace(/\. Take a fresh look.*$/, "")}). Tell me what to try, or take over from here.`); return; }
       await new Promise((go) => setTimeout(go, 800)); // let the app react before looking
       if (!taskRef.current) return;
-      const shot = await capture(), att = await upload(shot.file);
-      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS), [att]));
+      const shot = await capture(), atts = await Promise.all(shotFiles(shot).map(upload));
+      const tack = failStreak.current === 2 ? " TWO STEPS IN A ROW FAILED: don't retry the same thing under another name. Change approach — press it by its exact name from the controls list, bring the right app or window to the front first, use a keyboard shortcut or a do-action — or say plainly what's blocking and ask." : "";
+      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS) + tack, atts));
     } catch (e) { stopTask((e as Error).message); } finally { setBusy(""); }
   };
   const taskRef = useRef(task); taskRef.current = task;
+  const failStreak = useRef(0);
   const runActRef = useRef(runAct); runActRef.current = runAct;
   useEffect(() => { const on = () => stopTask("Stopped. Nothing else will be clicked."); window.addEventListener("shuacrew:actStop", on); return () => window.removeEventListener("shuacrew:actStop", on); }, []);
   const stopGuide = () => { setGuide(null); post({ type: "buddyGuideStop" }); speech.current.stop(); };
@@ -742,10 +778,20 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (autoSee) { setSee(true); try { localStorage.setItem(SEE, "1"); } catch { /* ignore */ } }
     const look = see || autoSee || liveOn || !!opt.look;
     setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
+    // Where a turn's time goes before the model starts (logged during self-tests: SHUACREW_SPARK_SELFTEST=ask:…).
+    const t0 = performance.now(), marks: Record<string, number> = {}, mark = (k: string) => { marks[k] = Math.round(performance.now() - t0); };
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
-      const [selected, mac, playing] = await Promise.all([selectIntelligence(intelligence), macContext(), playingContext(radioNow)]); const personal = [mac, playing].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
+      // Asked about the weather: the real forecast comes along (Open-Meteo, ~0.3 s), so Spark answers at once instead of
+      // web-searching and reading a page (17–20 s in the log). Never allowed to hold a turn up for more than 2 s.
+      const weather = asksWeather(q) ? Promise.race([weatherForSpark().catch(() => ""), new Promise<string>((ok) => setTimeout(() => ok(""), 2000))]) : Promise.resolve("");
+      // The screenshot doesn't depend on which model answers: take it and upload it NOW, alongside the model pick and
+      // your Mac's context (it used to wait for them — ~0.9 s — then run on its own). Measured with the marks above.
+      const shooting = look ? capture().then(async (shot) => { mark("screenshot"); const files = await Promise.all(shotFiles(shot).map(upload)); mark("upload"); return { shot, files }; }) : null;
+      shooting?.catch(() => {}); // a failed look is reported where it's used
+      const radioAnswer = radioNow(); // asked once, used for the context and the status line
+      const [selected, mac, playing, forecast] = await Promise.all([selectIntelligence(intelligence).finally(() => mark("pick")), macContext().finally(() => mark("mac")), playingContext(() => radioAnswer).finally(() => mark("playing")), weather]); mark("context"); const personal = [mac, playing, forecast].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
@@ -753,10 +799,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
-      if (look && (!localNow || aboutScreen(q) || opt.look)) { const shot = await capture(); if (stale()) return; if (!localNow) atts = [await upload(shot.file)]; if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
-      const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length);
+      if (look && shooting && (!localNow || aboutScreen(q) || opt.look)) { const { shot, files } = await shooting; if (stale()) return; if (!localNow) atts = files; mark("look"); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
+      const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
+      const detail = crewDetail(crew.runs, crew.approvals, names);
+      const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length) + (detail ? `\n${detail}` : "");
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
-      const playingNow = await radioNow(); setRadio(playingNow);
+      const playingNow = await radioAnswer; setRadio(playingNow); mark("radio");
       const remembered = asksAboutEarlier(q) ? await recall(q) : "";
       if (remembered) logSense("saw", "Checked your screen memory", q);
       const appNowBase = shuacrewNow({
@@ -789,13 +837,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
-        await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
+        mark("post"); await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model, rules: SPARK_RULES }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
-      setDraft("");
+      setDraft(""); mark("sent");
+      if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `timing ${q.slice(0, 40)}`, output: JSON.stringify(marks) });
     } catch (e) { if (!stale()) setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { if (!stale()) setBusy(""); }
   };
   // Open mic: every turn you speak is a message; talking over Spark stops it.
@@ -828,6 +877,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const waiting = askingRef.current;
       if (waiting) { const said = yesOrNo(t); if (said !== null) { waiting.answer(said); return; } waiting.answer(false); } // anything else: keep it, and carry on with what you said
       newTurn();
+      if (m.mode !== "hold") sound("sent");
       void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     // You kept talking over Spark: it stops now, like a person would, instead of waiting for the transcript.
@@ -992,6 +1042,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (ownLines.current.has(k)) return false;
     ownLines.current.add(k); lastSound.current = Date.now(); speech.current.say(text); return true;
   };
+  // The crew finished something: Spark tells you, like a teammate leaning over — with a sound, and a line in the
+  // notch. Only with heads-ups on (Settings → proactive), never for its own turns, never on first load.
+  const crewWas = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    const before = crewWas.current; crewWas.current = statuses(crew.runs);
+    if (!before || !prefsRef.current.proactive) return;
+    const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
+    const news = crewFinished(before, crew.runs, names);
+    if (!news.length) return;
+    sound(news.some((n) => !n.ok) ? "error" : "done");
+    logSense("heard", "Crew update", news.map((n) => n.line).join(" "));
+    if (getBuddyVoice().on) sayOwn(news.map((n) => n.line).join(" "));
+  }, [crew.runs]); // eslint-disable-line react-hooks/exhaustive-deps
   // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
   // arrives in ~1.2 s, and the notch animation covers the gap. The quiet clock restarts so progress waits its 4 s.
   const newTurn = () => { ownLines.current.clear(); lastSound.current = Date.now(); };
@@ -1127,7 +1190,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           onClick={() => (embedded ? window.shuacrew?.navigate(`/sessions/${m.run}`) : post({ type: "buddyOpen", path: `/sessions/${m.run}` }))}>
           <i /><span>{r.title || m.task}</span><small>{r.status === "awaiting_approval" ? "needs you" : r.status.replace("_", " ")}{m.rounds ? ` · pushed ${m.rounds}×` : ""}</small></button>; })}
       </div>}
-      {visual && open && <VisualCard v={visual} onClose={() => setVisual(null)} />}
+      {visual && open && <VisualCard v={visual} onClose={() => { shownVisual.current = null; setVisual(null); }} />}
       {asking && (asking.kind === "delete"
         ? <div className="buddy-task is-run is-delete"><Trash2 size={14} /><span><b>{asking.command}?</b><small> · {asking.why} · say yes or no</small></span>
             <button type="button" onClick={() => asking.answer(true)}>{asking.yes ?? "Delete"}</button><button type="button" onClick={() => asking.answer(false)}>{asking.yes === "Delete" || !asking.yes ? "Keep" : "Cancel"}</button></div>
@@ -1196,13 +1259,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{fnReady ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p> : processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{
+          // While you talk: a waveform (default) — live words flicker as the recogniser revises them. The moment you
+          // stop, your final sentence shows (shimmering while Spark works) so you can catch a mishearing.
+          fnReady && prefs.notchHearing === "words" ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p>
+          : processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p>
+          : fnReady || (hearingNow && prefs.notchHearing === "wave") ? <NotchWave />
+          : hearingNow ? <div className="notch-hearing"><MicBars floor={0.2} /><Rolling className="notch-heard">{heard}</Rolling></div> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
-          {visual && <VisualCard v={visual} onClose={() => { setVisual(null); setNook(false); }} />}
+          {visual && <VisualCard v={visual} onClose={() => { shownVisual.current = null; setVisual(null); setNook(false); }} />}
           {timers.length > 0 && <ul className="spark-nook-timers" aria-label="Timers">{[...timers].sort((a, b) => remaining(a, now) - remaining(b, now)).map((t) => <li key={t.id} className={t.paused !== undefined ? "is-paused" : ""}>
             <span>{t.kind === "alarm" ? <AlarmClock size={13} /> : <Timer size={13} />}{t.label || (t.kind === "alarm" ? "Alarm" : "Timer")}</span>
             <b>{t.kind === "alarm" ? new Date(t.endsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : <TimeLeft t={t} />}</b>

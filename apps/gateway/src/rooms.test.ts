@@ -25,7 +25,8 @@ it("permits validated internal room tools but not arbitrary tools with a crew pr
 it("uses genuinely separate git worktrees for coordinator and specialist without changing the source checkout", async () => {
   const w = world(); const dir = mkdtempSync(path.join(os.tmpdir(), "shua-room-repo-"));
   // Clone existing committed fixture history; this test creates no commits or remote writes.
-  const repo = path.join(dir, "repo"); execFileSync("git", ["clone", "--shared", "--no-hardlinks", "--quiet", process.cwd(), repo]);
+  const repo = path.join(dir, "repo"); const top = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+  execFileSync("git", ["clone", "--shared", "--no-hardlinks", "--quiet", top, repo]);
   Object.assign(w.supervisor, { worktrees: new Worktrees(path.join(dir, "trees")) });
   const room = w.rooms.create({ title: "Isolated", coordinator: "shua", members: ["shua", "eli"], repo });
   expect(room.base).toMatch(/^[a-f0-9]{40}$/);

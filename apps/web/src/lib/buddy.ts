@@ -1,6 +1,7 @@
 import { PANES } from "./settings-panes";
 import { noEmoji } from "./no-emoji";
 import { VISUAL_GUIDE } from "./visual";
+import { CREW_CONTROL } from "./crew-voice";
 /** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
 export interface Point { x: number; y: number; label: string; target?: string }
 
@@ -27,11 +28,16 @@ export interface ScreenLine { t: string; x: number; y: number; w: number; h: num
 /** What Spark may do on your Mac. The Mac app checks every one again before doing it. */
 export type Action =
   | { type: "open_app"; name: string }
+  | { type: "quit_app"; name: string }
   | { type: "open_url"; url: string }
   | { type: "open_path"; path: string }
   | { type: "focus"; minutes: number }
   | { type: "timer"; op: "start" | "alarm" | "cancel" | "pause" | "resume" | "list"; seconds?: number; at?: string; label?: string }
   | { type: "crew"; ask: string }
+  // Running the crew by voice: refs (A1, S1) come from CREW NOW (lib/crew-voice).
+  | { type: "crew_decide"; ref: string; allow: boolean }
+  | { type: "crew_stop"; ref: string }
+  | { type: "crew_open"; ref: string }
   | { type: "note"; text: string }
   | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "open_query" | "volume" | "volume_up" | "volume_down" | "mute" | "playlist" | "shuffle" | "repeat" | "love" | "add_to_library" | "seek" | "play_similar"; by?: "artist" | "vibe"; mood?: string; query?: string; app?: string; level?: number; on?: boolean; mode?: "off" | "one" | "all"; seconds?: number }
   | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth" | "night_shift" | "browser_js" | "bluetooth_device" | "empty_trash"; on?: boolean; level?: number; device?: string }
@@ -91,7 +97,7 @@ export const PLAYBOOKS = ["validate-idea", "landing-page", "mvp", "launch", "gro
 /** What you can change about Spark just by asking it ("talk faster", "be the fox", "call yourself Nova"). */
 export interface SparkChanges {
   name?: string; character?: "spark" | "orb" | "byte" | "kit" | "blob"; color?: string; size?: "s" | "m" | "l";
-  tone?: "cheerful" | "chill" | "direct" | "coach"; length?: "brief" | "detailed";
+  tone?: "engineer" | "cheerful" | "chill" | "direct" | "coach"; length?: "brief" | "detailed";
   talks?: boolean; voice?: string; speed?: number; conversation?: boolean; interrupt?: boolean;
   control?: "off" | "ask" | "auto"; guide?: "click" | "manual"; hotkey?: "ctrl-opt-space" | "ctrl-shift-space" | "opt-shift-space" | "ctrl-opt-s";
 }
@@ -104,7 +110,7 @@ export function parseChanges(v: unknown): SparkChanges | null {
   const character = pick("character", ["spark", "orb", "byte", "kit", "blob"] as const); if (character) out.character = character;
   if (typeof o.color === "string") { const c = o.color.trim().toLowerCase(); const hex = /^#[0-9a-f]{6}$/.test(c) ? c : NAMED_COLORS[c]; if (hex) out.color = hex; }
   const size = pick("size", ["s", "m", "l"] as const); if (size) out.size = size;
-  const tone = pick("tone", ["cheerful", "chill", "direct", "coach"] as const); if (tone) out.tone = tone;
+  const tone = pick("tone", ["engineer", "cheerful", "chill", "direct", "coach"] as const); if (tone) out.tone = tone;
   const length = pick("length", ["brief", "detailed"] as const); if (length) out.length = length;
   for (const k of ["talks", "conversation", "interrupt"] as const) if (typeof o[k] === "boolean") out[k] = o[k] as boolean;
   const voice = str(o.voice, 40); if (voice && /^[a-z0-9_-]+$/i.test(voice)) out.voice = voice.toLowerCase();
@@ -212,14 +218,24 @@ export function isDesign(question: string) {
 }
 
 /** The frontmost app's real controls, from macOS accessibility: exact names and positions. */
-export interface Pointing { pointer?: { x: number; y: number; name?: string; role?: string }; gesture?: { kind: string; x: number; y: number; w: number; h: number } }
-export interface ScreenContext extends Pointing { app?: string; window?: string; page?: { url?: string; title?: string }; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
+export interface Pointing { pointer?: { x: number; y: number; name?: string; role?: string }; gesture?: { kind: string; x: number; y: number; w: number; h: number; picked?: Array<{ name: string; x: number; y: number; w: number; h: number }> } }
+export interface ScreenContext extends Pointing { app?: string; window?: string; page?: { url?: string; title?: string }; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }>; displays?: Display[] }
+/** Another display on their desk, sent as its own smaller image (numbered from 2; 1 is the main look). */
+export interface Display { n: number; name: string; where: string; width: number; height: number }
+/** More than one display: which extra image is which, and how to point there — so Spark sees the whole desk. */
+export function displaysText(ctx: ScreenContext | undefined): string {
+  const d = ctx?.displays ?? [];
+  if (!d.length) return "";
+  const list = d.map((x) => `image ${x.n} = “${x.name}”, ${x.where} of it (${x.width}×${x.height})`).join("; ");
+  return `THEIR OTHER DISPLAYS (they have ${d.length + 1}): the FIRST image is the display they're working on (their pointer is there) — everything above is about that one. The extra images, in order: ${list}. To point, guide, draw or act on another display, add "screen": <its number> to the block and give pixels of THAT image (no "target" ids there — those are for the main display). Without "screen" it's the main display.`;
+}
 export function elementsText(ctx: ScreenContext | undefined, max = 120, size?: { width: number; height: number }) {
-  if (!ctx?.app && !ctx?.elements?.length) return "";
+  const desk = displaysText(ctx);
+  if (!ctx?.app && !ctx?.elements?.length) return desk;
   const at = (x: number, y: number) => (size ? `${Math.round(x * size.width)},${Math.round(y * size.height)}` : `${x.toFixed(3)},${y.toFixed(3)}`);
   const rows = (ctx.elements ?? []).slice(0, max).map((e, i) => `#${i + 1} ${e.name} [${e.role}] @${at(e.x, e.y)}`);
   const page = ctx.page?.url ? `\nPAGE: ${ctx.page.title ? `“${ctx.page.title}” ` : ""}${ctx.page.url} — its controls are the [web …] rows: exact, read from the page itself. press {label} clicks one on the page; type {label: the field's name, text} fills that field (end text with \\n to press Enter).` : "";
-  return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${page}${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility, including the menu bar, the Dock and the menu-bar icons ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates. The ids and numbers are ONLY for blocks: never say or write them; name things the way they see them ("the Share button, top right", "Wi-Fi in the menu bar", "Music in the Dock"):\n${rows.join("\n")}` : ""}`;
+  return `${desk ? `${desk}\n` : ""}IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${page}${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility, including the menu bar, the Dock and the menu-bar icons ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates. The ids and numbers are ONLY for blocks: never say or write them; name things the way they see them ("the Share button, top right", "Wi-Fi in the menu bar", "Music in the Dock"):\n${rows.join("\n")}` : ""}`;
 }
 
 /**
@@ -247,13 +263,15 @@ export function pointingText(ctx: ScreenContext | undefined, lines: ScreenLine[]
     const inside = (x: number, y: number) => inBox(x, y, g);
     const things = [...els.filter((e) => inside(e.x, e.y)).map((e) => `“${e.name}” (${e.id})`), ...txt.filter((l) => inside(l.x, l.y)).map((l) => `“${l.t.slice(0, 60)}” (${l.id})`)].slice(0, 10);
     const what = g.kind === "underline" ? "UNDERLINED" : g.kind === "circle" ? "CIRCLED" : "SCRIBBLED OVER";
-    out.push(`THEY JUST ${what} (with their cursor, while talking) the area ${at(g.x, g.y)} to ${at(g.x + g.w, g.y + g.h)}${things.length ? ` — inside it: ${things.join(", ")}` : ""}. That area is what "this"/"these" means now: answer about it, point back at it, and zoom there if it's small.`);
+    // Snapped on their Mac to the real things the gesture covers — exact, and already boxed on their screen.
+    const picked = (g.picked ?? []).slice(0, 8).map((i) => `“${i.name.slice(0, 80)}” (centre ${at(i.x, i.y)}, ${Math.round(i.w * (size?.width ?? 1000))}×${Math.round(i.h * (size?.height ?? 1000))})`);
+    out.push(`THEY JUST ${what} (with their cursor, while talking) the area ${at(g.x, g.y)} to ${at(g.x + g.w, g.y + g.h)}${picked.length ? ` — EXACTLY: ${picked.join(", ")} (already boxed on their screen; this is precisely what they mean)` : things.length ? ` — inside it: ${things.join(", ")}` : ""}. That area is what "this"/"these" means now: answer about it, point back at it, and zoom there if it's small.`);
   }
   return out.join("\n");
 }
 
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
-export function completedBlocks(text: string, size?: { width: number; height: number } | null): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> {
+export function completedBlocks(text: string, size?: ShotSize | null): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> {
   const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> = [];
   for (const m of text.matchAll(/```(do|act|point|guide|draw|visual|zoom)\s*([\s\S]*?)```/gi)) {
     const kind = m[1]!.toLowerCase() as "do";
@@ -267,11 +285,13 @@ export function completedBlocks(text: string, size?: { width: number; height: nu
  * Spark asks for pixels of the exact image it sent, then turns them into fractions of the screen here, before any
  * block is read. A block already in fractions (every coordinate 0–1) passes through untouched.
  */
-export function pixelsToFractions(raw: string, kind: string, size: { width: number; height: number }): string {
+export function pixelsToFractions(raw: string, kind: string, shot: ShotSize): string {
   const m = /^(```[a-z]+\s*)([\s\S]*?)(```)$/i.exec(raw.trim());
-  if (!m || !size.width || !size.height) return raw;
+  if (!m || !shot.width || !shot.height) return raw;
   let v: unknown;
   try { v = JSON.parse(m[2]!.trim()); } catch { return raw; }
+  // On another display ("screen": 2…), its pixels are of that display's image.
+  const size = shot.others?.find((o) => o.n === blockScreen(raw)) ?? shot;
   const W = size.width, H = size.height, nums: number[] = [];
   const walk = (o: unknown) => {
     if (Array.isArray(o)) { o.forEach(walk); return; }
@@ -303,6 +323,18 @@ export function pixelsToFractions(raw: string, kind: string, size: { width: numb
   return `${m[1]}${JSON.stringify(fix(v))}${m[3]}`;
 }
 
+/** The pixel size of the look Spark answers in: the main image, and each other display's image by its number. */
+export type ShotSize = { width: number; height: number; others?: Array<{ n: number; width: number; height: number }> };
+/** Which display a block is about: its "screen" number (2, 3…), or undefined for the main display. */
+export function blockScreen(raw: string): number | undefined {
+  const m = /```[a-z]+\s*([\s\S]*?)```/i.exec(raw);
+  try {
+    const v = JSON.parse((m?.[1] ?? raw).trim()) as unknown, o = (Array.isArray(v) ? v[0] : v) as Record<string, unknown> | undefined;
+    const n = Number(o?.screen);
+    return Number.isInteger(n) && n >= 2 && n <= 8 ? n : undefined;
+  } catch { return undefined; }
+}
+
 /** OCR lines as a compact, exact block for the model (reading order, with centres). */
 export function screenText(lines: ScreenLine[] | undefined, max = 9000, size?: { width: number; height: number }) {
   if (!lines?.length) return "";
@@ -319,6 +351,7 @@ function toAction(v: unknown): Action | null {
   const o = v as Record<string, unknown>;
   switch (o.type) {
     case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
+    case "quit_app": { const name = str(o.name, 80); return name ? { type: "quit_app", name } : null; }
     case "open_url": { const url = str(o.url, 2000); try { return url && /^https?:$/.test(new URL(url).protocol) ? { type: "open_url", url } : null; } catch { return null; } }
     case "open_path": { const path = str(o.path, 500); return path && /^~?\//.test(path) && !path.split("/").includes("..") ? { type: "open_path", path } : null; }
     case "timer": {
@@ -330,6 +363,8 @@ function toAction(v: unknown): Action | null {
     }
     case "focus": { const minutes = Number(o.minutes); return [5, 10, 15, 25, 45, 50, 60, 90].includes(minutes) ? { type: "focus", minutes } : null; }
     case "crew": { const ask = str(o.ask, 4000); return ask ? { type: "crew", ask } : null; }
+    case "crew_decide": { const ref = str(o.ref, 40); return ref && typeof o.allow === "boolean" ? { type: "crew_decide", ref, allow: o.allow } : null; }
+    case "crew_stop": case "crew_open": { const ref = str(o.ref, 40); return ref ? { type: o.type, ref } : null; }
     case "mail": {
       // Their mail through the Mail app: read and draft only. The Mac app checks every field again.
       const op = (["unread", "search", "read", "draft"] as const).find((x) => x === o.op);
@@ -411,11 +446,15 @@ export function parseActions(text: string): Action[] {
 export function describeAction(a: Action): string {
   switch (a.type) {
     case "open_app": return `Open ${a.name}`;
+    case "quit_app": return `Quit ${a.name}`;
     case "open_url": { try { return `Open ${new URL(a.url).host}`; } catch { return "Open link"; } }
     case "open_path": return `Open ${a.path.split("/").filter(Boolean).at(-1) ?? a.path}`;
     case "focus": return `${a.minutes}-minute focus`;
     case "timer": return a.op === "start" ? `${a.label ? `${a.label} timer` : "Timer"}: ${Math.round((a.seconds ?? 0) / 60) || a.seconds + " s"}${a.seconds && a.seconds >= 60 ? " min" : ""}` : a.op === "alarm" ? `Alarm for ${a.at}` : a.op === "list" ? "Check your timers" : `${a.op[0]!.toUpperCase()}${a.op.slice(1)} ${a.label ? `the ${a.label} timer` : "the timer"}`;
     case "crew": return "Hand to the crew";
+    case "crew_decide": return a.allow ? "Approve the crew's request" : "Decline the crew's request";
+    case "crew_stop": return "Stop that crew session";
+    case "crew_open": return "Open that crew session";
     case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
     case "open_settings": return `Open ${PANES.find((p) => p.key === a.pane)?.name ?? "Settings"}`;
     case "mac": return a.op === "chess" ? "Read the board and find the best move" : a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "send_message" ? `Send “${a.text}” to ${a.to}` : a.op === "facetime" ? `Call ${a.to} on FaceTime${a.audio ? " audio" : ""}` : a.op === "directions" ? `Directions to ${a.to}` : a.op === "delete_reminders" || a.op === "complete_reminders" ? `${a.op === "delete_reminders" ? "Delete" : "Finish"} ${a.all ? `all your reminders${a.list ? ` in ${a.list}` : ""}` : `${a.titles?.length ?? 0} reminder${a.titles?.length === 1 ? "" : "s"}`}` : a.op === "complete_reminder" ? `Mark “${a.title}” done` : a.op === "delete_reminder" ? `Delete the reminder “${a.title}”` : a.op === "delete_event" ? `Delete “${a.title}” from your calendar${a.date ? ` (${a.date.slice(0, 10)})` : ""}` : a.op === "delete_note" ? `Delete the note “${a.title}”` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : a.op === "music_now" ? "Check what's playing" : a.op === "music_playlists" ? "Check your playlists" : a.op === "notes_new" ? `New note: ${a.title ?? "…"}` : a.op === "calendar_add" ? `Add “${a.title}” to your calendar` : a.op === "new_folder" ? `New folder “${a.name}”` : a.op === "reveal" ? `Show ${a.path?.split("/").pop()} in Finder` : a.op === "open_file" ? `Open ${a.path?.split("/").pop()}` : a.op === "browser_tabs" ? "Check your open tabs" : "Check your Mac";
@@ -550,8 +589,10 @@ export function nextSentences(text: string, from: number, final = false): { chun
   return { chunks, upto: from + cut };
 }
 
-export interface Persona { name: string; tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed"; control?: "off" | "ask" | "auto"; shortcuts?: string[]; voice?: boolean; voices?: string[]; memory?: string[]; goal?: string }
+export interface Persona { name: string; tone: "engineer" | "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed"; control?: "off" | "ask" | "auto"; shortcuts?: string[]; voice?: boolean; voices?: string[]; memory?: string[]; goal?: string }
 const TONES: Record<Persona["tone"], string> = {
+  // Engineer-first (software & AI): the default. A senior engineer who teaches — exact, first principles, trade-offs.
+  engineer: "an engineer first — a senior software and AI engineer who teaches: precise and technical, reasons from first principles, names the trade-off and the number (latency, complexity, cost), uses the exact term, API or command, and shows it with a card (worked math steps, the code, a trade-off table, a diagram) instead of hand-waving; plain words, no fluff, and honest about what it doesn't know",
   cheerful: "warm, upbeat and encouraging",
   chill: "relaxed and easygoing, a calm friend",
   direct: "straight to the point, no filler, no pleasantries",
@@ -593,6 +634,9 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     "YOUR FIRST SENTENCE IS SPOKEN THE MOMENT IT ARRIVES — make it the answer or exactly what you're doing, with the specifics (\"Dentist's on your calendar Thursday at 2:30.\", \"Looking up tonight's Knicks score.\"). Never open with filler: no \"On it\", \"Sure\", \"Got it\", \"Okay\", \"Let me check\", \"Great question\". Be proactive like a sharp assistant: when there's an obvious next thing they'd want (a reminder before the event, leaving time for traffic, the follow-up to a message, a clash in their calendar), offer it in one short question at the end — only when it's genuinely useful, never every turn.",
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
     '```do [{"type":"open_app","name":"Safari"}]```',
+    // It used to say "Music's closed." in the same breath as a command that then didn't run — the words must wait for the result.
+    "SAY IT AFTER, NOT BEFORE: in a reply with a do block you DON'T KNOW YET whether it worked — say what you're doing (\"Quitting Music.\", \"Turning Night Shift off.\"), never that it's done (\"Music's closed.\"). The real result is confirmed or corrected aloud right after. No action for what they asked? Say you can't do that yet — never improvise a terminal command for it or pretend.",
+    'Quit or close an app (it asks to save if it needs to; you hear whether it really quit): ```do [{"type":"quit_app","name":"Music"}]``` — never a terminal command or ⌘Q for this.',
     'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
     'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist) | open_query (open an artist, album or search without playing), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
     [
@@ -615,7 +659,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
     ].join("\n"),
-    'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
+    'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: engineer|cheerful|chill|direct|coach (engineer = the engineer-first teacher for software & AI), length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Change ONLY what they asked for — never your character, colour or voice unless they asked. Confirm in a few words, in your new style.',
     "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
     "NEVER say you did, are doing, or turned something on/off unless the matching block (do / act / guide / settings) is in this SAME reply. No block, no claim: if you can't do it, say so plainly and offer the closest thing you can do.",
     'TIMERS & ALARMS (any length, several at once, named): ```do [{"type":"timer","op":"start","seconds":420,"label":"pasta"}]``` · alarm at a clock time {"op":"alarm","at":"07:00","label?":"gym"} (24h HH:MM, or a full ISO date-time) · {"op":"cancel","label?":"pasta"} · {"op":"pause"} · {"op":"resume"} · how long is left {"op":"list"}. Use these — NOT reminders and NOT focus — whenever they say timer, countdown, alarm or "wake me".',
@@ -644,7 +688,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       : "No screenshot this time; answer from the question alone. If they want to be shown something on screen, ask them to turn on the eye so you can see.",
     design ? DESIGN : "For anything with structure (an architecture, a flow, a data model), you can include a ```mermaid diagram — it renders as a real diagram.",
     appNow,
-    crewNow ? `${crewNow}\nIf they ask what's going on, what's playing, or who is working, answer from CREW NOW. Don't invent sessions.` : "",
+    crewNow ? `${crewNow}\nIf they ask what's going on, what's playing, or who is working, answer from CREW NOW. Don't invent sessions.\n${CREW_CONTROL}` : "",
     `\nThe user says: ${question}`,
   ].join("\n");
 }
@@ -766,7 +810,7 @@ export function liveLookup(events: ReadonlyArray<{ kind: string; body?: unknown 
 
 /** Actions that can't be undone: Spark asks you first (a tap in the notch or the chat), whatever the control mode. */
 /** Can't be undone, or reaches another person: Spark asks you first, whatever the control mode. */
-export const isDestructive = (a: Action): boolean => (a.type === "mac" && (a.op === "delete_reminder" || a.op === "delete_event" || a.op === "delete_note" || a.op === "delete_reminders" || a.op === "send_message" || a.op === "facetime"))
+export const isDestructive = (a: Action): boolean => a.type === "crew_stop" || (a.type === "mac" && (a.op === "delete_reminder" || a.op === "delete_event" || a.op === "delete_note" || a.op === "delete_reminders" || a.op === "send_message" || a.op === "facetime"))
   || (a.type === "system" && (a.what === "empty_trash" || a.what === "browser_js"));
 
 /**

@@ -344,3 +344,15 @@ describe("what they show you with their own cursor", () => {
   });
   it("says nothing when there's nothing to show", () => { expect(pointingText({ elements: [] }, [], size)).toBe(""); });
 });
+
+describe("what they circled, snapped to the real thing", () => {
+  it("names exactly what the circle covers when the Mac snapped it, ahead of the rough area", () => {
+    const text = pointingText({ gesture: { kind: "circle", x: 0.1, y: 0.3, w: 0.4, h: 0.1, picked: [{ name: "Revenue grew 12% in Q3", x: 0.3, y: 0.35, w: 0.38, h: 0.05 }] } }, [], { width: 1000, height: 1000 });
+    expect(text).toContain("EXACTLY: “Revenue grew 12% in Q3” (centre 300,350, 380×50)");
+    expect(text).not.toContain("inside it:");
+  });
+  it("falls back to what lies inside the rough area when nothing was snapped", () => {
+    const text = pointingText({ gesture: { kind: "circle", x: 0, y: 0, w: 1, h: 1 }, elements: [{ name: "Save", role: "button", x: 0.5, y: 0.5, w: 0.1, h: 0.05 }] }, [], { width: 1000, height: 1000 });
+    expect(text).toContain("inside it: “Save” (#1)");
+  });
+});

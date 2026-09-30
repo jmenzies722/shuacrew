@@ -82,6 +82,18 @@ enum ShuaWeb {
         try await act(["kind": "type", "name": label, "value": text, "submit": submit], in: app)
     }
 
+    /// ShuaCrew's own main window is a web page too: press or type there by name, straight in its web view. Asking
+    /// ShuaCrew's accessibility tree about itself doesn't reach inside the page, so "open Playbooks" never found it.
+    @MainActor static func actInMainWindow(_ args: [String: Any]) async throws -> String {
+        guard let main = MainWindow.current, main.window?.isVisible == true else { throw Failure.script("ShuaCrew's window isn't open.") }
+        let payload = String(data: try JSONSerialization.data(withJSONObject: args), encoding: .utf8) ?? "{}"
+        guard let raw = try await main.web.evaluateJavaScript("(\(actJS))(\(payload))") as? String, let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Failure.script("ShuaCrew's window didn't answer.") }
+        guard json["ok"] as? Bool == true else { throw Failure.script(json["why"] as? String ?? "Couldn't do that in ShuaCrew.") }
+        main.window?.makeKeyAndOrderFront(nil); NSApp.activate()
+        return (json["did"] as? String ?? "Done").replacingOccurrences(of: " on the page", with: " in ShuaCrew")
+    }
+
     private static func act(_ args: [String: Any], in app: NSRunningApplication) async throws -> String {
         let payload = String(data: try JSONSerialization.data(withJSONObject: args), encoding: .utf8) ?? "{}"
         let raw = try await run("(\(actJS))(\(payload))", in: app)

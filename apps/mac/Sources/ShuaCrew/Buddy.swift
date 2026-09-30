@@ -61,6 +61,20 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let live = LiveScreen()
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
+    /// The last read of a browser page's controls (by browser process), for a look that couldn't wait for a fresh one.
+    private var webCache: (pid: pid_t, at: CFTimeInterval, value: (page: [String: String], elements: [[String: Any]]))?
+    /// A task's result if it arrives within `seconds`, else nil (the task itself keeps going).
+    private static func settle<T>(_ task: Task<T?, Never>, within seconds: Double) async -> T? {
+        await withCheckedContinuation { (done: CheckedContinuation<T?, Never>) in
+            var finished = false
+            Task { @MainActor in let v = await task.value; if !finished { finished = true; done.resume(returning: v) } }
+            Task { @MainActor in try? await Task.sleep(for: .seconds(seconds)); if !finished { finished = true; done.resume(returning: nil) } }
+        }
+    }
+    /// Every display in the last look by the number Spark knows it by: 1 = the one with your pointer, 2, 3… the others.
+    private var shotScreens: [Int: NSScreen] = [:]
+    /// The display a block is about: its "screen" number when Spark points at another display, else the main look.
+    private func lookedAt(_ n: Any?) -> NSScreen? { (n as? Int).flatMap { shotScreens[$0] } ?? shotScreen ?? panel.screen ?? NSScreen.main }
     private var loaded = false
     private var ready = false
     private var pendingFocus = false
@@ -303,6 +317,24 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var lastGesture: (gesture: PointerGesture, at: Date)?
     /// Hands-free: recording the cursor silently while you talk (no fn), to catch a deliberate circle.
     private var voiceInking = false
+    /// The real things your last gesture meant (a paragraph, a button, a cell), snapped to their exact edges.
+    private var lastPicks: [SnapSelect.Item] = []
+    /// From rough to exact: box what the gesture really covers in place of the hand-drawn ink, and remember it so the
+    /// next look tells Spark exactly what you picked. An underline means the line of text just above it.
+    private func snap(_ g: PointerGesture) {
+        lastPicks = []
+        guard let r = g.region else { return }
+        let centre = CGPoint(x: r.midX, y: r.midY)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(centre) }) ?? NSScreen.main else { return }
+        Task { @MainActor in
+            let items: [SnapSelect.Item]
+            if case .underline = g { items = await Snap.at(CGPoint(x: r.midX, y: r.maxY + 8), on: screen).map { [$0] } ?? [] }
+            else { items = await Snap.within(r, on: screen) }
+            guard !items.isEmpty, self.lastGesture != nil else { return }
+            self.lastPicks = items
+            self.cursorBuddy.showPicks(items.map(\.rect))
+        }
+    }
     private func noteState(_ state: CursorBuddy.State) {
         cursorBuddy.set(state)
         // Hands-free voice: while you talk, a loop you draw round something counts as "this" (no fn needed).
@@ -311,17 +343,17 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         else if state != .listening, voiceInking {
             voiceInking = false
             let g = PointerGesture.classify(cursorBuddy.endInk(keep: true))
-            if case .circle(let r) = g { lastGesture = (g, Date()); cursorBuddy.flash(r); send("shuacrew:gesture", ["kind": g.kind]) }
+            if case .circle(let r) = g { lastGesture = (g, Date()); cursorBuddy.flash(r); snap(g); send("shuacrew:gesture", ["kind": g.kind]) }
         }
     }
     private func fnSignal(_ signal: FnGesture.Signal) {
         // Show, don't just tell: while fn is down, what you draw with the cursor is ink, and a gesture Spark reads.
         switch signal {
-        case .press: voiceInking = false; cursorBuddy.beginInk()
+        case .press: voiceInking = false; lastPicks = []; cursorBuddy.clearPicks(); cursorBuddy.beginInk()
         case .cancel, .tap: _ = cursorBuddy.endInk(keep: false)
         case .holdEnd:
             let g = PointerGesture.classify(cursorBuddy.endInk())
-            if g != .none { lastGesture = (g, Date()); send("shuacrew:gesture", ["kind": g.kind]) }
+            if g != .none { lastGesture = (g, Date()); snap(g); send("shuacrew:gesture", ["kind": g.kind]) }
         default: break
         }
         let kind: String
@@ -505,7 +537,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
-            let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+            let screen = lookedAt(action["screen"]) ?? NSScreen.screens[0]
             switch action["type"] as? String {
             case "click", "type", "key", "scroll":
                 // You see Spark's cursor travel to the spot and land; the real click happens as it lands.
@@ -554,7 +586,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     }
                     break
                 }
-                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in \(SparkHands.target?.localizedName ?? "the app in front")."], to: sender); break }
+                guard let found = SparkPress.find(label) else {
+                    // Not in the app you were using: maybe it's in ShuaCrew's own window (a sidebar link, a button).
+                    Task { @MainActor in
+                        if let done = try? await ShuaWeb.actInMainWindow(["kind": "click", "name": label]) { self.did(["id": id, "ok": true, "message": done], to: sender); return }
+                        self.did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in \(SparkHands.target?.localizedName ?? "the app in front") or anything else on screen."], to: sender)
+                    }
+                    break
+                }
+                // Found in another app on screen (ShuaCrew's own window, a second app): bring it forward to use it.
+                if let owner = SparkPress.lastOwner { MacActions.bringToFront(owner.bundleIdentifier) }
                 let main = NSScreen.screens.first ?? screen
                 let target = NSScreen.screens.first { s in
                     let f = s.frame, y = main.frame.height - found.center.y
@@ -602,6 +643,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 MailBridge.run(action) { [weak self] ok, message, output in
                     Task { @MainActor in self?.did(["id": id, "ok": ok, "message": message, "output": output], to: sender) }
                 }
+            case "quit_app":
+                // Asked to quit, then watched until it's really gone: the answer is what happened, not what was asked.
+                Task { @MainActor [weak self] in let r = await MacActions.quit(action["name"] as? String ?? ""); self?.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
             default:
                 let result = MacActions.perform(action)
                 did(["id": id, "ok": result.ok, "message": result.message], to: sender)
@@ -662,12 +706,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)], to: sender)
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
-                  let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+                  let screen = lookedAt(body["screen"]) else { return }
             pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint())
         case "buddyGuide":
             guideTarget = sender
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
-                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = lookedAt(body["screen"]) else { return }
             watchGuideActivity(true)
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
                           color: body["color"] as? String, from: launchPoint(), waitForClick: body["wait"] as? Bool ?? true,
@@ -687,7 +731,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 try? text.write(to: url, atomically: true, encoding: .utf8)
             }
         case "buddyDraw":
-            guard let shapes = body["shapes"] as? [[String: Any]], let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+            guard let shapes = body["shapes"] as? [[String: Any]], let screen = lookedAt(body["screen"]) else { return }
             pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: launchPoint())
         case "buddySpeaking":
             pointer.speaking = body["on"] as? Bool ?? false
@@ -868,7 +912,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         (target ?? web).evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(name)', { detail: \(json) }))")
     }
 
-    /// One screenshot of the display Spark is on, only when you ask, with Spark itself left out.
+    /// A screenshot of the display you're working on (where your pointer is), only when you ask, with Spark itself left
+    /// out — and, with more than one display, a smaller look at each of the others so Spark sees your whole desk.
     /// The last full-resolution look, for zooming into part of it.
     private var lastFull: CGImage?
     private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
@@ -878,13 +923,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 return
             }
         }
+        let c0 = CACurrentMediaTime(); var stages: [String] = []
+        let stage = { (k: String) in stages.append("\(k)=\(Int((CACurrentMediaTime() - c0) * 1000))") }
+        defer { if ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] != nil { Self.appendSelfTest("CAPTURE " + stages.joined(separator: " ") + "\n") } }
         do {
-            let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+            let all = NSScreen.screens, home = panel.screen ?? NSScreen.main ?? all[0]
+            let order = DisplayLayout.order(frames: all.map(\.frame), pointer: NSEvent.mouseLocation, fallback: all.firstIndex(of: home) ?? 0).map { all[$0] }
+            let screen = order.first ?? home
             let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else {
                 reply(["error": "No display to look at."], to: target); return
             }
+            stage("content")
             let own = Set(ownWindows.map { CGWindowID($0) }), mine = content.windows.filter { own.contains($0.windowID) }
             let filter = SCContentFilter(display: display, excludingWindows: mine)
             // Full Retina resolution for reading text exactly; the model's copy is scaled down afterwards.
@@ -895,7 +946,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Live: the stream's newest frame is already here — no capture wait.
             let full: CGImage
             if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
+            stage("frame")
+            // Three reads that don't depend on each other now run at once: the page's controls (Apple Events to the
+            // browser — up to ~1.5 s measured), the screen's text (OCR ~0.3 s) and the app's controls (accessibility).
+            let webApp = SparkHands.target.flatMap { ShuaWeb.supports($0) ? $0 : nil }
+            let webRead = webApp.map { app in Task { @MainActor in await ShuaWeb.snapshot(of: app, on: screen) } }
+            if webRead != nil { await Task.yield() } // let it send its Apple Event before the main-thread accessibility read
+            // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
+            async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
             var context = ScreenElements.read(on: screen)
+            stage("elements")
             // Where your pointer is and what's under it ("what's this?"), and what you just circled with it.
             let f = screen.frame, m = NSEvent.mouseLocation
             if f.contains(m) {
@@ -910,16 +970,28 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 context["pointer"] = pointer
             }
             if let g = lastGesture, Date().timeIntervalSince(g.at) < 40, let r = g.gesture.region?.intersection(f), !r.isNull, !r.isEmpty { // clipped to the screen
-                context["gesture"] = ["kind": g.gesture.kind, "x": (r.minX - f.minX) / f.width, "y": (f.maxY - r.maxY) / f.height, "w": r.width / f.width, "h": r.height / f.height]
-                lastGesture = nil
+                var gesture: [String: Any] = ["kind": g.gesture.kind, "x": (r.minX - f.minX) / f.width, "y": (f.maxY - r.maxY) / f.height, "w": r.width / f.width, "h": r.height / f.height]
+                // Exactly what it covers (snapped to real edges): centres and sizes as fractions from the top-left.
+                let picked = lastPicks.filter { f.intersects($0.rect) }.map { i -> [String: Any] in
+                    ["name": i.name, "x": (i.rect.midX - f.minX) / f.width, "y": (f.maxY - i.rect.midY) / f.height, "w": i.rect.width / f.width, "h": i.rect.height / f.height]
+                }
+                if !picked.isEmpty { gesture["picked"] = picked }
+                context["gesture"] = gesture
+                lastGesture = nil; lastPicks = []
             }
             // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
-            if let app = SparkHands.target, ShuaWeb.supports(app), let web = await ShuaWeb.snapshot(of: app, on: screen) {
-                context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
-                context["page"] = web.page
+            // Never held up more than 0.7 s: a slow read finishes in the background and serves the next look (15 s).
+            if let app = webApp, let webRead {
+                let fresh = await Self.settle(webRead, within: 0.7)
+                if let fresh { webCache = (app.processIdentifier, CACurrentMediaTime(), fresh) }
+                else { Task { @MainActor [weak self] in if let late = await webRead.value { self?.webCache = (app.processIdentifier, CACurrentMediaTime(), late) } } }
+                let cached = webCache.flatMap { $0.pid == app.processIdentifier && CACurrentMediaTime() - $0.at < 15 ? $0.value : nil }
+                if let web = fresh ?? cached {
+                    context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
+                    context["page"] = web.page
+                }
             }
-            // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
-            async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
+            stage("web")
             // The model points in pixels of the image it sees, so it must see exactly this image: under the API's limits or
             // it's shrunk again server-side and every coordinate drifts. Older models: 1568 px long edge AND ~1.15 MP.
             // Opus/Sonnet 5.5 and newer (`hires`): 2576 px and 4784 visual tokens (28 px tiles) — about 1.5× sharper.
@@ -930,8 +1002,24 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
                 reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
-            shotScreen = screen
-            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running], to: target)
+            // The other displays: small (they're context), numbered from 2, with where each sits — Spark can point there too.
+            var others: [[String: Any]] = [], displays: [[String: Any]] = [], numbered: [Int: NSScreen] = [1: screen]
+            for side in order.dropFirst() {
+                let id = (side.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+                guard let d = content.displays.first(where: { $0.displayID == id }) else { continue }
+                let c = SCStreamConfiguration(), size = DisplayLayout.sideSize(width: Int(Double(d.width) * side.backingScaleFactor), height: Int(Double(d.height) * side.backingScaleFactor))
+                c.width = size.width; c.height = size.height; c.showsCursor = false
+                guard let img = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: d, excludingWindows: mine), configuration: c),
+                      let jpg = NSBitmapImageRep(cgImage: img).representation(using: .jpeg, properties: [.compressionFactor: 0.75]) else { continue }
+                let n = numbered.count + 1
+                numbered[n] = side
+                others.append(["n": n, "data": jpg.base64EncodedString(), "width": img.width, "height": img.height])
+                displays.append(["n": n, "name": side.localizedName, "where": DisplayLayout.relation(of: side.frame, to: screen.frame), "width": img.width, "height": img.height])
+            }
+            if !displays.isEmpty { context["displays"] = displays }
+            stage("sides"); _ = await text; stage("ocr")
+            shotScreen = screen; shotScreens = numbered
+            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
         } catch {
             reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
         }
@@ -982,7 +1070,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 try? await Task.sleep(for: .seconds(4))
                 for q in asks {
                     guard let self, let json = try? JSONSerialization.data(withJSONObject: [q]), let arg = String(data: json, encoding: .utf8) else { return }
-                    _ = try? await self.web.evaluateJavaScript("window.buddy.ask(\(arg)[0])")
+                    _ = try? await self.web.evaluateJavaScript("window.__sparkTiming = true; window.buddy.ask(\(arg)[0])")
                     Self.appendSelfTest("SPARK SELFTEST asked: \(q)\n")
                     try? await Task.sleep(for: .seconds(35))
                 }
@@ -999,6 +1087,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let g = PointerGesture.classify(self.cursorBuddy.endInk())
                 self.lastGesture = g == .none ? nil : (g, Date())
                 Self.appendSelfTest("SPARK SELFTEST gesture=\(g.kind)\n")
+                self.snap(g)
+                try? await Task.sleep(for: .seconds(1.5))
+                Self.appendSelfTest("SPARK SELFTEST snapped=\(self.lastPicks.map { "\($0.name) \(Int($0.rect.width))x\(Int($0.rect.height))" })\n")
                 _ = try? await self.web.evaluateJavaScript("window.buddy.selfTestLook()")
             }
             return
@@ -1130,6 +1221,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         guard let colon = spec.firstIndex(of: ":") else { return }
         let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
         guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("find:") { // where "press <label>" would land: which app, what name, where (spark-selftest.log)
+            let label = String(spec.dropFirst(5))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                Self.appendSelfTest("SPARK SELFTEST visible apps: \(SparkPress.visibleApps().map { "\($0.localizedName ?? "?")(\($0.activationPolicy.rawValue))" })\n")
+                var wl: CFTypeRef?; AXUIElementCopyAttributeValue(AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier), kAXWindowsAttribute as CFString, &wl)
+                let wins = ((wl as? [AXUIElement]) ?? []).map { w -> String in var t: CFTypeRef?, sr: CFTypeRef?; AXUIElementCopyAttributeValue(w, kAXTitleAttribute as CFString, &t); AXUIElementCopyAttributeValue(w, kAXSubroleAttribute as CFString, &sr); return "\((t as? String) ?? "")[\((sr as? String) ?? "")]" }
+                Self.appendSelfTest("SPARK SELFTEST ShuaCrew windows: \(wins)\n")
+                let t0 = Date(), found = SparkPress.find(label), ms = Int(Date().timeIntervalSince(t0) * 1000)
+                Self.appendSelfTest("SPARK SELFTEST find “\(label)” target=\(SparkHands.target?.localizedName ?? "-") → \(found.map { "“\($0.name)” at \(Int($0.center.x)),\(Int($0.center.y)) in \(SparkPress.lastOwner?.localizedName ?? SparkHands.target?.localizedName ?? "?")" } ?? "not in other apps") (\(ms) ms)\n")
+                if found == nil { Task { @MainActor in
+                    let r: String; do { r = try await ShuaWeb.actInMainWindow(["kind": "click", "name": label]) } catch { r = "FAILED: \(error.localizedDescription)" }
+                    Self.appendSelfTest("SPARK SELFTEST ShuaCrew window → \(r)\n")
+                } }
+            }
+            return
+        }
         if spec.hasPrefix("elements:") { // what Spark's screen scan finds in the menu bar, written to spark-selftest.log
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 guard let screen = NSScreen.main else { return }
@@ -1893,6 +2000,17 @@ enum MacActions {
     }
 
     /// "vs code", "VS Code", "Visual Studio Code", "chrome": exact name first, then the closest installed app.
+    /// Quit a running app the polite way (like ⌘Q: it can still ask to save), then check it actually quit.
+    static func quit(_ name: String) async -> (ok: Bool, message: String) {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.localizedName != nil }
+        guard let i = AppMatch.pick(name, running: apps.map { ($0.localizedName!, $0.bundleIdentifier ?? "") }) else { return (false, "\(name) isn't open.") }
+        let app = apps[i], title = app.localizedName ?? name
+        if AppMatch.isProtected(app.bundleIdentifier ?? "") || app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return (false, "I don't quit \(title) — the desktop needs it.") }
+        guard app.terminate() else { return (false, "\(title) wouldn't quit.") }
+        for _ in 0..<40 { if app.isTerminated { return (true, "Quit \(title)") }; try? await Task.sleep(for: .milliseconds(100)) }
+        return (false, "\(title) is still open — it may be asking you to save something.")
+    }
+
     static func findApp(_ query: String) -> URL? {
         let aliases = ["vs code": "Visual Studio Code", "vscode": "Visual Studio Code", "code": "Visual Studio Code", "chrome": "Google Chrome", "settings": "System Settings", "system preferences": "System Settings", "iterm": "iTerm", "xcode": "Xcode"]
         let want = (aliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query).lowercased().replacingOccurrences(of: ".app", with: "")
