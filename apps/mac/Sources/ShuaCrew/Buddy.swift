@@ -303,6 +303,24 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var lastGesture: (gesture: PointerGesture, at: Date)?
     /// Hands-free: recording the cursor silently while you talk (no fn), to catch a deliberate circle.
     private var voiceInking = false
+    /// The real things your last gesture meant (a paragraph, a button, a cell), snapped to their exact edges.
+    private var lastPicks: [SnapSelect.Item] = []
+    /// From rough to exact: box what the gesture really covers in place of the hand-drawn ink, and remember it so the
+    /// next look tells Spark exactly what you picked. An underline means the line of text just above it.
+    private func snap(_ g: PointerGesture) {
+        lastPicks = []
+        guard let r = g.region else { return }
+        let centre = CGPoint(x: r.midX, y: r.midY)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(centre) }) ?? NSScreen.main else { return }
+        Task { @MainActor in
+            let items: [SnapSelect.Item]
+            if case .underline = g { items = await Snap.at(CGPoint(x: r.midX, y: r.maxY + 8), on: screen).map { [$0] } ?? [] }
+            else { items = await Snap.within(r, on: screen) }
+            guard !items.isEmpty, self.lastGesture != nil else { return }
+            self.lastPicks = items
+            self.cursorBuddy.showPicks(items.map(\.rect))
+        }
+    }
     private func noteState(_ state: CursorBuddy.State) {
         cursorBuddy.set(state)
         // Hands-free voice: while you talk, a loop you draw round something counts as "this" (no fn needed).
@@ -311,17 +329,17 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         else if state != .listening, voiceInking {
             voiceInking = false
             let g = PointerGesture.classify(cursorBuddy.endInk(keep: true))
-            if case .circle(let r) = g { lastGesture = (g, Date()); cursorBuddy.flash(r); send("shuacrew:gesture", ["kind": g.kind]) }
+            if case .circle(let r) = g { lastGesture = (g, Date()); cursorBuddy.flash(r); snap(g); send("shuacrew:gesture", ["kind": g.kind]) }
         }
     }
     private func fnSignal(_ signal: FnGesture.Signal) {
         // Show, don't just tell: while fn is down, what you draw with the cursor is ink, and a gesture Spark reads.
         switch signal {
-        case .press: voiceInking = false; cursorBuddy.beginInk()
+        case .press: voiceInking = false; lastPicks = []; cursorBuddy.clearPicks(); cursorBuddy.beginInk()
         case .cancel, .tap: _ = cursorBuddy.endInk(keep: false)
         case .holdEnd:
             let g = PointerGesture.classify(cursorBuddy.endInk())
-            if g != .none { lastGesture = (g, Date()); send("shuacrew:gesture", ["kind": g.kind]) }
+            if g != .none { lastGesture = (g, Date()); snap(g); send("shuacrew:gesture", ["kind": g.kind]) }
         default: break
         }
         let kind: String
@@ -910,8 +928,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 context["pointer"] = pointer
             }
             if let g = lastGesture, Date().timeIntervalSince(g.at) < 40, let r = g.gesture.region?.intersection(f), !r.isNull, !r.isEmpty { // clipped to the screen
-                context["gesture"] = ["kind": g.gesture.kind, "x": (r.minX - f.minX) / f.width, "y": (f.maxY - r.maxY) / f.height, "w": r.width / f.width, "h": r.height / f.height]
-                lastGesture = nil
+                var gesture: [String: Any] = ["kind": g.gesture.kind, "x": (r.minX - f.minX) / f.width, "y": (f.maxY - r.maxY) / f.height, "w": r.width / f.width, "h": r.height / f.height]
+                // Exactly what it covers (snapped to real edges): centres and sizes as fractions from the top-left.
+                let picked = lastPicks.filter { f.intersects($0.rect) }.map { i -> [String: Any] in
+                    ["name": i.name, "x": (i.rect.midX - f.minX) / f.width, "y": (f.maxY - i.rect.midY) / f.height, "w": i.rect.width / f.width, "h": i.rect.height / f.height]
+                }
+                if !picked.isEmpty { gesture["picked"] = picked }
+                context["gesture"] = gesture
+                lastGesture = nil; lastPicks = []
             }
             // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
             if let app = SparkHands.target, ShuaWeb.supports(app), let web = await ShuaWeb.snapshot(of: app, on: screen) {
@@ -999,6 +1023,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let g = PointerGesture.classify(self.cursorBuddy.endInk())
                 self.lastGesture = g == .none ? nil : (g, Date())
                 Self.appendSelfTest("SPARK SELFTEST gesture=\(g.kind)\n")
+                self.snap(g)
+                try? await Task.sleep(for: .seconds(1.5))
+                Self.appendSelfTest("SPARK SELFTEST snapped=\(self.lastPicks.map { "\($0.name) \(Int($0.rect.width))x\(Int($0.rect.height))" })\n")
                 _ = try? await self.web.evaluateJavaScript("window.buddy.selfTestLook()")
             }
             return

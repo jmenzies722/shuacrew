@@ -40,6 +40,8 @@ final class CursorBuddy: NSObject {
     private var inking = false, inked: [CGPoint] = [], injected = false, inkVisible = true
     var isInking: Bool { inking }
     private let ink = CAShapeLayer(), halo = CAShapeLayer() // halo: a soft dark edge under the ink, for white pages
+    /// Exact boxes round what you picked or circled (snapped to real edges), replacing the rough ink.
+    private let picks = CAShapeLayer(), picksHalo = CAShapeLayer()
     private(set) var state: State = .idle
     var color: NSColor = NSColor(calibratedRed: 0.56, green: 0.28, blue: 1, alpha: 1) { didSet { restyle() } }
     var active: Bool { panel != nil }
@@ -109,6 +111,26 @@ final class CursorBuddy: NSObject {
         fade.beginTime = CACurrentMediaTime() + 1.4; fade.duration = 0.5; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
         ink.add(fade, forKey: "fade"); halo.add(fade, forKey: "fade")
     }
+
+    /// Box exactly these (global rects): drawn on, in place of the rough ink, then fading after a while.
+    func showPicks(_ rects: [CGRect], add: Bool = false, hold: CFTimeInterval = 6) {
+        guard let panel, !rects.isEmpty else { return }
+        let path = add ? (picks.path.map { CGMutablePath() .appending($0) } ?? CGMutablePath()) : CGMutablePath()
+        for r in rects {
+            let local = r.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY).insetBy(dx: -5, dy: -4)
+            path.addRoundedRect(in: local, cornerWidth: min(8, local.height / 2), cornerHeight: min(8, local.height / 2))
+        }
+        for l in [ink, halo] { l.removeAllAnimations(); l.opacity = 0 } // the rough stroke gives way to the exact boxes
+        for l in [picks, picksHalo] { l.removeAllAnimations(); l.opacity = 1 }
+        CATransaction.begin(); CATransaction.setDisableActions(true); picks.path = path; picksHalo.path = path; CATransaction.commit()
+        let draw = CABasicAnimation(keyPath: "strokeEnd"); draw.fromValue = add ? 0.6 : 0; draw.toValue = 1; draw.duration = 0.35
+        draw.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        picks.add(draw, forKey: "draw"); picksHalo.add(draw, forKey: "draw")
+        let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 1; fade.toValue = 0
+        fade.beginTime = CACurrentMediaTime() + hold; fade.duration = 0.5; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        picks.add(fade, forKey: "fade"); picksHalo.add(fade, forKey: "fade")
+    }
+    func clearPicks() { for l in [picks, picksHalo] { l.removeAllAnimations(); l.opacity = 0; l.path = nil } }
 
     /// Self-test: points as if drawn with the cursor (global), without touching the real mouse.
     func injectInk(_ points: [CGPoint]) {
@@ -331,7 +353,10 @@ final class CursorBuddy: NSObject {
         ink.shadowRadius = 6; ink.shadowOpacity = 0.9; ink.shadowOffset = .zero
         halo.fillColor = NSColor.clear.cgColor; halo.lineWidth = 7; halo.lineCap = .round; halo.lineJoin = .round
         halo.strokeColor = NSColor.black.withAlphaComponent(0.3).cgColor
-        root.addSublayer(halo); root.addSublayer(ink); root.addSublayer(trail)
+        for (l, w) in [(picksHalo, CGFloat(6)), (picks, CGFloat(2.5))] { l.fillColor = NSColor.clear.cgColor; l.lineWidth = w; l.lineJoin = .round; l.lineCap = .round; l.opacity = 0 }
+        picksHalo.strokeColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        picks.shadowRadius = 5; picks.shadowOpacity = 0.8; picks.shadowOffset = .zero
+        root.addSublayer(halo); root.addSublayer(ink); root.addSublayer(picksHalo); root.addSublayer(picks); root.addSublayer(trail)
         bubble.backgroundColor = NSColor(calibratedRed: 0.07, green: 0.065, blue: 0.09, alpha: 0.95).cgColor
         bubble.cornerRadius = 12; bubble.borderWidth = 1; bubble.opacity = 0
         bubble.shadowColor = NSColor.black.cgColor; bubble.shadowOpacity = 0.35; bubble.shadowRadius = 12; bubble.shadowOffset = CGSize(width: 0, height: -4)
@@ -358,6 +383,7 @@ final class CursorBuddy: NSObject {
         sweep.colors = [ringColor.withAlphaComponent(0).cgColor, ringColor.withAlphaComponent(0.2).cgColor, ringColor.cgColor]
         trail.strokeColor = aura.withAlphaComponent(0.35).cgColor
         ink.strokeColor = color.withAlphaComponent(0.9).cgColor; ink.shadowColor = (light ? aura : color).cgColor
+        picks.strokeColor = (light ? NSColor.white : color).cgColor; picks.shadowColor = (light ? aura : color).cgColor
         bubble.borderColor = aura.withAlphaComponent(0.5).cgColor; bubbleTail.strokeColor = bubble.borderColor
     }
 
@@ -382,4 +408,8 @@ final class CursorBuddy: NSObject {
         let p = NSEvent.mouseLocation
         return NSScreen.screens.first { $0.frame.contains(p) } ?? NSScreen.main
     }
+}
+
+private extension CGMutablePath {
+    func appending(_ other: CGPath) -> CGMutablePath { addPath(other); return self }
 }

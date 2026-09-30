@@ -212,7 +212,7 @@ export function isDesign(question: string) {
 }
 
 /** The frontmost app's real controls, from macOS accessibility: exact names and positions. */
-export interface Pointing { pointer?: { x: number; y: number; name?: string; role?: string }; gesture?: { kind: string; x: number; y: number; w: number; h: number } }
+export interface Pointing { pointer?: { x: number; y: number; name?: string; role?: string }; gesture?: { kind: string; x: number; y: number; w: number; h: number; picked?: Array<{ name: string; x: number; y: number; w: number; h: number }> } }
 export interface ScreenContext extends Pointing { app?: string; window?: string; page?: { url?: string; title?: string }; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
 export function elementsText(ctx: ScreenContext | undefined, max = 120, size?: { width: number; height: number }) {
   if (!ctx?.app && !ctx?.elements?.length) return "";
@@ -247,7 +247,9 @@ export function pointingText(ctx: ScreenContext | undefined, lines: ScreenLine[]
     const inside = (x: number, y: number) => inBox(x, y, g);
     const things = [...els.filter((e) => inside(e.x, e.y)).map((e) => `“${e.name}” (${e.id})`), ...txt.filter((l) => inside(l.x, l.y)).map((l) => `“${l.t.slice(0, 60)}” (${l.id})`)].slice(0, 10);
     const what = g.kind === "underline" ? "UNDERLINED" : g.kind === "circle" ? "CIRCLED" : "SCRIBBLED OVER";
-    out.push(`THEY JUST ${what} (with their cursor, while talking) the area ${at(g.x, g.y)} to ${at(g.x + g.w, g.y + g.h)}${things.length ? ` — inside it: ${things.join(", ")}` : ""}. That area is what "this"/"these" means now: answer about it, point back at it, and zoom there if it's small.`);
+    // Snapped on their Mac to the real things the gesture covers — exact, and already boxed on their screen.
+    const picked = (g.picked ?? []).slice(0, 8).map((i) => `“${i.name.slice(0, 80)}” (centre ${at(i.x, i.y)}, ${Math.round(i.w * (size?.width ?? 1000))}×${Math.round(i.h * (size?.height ?? 1000))})`);
+    out.push(`THEY JUST ${what} (with their cursor, while talking) the area ${at(g.x, g.y)} to ${at(g.x + g.w, g.y + g.h)}${picked.length ? ` — EXACTLY: ${picked.join(", ")} (already boxed on their screen; this is precisely what they mean)` : things.length ? ` — inside it: ${things.join(", ")}` : ""}. That area is what "this"/"these" means now: answer about it, point back at it, and zoom there if it's small.`);
   }
   return out.join("\n");
 }
