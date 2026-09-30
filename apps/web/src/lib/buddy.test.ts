@@ -131,7 +131,7 @@ it("routes each turn to the model it needs", () => {
   expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
   expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });
-import { completedBlocks, deleteQuestion, isDestructive, localSystem, parseNext, pixelsToFractions, progressLine } from "./buddy";
+import { completedBlocks, deleteQuestion, isDestructive, localSystem, parseNext, pixelsToFractions, progressLine, searchTopic } from "./buddy";
 it("reads next moves (2–3 short suggestions) and keeps them out of speech", () => {
   const reply = 'Done: Night Shift is on.\n```next ["Schedule it for sunset", "Make it warmer", "Quiz me on this", "extra"]```';
   expect(parseNext(reply)).toEqual(["Schedule it for sunset", "Make it warmer", "Quiz me on this"]);
@@ -184,7 +184,7 @@ describe("Spark answers at once, without filler", () => {
 describe("progress you'd actually want to hear", () => {
   const turn = (...calls: Array<[string, Record<string, string>]>) => [{ kind: "turn.started" }, ...calls.map(([tool, input]) => ({ kind: "tool.called", body: { tool, input } }))];
   it("says what it's really doing, from this turn's tools", () => {
-    expect(progressLine(turn(["WebSearch", { query: "next spacex launch" }]), 0)).toBe("Going through the results.");
+    expect(progressLine(turn(["WebSearch", { query: "next spacex launch" }]), 0)).toBe("Looking up the next spacex launch.");
     expect(progressLine(turn(["WebSearch", { query: "x" }], ["WebFetch", { url: "https://www.space.com/launches" }]), 0)).toBe("Pulling up space.com.");
     expect(progressLine(turn(["WebFetch", { url: "https://www.space.com/a" }], ["WebFetch", { url: "https://forecast.weather.gov/b" }]), 1)).toBe("Checking weather.gov too.");
   });
@@ -303,4 +303,11 @@ it("a web page's own controls are labelled as such, and letting Shua into pages 
   expect(t).toContain("PAGE: “jmenzies722” https://github.com/jmenzies722");
   expect(t).toContain("#1 Repositories 62 [web link]");
   expect(isDestructive({ type: "system", what: "browser_js" })).toBe(true);
+});
+
+it("says what it's looking up in a few plain words", () => {
+  expect(searchTopic("Philadelphia 76ers schedule 2026")).toBe("the Philadelphia 76ers schedule");
+  expect(searchTopic("XRP price today site:coinmarketcap.com")).toBe("the XRP price");
+  expect(searchTopic("what sports games are on today")).toBe("what sports games are on");
+  expect(searchTopic("latest news")).toBe("that");
 });
