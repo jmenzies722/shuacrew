@@ -45,7 +45,7 @@ import "../alive.css"; // the desktop Spark loads without the app shell: same ac
 import { nativeLiveSpeech } from "../lib/live-speech";
 import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
-import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
+import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, getMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
 import { LiveActivities } from "./spark/LiveActivities";
 import { VisualCard } from "./spark/Visual";
@@ -962,6 +962,15 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // The cursor buddy mirrors Spark: listening while you talk, thinking while it works, speaking while it answers.
   const buddyState = speaking ? "speaking" : fnHeld || phase === "hearing" ? "listening" : busy || working || phase === "transcribing" ? "thinking" : "idle";
   useEffect(() => { post({ type: "buddyState", state: buddyState, color: accentOf(prefs.color) }); }, [buddyState, prefs.color]);
+  // Live level for the buddy (~20×/s, only while you talk or Spark does): its halo moves with your voice, it pulses with Spark's.
+  useEffect(() => {
+    if (buddyState !== "listening" && buddyState !== "speaking") return;
+    const t = setInterval(() => {
+      const v = buddyState === "listening" ? getMicLevel() : Math.min(1, speech.current.level() * 6);
+      post({ type: "buddyLevel", v: Math.round(v * 100) / 100 });
+    }, 50);
+    return () => clearInterval(t);
+  }, [buddyState]);
   const processingText = processing ? (heard || lastHeard) : "";
   useEffect(() => { if (speaking || streamText) setLastHeard(""); }, [speaking, streamText]);
   // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.

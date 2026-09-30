@@ -714,6 +714,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 LiveTranscriber.log(entry)
             default: break
             }
+        case "buddyLevel":
+            cursorBuddy.level(body["v"] as? Double ?? 0)
         case "buddyCaption":
             // The sentence Spark is saying right now: in the bubble beside the orb while it points.
             cursorBuddy.say(String((body["text"] as? String ?? "").prefix(220)))
@@ -974,6 +976,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
             return
         }
+        if spec.hasPrefix("ask:") { // real Spark turns, one after another, as if spoken (separate asks with " || ")
+            let asks = spec.dropFirst(4).components(separatedBy: " || ")
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(4))
+                for q in asks {
+                    guard let self, let json = try? JSONSerialization.data(withJSONObject: [q]), let arg = String(data: json, encoding: .utf8) else { return }
+                    _ = try? await self.web.evaluateJavaScript("window.buddy.ask(\(arg)[0])")
+                    Self.appendSelfTest("SPARK SELFTEST asked: \(q)\n")
+                    try? await Task.sleep(for: .seconds(35))
+                }
+            }
+            return
+        }
         if spec == "gesture:prompt" { // a circle round the right of the menu bar, then a real look: what Spark is told
             Task { @MainActor [weak self] in
                 guard let self, let screen = NSScreen.main else { return }
@@ -1046,7 +1061,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 try? await Task.sleep(for: .seconds(2))
                 for state in [CursorBuddy.State.idle, .listening, .thinking, .speaking] {
                     self.cursorBuddy.set(state)
-                    try? await Task.sleep(for: .milliseconds(600))
+                    // Hold a steady level up to the capture (it fades within 0.3 s of the last one), as a voice would.
+                    for _ in 0..<14 { if state == .listening || state == .speaking { self.cursorBuddy.level(0.7) }; try? await Task.sleep(for: .milliseconds(50)) }
                     let saved = await self.cursorBuddy.snapshot(to: NSHomeDirectory() + "/.shuacrew/selftest-buddy-\(state.rawValue).png")
                     _ = self.cursorBuddy.preview(to: NSHomeDirectory() + "/.shuacrew/selftest-buddy-\(state.rawValue)-contrast.png")
                     Self.appendSelfTest("SPARK SELFTEST buddy state=\(state.rawValue) saved=\(saved) active=\(self.cursorBuddy.active)\n")
