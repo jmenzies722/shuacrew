@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import ScreenCaptureKit
 import ShuaCrewCore
 
 /// Spark beside your pointer, always there and never in the way: a small glowing cursor that trails yours, shows what
@@ -84,6 +85,23 @@ final class CursorBuddy: NSObject {
         return global
     }
 
+    /// Self-test: a 120-pt square around the buddy, captured from the screen with the buddy in it, saved as PNG.
+    func snapshot(to path: String) async -> Bool {
+        guard let panel, let screen = panel.screen else { return false }
+        let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else { return false }
+        let scale = screen.backingScaleFactor, side = 120.0
+        // Buddy centre in display pixels from the top-left.
+        let cx = position.x * scale, cy = (screen.frame.height - position.y) * scale
+        let config = SCStreamConfiguration()
+        config.width = Int(Double(display.width) * scale); config.height = Int(Double(display.height) * scale); config.showsCursor = true
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: config),
+              let crop = image.cropping(to: CGRect(x: cx - side * scale / 2, y: cy - side * scale / 2, width: side * scale, height: side * scale)),
+              let png = NSBitmapImageRep(cgImage: crop).representation(using: .png, properties: [:]) else { return false }
+        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+    }
+
     // MARK: -
 
     @objc private func tick(_ link: CADisplayLink) {
@@ -114,23 +132,46 @@ final class CursorBuddy: NSObject {
 
     private func build(in root: CALayer) {
         body.bounds = CGRect(x: 0, y: 0, width: 30, height: 30)
-        // A small cursor, tip up-left like the real one, leaning -20° so it reads as "a companion", not a second mouse.
-        let a = CGMutablePath()
-        a.move(to: CGPoint(x: 9, y: 24)); a.addLine(to: CGPoint(x: 21, y: 15)); a.addLine(to: CGPoint(x: 15.5, y: 13.8))
-        a.addLine(to: CGPoint(x: 12.4, y: 7.5)); a.closeSubpath()
-        arrow.path = a; arrow.frame = body.bounds
-        arrow.lineWidth = 1.4; arrow.lineJoin = .round; arrow.strokeColor = NSColor.white.withAlphaComponent(0.95).cgColor
-        arrow.shadowRadius = 7; arrow.shadowOpacity = 0.85; arrow.shadowOffset = .zero
-        ring.path = CGPath(ellipseIn: CGRect(x: 1, y: 1, width: 28, height: 28), transform: nil)
+        // An orb, not a second mouse pointer: a small glowing dot in your accent, with a thin dark rim so it shows on a
+        // white page as well as a dark one (a white "mono" accent used to vanish on white). The flying arrow is kept
+        // for the moment it points at something.
+        arrow.path = CGPath(ellipseIn: CGRect(x: 9, y: 9, width: 12, height: 12), transform: nil)
+        arrow.frame = body.bounds
+        arrow.lineWidth = 1.25; arrow.strokeColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        arrow.shadowRadius = 8; arrow.shadowOpacity = 0.9; arrow.shadowOffset = .zero
+        let core = CAShapeLayer() // a small bright centre: reads as "alive"
+        core.path = CGPath(ellipseIn: CGRect(x: 12.5, y: 14, width: 4, height: 4), transform: nil)
+        core.fillColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        ring.path = CGPath(ellipseIn: CGRect(x: 2, y: 2, width: 26, height: 26), transform: nil)
         ring.frame = body.bounds; ring.fillColor = NSColor.clear.cgColor; ring.lineCap = .round; ring.opacity = 0
-        body.addSublayer(ring); body.addSublayer(arrow)
+        ring.shadowColor = NSColor.black.cgColor; ring.shadowOpacity = 0.45; ring.shadowRadius = 1.5; ring.shadowOffset = .zero
+        body.addSublayer(ring); body.addSublayer(arrow); body.addSublayer(core)
         root.addSublayer(body)
         restyle()
     }
 
     private func restyle() {
-        arrow.fillColor = color.cgColor; arrow.shadowColor = color.cgColor
-        ring.strokeColor = color.withAlphaComponent(0.9).cgColor
+        arrow.fillColor = color.cgColor
+        // The glow in the accent — but a white accent glows soft grey-blue so it still reads on white.
+        let light = (color.usingColorSpace(.sRGB)?.brightnessComponent ?? 0.5) > 0.85 && (color.usingColorSpace(.sRGB)?.saturationComponent ?? 0) < 0.2
+        arrow.shadowColor = (light ? NSColor(calibratedRed: 0.55, green: 0.62, blue: 0.8, alpha: 1) : color).cgColor
+        ring.strokeColor = (light ? NSColor(calibratedWhite: 0.55, alpha: 1) : color.withAlphaComponent(0.95)).cgColor // a white ring would vanish on white
+    }
+
+    /// Self-test: the buddy (in its current state) drawn on a white and a dark card, side by side — contrast on both.
+    func preview(to path: String) -> Bool {
+        let scale: CGFloat = 4, w = 120 * scale, h = 60 * scale
+        guard let ctx = CGContext(data: nil, width: Int(w), height: Int(h), bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        ctx.setFillColor(NSColor.white.cgColor); ctx.fill(CGRect(x: 0, y: 0, width: w / 2, height: h))
+        ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 1).cgColor); ctx.fill(CGRect(x: w / 2, y: 0, width: w / 2, height: h))
+        for x in [w / 4, 3 * w / 4] {
+            ctx.saveGState(); ctx.translateBy(x: x - 15 * scale, y: h / 2 - 15 * scale); ctx.scaleBy(x: scale, y: scale)
+            for l in [ring, arrow] { l.render(in: ctx) }
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.85).cgColor); ctx.fillEllipse(in: CGRect(x: 12.5, y: 14, width: 4, height: 4))
+            ctx.restoreGState()
+        }
+        guard let image = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return false }
+        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
     }
 
     private func screenUnderPointer() -> NSScreen? {

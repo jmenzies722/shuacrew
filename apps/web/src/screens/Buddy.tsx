@@ -263,6 +263,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       nook: (inside: boolean) => nookHover.current(inside),
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
       say: (text: string) => { speech.current.unlock(); for (const s of text.split(/(?<=[.!?])\s+/)) speech.current.say(s); },
+      // Self-test (Mac app, SHUACREW_SPARK_SELFTEST=voiceturn:…): recordings through the real voice turn path, one by one.
+      selfTestVoice: async (clips: Array<{ pcm: string; rate: number; name: string }>) => {
+        for (const c of clips) {
+          const bytes = Uint8Array.from(atob(c.pcm), (ch) => ch.charCodeAt(0)), samples = new Float32Array(bytes.buffer);
+          const t0 = performance.now(), r = await mic.current.replay(samples, c.rate);
+          post({ type: "buddySelfTest", ok: !!r.text, message: `voiceturn ${c.name}: source=${r.source} text="${r.text}" turnMs=${Math.round(performance.now() - t0)}` });
+        }
+      },
       notch: (g: { w: number; h: number; real: boolean }) => setNotchGeo((cur) => (cur.w === g.w && cur.h === g.h && cur.real === g.real ? cur : g)),
       // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release". "down" comes the
       // instant fn is pressed (the mic opens then, so your first words are kept); "cancel" = fn was a modifier after all.

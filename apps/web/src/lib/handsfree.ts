@@ -150,6 +150,31 @@ export class HandsFree {
       this.lastCaption = text.trim(); const st = steady(this.steadied, text); this.steadied = st; this.onPartial?.(st.shown);
     };
   }
+  /** Which engine produced the last turn's words ("apple" = the instant on-device final, "whisper" = the fallback). */
+  lastSource: "apple" | "whisper" | "" = "";
+  /**
+   * Self-test: play a recording through the exact turn path the mic uses — frames streamed live to the Mac, its final
+   * trusted only when sure, Whisper otherwise — at real-time pace, and hand back what the turn came out as.
+   */
+  replay(samples: Float32Array, rate: number, timeoutMs = 30_000): Promise<{ text: string; source: string }> {
+    const saved = { ctx: this.ctx, onTurn: this.onTurn, onDropped: this.onDropped, lang: this.lang };
+    const restore = () => { this.ctx = saved.ctx; this.onTurn = saved.onTurn; this.onDropped = saved.onDropped; this.lang = saved.lang; };
+    this.ctx = { sampleRate: rate } as AudioContext; this.lang = "en";
+    return new Promise((resolve) => {
+      const done = (text: string) => { clearTimeout(t); restore(); resolve({ text, source: text ? this.lastSource : "dropped" }); };
+      const t = setTimeout(() => done(""), timeoutMs);
+      this.onTurn = (text) => done(text); this.onDropped = () => done("");
+      this.turn = []; this.turnId++; this.liveBegin();
+      let at = 0;
+      const step = () => {
+        if (at >= samples.length) { void this.finish(true); return; }
+        const f = samples.slice(at, at + 2048); at += 2048;
+        this.turn?.push(f); if (this.liveUsing()) this.live!.push(this.turnId, f);
+        setTimeout(step, (2048 / rate) * 1000);
+      };
+      step();
+    });
+  }
   /** Calibration: the first turns keep both engines' answers so the confidence bar can be checked on a real voice. */
   static calibrating() { try { return Number(localStorage.getItem("shuacrew.voice.calibrated") ?? "0") < 60; } catch { return false; } }
   private static calibrated() { try { localStorage.setItem("shuacrew.voice.calibrated", String(Number(localStorage.getItem("shuacrew.voice.calibrated") ?? "0") + 1)); } catch { /* ignore */ } }
@@ -322,10 +347,10 @@ export class HandsFree {
       const quick = liveTurn >= 0 ? await this.live!.end(liveTurn) : null;
       let result: { text: string; error?: string };
       if (quick && trustLive(quick)) {
-        result = { text: quick.text };
+        result = { text: quick.text }; this.lastSource = "apple";
         if (HandsFree.calibrating()) { HandsFree.calibrated(); void whisper().then((w) => this.live?.verdict({ apple: quick.text, confidence: quick.confidence, whisper: w.text, used: "apple", ms: quick.ms })).catch(() => {}); }
       } else {
-        result = await whisper();
+        result = await whisper(); this.lastSource = "whisper";
         if (quick && HandsFree.calibrating()) { HandsFree.calibrated(); this.live?.verdict({ apple: quick.text, confidence: quick.confidence, whisper: result.text, used: "whisper", ms: quick.ms }); }
       }
       const { text = "", error } = result;
