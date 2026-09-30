@@ -53,7 +53,7 @@ export function NotchCaption({ line, lines = 3 }: { line: CaptionLine | null; li
   const chainRef = useRef<Said[]>([]), timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   useEffect(() => {
-    if (!line) { const t = setTimeout(() => { chainRef.current = []; setChain([]); setShown(0); }, 700); return () => clearTimeout(t); } // after the island tucks away
+    if (!line) { const t = setTimeout(() => { chainRef.current = []; setChain([]); setShown(0); }, 1100); return () => clearTimeout(t); } // after the island tucks away (it lingers 0.9 s)
     const c = chainRef.current, last = c.at(-1), same = last?.key === line.key;
     const start = same ? last.start : performance.now();
     // The same sentence again means its real length just arrived: re-time the words still to come, not start over.

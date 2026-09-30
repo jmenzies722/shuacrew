@@ -15,7 +15,7 @@ import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, Globe, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
@@ -25,8 +25,9 @@ import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
 import { earcon, soundStyle, warmSounds, type Earcon } from "../lib/earcons";
+import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
-import { crewDetail, crewFinished, statuses } from "../lib/crew-voice";
+import { crewAsks, crewDetail, crewFinished, noteAsked, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark } from "../lib/weather";
 import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
@@ -281,6 +282,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (embedded) return;
     (window as unknown as { buddy: unknown }).buddy = { audioRoute: setMicRoute, perform, toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTimeout(() => input.current?.focus(), 80); },
       ask: (text: string) => { speech.current.unlock(); setOpen(true); setTab("chat"); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
+      // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
+      notchAsk: (text: string) => { speech.current.unlock(); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
       say: (text: string) => { speech.current.unlock(); for (const s of text.split(/(?<=[.!?])\s+/)) speech.current.say(s); },
@@ -804,8 +807,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const localNow = !selected.acceptsImages;
       if (look && shooting && (!localNow || aboutScreen(q) || opt.look)) { const { shot, files } = await shooting; if (stale()) return; if (!localNow) atts = files; mark("look"); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
-      const detail = crewDetail(crew.runs, crew.approvals, names);
+      const detail = crewDetail(crew.runs, crew.approvals, names, crew.plays);
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length) + (detail ? `\n${detail}` : "");
+      // Every follow-up carries the crew as it is now: a conversation only got it when it began, so Spark answered
+      // "what's the crew doing?" from an hour ago and couldn't find a session started since (measured live).
+      const crewLive = detail ? `\n\n[crew right now]\n${detail}` : "";
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
       const playingNow = await radioAnswer; setRadio(playingNow); mark("radio");
       const remembered = asksAboutEarlier(q) ? await recall(q) : "";
@@ -840,7 +846,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
-        mark("post"); await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
+        mark("post"); await followSelected(convo.run, withAttachments(withMap((screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q)) + crewLive, atts));
       } else {
         setBrief(null);
         mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
@@ -1056,8 +1062,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (!news.length) return;
     sound(news.some((n) => !n.ok) ? "error" : "done");
     logSense("heard", "Crew update", news.map((n) => n.line).join(" "));
-    if (getBuddyVoice().on) sayOwn(news.map((n) => n.line).join(" "));
+    if (getBuddyVoice().on && sayOwn(news.map((n) => n.line).join(" "))) {
+      const question = news.find((n) => n.questionId);
+      if (question?.questionId) noteAsked(question.line, question.questionId);
+    }
   }, [crew.runs]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The crew needs your OK: Spark says so and offers to answer (a bare "yes" approves it). Only new requests.
+  const approvalsWas = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const before = approvalsWas.current; approvalsWas.current = new Set(Object.keys(crew.approvals));
+    if (!before || !prefsRef.current.proactive) return;
+    const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
+    const ask = crewAsks(before, crew.approvals, crew.runs, names);
+    if (!ask) return;
+    logSense("heard", "Crew needs your OK", ask.line);
+    if (getBuddyVoice().on) { sound("done"); if (sayOwn(ask.line)) noteAsked(ask.line, ask.id); }
+  }, [crew.approvals]); // eslint-disable-line react-hooks/exhaustive-deps
   // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
   // arrives in ~1.2 s, and the notch animation covers the gap. The quiet clock restarts so progress waits its 4 s.
   const newTurn = () => { ownLines.current.clear(); lastSound.current = Date.now(); };
@@ -1076,7 +1096,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }, 400);
     return () => clearInterval(tick);
   }, [busy, working, voiceLive, prefs.conversation, prefs.listen]);
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
+  const islandWanted = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
+  // Fluid, never flickering (measured: it opened for 6–58 ms and snapped shut between a reply's sentences, clipping
+  // the caption mid-animation): open at once, close only after 0.9 s of real quiet; within a reply the height only
+  // grows; and in a gap it keeps showing what it last showed rather than going blank.
+  const islandLive = useLinger(islandWanted, 900);
+  const islandTall = useLinger(islandLive && (hearingNow || streamingNow || speaking), 1500);
+  const lastRow = useRef<ReactNode>(null);
+  const keepRow = (row: ReactNode) => { if (row) { lastRow.current = row; return row; } return islandLive ? lastRow.current : null; };
+  // Self-test instrumentation: every time the island opens, closes or changes height (to count flicker per reply).
+  const islandDropNow = islandLive ? (islandTall ? 78 : 64) : 0;
+  useEffect(() => { if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `island ${islandLive ? "live" : "rest"} drop=${islandDropNow} t=${Math.round(performance.now())} speaking=${+speaking} caption=${+!!caption} streaming=${+streamingNow} voice=${+getBuddyVoice().on} captions=${+prefs.notchCaptions} placement=${prefs.desktopPlacement} chat=${+open} nook=${+islandOpen}`, output: "" }); }, [islandLive, islandDropNow, speaking, !!caption, streamingNow, open, islandOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -1246,7 +1276,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}${fnHeld ? " is-ready" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}${fnHeld ? " is-ready" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <div className="shua-island-ears">
@@ -1262,7 +1292,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{
+        <div className="shua-island-live" aria-hidden={!islandLive}>{keepRow(
           // While you talk: a waveform (default) — live words flicker as the recogniser revises them. The moment you
           // stop, your final sentence shows (shimmering while Spark works) so you can catch a mishearing.
           fnReady && prefs.notchHearing === "words" ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p>
@@ -1272,7 +1302,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
-          : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
+          : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null)}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
           {visual && <VisualCard v={visual} onClose={() => { shownVisual.current = null; setVisual(null); setNook(false); }} />}
           {timers.length > 0 && <ul className="spark-nook-timers" aria-label="Timers">{[...timers].sort((a, b) => remaining(a, now) - remaining(b, now)).map((t) => <li key={t.id} className={t.paused !== undefined ? "is-paused" : ""}>
