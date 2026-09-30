@@ -61,6 +61,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let live = LiveScreen()
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
+    /// Every display in the last look by the number Spark knows it by: 1 = the one with your pointer, 2, 3… the others.
+    private var shotScreens: [Int: NSScreen] = [:]
+    /// The display a block is about: its "screen" number when Spark points at another display, else the main look.
+    private func lookedAt(_ n: Any?) -> NSScreen? { (n as? Int).flatMap { shotScreens[$0] } ?? shotScreen ?? panel.screen ?? NSScreen.main }
     private var loaded = false
     private var ready = false
     private var pendingFocus = false
@@ -523,7 +527,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
-            let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+            let screen = lookedAt(action["screen"]) ?? NSScreen.screens[0]
             switch action["type"] as? String {
             case "click", "type", "key", "scroll":
                 // You see Spark's cursor travel to the spot and land; the real click happens as it lands.
@@ -629,6 +633,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 MailBridge.run(action) { [weak self] ok, message, output in
                     Task { @MainActor in self?.did(["id": id, "ok": ok, "message": message, "output": output], to: sender) }
                 }
+            case "quit_app":
+                // Asked to quit, then watched until it's really gone: the answer is what happened, not what was asked.
+                Task { @MainActor [weak self] in let r = await MacActions.quit(action["name"] as? String ?? ""); self?.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
             default:
                 let result = MacActions.perform(action)
                 did(["id": id, "ok": result.ok, "message": result.message], to: sender)
@@ -689,12 +696,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)], to: sender)
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
-                  let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+                  let screen = lookedAt(body["screen"]) else { return }
             pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint())
         case "buddyGuide":
             guideTarget = sender
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
-                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = lookedAt(body["screen"]) else { return }
             watchGuideActivity(true)
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
                           color: body["color"] as? String, from: launchPoint(), waitForClick: body["wait"] as? Bool ?? true,
@@ -714,7 +721,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 try? text.write(to: url, atomically: true, encoding: .utf8)
             }
         case "buddyDraw":
-            guard let shapes = body["shapes"] as? [[String: Any]], let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
+            guard let shapes = body["shapes"] as? [[String: Any]], let screen = lookedAt(body["screen"]) else { return }
             pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: launchPoint())
         case "buddySpeaking":
             pointer.speaking = body["on"] as? Bool ?? false
@@ -895,7 +902,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         (target ?? web).evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(name)', { detail: \(json) }))")
     }
 
-    /// One screenshot of the display Spark is on, only when you ask, with Spark itself left out.
+    /// A screenshot of the display you're working on (where your pointer is), only when you ask, with Spark itself left
+    /// out — and, with more than one display, a smaller look at each of the others so Spark sees your whole desk.
     /// The last full-resolution look, for zooming into part of it.
     private var lastFull: CGImage?
     private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
@@ -906,7 +914,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         }
         do {
-            let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+            let all = NSScreen.screens, home = panel.screen ?? NSScreen.main ?? all[0]
+            let order = DisplayLayout.order(frames: all.map(\.frame), pointer: NSEvent.mouseLocation, fallback: all.firstIndex(of: home) ?? 0).map { all[$0] }
+            let screen = order.first ?? home
             let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else {
@@ -963,8 +973,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
                 reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
-            shotScreen = screen
-            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running], to: target)
+            // The other displays: small (they're context), numbered from 2, with where each sits — Spark can point there too.
+            var others: [[String: Any]] = [], displays: [[String: Any]] = [], numbered: [Int: NSScreen] = [1: screen]
+            for side in order.dropFirst() {
+                let id = (side.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+                guard let d = content.displays.first(where: { $0.displayID == id }) else { continue }
+                let c = SCStreamConfiguration(), size = DisplayLayout.sideSize(width: Int(Double(d.width) * side.backingScaleFactor), height: Int(Double(d.height) * side.backingScaleFactor))
+                c.width = size.width; c.height = size.height; c.showsCursor = false
+                guard let img = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: d, excludingWindows: mine), configuration: c),
+                      let jpg = NSBitmapImageRep(cgImage: img).representation(using: .jpeg, properties: [.compressionFactor: 0.75]) else { continue }
+                let n = numbered.count + 1
+                numbered[n] = side
+                others.append(["n": n, "data": jpg.base64EncodedString(), "width": img.width, "height": img.height])
+                displays.append(["n": n, "name": side.localizedName, "where": DisplayLayout.relation(of: side.frame, to: screen.frame), "width": img.width, "height": img.height])
+            }
+            if !displays.isEmpty { context["displays"] = displays }
+            shotScreen = screen; shotScreens = numbered
+            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
         } catch {
             reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
         }
@@ -1945,6 +1970,17 @@ enum MacActions {
     }
 
     /// "vs code", "VS Code", "Visual Studio Code", "chrome": exact name first, then the closest installed app.
+    /// Quit a running app the polite way (like ⌘Q: it can still ask to save), then check it actually quit.
+    static func quit(_ name: String) async -> (ok: Bool, message: String) {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.localizedName != nil }
+        guard let i = AppMatch.pick(name, running: apps.map { ($0.localizedName!, $0.bundleIdentifier ?? "") }) else { return (false, "\(name) isn't open.") }
+        let app = apps[i], title = app.localizedName ?? name
+        if AppMatch.isProtected(app.bundleIdentifier ?? "") || app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return (false, "I don't quit \(title) — the desktop needs it.") }
+        guard app.terminate() else { return (false, "\(title) wouldn't quit.") }
+        for _ in 0..<40 { if app.isTerminated { return (true, "Quit \(title)") }; try? await Task.sleep(for: .milliseconds(100)) }
+        return (false, "\(title) is still open — it may be asking you to save something.")
+    }
+
     static func findApp(_ query: String) -> URL? {
         let aliases = ["vs code": "Visual Studio Code", "vscode": "Visual Studio Code", "code": "Visual Studio Code", "chrome": "Google Chrome", "settings": "System Settings", "system preferences": "System Settings", "iterm": "iTerm", "xcode": "Xcode"]
         let want = (aliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query).lowercased().replacingOccurrences(of: ".app", with: "")

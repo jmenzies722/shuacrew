@@ -132,6 +132,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     memory,
     crew,
     mcpServers: withLibrary,
+    sparkMcpServers: (runtime) => { if (runtime !== "claude") return undefined; const s = mcp.forClaude("spark"); return Object.keys(s).length ? s : undefined; },
     toolHint: LIBRARY_HINT,
     plugins: (runtime) => (runtime === "claude" ? skills.plugins() : undefined),
     ventureBrief: (id) => ventures.brief(id),

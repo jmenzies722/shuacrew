@@ -7,7 +7,7 @@ export interface CompanionPreferences {
   celebration: "off" | "subtle" | "expressive"; sound: boolean; volume: number; focus: "hide" | "still";
   /** Spark, made yours: who it is, its colour and size on the desktop, how it talks, how you summon it. */
   character: SparkCharacterId; color: string; eyeColor: string; personality: string; size: "s" | "m" | "l";
-  tone: "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
+  tone: "engineer" | "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
   hotkey: SparkHotkey; guide: "click" | "manual";
   /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
   control: "off" | "ask" | "auto"; conversation: boolean; interrupt: boolean;
@@ -37,6 +37,8 @@ export interface CompanionPreferences {
   /** Speak first: a heads-up before meetings, reminders when due, a catch-up when you come back (on by default). */
   proactive: boolean; headsUpMinutes: 5 | 10 | 15;
   notchCaptions: boolean; notchMedia: boolean; notchControls: boolean; notchGlow: "off" | "accent" | "spectrum"; notchSize: "compact" | "roomy";
+  /** Little sounds when you start and stop talking, and when something's done: placed up at the notch, or plain, or off. */
+  sounds: "spatial" | "simple" | "off";
 }
 export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
 /** Retain saved legacy companions without offering them as new robot choices. */
@@ -55,7 +57,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     character: choice("character", SPARK_CHARACTERS, "spark"), color: validFinish(v.color) ? (v.color === "theme" ? "theme" : v.color.toLowerCase()) : "theme",
     eyeColor: typeof v.eyeColor === "string" && /^#[0-9a-f]{6}$/i.test(v.eyeColor) ? v.eyeColor.toLowerCase() : "#a5f3fc",
     personality: typeof v.personality === "string" ? v.personality.slice(0, 1000) : "",
-    size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["cheerful", "chill", "direct", "coach"], "cheerful"), length: choice("length", ["brief", "detailed"], "brief"),
+    size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["engineer", "cheerful", "chill", "direct", "coach"], "engineer"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
     desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
@@ -65,7 +67,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
-    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
     notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";

@@ -87,6 +87,8 @@ export interface SupervisorOptions {
   memory?: { systemFor(run: string, ask: string, options?: { skills?: boolean }): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
   /** Installed MCP servers, already shaped for that runtime. */
   mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
+  /** The MCP servers you've let Spark use, for its quick turns (Claude only). */
+  sparkMcpServers?: (runtime: string) => Record<string, unknown> | undefined;
   /** Told to every fresh conversation (what ShuaCrew's own tools are for). */
   toolHint?: string;
   /** Claude Code plugins for a runtime (ShuaCrew's installed skills). */
@@ -373,7 +375,7 @@ export class Supervisor {
       disableNativeAgents: lean || spec.labels.includes("crew-room"),
       // A resumed conversation already has its lessons; only a fresh one is told.
       system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
-      mcpServers: lean ? undefined : this.options.mcpServers?.(runtime.id, runId),
+      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
     this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort: spec.effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });

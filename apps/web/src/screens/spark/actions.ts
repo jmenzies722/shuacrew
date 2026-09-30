@@ -2,7 +2,8 @@
  * Every action Spark takes: settings it changes on itself, work it starts, and Mac actions (checked again by the app).
  * The panel plugs in the hooks that need it (asking before a command runs, sending results back to Spark).
  */
-import { api, launchRun } from "../../lib/api";
+import { api, cancelRun, decideApproval, launchRun } from "../../lib/api";
+import { crewRef } from "../../lib/crew-voice";
 import { logAction } from "../../lib/spark-log";
 import { radioCommand } from "../../lib/radio";
 import { PANES, paneURL } from "../../lib/settings-panes";
@@ -123,6 +124,10 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
   if (a.type === "note") { const n = localStorage.getItem("shuacrew.widgets.note") ?? ""; saveNote(n ? `${n}\n${a.text}` : a.text); return Promise.resolve({ ok: true, message: "Added to your note" }); }
+  // Running the crew by voice: refs from CREW NOW → the real approval or session.
+  if (a.type === "crew_decide") return decideApproval(crewRef(a.ref), a.allow, { comment: "by voice, through Spark" }).then(() => ({ ok: true, message: a.allow ? "Approved" : "Declined" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_stop") return cancelRun(crewRef(a.ref)).then(() => ({ ok: true, message: "Stopped" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_open") { post({ type: "buddyOpen", path: `/sessions/${crewRef(a.ref)}` }); return Promise.resolve({ ok: true, message: "Opened it" }); }
   // A hand-off is a mission: an end-to-end brief, and Spark stays with it until it's finished (see lib/missions).
   if (a.type === "crew") {
     const persist = getCompanion().persist;

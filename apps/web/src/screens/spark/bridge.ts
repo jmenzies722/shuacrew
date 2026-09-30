@@ -97,22 +97,26 @@ export function webAct(kind: "locate" | "click" | "type", text: string, value?: 
   return api<WebHit>("/api/web/act", { body: { kind, text, ...(value !== undefined ? { value } : {}) } }).then((r) => (r.found ? r : null), () => null);
 }
 /** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
-let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number; width?: number; height?: number } | null = null;
+let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number; width?: number; height?: number; others?: Array<{ n: number; width: number; height: number }> } | null = null;
 /** Opus/Sonnet 5.5 and newer see screenshots up to 2576 px (older ones 1568): send them the sharper look. */
 export const seesHiRes = (model?: string) => !!model && /(opus|sonnet)-5-5|fable|mythos|-[6-9]-/.test(model);
 let hiRes = false;
 export const setHiRes = (on: boolean) => { hiRes = on; };
-export function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
+/** Every image of a look: the main display's first, then each other display's (the model is told which is which). */
+export type Shot = { file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext; others: Array<{ n: number; file: File; width: number; height: number }> };
+export const shotFiles = (s: Shot) => [s.file, ...s.others.map((o) => o.file)];
+const jpeg = (data: string, name: string) => new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, { type: "image/jpeg" });
+export function capture(): Promise<Shot> {
   return new Promise((resolve, reject) => {
     if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
     const t = setTimeout(() => { window.removeEventListener("shuacrew:capture", on as EventListener); reject(new Error("Screenshot timed out.")); }, 15_000);
-    const on = (e: CustomEvent<{ data?: string; width?: number; height?: number; text?: ScreenLine[]; context?: ScreenContext; error?: string }>) => {
+    const on = (e: CustomEvent<{ data?: string; width?: number; height?: number; text?: ScreenLine[]; context?: ScreenContext; error?: string; others?: Array<{ n: number; data: string; width: number; height: number }> }>) => {
       clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
       const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
       logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
-      lastScreen = { text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined, width: d.width, height: d.height };
-      const bytes = Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0));
-      resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
+      const others = (d.others ?? []).filter((o) => o.data && o.width && o.height).map((o) => ({ n: o.n, width: o.width, height: o.height, file: jpeg(o.data, `screen-${o.n}.jpg`) }));
+      lastScreen = { text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined, width: d.width, height: d.height, others: others.map(({ n, width, height }) => ({ n, width, height })) };
+      resolve({ file: jpeg(d.data, "screen.jpg"), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context, others });
     };
     window.addEventListener("shuacrew:capture", on as EventListener);
     post({ type: "buddyCapture", hires: hiRes });
@@ -138,4 +142,4 @@ export function zoomShot(r: { x: number; y: number; w: number; h: number }): Pro
 /** The last screen Spark looked at (text lines, controls, proportions), for snapping highlights onto the real thing. */
 export const screenFacts = () => lastScreen;
 /** The pixel size of the screenshot Spark last sent the model: its answers' pixel coordinates are in this space. */
-export const screenSize = () => (lastScreen?.width && lastScreen.height ? { width: lastScreen.width, height: lastScreen.height } : null);
+export const screenSize = () => (lastScreen?.width && lastScreen.height ? { width: lastScreen.width, height: lastScreen.height, ...(lastScreen.others?.length ? { others: lastScreen.others } : {}) } : null);

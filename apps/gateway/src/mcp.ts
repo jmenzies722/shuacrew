@@ -20,6 +20,8 @@ export interface McpServer {
   url?: string;
   auth: "none" | "oauth";
   signedIn: boolean;
+  /** Spark may use it too (off by default: every server's tools load up front and slow Spark's first word a little). */
+  spark?: boolean;
   brand?: ReturnType<typeof resolveMcpBrand>;
 }
 
@@ -101,11 +103,19 @@ export class Mcp {
     return [...fold(this.store.read(0)).values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(tokens[s.id]?.access), brand: resolveMcpBrand({ name: s.name, url: s.url, packageId: mcpPackage(s.command, s.args) }) }));
   }
 
-  /** What Claude should be given. Headers carry the bearer; callers must not log this. */
-  forClaude(): Record<string, { command: string; args: string[] } | { type: "http"; url: string; headers?: Record<string, string> }> {
+  /** Let Spark use a server's tools (or stop). */
+  setSpark(id: string, on: boolean): McpServer {
+    if (!fold(this.store.read(0)).has(id)) throw new Error("no such server");
+    this.store.append("mcp.spark", { id, on });
+    return this.list().find((s) => s.id === id)!;
+  }
+
+  /** What Claude should be given (only the servers you've let Spark use, for `spark`). Headers carry the bearer; callers must not log this. */
+  forClaude(only: "spark" | "all" = "all"): Record<string, { command: string; args: string[] } | { type: "http"; url: string; headers?: Record<string, string> }> {
     const tokens = this.tokens();
     const out: Record<string, { command: string; args: string[] } | { type: "http"; url: string; headers?: Record<string, string> }> = {};
     for (const server of fold(this.store.read(0)).values()) {
+      if (only === "spark" && !server.spark) continue;
       if (server.command) out[server.name] = { command: server.command, args: server.args };
       else if (server.url) {
         const access = tokens[server.id]?.access;
@@ -338,6 +348,7 @@ function fold(events: Iterable<AnyEvent>): Map<string, Omit<McpServer, "signedIn
       servers.set(event.body.id, { id: event.body.id, name: event.body.name, command: event.body.command, args: event.body.args, url: event.body.url, auth: event.body.auth });
     }
     if (event.kind === "mcp.removed") servers.delete(event.body.id);
+    if (event.kind === "mcp.spark") { const s = servers.get(event.body.id); if (s) servers.set(s.id, { ...s, spark: event.body.on }); }
   }
   return servers;
 }

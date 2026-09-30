@@ -65,6 +65,14 @@ export function VisualCard({ v, onClose }: { v: Visual; onClose?: () => void }) 
         <ul>{v.pros.map((p, k) => <li key={k} style={stagger(k)}><Check size={13} />{p}</li>)}</ul>
         <ul>{v.cons.map((c, k) => <li key={k} style={stagger(k + v.pros.length)}><X size={13} />{c}</li>)}</ul></div>}
       {v.type === "countdown" && <Countdown v={v} />}
+      {v.type === "math" && <ol className="spk-v-math">{v.steps.map((st, k) => <li key={k} style={stagger(k)}><b>{st.expr}</b>{st.note && <small>{st.note}</small>}</li>)}
+        {v.answer && <li className="is-answer" style={stagger(v.steps.length)}><span>=</span><b>{v.answer}</b></li>}</ol>}
+      {v.type === "code" && <div className="spk-v-code">
+        <pre>{v.code.split("\n").map((line, k) => <span key={k} className={v.focus.length ? (v.focus.includes(k + 1) ? "is-focus" : "is-dim") : ""} style={stagger(k)}><i>{k + 1}</i>{line || " "}</span>)}</pre>
+        {(v.lang || v.note) && <em>{v.lang && <code>{v.lang}</code>}{v.note}</em>}</div>}
+      {v.type === "table" && <table className="spk-v-table"><thead><tr>{v.columns.map((c, k) => <th key={k}>{c}</th>)}</tr></thead>
+        <tbody>{v.rows.map((r, k) => <tr key={k} className={v.best === k ? "is-best" : ""} style={stagger(k)}>{r.map((c, j) => j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j}>{c}</td>)}</tr>)}</tbody></table>}
+      {v.type === "quiz" && <Quiz v={v} />}
     </figure>
   );
 }
@@ -141,5 +149,19 @@ function Countdown({ v }: { v: Extract<Visual, { type: "countdown" }> }) {
   return <div className="spk-v-countdown" role="timer" aria-live="off">
     {parts.length ? <ol>{parts.map((p, k) => <li key={p.unit} style={stagger(k)}><b>{p.value}</b><small>{p.unit}</small></li>)}</ol> : <b className="is-now">Happening now</b>}
     <em>{v.sub ? `${when} · ${v.sub}` : when}</em>
+  </div>;
+}
+
+/** Check you got it: tap an answer; right lights up, a wrong pick shows the right one and why. */
+function Quiz({ v }: { v: Extract<Visual, { type: "quiz" }> }) {
+  const [picked, setPicked] = useState<number | null>(null);
+  const done = picked !== null;
+  return <div className="spk-v-quiz">
+    <p>{v.question}</p>
+    <ol>{v.options.map((o, k) => <li key={k} style={stagger(k)}>
+      <button type="button" disabled={done} onClick={() => setPicked(k)}
+        className={done ? (k === v.answer ? "is-right" : k === picked ? "is-wrong" : "is-dim") : ""}>
+        <i>{String.fromCharCode(65 + k)}</i>{o}{done && k === v.answer && <Check size={13} />}{done && k === picked && k !== v.answer && <X size={13} />}</button></li>)}</ol>
+    {done && <em className={picked === v.answer ? "is-right" : ""}>{picked === v.answer ? "Right. " : "Not quite. "}{v.why}</em>}
   </div>;
 }

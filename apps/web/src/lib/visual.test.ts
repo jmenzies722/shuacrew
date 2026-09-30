@@ -56,3 +56,15 @@ it("counts down in days, hours, minutes when it's far off, and to the second und
   expect(countdownParts(900)).toEqual([{ value: 0, unit: "s" }]);
   expect(countdownParts(0)).toEqual([]); expect(countdownParts(-5000)).toEqual([]);
 });
+
+it("reads engineer-first teaching cards and drops malformed ones", () => {
+  expect(parseVisual('{"type":"math","title":"Solve","steps":[{"expr":"x² − 5x + 6 = 0"},{"expr":"(x − 2)(x − 3) = 0","note":"factor"}],"answer":"x = 2, 3"}'))
+    .toEqual({ type: "math", title: "Solve", steps: [{ expr: "x² − 5x + 6 = 0" }, { expr: "(x − 2)(x − 3) = 0", note: "factor" }], answer: "x = 2, 3" });
+  expect(parseVisual('{"type":"math","title":"x","steps":[]}')).toBeNull();
+  expect(parseVisual('{"type":"code","title":"BS","lang":"ts","code":"a\\nb\\nc","focus":[2,9,0,"x"]}')).toEqual({ type: "code", title: "BS", lang: "ts", code: "a\nb\nc", focus: [2] });
+  expect(parseVisual(`{"type":"code","title":"long","code":${JSON.stringify(Array(30).fill("x").join("\n"))}}`)).toBeNull(); // too long for a card
+  expect(parseVisual('{"type":"table","title":"T","columns":["","A","B"],"rows":[["Scale","vertical",1],["bad row"]],"best":0}'))
+    .toEqual({ type: "table", title: "T", columns: ["", "A", "B"], rows: [["Scale", "vertical", "1"]], best: 0 });
+  expect(parseVisual('{"type":"quiz","title":"Q","question":"2+2?","options":["4","5"],"answer":0,"why":"arithmetic"}')).toMatchObject({ type: "quiz", answer: 0 });
+  expect(parseVisual('{"type":"quiz","title":"Q","question":"2+2?","options":["4","5"],"answer":7}')).toBeNull();
+});
