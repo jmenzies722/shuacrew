@@ -936,6 +936,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Working on what you said: after you stop talking and before Spark's first word. It used to look frozen (the bars sat
   // at their floor and your words vanished), easy to take for "it didn't hear me".
   const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold") || fnSent) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
+  // The cursor buddy mirrors Spark: listening while you talk, thinking while it works, speaking while it answers.
+  const buddyState = speaking ? "speaking" : fnHeld || phase === "hearing" ? "listening" : busy || working || phase === "transcribing" ? "thinking" : "idle";
+  useEffect(() => { post({ type: "buddyState", state: buddyState, color: accentOf(prefs.color) }); }, [buddyState, prefs.color]);
   const processingText = processing ? (heard || lastHeard) : "";
   useEffect(() => { if (speaking || streamText) setLastHeard(""); }, [speaking, streamText]);
   // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.

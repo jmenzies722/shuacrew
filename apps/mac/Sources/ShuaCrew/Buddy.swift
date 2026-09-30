@@ -49,7 +49,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }()
     private lazy var memory: ScreenMemoryRecorder = {
         let m = ScreenMemoryRecorder(base: gateway.base)
-        m.excluding = { [weak self] in self.map { [$0.panel.windowNumber] } ?? [] }
+        m.excluding = { [weak self] in self?.ownWindows ?? [] }
         return m
     }()
     private let panel: BuddyPanel
@@ -164,12 +164,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             startFnKey()
         }
         panel.orderFrontRegardless()
+        updateCursorBuddy()
     }
 
     func setEnabled(_ on: Bool) {
         guard on != Self.enabled || on != panel.isVisible else { return }
         Self.enabled = on
-        if on { start() } else { panel.orderOut(nil); pointer.hide() }
+        if on { start() } else { panel.orderOut(nil); pointer.hide(); cursorBuddy.stop() }
     }
 
     /// ⌃⌥Space: Spark opens with the question box focused, whatever app you're in.
@@ -184,6 +185,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     private var guiding = false
     private func raise() { panel.orderFrontRegardless() }
+
+    // MARK: the cursor buddy (notch mode)
+    /// In notch mode Spark's home is the notch; beside your pointer rides a tiny native buddy (CursorBuddy) that shows
+    /// what Spark is doing and launches to whatever it points at. The Spark window itself never chases the cursor.
+    private let cursorBuddy = CursorBuddy()
+    private func updateCursorBuddy() {
+        if following && docked { cursorBuddy.start() } else { cursorBuddy.stop() }
+    }
+    /// Where a pointing flight starts: from the buddy beside your pointer when it's there, else from Spark.
+    private func launchPoint() -> NSPoint { cursorBuddy.launch() ?? sparkCenter }
+    /// Spark's own windows, which its screenshots always leave out.
+    private var ownWindows: [Int] { [panel.windowNumber] + (cursorBuddy.windowNumber.map { [$0] } ?? []) }
 
     // MARK: follow my cursor (Clicky-style)
     /// Collapsed, Spark rides beside the pointer. Clicks pass through it while it follows; it pauses to walk
@@ -416,6 +429,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let placement = body["desktopPlacement"] as? String, ["free", "notch"].contains(placement) {
                 docked = placement == "notch"
                 UserDefaults.standard.set(docked, forKey: "buddyNotchDock")
+                updateCursorBuddy()
             }
             let open = body["open"] as? Bool ?? false, peek = body["peek"] as? Bool ?? false
             if let key = body["size"] as? String, let size = Self.sizes[key] {
@@ -450,7 +464,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // You see Spark's cursor travel to the spot and land; the real click happens as it lands.
                 var lead = 0.1
                 if action["type"] as? String == "click", let x = action["x"] as? Double, let y = action["y"] as? Double {
-                    lead = pointer.show(on: screen, x: x, y: y, label: action["label"] as? String ?? "", color: action["color"] as? String, from: sparkCenter) + 0.12
+                    lead = pointer.show(on: screen, x: x, y: y, label: action["label"] as? String ?? "", color: action["color"] as? String, from: launchPoint()) + 0.12
                 }
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in
@@ -500,7 +514,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     return f.contains(CGPoint(x: found.center.x, y: y))
                 } ?? main
                 let f = target.frame, appKitY = main.frame.height - found.center.y
-                let lead = pointer.show(on: target, x: (found.center.x - f.minX) / f.width, y: (f.maxY - appKitY) / f.height, label: found.name, color: action["color"] as? String, from: sparkCenter) + 0.12
+                let lead = pointer.show(on: target, x: (found.center.x - f.minX) / f.width, y: (f.maxY - appKitY) / f.height, label: found.name, color: action["color"] as? String, from: launchPoint()) + 0.12
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + lead) { [weak self] in
                     let ok = SparkPress.press(found)
@@ -567,7 +581,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
             live.onStop = { [weak self] error in self?.send("shuacrew:live", ["on": false, "error": error ?? ""], to: sender) }
             Task {
-                do { try await live.start(on: screen, excluding: [panel.windowNumber]); send("shuacrew:live", ["on": true], to: sender) }
+                do { try await live.start(on: screen, excluding: ownWindows); send("shuacrew:live", ["on": true], to: sender) }
                 catch { send("shuacrew:live", ["on": false, "error": "Couldn't start watching: \(error.localizedDescription)"], to: sender) }
             }
         case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
@@ -599,14 +613,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
                   let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
-            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: sparkCenter)
+            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint())
         case "buddyGuide":
             guideTarget = sender
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
                   [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
             watchGuideActivity(true)
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
-                          color: body["color"] as? String, from: sparkCenter, waitForClick: body["wait"] as? Bool ?? true,
+                          color: body["color"] as? String, from: launchPoint(), waitForClick: body["wait"] as? Bool ?? true,
                           shape: body["shape"] as? String, exact: body["exact"] as? Bool ?? false)
             // The cursor flies first; then Spark walks over to stand beside the step.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.walk(beside: x, y, w, h, on: screen) }
@@ -624,9 +638,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyDraw":
             guard let shapes = body["shapes"] as? [[String: Any]], let screen = shotScreen ?? panel.screen ?? NSScreen.main else { return }
-            pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: sparkCenter)
+            pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: launchPoint())
         case "buddySpeaking":
             pointer.speaking = body["on"] as? Bool ?? false
+        case "buddyState":
+            // What Spark is doing, shown by the buddy beside your pointer (listening / thinking / speaking / idle).
+            if let c = body["color"] as? String { cursorBuddy.color = PointerOverlay.color(c) }
+            cursorBuddy.set(CursorBuddy.State(rawValue: body["state"] as? String ?? "") ?? .idle)
         case "buddyGuideStop":
             pointer.hide()
             walkHome()
@@ -664,7 +682,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyFollow":
             following = body["on"] as? Bool ?? true
             UserDefaults.standard.set(following, forKey: "buddyFollowCursor")
-            updateFollow()
+            updateFollow(); updateCursorBuddy()
         case "buddyWake":
             if let names = body["names"] as? [String] { wake.names = Array(Set(["spark"] + names.map { $0.lowercased() }.filter { !$0.isEmpty })) }
             let reply = { [weak self] (error: String?) in
@@ -789,7 +807,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else {
                 reply(["error": "No display to look at."], to: target); return
             }
-            let mine = content.windows.filter { $0.windowID == CGWindowID(panel.windowNumber) }
+            let own = Set(ownWindows.map { CGWindowID($0) }), mine = content.windows.filter { own.contains($0.windowID) }
             let filter = SCContentFilter(display: display, excludingWindows: mine)
             // Full Retina resolution for reading text exactly; the model's copy is scaled down afterwards.
             let config = SCStreamConfiguration()
