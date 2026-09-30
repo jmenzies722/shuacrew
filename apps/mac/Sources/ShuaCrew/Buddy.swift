@@ -197,6 +197,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private func updateCursorBuddy() {
         if following && docked { cursorBuddy.start() } else { cursorBuddy.stop() }
     }
+    static func appendSelfTest(_ line: String) {
+        let path = NSHomeDirectory() + "/.shuacrew/spark-selftest.log"
+        if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() } else { try? line.write(toFile: path, atomically: true, encoding: .utf8) }
+    }
     /// Where a pointing flight starts: from the buddy beside your pointer when it's there, else from Spark.
     private func launchPoint() -> NSPoint { cursorBuddy.launch() ?? sparkCenter }
     /// Spark's own windows, which its screenshots always leave out.
@@ -734,7 +738,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }
         case "buddySelfTest":
             let line = "SPARK SELFTEST ok=\(body["ok"] as? Bool ?? false) message=\(body["message"] as? String ?? "")\n\(body["output"] as? String ?? "")\n"
-            try? line.write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
+            Self.appendSelfTest(line)
         case "notify":
             guard let title = body["title"] as? String else { return }
             NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
@@ -892,6 +896,34 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
+            }
+            return
+        }
+        if spec.hasPrefix("voiceturn:") { // recordings through the page's real voice turn path (streamed live → sure? → else Whisper)
+            let clips: [[String: Any]] = spec.dropFirst(10).split(separator: ",").compactMap { raw in
+                let path = String(raw)
+                guard let file = try? AVAudioFile(forReading: URL(fileURLWithPath: path)),
+                      let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)), (try? file.read(into: buf)) != nil,
+                      let floats = buf.floatChannelData?[0] else { return nil }
+                let data = Data(bytes: floats, count: Int(buf.frameLength) * 4)
+                return ["pcm": data.base64EncodedString(), "rate": file.processingFormat.sampleRate, "name": (path as NSString).lastPathComponent]
+            }
+            guard let json = try? JSONSerialization.data(withJSONObject: clips), let arg = String(data: json, encoding: .utf8) else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
+            return
+        }
+        if spec == "buddy:shot" { // the cursor buddy in each state, captured (with the buddy in it) to ~/.shuacrew/selftest-buddy-<state>.png
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(2))
+                for state in [CursorBuddy.State.idle, .listening, .thinking, .speaking] {
+                    self.cursorBuddy.set(state)
+                    try? await Task.sleep(for: .milliseconds(600))
+                    let saved = await self.cursorBuddy.snapshot(to: NSHomeDirectory() + "/.shuacrew/selftest-buddy-\(state.rawValue).png")
+                    _ = self.cursorBuddy.preview(to: NSHomeDirectory() + "/.shuacrew/selftest-buddy-\(state.rawValue)-contrast.png")
+                    Self.appendSelfTest("SPARK SELFTEST buddy state=\(state.rawValue) saved=\(saved) active=\(self.cursorBuddy.active)\n")
+                }
+                self.cursorBuddy.set(.idle)
             }
             return
         }
