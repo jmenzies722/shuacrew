@@ -18,6 +18,11 @@ final class CursorBuddy: NSObject {
     private var link: CADisplayLink?
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
+    /// Pointing: the orb itself flies the drawing tour (it's the pen), then stays on the mark while Spark talks
+    /// about it — a speech bubble beside it — and comes home when Spark is done or you move the mouse away.
+    private var tour: (plan: CursorMotion.PenTour, start: CFTimeInterval, mouse: CGPoint)?
+    private var tourDone: CFTimeInterval = 0
+    private let bubble = CALayer(), bubbleText = CATextLayer()
     /// While you hold fn to talk, what you draw with your cursor (global points) and the glowing ink showing it.
     private var inking = false, inked: [CGPoint] = [], injected = false, inkVisible = true
     var isInking: Bool { inking }
@@ -119,6 +124,49 @@ final class CursorBuddy: NSObject {
         return keep ? inked : []
     }
 
+    /// Where the orb is now (global), where a pointing flight starts.
+    var globalPosition: NSPoint? { guard let panel, placed else { return nil }; return NSPoint(x: panel.frame.minX + position.x, y: panel.frame.minY + position.y) }
+
+    /// Take the pen for a drawing tour (global coordinates, on the CACurrentMediaTime clock). False if it can't —
+    /// e.g. the marks are on another display — and the overlay draws its own tip instead.
+    func take(_ plan: CursorMotion.PenTour, start: CFTimeInterval) -> Bool {
+        guard let panel, placed, panel.frame.contains(plan.end) else { return false }
+        tour = (plan, start, NSEvent.mouseLocation); tourDone = 0; awayUntil = 0
+        CATransaction.begin(); CATransaction.setDisableActions(true); body.opacity = 1; CATransaction.commit()
+        return true
+    }
+
+    /// What Spark is saying about what it's pointing at, in a bubble beside the orb (only while pointing).
+    func say(_ text: String) {
+        guard tour != nil, let panel else { return }
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { hideBubble(); return }
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium), maxW: CGFloat = 250
+        let str = NSAttributedString(string: clean, attributes: [.font: font, .foregroundColor: NSColor.white])
+        let size = str.boundingRect(with: CGSize(width: maxW, height: 400), options: [.usesLineFragmentOrigin, .usesFontLeading]).integral.size
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        bubbleText.string = str; bubbleText.frame = CGRect(x: 12, y: 8, width: size.width, height: size.height)
+        bubble.bounds = CGRect(x: 0, y: 0, width: size.width + 24, height: size.height + 16)
+        placeBubble(in: panel)
+        CATransaction.commit()
+        if bubble.opacity < 1 {
+            bubble.opacity = 1
+            let pop = CASpringAnimation(keyPath: "transform.scale"); pop.fromValue = 0.6; pop.toValue = 1; pop.damping = 12; pop.duration = pop.settlingDuration
+            bubble.add(pop, forKey: "pop")
+        }
+    }
+    private func placeBubble(in panel: NSPanel) {
+        let w = bubble.bounds.width, h = bubble.bounds.height, W = panel.frame.width, H = panel.frame.height
+        var x = position.x + 20 + w / 2, y = position.y + 22 + h / 2 // up and to the right of the orb
+        if x + w / 2 > W - 8 { x = position.x - 20 - w / 2 }
+        if y + h / 2 > H - 8 { y = position.y - 22 - h / 2 }
+        bubble.position = CGPoint(x: x, y: y)
+    }
+    private func hideBubble() {
+        guard bubble.opacity > 0 else { return }
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.25); bubble.opacity = 0; CATransaction.commit()
+    }
+
     /// Spark is about to point somewhere: the buddy launches from where it is (the flying arrow takes over from here)
     /// and slips back in beside your pointer once it has landed. Returns its position in global coordinates.
     func launch(for seconds: CFTimeInterval = 1.2) -> NSPoint? {
@@ -162,6 +210,21 @@ final class CursorBuddy: NSObject {
                 CATransaction.begin(); CATransaction.setDisableActions(true); ink.path = path; halo.path = path; CATransaction.commit()
             }
         }
+        if let t = tour {
+            let g = t.plan.at(now - t.start)
+            position = CGPoint(x: g.point.x - panel.frame.minX, y: g.point.y - panel.frame.minY)
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            body.position = position; body.setAffineTransform(CGAffineTransform(scaleX: g.scale, y: g.scale))
+            if bubble.opacity > 0 { placeBubble(in: panel) }
+            CATransaction.commit()
+            if g.done {
+                if tourDone == 0 { tourDone = now }
+                // Home when you move away, when Spark has finished talking about it, or after a while regardless.
+                let movedAway = hypot(cursor.x - t.mouse.x, cursor.y - t.mouse.y) > 100
+                if movedAway || (state != .speaking && now - tourDone > 1.2) || now - tourDone > 12 { tour = nil; hideBubble() }
+            }
+            return
+        }
         // Follow the pointer onto another display at once.
         if !panel.frame.contains(cursor), let screen = screenUnderPointer() {
             panel.setFrame(screen.frame, display: false); panel.contentView?.frame = CGRect(origin: .zero, size: screen.frame.size); placed = false
@@ -204,13 +267,20 @@ final class CursorBuddy: NSObject {
         halo.fillColor = NSColor.clear.cgColor; halo.lineWidth = 7; halo.lineCap = .round; halo.lineJoin = .round
         halo.strokeColor = NSColor.black.withAlphaComponent(0.3).cgColor
         root.addSublayer(halo); root.addSublayer(ink)
+        bubble.backgroundColor = NSColor(calibratedRed: 0.08, green: 0.07, blue: 0.1, alpha: 0.94).cgColor
+        bubble.cornerRadius = 12; bubble.borderWidth = 1; bubble.opacity = 0
+        bubble.shadowColor = NSColor.black.cgColor; bubble.shadowOpacity = 0.35; bubble.shadowRadius = 10; bubble.shadowOffset = CGSize(width: 0, height: -3)
+        bubbleText.isWrapped = true; bubbleText.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        bubble.addSublayer(bubbleText)
         root.addSublayer(body)
+        root.addSublayer(bubble)
         restyle()
     }
 
     private func restyle() {
         arrow.fillColor = color.cgColor
         ink.strokeColor = color.withAlphaComponent(0.9).cgColor; ink.shadowColor = color.cgColor
+        bubble.borderColor = color.withAlphaComponent(0.55).cgColor
         // The glow in the accent — but a white accent glows soft grey-blue so it still reads on white.
         let light = (color.usingColorSpace(.sRGB)?.brightnessComponent ?? 0.5) > 0.85 && (color.usingColorSpace(.sRGB)?.saturationComponent ?? 0) < 0.2
         arrow.shadowColor = (light ? NSColor(calibratedRed: 0.55, green: 0.62, blue: 0.8, alpha: 1) : color).cgColor

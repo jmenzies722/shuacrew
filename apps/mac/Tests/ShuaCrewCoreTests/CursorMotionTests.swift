@@ -49,4 +49,23 @@ import Testing
         #expect(plan[1].trace == 0.95)                   // a big one: capped, never sluggish
         #expect(CursorMotion.penPlan(from: nil, strokes: [(CGPoint(x: 5, y: 5), 100)])[0].fly == 0) // no start: draw in place
     }
+
+    @Test func thePenTourFliesThenFollowsTheMarkToItsEnd() {
+        let line: [CGPoint] = [CGPoint(x: 500, y: 100), CGPoint(x: 700, y: 100)] // an underline, 200 pt
+        let plan = CursorMotion.penPlan(from: .zero, strokes: [(line[0], 200)])
+        let tour = CursorMotion.PenTour(from: .zero, strokes: [line], plan: plan)
+        #expect(tour.at(0).point == .zero)
+        let mid = tour.at(plan[0].flyAt + plan[0].fly / 2)
+        #expect(mid.scale > 1.25 && mid.point.y > 100)                     // mid-flight: bigger, arcing up and over
+        let halfway = tour.at(plan[0].traceAt + plan[0].trace / 2).point  // half the line drawn → half-way along it
+        #expect(abs(halfway.x - 600) < 0.5 && abs(halfway.y - 100) < 0.5)
+        let end = tour.at(tour.duration + 0.1)
+        #expect(end.done && end.point == CGPoint(x: 700, y: 100))
+    }
+
+    @Test func flatteningACircleKeepsItsShape() {
+        let pts = CursorMotion.flatten(CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 100, height: 100), transform: nil))
+        #expect(pts.count > 20)
+        #expect(pts.allSatisfy { abs(hypot($0.x - 50, $0.y - 50) - 50) < 1 })
+    }
 }
