@@ -310,7 +310,8 @@ export class HandsFree {
   /** Send what you said once you've really finished: nothing still transcribing and you're not mid-sentence again. */
   private deliver() {
     if (this.inflight || this.turn || !this.pending.length) return;
-    const text = this.pending.join(" "); this.pending = [];
+    // The same words twice in a row (a re-press that re-sent them) are said once.
+    const text = this.pending.filter((t, i, all) => i === 0 || t.toLowerCase() !== all[i - 1]!.toLowerCase()).join(" "); this.pending = [];
     this.onTurn?.(text);
   }
 

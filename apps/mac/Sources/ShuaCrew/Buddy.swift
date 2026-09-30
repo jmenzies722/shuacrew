@@ -75,6 +75,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     init(gateway: Gateway) {
+        SparkHands.watchApps() // know the app you're working in before the notch ever takes the keyboard
         self.gateway = gateway
         let config = WKWebViewConfiguration()
         config.userContentController.addUserScript(WKUserScript(
@@ -454,8 +455,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in
                     guard let self else { return }
-                    let r = SparkHands.act(action, screen: screen)
-                    self.did(["id": id, "ok": r.ok, "message": r.message], to: sender)
+                    let run = { let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+                    // Typing in a web page goes onto the field itself (exact, never doubled); the keyboard is the fallback.
+                    if action["type"] as? String == "type", let app = SparkHands.target, ShuaWeb.supports(app), let text = action["text"] as? String {
+                        let submit = text.hasSuffix("\n"), value = submit ? String(text.dropLast()) : text
+                        Task { @MainActor in
+                            do { self.did(["id": id, "ok": true, "message": try await ShuaWeb.type(value, into: action["label"] as? String ?? "", submit: submit, in: app)], to: sender) }
+                            catch ShuaWeb.Failure.javascriptOff(let name) { let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message + ". (Typed with the keyboard: turn on browser_js so I can type into \(name) pages exactly.)"], to: sender) }
+                            catch { SparkHands.focusTarget(run) }
+                        }
+                        return
+                    }
+                    // Typing and keys land in the key window: hand the keyboard back to your app first if the notch has it.
+                    if ["type", "key"].contains(action["type"] as? String ?? "") { SparkHands.focusTarget(run) } else { run() }
                 }
             case "run":
                 // The page has already checked this command against ShuaCrew's policy (and asked you if needed).
@@ -470,7 +482,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // Find it by name, fly the cursor there, then press it as the cursor lands.
                 guard SparkHands.trusted else { SparkHands.askForAccess(); did(["id": id, "ok": false, "message": "Spark needs Accessibility access: System Settings → Privacy & Security → Accessibility → ShuaCrew."], to: sender); break }
                 let label = action["label"] as? String ?? ""
-                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in the app in front."], to: sender); break }
+                // In a web page: press the page's own element by name (macOS can't see inside the page).
+                if let app = SparkHands.target, ShuaWeb.supports(app), !label.isEmpty {
+                    Task { @MainActor in
+                        do { let did = try await ShuaWeb.click(label, in: app); self.did(["id": id, "ok": true, "message": did], to: sender); return }
+                        catch ShuaWeb.Failure.javascriptOff(let name) { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": ShuaWeb.Failure.javascriptOff(name).localizedDescription], to: sender); return } }
+                        catch { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": error.localizedDescription], to: sender); return } }
+                        guard let found = SparkPress.find(label) else { return }
+                        _ = SparkPress.press(found); self.did(["id": id, "ok": true, "message": "Pressed “\(found.name)”"], to: sender)
+                    }
+                    break
+                }
+                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in \(SparkHands.target?.localizedName ?? "the app in front")."], to: sender); break }
                 let main = NSScreen.screens.first ?? screen
                 let target = NSScreen.screens.first { s in
                     let f = s.frame, y = main.frame.height - found.center.y
@@ -495,12 +518,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // A System Settings page, straight to it. Only genuine System Settings links are opened.
                 let link = action["url"] as? String ?? ""
                 if link.range(of: #"^x-apple\.systempreferences:com\.apple\.[A-Za-z0-9.\-]+(\?Privacy_[A-Za-z]+)?$"#, options: .regularExpression) != nil, let url = URL(string: link) {
-                    NSWorkspace.shared.open(url); did(["id": id, "ok": true, "message": "Opened"], to: sender)
+                    MacActions.open(url); did(["id": id, "ok": true, "message": "Opened"], to: sender)
                 } else { did(["id": id, "ok": false, "message": "That isn't a System Settings page."], to: sender) }
             case "mac" where (action["op"] as? String ?? "").hasPrefix("music_"):
                 // What's playing / your playlists: on the music queue (one AppleScript at a time, never the main thread).
                 let op = action["op"] as? String ?? ""
                 SparkHands.musicQueue.async { let r = SparkHands.musicInfo(op); Task { @MainActor [weak self] in self?.did(["id": id, "ok": r.ok, "message": r.message, "output": r.output], to: sender) } }
+            case "mac" where action["op"] as? String == "chess":
+                // The board on the page + Stockfish on this Mac → the move and its exact squares (fair play enforced).
+                let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+                Task { @MainActor in let r = await ShuaChess.best(on: screen); self.did(["id": id, "ok": r.ok, "message": r.message, "output": r.output ?? ""], to: sender) }
             case "mac":
                 // Your files, calendar, reminders, notes, contacts and this Mac's state (see MacKnowledge): off the main thread.
                 MacKnowledge.run(action) { [weak self] ok, message, output in
@@ -546,7 +573,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
             if let sender { teaching.handle(body, to: sender) }
         case "buddyCapture":
-            Task { await capture(to: sender) }
+            let hires = body["hires"] as? Bool ?? false
+            Task { await capture(to: sender, hires: hires) }
+        case "buddyZoom":
+            // A region of the last look at full resolution: tiny labels, icons and squares read exactly before a click.
+            guard let full = lastFull, let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double, w > 0, h > 0 else { send("shuacrew:zoom", ["error": "Take a look at the screen first."], to: sender); break }
+            let W = Double(full.width), H = Double(full.height)
+            let rect = CGRect(x: max(0, x * W), y: max(0, y * H), width: min(W, w * W), height: min(H, h * H)).integral.intersection(CGRect(x: 0, y: 0, width: W, height: H))
+            guard let crop = full.cropping(to: rect), let small = ScreenText.scaled(crop, longest: 1400) ?? Optional(crop),
+                  let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { send("shuacrew:zoom", ["error": "Couldn't zoom there."], to: sender); break }
+            send("shuacrew:zoom", ["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height], to: sender)
         case "buddyGlance":
             // Proactive help: a quiet look at the live frame's TEXT only (no image leaves the Mac), so Spark can notice when
             // you're stuck. Only while you've turned on live watching, never on password managers or ShuaCrew itself.
@@ -737,7 +773,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     /// One screenshot of the display Spark is on, only when you ask, with Spark itself left out.
-    private func capture(to target: WKWebView? = nil) async {
+    /// The last full-resolution look, for zooming into part of it.
+    private var lastFull: CGImage?
+    private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
         if !ScreenAccess.granted() {
             guard ScreenAccess.request() else {
                 reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true], to: target)
@@ -761,13 +799,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Live: the stream's newest frame is already here — no capture wait.
             let full: CGImage
             if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
-            let context = ScreenElements.read(on: screen)
+            var context = ScreenElements.read(on: screen)
+            // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
+            if let app = SparkHands.target, ShuaWeb.supports(app), let web = await ShuaWeb.snapshot(of: app, on: screen) {
+                context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
+                context["page"] = web.page
+            }
             // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
             async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
-            // The model points in pixels of the image it sees, so it must see exactly this image: under both of the API's
-            // limits (1568 px long edge AND ~1.15 MP), or it's shrunk again server-side and every coordinate drifts.
-            let area = sqrt(1_150_000 / Double(full.width * full.height)), long = Double(max(full.width, full.height))
-            guard let small = ScreenText.scaled(full, longest: Int(min(1568, long * min(1, area)).rounded(.down))),
+            // The model points in pixels of the image it sees, so it must see exactly this image: under the API's limits or
+            // it's shrunk again server-side and every coordinate drifts. Older models: 1568 px long edge AND ~1.15 MP.
+            // Opus/Sonnet 5.5 and newer (`hires`): 2576 px and 4784 visual tokens (28 px tiles) — about 1.5× sharper.
+            lastFull = full
+            let long = Double(max(full.width, full.height))
+            let fit = hires ? min(2576 / long, sqrt(4600 * 784 / Double(full.width * full.height))) : min(1568 / long, sqrt(1_150_000 / Double(full.width * full.height)))
+            guard let small = ScreenText.scaled(full, longest: Int((long * min(1, fit)).rounded(.down))),
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
                 reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
@@ -837,6 +883,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         guard let colon = spec.firstIndex(of: ":") else { return }
         let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
         guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("elements:") { // what Spark's screen scan finds in the menu bar, written to spark-selftest.log
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                guard let screen = NSScreen.main else { return }
+                let els = (ScreenElements.read(on: screen)["elements"] as? [[String: Any]] ?? []).filter { $0["role"] as? String == "menuextra" }
+                let lines = els.map { "\($0["name"] ?? "?") @ x=\($0["x"] ?? "?") y=\($0["y"] ?? "?") w=\($0["w"] ?? "?")" }.joined(separator: "\n")
+                try? (lines + "\n").write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
+            }
+            return
+        }
         if spec.hasPrefix("marks:") { // every mark in Spark's visual language at once, to check the overlay
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDraw', color: '#a78bfa', shapes: [{ shape: 'spotlight', x: 0.3, y: 0.3, w: 0.2, h: 0.12, label: 'look here' }, { shape: 'highlight', x: 0.7, y: 0.2, w: 0.16, h: 0.03 }, { shape: 'underline', x: 0.7, y: 0.28, w: 0.16, h: 0.03, label: 'typo' }, { shape: 'step', n: 1, x: 0.15, y: 0.62, label: 'Open settings' }, { shape: 'step', n: 2, x: 0.3, y: 0.7, label: 'Pick a size' }, { shape: 'path', points: [[0.5, 0.55], [0.6, 0.75], [0.8, 0.6]], label: 'data flows here' }, { shape: 'card', x: 0.8, y: 0.42, title: 'Why this matters', body: 'This total feeds the invoice, so a wrong cell here bills the client wrong.', items: ['Check row 14', 'Re-run the sum'] }, { shape: 'check', x: 0.55, y: 0.9, label: 'correct' }, { shape: 'cross', x: 0.65, y: 0.9, label: 'wrong' }] })")
@@ -1464,11 +1519,12 @@ enum MacActions {
         switch action["type"] as? String {
         case "open_app":
             guard let name = action["name"] as? String, let url = findApp(name) else { return (false, "Couldn't find an app called \((action["name"] as? String) ?? "that").") }
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            let config = NSWorkspace.OpenConfiguration(); config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { app, _ in Task { @MainActor in bringToFront(app?.bundleIdentifier ?? Bundle(url: url)?.bundleIdentifier) } }
             return (true, "Opened \(url.deletingPathExtension().lastPathComponent)")
         case "open_url":
             guard let s = action["url"] as? String, let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return (false, "Only web links can be opened.") }
-            NSWorkspace.shared.open(url)
+            open(url)
             return (true, "Opened \(url.host ?? "the link")")
         case "open_path":
             guard let raw = action["path"] as? String else { return (false, "No path.") }
@@ -1478,11 +1534,39 @@ enum MacActions {
             let sealed = ["\(home)/Nectar-Work", "\(home)/Developer/work"]
             guard path.hasPrefix(home + "/"), !sealed.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) else { return (false, "Spark only opens things in your home folder.") }
             guard FileManager.default.fileExists(atPath: path) else { return (false, "\(raw) doesn't exist.") }
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            open(URL(fileURLWithPath: path))
             return (true, "Opened \((path as NSString).lastPathComponent)")
         default:
             return (false, "Spark can't do that.")
         }
+    }
+
+    /// Open a link, file or folder in its app and bring that app to the front.
+    static func open(_ url: URL) {
+        let handler = NSWorkspace.shared.urlForApplication(toOpen: url).flatMap { Bundle(url: $0)?.bundleIdentifier }
+        let config = NSWorkspace.OpenConfiguration(); config.activates = true
+        NSWorkspace.shared.open(url, configuration: config) { app, _ in Task { @MainActor in bringToFront(app?.bundleIdentifier ?? handler) } }
+    }
+
+    /// Since macOS 14, activation is cooperative: whatever Spark opened while you were talking to it from another app
+    /// (fn, the notch) came up BEHIND that app — "BBC's still behind the terminal". So ask twice: as ShuaCrew, and
+    /// through accessibility (frontmost + raise its window, as window managers do), until it really is in front.
+    static func bringToFront(_ bundleID: String?, tries: Int = 8) {
+        guard let bundleID, let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else {
+            if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { bringToFront(bundleID, tries: tries - 1) } }
+            return
+        }
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier { return }
+        app.activate(from: .current, options: [.activateAllWindows])
+        if AXIsProcessTrusted() {
+            let el = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetAttributeValue(el, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+            var w: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXMainWindowAttribute as CFString, &w) == .success || AXUIElementCopyAttributeValue(el, kAXFocusedWindowAttribute as CFString, &w) == .success, let w {
+                AXUIElementPerformAction(w as! AXUIElement, kAXRaiseAction as CFString)
+            }
+        }
+        if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { bringToFront(bundleID, tries: tries - 1) } }
     }
 
     /// "vs code", "VS Code", "Visual Studio Code", "chrome": exact name first, then the closest installed app.

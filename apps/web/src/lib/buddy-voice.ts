@@ -156,6 +156,14 @@ export class SpeechQueue {
       setTimeout(() => { for (const s of playing) { try { s.stop(); } catch { /* already ended */ } s.disconnect(); } if (this.master) { this.master.gain.cancelScheduledValues(0); this.master.gain.value = 1; } }, 70);
     } else if (this.master) this.master.gain.value = 1; // the next reply starts at full voice
   }
+  /** Still talking, or has more queued to say. */
+  get busy() { return this.speaking || this.lines.length > 0; }
+  /** Run `then` once Spark has finished what it's saying (so a follow-up turn never cuts its own sentence off). */
+  whenQuiet(then: () => void, maxMs = 30_000) {
+    const until = Date.now() + maxMs;
+    const check = () => (this.busy && Date.now() < until ? setTimeout(check, 150) : then());
+    check();
+  }
   /** Browsers only let a page start audio after a click or key; call this from one. */
   unlock() { this.ctx(); }
 }

@@ -46,6 +46,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>NSContactsUsageDescription</key><string>So Spark knows who you mean ("email Sam", "what's Mia's number"). Looked up on this Mac only, never sent anywhere.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Only for the "Hey Spark" wake word, and only if you turn it on. Recognised on this Mac; nothing is sent anywhere.</string>
   <key>NSMicrophoneUsageDescription</key><string>So you can talk to your crew instead of typing. Speech is transcribed on this Mac.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>Only so Spark can turn Bluetooth on or off when you ask.</string>
   <key>NSScreenCaptureUsageDescription</key><string>Spark looks at the display it's on only when you ask with the eye on. One screenshot, never recorded, never in the background.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>

@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { LocalRuntime, splitSystem } from "./local.js";
 
 /** A fake Ollama: /api/tags lists models, /api/chat streams NDJSON and records what it was sent. */
@@ -52,4 +52,16 @@ it("rebuilds a forgotten conversation from the instruction block instead of answ
   const { http, sent } = fakeOllama(["llama3.2:3b"], ["ok"]);
   await collect(new LocalRuntime({ fetch: http }).start({ id: "r", ask: "<spark-system>\nYou are Spark.\n</spark-system>\nand then?", cwd: "/", resume: "local-gone-after-restart" }, ctx));
   expect(sent[0]!.messages[0]).toEqual({ role: "system", content: "You are Spark." });
+});
+
+import { duckResults, pageText } from "./local.js";
+describe("the local model's web lookups", () => {
+  it("reads DuckDuckGo's results, unwrapping its redirect links and skipping ads", () => {
+    const html = `<a rel="nofollow" class="result__a" href="https://duckduckgo.com/y.js?ad=1">Ad</a><a class="result__snippet">buy</a>
+      <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fnodejs.org%2Fen%2Fdownload&amp;rut=x">Download <b>Node.js</b></a> <a class="result__snippet" href="#">Get Node.js&#39;s latest &amp; LTS</a>`;
+    expect(duckResults(html)).toEqual([{ title: "Download Node.js", url: "https://nodejs.org/en/download", snippet: "Get Node.js's latest & LTS" }]);
+  });
+  it("turns a page into plain text", () => {
+    expect(pageText("<html><head><title>x</title></head><body><script>bad()</script><h1>Score</h1><p>Lakers 110 &ndash; <b>Celtics</b>&nbsp;104</p></body></html>")).toBe("Score\nLakers 110 &ndash; Celtics 104");
+  });
 });

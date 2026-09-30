@@ -231,6 +231,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// `ShuaCrew --bluetooth 0|1|?`: a short-lived helper for Bluetooth power. macOS has no public switch; the private
+// IOBluetooth one can abort the process on some systems, so it runs here — a crash takes only this helper down.
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--bluetooth" {
+    guard let lib = dlopen("/System/Library/Frameworks/IOBluetooth.framework/IOBluetooth", RTLD_LAZY),
+          let get = dlsym(lib, "IOBluetoothPreferenceGetControllerPowerState"), let set = dlsym(lib, "IOBluetoothPreferenceSetControllerPowerState") else { exit(3) }
+    let state = unsafeBitCast(get, to: (@convention(c) () -> Int32).self)
+    if CommandLine.arguments[2] != "?" { unsafeBitCast(set, to: (@convention(c) (Int32) -> Void).self)(CommandLine.arguments[2] == "1" ? 1 : 0); usleep(600_000) }
+    print(state()); exit(0)
+}
+
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     let delegate = AppDelegate()

@@ -83,8 +83,10 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
     sparkHooks.onRanOutput?.(a.command, r.ok, r.output ?? "");
     return { ok: r.ok, message: r.message };
   })();
-  if (a.type === "open_settings") {
-    // The exact page of System Settings, by its direct link (the Mac app opens only System Settings links).
+  if (a.type === "open_settings" && !("url" in a)) {
+    // The exact page of System Settings, by its direct link (the Mac app opens only System Settings links). With the
+    // link added it goes on to the Mac below — without that check this branch called itself forever and Settings
+    // never opened ("stilll not launching settings").
     const pane = PANES.find((p) => p.key === a.pane);
     if (!pane) return Promise.resolve({ ok: false, message: "I don't know that Settings page" });
     return performNow({ ...a, url: paneURL(pane) } as Action).then((r) => ({ ...r, message: r.ok ? `Opened ${pane.name}` : r.message }));

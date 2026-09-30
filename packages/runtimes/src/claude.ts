@@ -26,8 +26,13 @@ const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
  * once kept web search blocked while Spark was told it could search). Read is for attached images.
  */
 const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Use Read to look at attached images. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching.";
-/** Claude Code defers loading tools until the model searches for them: a whole extra round trip (~2 s) before every web search. */
-const LEAN_ENV = { ENABLE_TOOL_SEARCH: "false" };
+/**
+ * Spark's quick turns see only their three tools. Tool search off (it cost a round trip before every web search) —
+ * which also means every tool present loads up front, so nothing of your own Claude setup comes along: your claude.ai
+ * connectors (Vercel, Gmail…) once answered "what's today's date?" with a Vercel docs search, stalled and died.
+ */
+const LEAN_ENV = { ENABLE_TOOL_SEARCH: "false", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
+const LEAN_ISOLATION = { settingSources: [], strictMcpConfig: true, mcpServers: {} };
 const LEAN_TOOLS = {
   allowedTools: ["Read", "WebSearch", "WebFetch"],
   disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"],
@@ -302,7 +307,7 @@ export class ClaudeRuntime implements Runtime {
         enableFileCheckpointing: !run.lean,
         // Spark's quick turns load none of your personal Claude Code setup (output styles, hooks, CLAUDE.md, plugins):
         // faster to start, and Spark sounds like Spark rather than like a coding session.
-        ...(run.lean ? { settingSources: [] } : {}),
+        ...(run.lean ? LEAN_ISOLATION : {}),
         pathToClaudeCodeExecutable: this.executable,
         // Claude Code's own system prompt, with ShuaCrew's lessons and context appended — or, for a lean
         // conversational turn, a short one of its own (the ask carries the persona and context).
@@ -310,7 +315,7 @@ export class ClaudeRuntime implements Runtime {
         ...(run.lean ? LEAN_TOOLS : {}),
         agents: run.agents,
         ...(run.lean ? {} : { disallowedTools: run.disableNativeAgents ? ["Agent", "Task"] : undefined }),
-        mcpServers: run.mcpServers,
+        ...(run.lean ? {} : { mcpServers: run.mcpServers }),
         ...(run.plugins?.length ? { plugins: run.plugins } : {}),
         canUseTool: async (tool: string, input: Record<string, unknown>, options: { agentID?: string }) => {
           const answer = await ctx.approve(tool, input, { subagent: options?.agentID });
@@ -445,6 +450,7 @@ export class ClaudeRuntime implements Runtime {
         pathToClaudeCodeExecutable: this.executable,
         systemPrompt: LEAN_SYSTEM,
         ...LEAN_TOOLS,
+        ...LEAN_ISOLATION,
         // Approvals go to whichever turn is running now.
         canUseTool: async (tool: string, input: Record<string, unknown>) => {
           const answer = await session.ctx.approve(tool, input, {});

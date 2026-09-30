@@ -98,6 +98,10 @@ export function webAct(kind: "locate" | "click" | "type", text: string, value?: 
 }
 /** The last screen Spark looked at: its exact text lines and controls, for snapping highlights onto the real thing. */
 let lastScreen: { text: ScreenLine[]; context?: ScreenContext; aspect?: number; width?: number; height?: number } | null = null;
+/** Opus/Sonnet 5.5 and newer see screenshots up to 2576 px (older ones 1568): send them the sharper look. */
+export const seesHiRes = (model?: string) => !!model && /(opus|sonnet)-5-5|fable|mythos|-[6-9]-/.test(model);
+let hiRes = false;
+export const setHiRes = (on: boolean) => { hiRes = on; };
 export function capture(): Promise<{ file: File; width: number; height: number; text: ScreenLine[]; context?: ScreenContext }> {
   return new Promise((resolve, reject) => {
     if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
@@ -111,7 +115,22 @@ export function capture(): Promise<{ file: File; width: number; height: number; 
       resolve({ file: new File([bytes], "screen.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context });
     };
     window.addEventListener("shuacrew:capture", on as EventListener);
-    post({ type: "buddyCapture" });
+    post({ type: "buddyCapture", hires: hiRes });
+  });
+}
+
+/** A region of the last look (fractions) at full resolution, for reading small things exactly. */
+export function zoomShot(r: { x: number; y: number; w: number; h: number }): Promise<{ file: File; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    if (!native()) { reject(new Error("Zoom works in the ShuaCrew Mac app.")); return; }
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:zoom", on as EventListener); reject(new Error("Zoom timed out.")); }, 8_000);
+    const on = (e: CustomEvent<{ data?: string; width?: number; height?: number; error?: string }>) => {
+      clearTimeout(t); window.removeEventListener("shuacrew:zoom", on as EventListener);
+      const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't zoom.")); return; }
+      resolve({ file: new File([Uint8Array.from(atob(d.data), (c) => c.charCodeAt(0))], "zoom.jpg", { type: "image/jpeg" }), width: d.width ?? 0, height: d.height ?? 0 });
+    };
+    window.addEventListener("shuacrew:zoom", on as EventListener);
+    post({ type: "buddyZoom", ...r });
   });
 }
 

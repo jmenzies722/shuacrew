@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actFollowUp, buddyPrompt, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
+import { actFollowUp, buddyPrompt, parseActs, parseZoom, elementsText, followThroughAsk, needsFollowThrough, needsScreen, restingReply, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
   const reply = 'Click Save.\n```point {"x": 0.82, "y": 0.07, "label": "Save button"}```';
@@ -66,7 +66,7 @@ it("reads music/system/shortcut actions and act steps safely", () => {
   expect(speakable('Clicking.\n```act {"type":"click","x":0.1,"y":0.1}```')).toBe("Clicking.");
   expect(buddyPrompt("send the email", { width: 10, height: 10 }, { name: "Spark", tone: "direct", length: "brief", control: "auto" })).toContain("COMPUTER CONTROL");
   expect(buddyPrompt("send the email", null, { name: "Spark", tone: "direct", length: "brief", control: "off" })).not.toContain("COMPUTER CONTROL");
-  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("Next single step");
+  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("Next step as one act block");
 });
 it("lets you customize Spark by chatting, safely", () => {
   expect(parseActions('```do {"type":"settings","changes":{"name":"Nova","character":"kit","color":"purple","speed":1.2,"tone":"direct","talks":true,"control":"auto","bogus":1}}```'))
@@ -260,4 +260,47 @@ describe("Spark's visual language", () => {
   it("drops malformed marks instead of drawing garbage", () => {
     expect(parseDraw('```draw [{"shape":"path","points":[[0.1,0.1]]},{"shape":"card","x":0.5,"y":0.5},{"shape":"laser"}]```')).toEqual([]);
   });
+});
+
+it("a compound ask carries on after the first step opens something (real asks from the event log)", () => {
+  expect(needsFollowThrough("Can you open a long web article, underline the sentence that answers the headline?", "Opening Safari to a news article — I'll underline the answer once it loads.")).toBe(true);
+  expect(needsFollowThrough("Can you open Finder and highlight the file I changed most recently?", "Opening Finder now, sorted by date.")).toBe(true);
+  expect(needsFollowThrough("Can you open any settings page and walk me through everything on this screen?", "Opening System Settings to the general page now.")).toBe(true);
+  expect(needsFollowThrough("what's the weather in Austin", "Opening the forecast.")).toBe(true);
+  // Just opening is the whole job.
+  expect(needsFollowThrough("open Notes", "Opening Notes.")).toBe(false);
+  expect(needsFollowThrough("Can you open Finder?", "Opening Finder.")).toBe(false);
+  expect(needsFollowThrough("launch Visual Studio Code", "Launching it.")).toBe(false);
+  // The carry-on turn itself never triggers another one.
+  expect(needsFollowThrough(followThroughAsk("https://www.bbc.com/news", "open an article").split("\n\n[screen]")[0]!, "Underlining it.")).toBe(false);
+  expect(followThroughAsk("https://www.bbc.com/news", "underline the answer")).toContain("do the REST");
+});
+
+it("the notch keeps the whole answer (not two sentences), minus blocks and markdown", () => {
+  const reply = "People usually watch a few things. **Price** crossing a moving average. RSI out of oversold. A volume spike. Still not advice, see [Investopedia](https://x.y).\n\n```next [\"More\"]```";
+  expect(restingReply(reply)).toBe("People usually watch a few things. Price crossing a moving average. RSI out of oversold. A volume spike. Still not advice, see Investopedia.");
+});
+it("screen work turns Spark's eyes on by itself", () => {
+  for (const q of ["Point at the Wi-Fi icon in my menu bar", "Show me an example of you filling in a web form.", "Can you open Finder and highlight the file I changed most recently?", "click the blue button"]) expect(needsScreen(q)).toBe(true);
+  for (const q of ["What about XRP?", "set a timer for 10 minutes", "play something chill"]) expect(needsScreen(q)).toBe(false);
+});
+
+it("a batch of steps runs back to back, ending at done", () => {
+  const acts = parseActs('```act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"},{"type":"done","summary":"searched"},{"type":"press","label":"never"}]```');
+  expect(acts.map((a) => a.type)).toEqual(["press", "type", "done"]);
+  expect(parseActs('```act {"type":"key","keys":"cmd+l","label":"Address bar"}```')).toHaveLength(1);
+  expect(parseActs("```act not json```")).toEqual([]);
+});
+it("zoom regions come in screenshot pixels and are converted like every other block", () => {
+  const [b] = completedBlocks('Looking closer. ```zoom {"x":1000,"y":0,"w":333,"h":43}```', { width: 1333, height: 861 });
+  expect(b!.kind).toBe("zoom");
+  const r = parseZoom(b!.raw)!;
+  expect(r.x).toBeCloseTo(0.7502, 3); expect(r.w).toBeCloseTo(0.2498, 3); expect(r.h).toBeCloseTo(0.0499, 3);
+  expect(parseZoom('```zoom {"x":0.1,"y":0.1,"w":0,"h":0.2}```')).toBeNull();
+});
+it("a web page's own controls are labelled as such, and letting Shua into pages asks first", () => {
+  const t = elementsText({ app: "Google Chrome", page: { url: "https://github.com/jmenzies722", title: "jmenzies722" }, elements: [{ name: "Repositories 62", role: "web link", x: 0.1, y: 0.2 }] });
+  expect(t).toContain("PAGE: “jmenzies722” https://github.com/jmenzies722");
+  expect(t).toContain("#1 Repositories 62 [web link]");
+  expect(isDestructive({ type: "system", what: "browser_js" })).toBe(true);
 });
