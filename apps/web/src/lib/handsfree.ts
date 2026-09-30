@@ -1,3 +1,4 @@
+import { trustLive, type LiveSpeech } from "./live-speech";
 /**
  * Hands-free conversation: the mic stays open, Spark hears when you start and stop talking, transcribes each
  * turn on this Mac (whisper, via the gateway), and you can talk over it to interrupt. No buttons.
@@ -136,6 +137,22 @@ export class HandsFree {
   private turn: Float32Array[] | null = null;
   /** Live captions: one quick transcription of the words so far at a time; results for an old turn are dropped. */
   private turnId = 0;
+  /** Apple's on-device streaming recognizer (Mac app): live captions and, when sure, an instant final. */
+  live: LiveSpeech | null = null;
+  private liveUsing = (): boolean => !!this.live && this.lang === "en" && this.live.live(this.turnId);
+  private liveBegin() {
+    if (!this.live || this.lang !== "en" || !this.ctx || !this.turn) return;
+    const id = this.turnId, live = this.live;
+    live.begin(id, this.ctx.sampleRate);
+    for (const f of this.turn) live.push(id, f);
+    live.onText = (turn, text) => {
+      if (turn !== this.turnId || !this.turn || !meaningful(text)) return;
+      this.lastCaption = text.trim(); const st = steady(this.steadied, text); this.steadied = st; this.onPartial?.(st.shown);
+    };
+  }
+  /** Calibration: the first turns keep both engines' answers so the confidence bar can be checked on a real voice. */
+  static calibrating() { try { return Number(localStorage.getItem("shuacrew.voice.calibrated") ?? "0") < 60; } catch { return false; } }
+  private static calibrated() { try { localStorage.setItem("shuacrew.voice.calibrated", String(Number(localStorage.getItem("shuacrew.voice.calibrated") ?? "0") + 1)); } catch { /* ignore */ } }
   private captionBusy = false;
   private captionAt = 0;
   /** Spark is talking: listen harder (echo), and a real interruption stops it. */
@@ -193,9 +210,9 @@ export class HandsFree {
       const rms = Math.sqrt(sum / data.length);
       this.onLevel?.(Math.min(1, rms * 12));
       if (this.paused) return;
-      if (this.turn) this.turn.push(data); else { this.preroll.push(data); if (this.preroll.length > (this.mode === "hold" ? keepHold : keep)) this.preroll.shift(); }
+      if (this.turn) { this.turn.push(data); if (this.liveUsing()) this.live!.push(this.turnId, data); } else { this.preroll.push(data); if (this.preroll.length > (this.mode === "hold" ? keepHold : keep)) this.preroll.shift(); }
       if (this.mode !== "hold" && !this.turn && performance.now() < this.muteUntil) return; // typing: listen, but don't start a turn
-      if (this.mode === "hold") { if (this.turn && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption(); return; }
+      if (this.mode === "hold") { if (this.turn && !this.liveUsing() && !this.captionBusy && performance.now() - this.captionAt > 700) void this.caption(); return; }
       // Echo-aware while Spark talks: learn how much of its voice reaches the mic, and only count you above that.
       const out = this.speaking && this.outputLevel ? this.outputLevel() : 0;
       if (this.speaking && out && !this.state.speaking) this.coupling = learnCoupling(this.coupling, rms, out);
@@ -207,14 +224,14 @@ export class HandsFree {
         if (this.spec && this.spec.talk !== this.state.talk) this.spec = null; // you carried on: that guess is stale
         else if (!this.spec && this.state.quiet >= 350 && this.state.talk >= VAD.minSpeechMs && this.ctx) { const result = this.transcribe(this.turn.slice(), this.ctx.sampleRate); result.catch(() => {}); this.spec = { talk: this.state.talk, result }; } // a discarded guess never throws
       }
-      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.steadied = STEADY; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); }
+      if (r.event === "start") { if (this.speaking) this.onBargeIn?.(); this.yielded = false; this.lastCaption = ""; this.steadied = STEADY; this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.captionAt = performance.now(); this.onPartial?.(""); this.onPhase?.("hearing"); this.liveBegin(); }
       // Still talking over Spark after ~0.6 s of real speech: a real interruption — Spark stops, like a person would.
       // Counted in time you were actually speaking (not just elapsed since a start), so a false start never cuts Spark off.
       const act = frameAction(r.event, { turn: !!this.turn, speaking: this.speaking, yielded: this.yielded, talk: this.state.talk, captionDue: !this.captionBusy && performance.now() - this.captionAt > 700 });
       if (act === "finish") void this.finish(true, talkBefore);
       else if (act === "discard") void this.finish(false);
       else if (act === "yield") { this.yielded = true; this.onYield?.(); }
-      else if (act === "caption") void this.caption();
+      else if (act === "caption" && !this.liveUsing()) void this.caption();
     };
     source.connect(this.node);
     this.node.connect(this.ctx.destination); // required for onaudioprocess to run; the node outputs silence
@@ -246,7 +263,7 @@ export class HandsFree {
     this.holding = true;
     if (this.speaking) this.onBargeIn?.();
     this.turn = [...this.preroll]; this.preroll = []; this.turnId++; this.steadied = STEADY; this.captionAt = performance.now();
-    this.onPartial?.(""); this.onPhase?.("hearing");
+    this.onPartial?.(""); this.onPhase?.("hearing"); this.liveBegin();
   }
   /** Push-to-talk: you let go — send what you said (a tap under ~0.3 s is ignored). */
   release() {
@@ -291,15 +308,27 @@ export class HandsFree {
   }
 
   private async finish(keep: boolean, talk?: number) {
+    const liveTurn = this.liveUsing() ? this.turnId : -1;
     const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = ""; this.steadied = STEADY;
     const spec = this.spec; this.spec = null;
-    if (!keep || !turn?.length || !this.ctx) { this.onDropped?.(); if (!this.inflight) this.onPhase?.("listening"); return; }
+    if (!keep || !turn?.length || !this.ctx) { if (liveTurn >= 0) this.live!.cancel(liveTurn); this.onDropped?.(); if (!this.inflight) this.onPhase?.("listening"); return; }
     // Push-to-talk still pauses while it transcribes; open mic keeps listening, so you can carry on talking.
     if (this.mode === "hold") this.paused = true;
     this.inflight++; this.onPhase?.("transcribing");
     try {
       // The head start covered everything you said (you stayed quiet since): use it. Otherwise transcribe it all now.
-      const { text = "", error } = spec && talk !== undefined && spec.talk === talk ? await spec.result.catch(() => this.transcribe(turn, this.ctx!.sampleRate)) : await this.transcribe(turn, this.ctx.sampleRate);
+      const whisper = () => (spec && talk !== undefined && spec.talk === talk ? spec.result.catch(() => this.transcribe(turn, this.ctx!.sampleRate)) : this.transcribe(turn, this.ctx!.sampleRate));
+      // Apple's final is ready ~0.1 s after you stop: used only when it's sure of every word; else Whisper decides.
+      const quick = liveTurn >= 0 ? await this.live!.end(liveTurn) : null;
+      let result: { text: string; error?: string };
+      if (quick && trustLive(quick)) {
+        result = { text: quick.text };
+        if (HandsFree.calibrating()) { HandsFree.calibrated(); void whisper().then((w) => this.live?.verdict({ apple: quick.text, confidence: quick.confidence, whisper: w.text, used: "apple", ms: quick.ms })).catch(() => {}); }
+      } else {
+        result = await whisper();
+        if (quick && HandsFree.calibrating()) { HandsFree.calibrated(); this.live?.verdict({ apple: quick.text, confidence: quick.confidence, whisper: result.text, used: "whisper", ms: quick.ms }); }
+      }
+      const { text = "", error } = result;
       if (error) this.onPhase?.("error", error);
       else if (meaningful(text)) this.pending.push(text.trim());
       else this.onDropped?.();
