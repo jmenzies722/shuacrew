@@ -9,8 +9,9 @@ import { playScape, stopScape } from "../../lib/soundscape";
 import type { ProducerMove } from "../../lib/studio";
 import { nowPlayingOnce } from "./bridge";
 import { perform } from "./actions";
+import { timerOp } from "../../lib/timers";
 
-const INSTANT = new Set(["player", "play", "browse", "settings", "folder", "music", "whatsong", "radio", "stop-radio", "scape", "focus"]);
+const INSTANT = new Set(["player", "play", "browse", "settings", "folder", "music", "whatsong", "radio", "stop-radio", "scape", "focus", "timer", "sys"]);
 export const isInstant = (move: ProducerMove | null): boolean => !!move && INSTANT.has(move.kind);
 
 /**
@@ -55,7 +56,7 @@ export async function runInstant(move: ProducerMove, done: (said: string) => voi
     }
     if (move.kind === "music") {
       const { media: m } = await player();
-      const r = await perform({ type: "media", command: move.command, ...(move.query ? { query: move.query } : {}), ...(move.on !== undefined ? { on: move.on } : {}), ...(move.mode ? { mode: move.mode } : {}), ...(m?.app ? { app: m.app } : {}) });
+      const r = await perform({ type: "media", command: move.command, ...(move.query ? { query: move.query } : {}), ...(move.on !== undefined ? { on: move.on } : {}), ...(move.mode ? { mode: move.mode } : {}), ...(move.by ? { by: move.by } : {}), ...(move.mood ? { mood: move.mood } : {}), ...(m?.app ? { app: m.app } : {}) });
       done(r.message); return;
     }
     if (move.kind === "whatsong") {
@@ -76,6 +77,8 @@ export async function runInstant(move: ProducerMove, done: (said: string) => voi
       done(r.ok ? r.message : r.message); return;
     }
 
+  if (move.kind === "sys") { const { kind: _, ...rest } = move; const r = await perform({ type: "system", ...rest }); done(r.message.replace(/\.?$/, ".")); return; }
+  if (move.kind === "timer") { const { kind: _, ...op } = move; done(timerOp(op).message + "."); return; }
   if (move.kind === "scape") { playScape(move.scape, deps.soundsVolume); done(`Putting on ${move.scape}.`); return; }
   if (move.kind === "stop-radio") {
     stopScape();

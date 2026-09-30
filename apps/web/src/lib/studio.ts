@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import { isTopLevelWork } from "./crew";
 import { nextTrack, nowPlaying, type Track } from "./now-playing";
 import type { Scape } from "./soundscape";
+import { parseDuration } from "./timers";
 
 const LIVE = ["awaiting_approval", "running", "planning", "queued"] as const;
 const RANK: Record<string, number> = { awaiting_approval: 0, running: 1, planning: 2, queued: 3, paused: 4 };
@@ -183,7 +184,7 @@ export type ProducerMove =
   /** "Stop talking", "be quiet", "shh": stop what Spark is saying or doing, right now. */
   | { kind: "hush" }
   /** Music controls that need no model: a playlist by name, shuffle, repeat, favourite, add to library. */
-  | { kind: "music"; command: "playlist" | "shuffle" | "repeat" | "love" | "add_to_library"; query?: string; on?: boolean; mode?: "off" | "one" | "all" }
+  | { kind: "music"; command: "playlist" | "shuffle" | "repeat" | "love" | "add_to_library" | "play_similar"; query?: string; on?: boolean; mode?: "off" | "one" | "all"; by?: "artist" | "vibe"; mood?: string }
   /** "What's this song?" — answered from what's actually playing. */
   | { kind: "whatsong" }
   /** "make a folder called test on my Desktop": made directly, no clicking. */
@@ -195,6 +196,8 @@ export type ProducerMove =
   /** "play Drake", "play some jazz on Spotify": search and play in the music app, right away. */
   | { kind: "play"; query: string; app?: "Spotify" | "Music" }
   | { kind: "focus"; minutes: number }
+  | { kind: "sys"; what: "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi"; on?: boolean; level?: number }
+  | { kind: "timer"; op: "start" | "alarm" | "cancel" | "pause" | "resume" | "list"; seconds?: number; at?: string; label?: string }
   | { kind: "idea"; text: string }
   | { kind: "explain" };
 
@@ -205,8 +208,54 @@ export function commandText(q: string): string {
     .replace(/^(can|could|would|will) you( please)?\s+/i, "").replace(/^please\s+/i, "").replace(/^(go ahead and|just)\s+/i, "")
     .replace(/[.!?]+$/, "").replace(/[\s,]+(please|for me|now|right now|thanks|thank you)\s*$/i, "").replace(/[.!?,]+$/, "").trim();
 }
+/** Moods Spark plays from your library by genre ("something chill"), never searched as a song title. */
+export const MOODS = "chill|chilled|relaxing|relaxed|calm|mellow|smooth|soft|upbeat|happy|hype|energetic|party|workout|gym|sad|focus|study|romantic|sleepy|sleep";
+
+/**
+ * Timers and alarms, instantly (no model): "set a timer for 7 minutes", "pasta timer 9 minutes", "10 minute timer",
+ * "wake me up at 7", "alarm for 6:30 pm", "how much time is left", "pause the timer", "cancel the pasta timer".
+ */
+export function timerMove(t: string, now = Date.now()): Extract<ProducerMove, { kind: "timer" }> | null {
+  const s = t.toLowerCase().replace(/[.?!]+$/, "").trim();
+  if (/\b(how (much|long)( time)?( is)? left|time left|how'?s (my|the) timer|what timers|any timers( running)?|check (my|the) timers?)\b/.test(s)) return { kind: "timer", op: "list" };
+  const cancel = /^(?:cancel|stop|delete|clear|turn off|end|kill|dismiss)\s+(?:the\s+|my\s+|that\s+|all\s+(?:my\s+|the\s+)?)?(.*?)\s*(?:timers?|alarms?|countdown)$/.exec(s);
+  if (cancel) return { kind: "timer", op: "cancel", ...(cancel[1] ? { label: cancel[1] } : {}) };
+  const pause = /^(pause|resume|unpause|continue|restart)\s+(?:the\s+|my\s+)?(.*?)\s*timers?$/.exec(s);
+  if (pause) return { kind: "timer", op: pause[1] === "pause" ? "pause" : "resume", ...(pause[2] ? { label: pause[2] } : {}) };
+  const alarm = /^(?:set\s+(?:an?\s+|my\s+)?alarm\s+(?:for|at)|alarm\s+(?:for|at)|wake me(?:\s+up)?\s+(?:at|by))\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?:\s+(?:for|to)\s+(.{1,30}))?$/.exec(s);
+  if (alarm) {
+    let h = Number(alarm[1]); const m = Number(alarm[2] ?? 0), ap = alarm[3]?.[0];
+    if (h > 23 || m > 59) return null;
+    if (ap === "p" && h < 12) h += 12; else if (ap === "a" && h === 12) h = 0;
+    else if (!ap && h <= 12) { const d = new Date(now), am = new Date(d); am.setHours(h % 12, m, 0, 0); const pm = new Date(d); pm.setHours((h % 12) + 12, m, 0, 0); h = am.getTime() > now ? h % 12 : pm.getTime() > now ? (h % 12) + 12 : h % 12; }
+    return { kind: "timer", op: "alarm", at: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`, ...(alarm[4] ? { label: alarm[4] } : {}) };
+  }
+  if (/\b(timer|countdown)\b/.test(s) && !/\b(and|then|also)\s+(remind|play|add|set an alarm)/.test(s)) {
+    const seconds = parseDuration(s); if (!seconds) return null;
+    const label = s.replace(/(\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty-five|forty|fifty|sixty|ninety|half)\s*(?:and a half\s*)?(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b|\bhalf an? hour\b|\band a half\b/g, " ")
+      .replace(/\b(set|start|make|put|on|me|a|an|the|my|timer|countdown|for|please|hey|spark|shua|called|named|-)\b/g, " ").replace(/\s+/g, " ").trim();
+    return { kind: "timer", op: "start", seconds, ...(label && label.length <= 30 ? { label } : {}) };
+  }
+  return null;
+}
+
 export function producerMove(q: string): ProducerMove | null {
   const t = commandText(q);
+  // Two asks in one ("play something chill and remind me to stretch"): the model does both. As an instant command the
+  // whole sentence became one song search (or one timer), which failed, and the other ask was lost.
+  if (/[,;]?\s+(?:and(?: then)?|then|also|plus|after that)\s+(?:remind|set|add|make|create|text|message|send|email|open|turn|tell|show|check|what|call|start|schedule|book|delete|remove|find|search|look|put|play)\b/i.test(t)) return null;
+  const timer = timerMove(t);
+  if (timer) return timer;
+  // Mac controls, instantly: "mute", "set the volume to 30", "lock my Mac", "take a screenshot", "turn off Wi-Fi".
+  { const s = t.toLowerCase().replace(/[.!?]+$/, "").trim();
+    const vol = /^(?:set (?:the )?(?:mac(?:'s)? )?volume (?:to )?|volume (?:to )?)(\d{1,3})(?:\s*%| percent)?$/.exec(s);
+    if (vol && Number(vol[1]) <= 100) return { kind: "sys", what: "volume", level: Number(vol[1]) };
+    if (/^(unmute|un-mute)( (the )?(mac|sound|audio|volume))?$/.test(s)) return { kind: "sys", what: "mute", on: false };
+    if (/^mute( (the )?(mac|sound|audio|volume|everything))$/.test(s)) return { kind: "sys", what: "mute", on: true };
+    if (/^(lock (my |the )?(mac|screen|computer|laptop)|lock it)$/.test(s)) return { kind: "sys", what: "lock" };
+    if (/^(take (a )?screenshot|screenshot( this| my screen)?|screen ?shot)$/.test(s)) return { kind: "sys", what: "screenshot" };
+    const wifi = /^(?:turn |switch )?(on|off) (?:the )?wi-?fi$|^(?:turn |switch )?(?:the )?wi-?fi (on|off)$/.exec(s);
+    if (wifi) return { kind: "sys", what: "wifi", on: (wifi[1] ?? wifi[2]) === "on" }; }
   if (isStudioAsk(t)) return { kind: "brief" };
   if (/^(new\s+)?idea\s*[:\-–—]\s*\S/i.test(t)) return { kind: "idea", text: t };
   if (/^(explain|break down|what does|what's|what is)\s+(this|that|the selection|what i (selected|highlighted))( (mean|do|code))?\s*[?.!]*$/i.test(t)) return { kind: "explain" };
@@ -249,6 +298,13 @@ export function producerMove(q: string): ProducerMove | null {
     ?? /^(?:open|show(?: me)?|go to|pull up|find|look up|bring up)\s+()()(.{2,60}?)(?:'s page)?\s+(?:in|on)\s+(spotify|apple music|music)$/i.exec(t);
   if (browse) { const app = appOf(browse[4] || browse[1]); return { kind: "browse", query: browse[3]!.trim(), ...(app ? { app } : {}) }; }
   if (/^(play|put on) (something|anything|some music|music|a song)$/i.test(t)) return { kind: "player", cmd: "resume" };
+  const mood = new RegExp(`^(?:play|put on|queue up|give me)\\s+(?:me\\s+)?(?:something|some|a|anything)?\\s*(${MOODS})(?:\\s+(?:music|songs?|vibes?|stuff|tunes|playlist|song|track|beats))?$`, "i").exec(t);
+  if (mood) return { kind: "music", command: "play_similar", by: "vibe", mood: mood[1]!.toLowerCase() };
+  // "Another song" means a different one of YOURS, not a song titled "Another Song" (it used to search for exactly
+  // that, find a stranger's track in Apple's catalog, and play nothing). "…by Drake": a different one of Drake's.
+  const another = /^(?:play|put on|queue up|give me)\s+(?:me\s+)?(?:another|a different|some other|a new|one more|something else|something different|anything else)(?:\s+(?:song|track|tune|one))?(?:\s+(?:by|from)\s+(.{2,60}?))?(?:\s+(?:on|in|from)\s+(?:apple music|music))?$/i.exec(t);
+  if (another) return another[1] ? { kind: "play", query: another[1].trim() } : { kind: "music", command: "play_similar", by: /(something|anything) (else|different)/i.test(t) ? "vibe" : "artist" };
+  if (/^(?:play|put on|queue up|give me)\s+(?:me\s+)?(?:something|more|songs?|music)\s+(?:like|similar to)\s+(?:this|that|it)(?:\s+(?:song|track|one))?$|^(?:play|put on)\s+(?:something|more)\s+similar$/i.test(t)) return { kind: "music", command: "play_similar", by: "vibe" };
   const play = /^(?:play|put on|queue up)\s+(?:some\s+|me\s+|the song\s+|the album\s+)?(.{2,80}?)(?:\s+(?:on|in|from)\s+(spotify|apple music|music))?$/i.exec(t);
   if (play && !/^(the )?(radio|lo-?fi|rain|brown|caf[eé]|soundscape|focus)\b/i.test(play[1]!)) return { kind: "play", query: play[1]!.trim(), ...(play[2] ? { app: /spotify/i.test(play[2]) ? "Spotify" as const : "Music" as const } : {}) };
   const scape = /^(put on|play|start) (the )?(brown|rain|caf[eé]|soundscape)\b/i.exec(t);

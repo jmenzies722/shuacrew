@@ -26,3 +26,9 @@ private let sleepy = [
     #expect(SongMatch.coreTitle("Bohemian Rhapsody - Remastered 2011") == "Bohemian Rhapsody")
     #expect(SongMatch.sound("hollow") == SongMatch.sound("hallow"))
 }
+
+@Test func moodsMapToGenresInYourLibrary() {
+    #expect(SongMatch.moodGenres("Chill").contains("R&B"))
+    #expect(SongMatch.moodGenres("upbeat").contains("Hip-Hop"))
+    #expect(SongMatch.moodGenres("jazz").isEmpty) // a genre, not a mood: searched as is
+}

@@ -16,7 +16,7 @@ import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stu
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowUp, BookOpen, AudioLines, Globe, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, Globe, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -24,12 +24,12 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, actFollowUp, liveLookup, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, ackFor, deleteQuestion, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
-import { HandsFree, type Phase } from "../lib/handsfree";
+import { HandsFree, yesOrNo, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
 import { SparkWidgets } from "../components/TopBarWidgets";
@@ -38,12 +38,19 @@ import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/stud
 import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
+
+/** Mac actions whose result Spark says out loud when it lands (you'd otherwise have to go and check). */
+const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
 import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, webAct } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
-import { MiniCard, VoiceBars } from "./spark/parts";
+import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
 import { LiveActivities } from "./spark/LiveActivities";
+import { VisualCard } from "./spark/Visual";
+import { due, getTimers, remaining, ringLine, setTimers, useTimers } from "../lib/timers";
+import { parseVisual, type Visual } from "../lib/visual";
+import { announcements, inMeeting, welcomeBack, type Agenda } from "../lib/proactive";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -109,11 +116,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     return watchSparkSuggestion(receive);
   }, [embedded]);
   // Open-mic conversation.
-  const [phase, setPhase] = useState<Phase>("off"), [level, setLevel] = useState(0);
+  const [phase, setPhase] = useState<Phase>("off"), talkBtn = useRef<HTMLButtonElement>(null);
+  useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Spark
   // A command waiting for your yes.
-  const [asking, setAsking] = useState<{ command: string; why: string; answer: (yes: boolean) => void } | null>(null);
+  /** Your last spoken turn: stays in the notch, shimmering, until Spark starts answering — so you can see it heard you. */
+  const [lastHeard, setLastHeard] = useState("");
+  const [asking, setAsking] = useState<{ kind: "run" | "delete"; command: string; why: string; yes?: string; answer: (yes: boolean) => void } | null>(null);
+  const askingRef = useRef(asking); askingRef.current = asking;
   useEffect(() => {
-    sparkHooks.confirmRun = (command, why) => new Promise<boolean>((resolve) => setAsking({ command, why, answer: (yes) => { setAsking(null); resolve(yes); } }));
+    sparkHooks.confirmRun = (command, why) => new Promise<boolean>((resolve) => setAsking({ kind: "run", command, why, answer: (yes) => { setAsking(null); resolve(yes); } }));
+    // A delete asks in the chat, drops down from the notch, and says it out loud — answer by tap or by voice.
+    sparkHooks.confirmDelete = (what) => new Promise<boolean>((resolve) => {
+      // The button says what happens: Delete, Send, Call, Empty.
+      const verb = what.split(" ")[0] ?? "Delete", why = verb === "Send" ? "it goes right away" : verb === "Call" ? "starts the call" : "can't be undone";
+      setAsking({ kind: "delete", command: what, why, yes: verb, answer: (yes) => { setAsking(null); resolve(yes); } });
+      speech.current.say(`${what}? Say yes or no.`);
+    });
     sparkHooks.onRanOutput = (command, ok, output) => {
       const run = convoRef.current?.run; if (!run || !output.trim()) return;
       void followUp(run, `[ran] \`${command}\` ${ok ? "succeeded" : "failed"}. Output:\n\`\`\`\n${output.slice(-3000)}\n\`\`\`\nTell me in a sentence or two what this means (no need to repeat it all).`).catch(() => {});
@@ -273,6 +291,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Every instruction block runs once, as soon as it has finished streaming. Mouse & keyboard steps wait for the
   // end of the reply (each one hands back a fresh screenshot to continue from).
   const ran = useRef<Map<string, Set<string>>>(new Map());
+  const confirmed = useRef(new Set<string>());
+  // A visual card: the notch drops open with it (animated) while Spark talks it through, then tucks away on its own.
+  const [visual, setVisual] = useState<Visual | null>(null), visualTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showVisual = (v: Visual) => {
+    setVisual(v); clearTimeout(visualTimer.current);
+    if (!open && prefs.desktopPlacement === "notch") setNook(true);
+    visualTimer.current = setTimeout(() => { setVisual(null); if (!nookFocus.current) setNook(false); }, 25_000);
+  };
   const looked = useRef(new Set<string>()), recheck = useRef(new Set<string>());
   const runBlocks = (text: string, key: string, final: boolean) => {
     const seen = ran.current.get(key) ?? new Set<string>(); ran.current.set(key, seen);
@@ -281,6 +307,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
       seen.add(b.key);
       if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, screenFacts()); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
+      else if (b.kind === "visual") { const v = parseVisual(b.raw); if (v) showVisual(v); }
       else if (b.kind === "draw") { const shapes = parseDraw(b.raw).map(fitShape); if (shapes.length) queueDraw(key, shapes); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
@@ -306,9 +333,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         void (async () => {
           let opened = "";
           const failed: string[] = [];
-          for (const a of actions) { const r = await perform(a); setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app")) opened = a.type === "open_url" ? a.url : a.name; }
+          const results: Array<{ ok: boolean; message: string }> = [];
+          // Every delete in this reply: ONE question ("Delete 30 reminders …?"), then they all go — never one prompt each.
+          const deletes = actions.filter(isDestructive);
+          const approved = deletes.length > 1 && sparkHooks.confirmDelete ? await sparkHooks.confirmDelete(deleteQuestion(deletes)) : null;
+          for (const a of actions) {
+            if (approved === false && isDestructive(a)) { results.push({ ok: true, message: "Kept it" }); continue; }
+            const r = await perform(a, { confirmed: approved === true }); results.push(r); setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app")) opened = a.type === "open_url" ? a.url : a.name; }
           // It already said "Opening X": if that didn't happen (no such app, a blocked step), say so out loud right away,
           // so a failure never passes as done. Once per reply.
+          // Done is said, not just shown: the real result, in a few words ("Added “Launch” on Thu 1 Oct, 11:10 AM"),
+          // for the things you'd otherwise have to go and check. Voice conversations only; once per reply.
+          const confirm = actions.map((a, i) => ({ a, r: results[i] })).filter(({ a, r }) => r?.ok && ((a.type === "mac" && CONFIRM_OPS.has(a.op)) || (a.type === "media" && (a.command === "play_query" || a.command === "play_similar" || a.command === "playlist")))).map(({ r }) => r!.message.replace(/[.\s]+$/, ""));
+          if (confirm.length && !failed.length && (voiceLive || (prefs.conversation && prefs.listen !== "hold")) && !confirmed.current.has(key)) {
+            confirmed.current.add(key);
+            sayOwn(`Done. ${confirm.slice(0, 2).join(". ")}.`);
+          }
           if (failed.length && !corrected.current.has(key)) {
             corrected.current.add(key);
             speech.current.say(`Actually, that didn't work: ${failed[0]!.replace(/[.\s]+$/, "")}.`);
@@ -369,6 +409,58 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Connected to the app: when your crew finishes, fails or needs you, Spark says so beside itself.
   const seen = useRef<Record<string, string> | null>(null);
   const approvals = Object.keys(crew.approvals).length;
+  // Speaking first (Jarvis): every minute Spark asks the Mac what's coming up — a heads-up before a meeting, a reminder
+  // the moment it's due — and when you come back after a while, a short catch-up. In a meeting it only shows, never
+  // talks. One Spark surface says it, once (said keys are shared across surfaces and reloads).
+  const [heads, setHeads] = useState<{ text: string; kind: "event" | "reminder" | "welcome" | "timer" } | null>(null);
+  const agenda = useRef<Agenda | null>(null);
+  const announce = (text: string, kind: "event" | "reminder" | "welcome" | "timer") => {
+    setHeads({ text, kind }); setTimeout(() => setHeads((h) => (h?.text === text ? null : h)), 15_000);
+    if (prefs.desktopPlacement !== "notch") setBubble({ text, path: kind === "welcome" ? "/" : "/today" });
+    feel("happy");
+    if (!inMeeting(agenda.current, Date.now()) && !timer) { lastSound.current = Date.now(); speech.current.say(text); }
+  };
+  const announceRef = useRef(announce); announceRef.current = announce;
+  // Timers and alarms ring here (the desktop Spark, once): a chime, the line out loud, a Mac notification, the notch.
+  const timers = useTimers();
+  useEffect(() => {
+    if (embedded) return;
+    const tick = setInterval(() => {
+      const { rang, left } = due(getTimers(), Date.now()); if (!rang.length || !mine()) return;
+      setTimers(left);
+      chime(rang.some((t) => t.kind === "alarm") ? 4 : 2);
+      const text = rang.map(ringLine).join(" ");
+      setHeads({ text, kind: "timer" }); setTimeout(() => setHeads((h) => (h?.text === text ? null : h)), 30_000);
+      post({ type: "notify", title: rang.length === 1 ? (rang[0]!.kind === "alarm" ? "Alarm" : "Timer done") : `${rang.length} timers done`, body: text });
+      setTimeout(() => { lastSound.current = Date.now(); speech.current.say(text); }, 900); // after the chime
+    }, 500);
+    return () => clearInterval(tick);
+  }, [embedded]);
+  const nextTimer = useMemo(() => [...timers].filter((t) => t.paused === undefined).sort((a, b) => a.endsAt - b.endsAt)[0], [timers]);
+  useEffect(() => {
+    if (embedded || !prefs.proactive || !native()) return;
+    const SAID = "shuacrew.spark.said";
+    const onAgenda = (e: Event) => {
+      const a = (e as CustomEvent).detail as Agenda | undefined; if (!a?.events) return;
+      agenda.current = a;
+      let said: string[] = []; try { said = JSON.parse(localStorage.getItem(SAID) ?? "[]"); } catch { /* fresh */ }
+      const due = announcements(a, Date.now(), new Set(said), prefs.headsUpMinutes);
+      if (!due.length || !mine()) return;
+      try { localStorage.setItem(SAID, JSON.stringify([...said, ...due.map((d) => d.key)].slice(-200))); } catch { /* ignore */ }
+      announceRef.current(due.map((d) => d.text).join(" "), due[0]!.kind);
+    };
+    const onWelcome = (e: Event) => {
+      const awayMs = Number((e as CustomEvent).detail?.awayMs) || 0, now = Date.now(), live = useLive.getState().crew;
+      const finished = Object.values(live.runs).filter((r) => (r.status === "done" || r.status === "merged") && r.updatedAt > now - awayMs && !r.labels?.includes("buddy"))
+        .map((r) => `${(r.member && live.members[r.member]?.name) || "The crew"} finished ${r.title}`);
+      post({ type: "buddyAgenda" }); // fresh "next up"
+      setTimeout(() => { const text = welcomeBack({ awayMs, now, finished, approvals: Object.keys(live.approvals).length, agenda: agenda.current }); if (text && mine()) announceRef.current(text, "welcome"); }, 1200);
+    };
+    window.addEventListener("shuacrew:agenda", onAgenda); window.addEventListener("shuacrew:welcome", onWelcome);
+    post({ type: "buddyAgenda" });
+    const every = setInterval(() => post({ type: "buddyAgenda" }), 60_000);
+    return () => { clearInterval(every); window.removeEventListener("shuacrew:agenda", onAgenda); window.removeEventListener("shuacrew:welcome", onWelcome); };
+  }, [embedded, prefs.proactive, prefs.headsUpMinutes]);
   useEffect(() => {
     const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("mission"));
     const prev = seen.current; seen.current = Object.fromEntries(work.map((r) => [r.id, r.status]));
@@ -647,13 +739,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => {
     const m = mic.current;
     m.onPhase = (p, detail) => { setPhase(p); if (p === "error" && detail) setError(detail); };
-    m.onLevel = setLevel;
+    m.onLevel = setMicLevel;
     m.onPartial = setHeard;
     // Interrupting: Spark drops to a murmur the moment you start, and only stops once your words are real —
     // a cough, a door or its own voice through the speakers no longer cuts it off mid-sentence.
     m.onTurn = (t) => {
       if (wakeTurn.current) { wakeTurn.current = false; m.mode = prefsRef.current.listen; if (!prefsRef.current.conversation && prefsRef.current.listen !== "hold") m.stop(); }
-      logSense("heard", "Heard you", t); if (prefsRef.current.interrupt) speech.current.stop(); void askRef.current(t); };
+      logSense("heard", "Heard you", t); setLastHeard(t); if (prefsRef.current.interrupt) speech.current.stop();
+      const waiting = askingRef.current;
+      if (waiting) { const said = yesOrNo(t); if (said !== null) { waiting.answer(said); return; } waiting.answer(false); } // anything else: keep it, and carry on with what you said
+      acknowledge(t);
+      void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     // You kept talking over Spark: it stops now, like a person would, instead of waiting for the transcript.
     m.onYield = () => { if (prefsRef.current.interrupt) { logSense("heard", "Interrupted", ""); speech.current.stop(); } };
@@ -665,6 +761,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     // Voice mode from the notch listens with the chat closed; otherwise the open mic lives with the open card.
     if (wanted && tab !== "teach" && (open || voiceLive) && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
   }, [prefs.conversation, prefs.listen, prefs.language, open, embedded, focused, armed, tab, voiceLive]);
+  // Typing while the mic is open: key clicks never start a voice turn (Whisper made "and" of them), and the notch drops
+  // the last thing you said aloud — you're writing now.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.metaKey || e.ctrlKey || (e.key.length > 1 && e.key !== "Backspace" && e.key !== "Enter")) return; mic.current.muteFor(800); setLastHeard(""); };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
   // Push-to-talk with the keyboard: hold Space while Spark's box is empty (or nothing is focused).
   useEffect(() => {
     if (prefs.listen !== "hold" || !open || tab === "teach") return;
@@ -774,10 +877,52 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const notched = prefs.desktopPlacement === "notch" && !embedded;
   // Speaking while tucked in: the island widens just enough to caption what Spark is saying, live.
   const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
+  // Working on what you said: after you stop talking and before Spark's first word. It used to look frozen (the bars sat
+  // at their floor and your words vanished), easy to take for "it didn't hear me".
+  const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold")) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
+  const processingText = processing ? (heard || lastHeard) : "";
+  useEffect(() => { if (speaking || streamText) setLastHeard(""); }, [speaking, streamText]);
   const streamingNow = !!streamText && !speaking && !hearingNow;
   // Searching the web or reading a page right now: shown live, so you can watch Spark look it up.
   const lookup = useMemo(() => (busy || working ? liveLookup(events as never) : null), [events, busy, working]);
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide);
+  // Jarvis, not a loading spinner: the moment you finish talking Spark says what it's doing ("Checking your calendar."),
+  // unless its real answer has already started. A plain question only gets one if the answer is slow.
+  const live$ = useRef({ speaking: false, streaming: false, active: false }); live$.current = { speaking, streaming: !!streamText, active: !!busy || working };
+  const ackTimer = useRef<ReturnType<typeof setTimeout>>(undefined), ackTurns = useRef(0), lastSound = useRef(0), narrated = useRef(0);
+  /**
+   * Spark's own lines (acknowledgment, progress, "done") go through here: each at most once per turn. Two separate
+   * cues both said "Looking that up." on one search — now nothing it says on its own can repeat.
+   */
+  const ownLines = useRef(new Set<string>());
+  const sayOwn = (text: string) => {
+    const k = text.toLowerCase().replace(/[^a-z ]/g, "").trim();
+    if (ownLines.current.has(k)) return false;
+    ownLines.current.add(k); lastSound.current = Date.now(); speech.current.say(text); return true;
+  };
+  const acknowledge = (said: string) => {
+    clearTimeout(ackTimer.current); ownLines.current.clear(); // a new turn
+    const ack = ackFor(said, ackTurns.current++); if (!ack) return;
+    const { text, delay } = ack;
+    ackTimer.current = setTimeout(() => {
+      const l = live$.current; if (l.speaking || l.streaming) return;
+      sayOwn(text);
+    }, delay);
+  };
+  useEffect(() => { if (speaking || streamText) clearTimeout(ackTimer.current); if (speaking) lastSound.current = Date.now(); }, [speaking, streamText]);
+  // A long turn never leaves you hanging — but with real news, not filler: after ~4 s of quiet, what it's actually doing
+  // ("Pulling up space.com."), twice at most. Nothing specific to say: it stays quiet and the notch shows it working.
+  const eventsRef = useRef(events); eventsRef.current = events;
+  useEffect(() => {
+    if (!busy && !working) { narrated.current = 0; return; }
+    if (!(voiceLive || (prefs.conversation && prefs.listen !== "hold"))) return;
+    const tick = setInterval(() => {
+      if (live$.current.speaking || live$.current.streaming || narrated.current >= 2 || Date.now() - lastSound.current < 4000) return;
+      const line = progressLine(eventsRef.current as never, narrated.current); if (!line) return;
+      if (sayOwn(line)) narrated.current++;
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [busy, working, voiceLive, prefs.conversation, prefs.listen]);
+  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -818,7 +963,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)}>
       <header className="spk-head">
         <span className={`spk-avatar is-${speaking ? "speaking" : phase === "hearing" ? "hearing" : working || busy ? "thinking" : "idle"}`}><SparkCharacter preferences={prefs} mood={mood} size={38} crop="portrait" /></span>
-        <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? <VoiceBars level={speaking ? 0.6 : level} active /> : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
+        <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? (speaking ? <VoiceBars level={0.6} active /> : <MicBars />) : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
         <button type="button" aria-label="Visual teaching" title="Visual teaching" aria-pressed={tab === "teach"} onClick={() => setTab(tab === "teach" ? "chat" : "teach")}><BookOpen size={15} /></button>
         <button type="button" aria-label={tab === "chat" ? "Open widgets" : "Back to chat"} title={tab === "chat" ? "Widgets & approvals" : "Back to chat"} aria-pressed={tab === "widgets"} onClick={() => setTab(tab === "chat" ? "widgets" : "chat")} className="spk-widget-toggle">{tab === "chat" ? <LayoutGrid size={15} /> : <MessageCircle size={15} />}{approvals > 0 && <i />}</button>
         <details className="spk-options" ref={optionsPanel} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
@@ -892,8 +1037,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           onClick={() => (embedded ? window.shuacrew?.navigate(`/sessions/${m.run}`) : post({ type: "buddyOpen", path: `/sessions/${m.run}` }))}>
           <i /><span>{r.title || m.task}</span><small>{r.status === "awaiting_approval" ? "needs you" : r.status.replace("_", " ")}{m.rounds ? ` · pushed ${m.rounds}×` : ""}</small></button>; })}
       </div>}
-      {asking && <div className="buddy-task is-run"><Hand size={14} /><span><b>Run this?</b> <code>{asking.command}</code>{asking.why && <small> · {asking.why}</small>}</span>
-        <button type="button" onClick={() => asking.answer(true)}>Run</button><button type="button" onClick={() => asking.answer(false)}>Cancel</button></div>}
+      {visual && open && <VisualCard v={visual} onClose={() => setVisual(null)} />}
+      {asking && (asking.kind === "delete"
+        ? <div className="buddy-task is-run is-delete"><Trash2 size={14} /><span><b>{asking.command}?</b><small> · {asking.why} · say yes or no</small></span>
+            <button type="button" onClick={() => asking.answer(true)}>{asking.yes ?? "Delete"}</button><button type="button" onClick={() => asking.answer(false)}>{asking.yes === "Delete" || !asking.yes ? "Keep" : "Cancel"}</button></div>
+        : <div className="buddy-task is-run"><Hand size={14} /><span><b>Run this?</b> <code>{asking.command}</code>{asking.why && <small> · {asking.why}</small>}</span>
+            <button type="button" onClick={() => asking.answer(true)}>Run</button><button type="button" onClick={() => asking.answer(false)}>Cancel</button></div>)}
       {task && <div className="buddy-task"><Hand size={14} /><span><b>Working on your Mac</b> step {task.step} · <kbd>Esc</kbd> stops</span>
         {pending && <><em>{describeAct(pending)}?</em><button type="button" onClick={() => void runAct(pending, task.step)}>Do it</button><button type="button" title="Don't ask again for this task" onClick={() => { setAutoTask(true); void runAct(pending, task.step); }}>All</button></>}
         <button type="button" className="buddy-task-stop" aria-label="Stop" onClick={() => stopTask("Stopped.")}><Square size={11} /></button></div>}
@@ -904,10 +1053,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         <textarea ref={input} rows={1} value={draft} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") { e.preventDefault(); if (busy || working || speaking) void interrupt(); else if (full) setSparkFull(false); else close(); } }} aria-label="Message" />
         {prefs.listen === "hold"
-          ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" style={{ "--lvl": level } as CSSProperties}
+          ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" ref={talkBtn}
               onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.mode = "hold"; void mic.current.press(); }}
               onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
-          : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} style={{ "--lvl": level } as CSSProperties}><AudioLines size={15} /></button>}
+          : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} ref={talkBtn}><AudioLines size={15} /></button>}
         {(busy || working || speaking) && !draft.trim()
           ? <motion.button type="button" className="buddy-send is-stop" aria-label="Stop" title="Stop (Esc)" onClick={() => void interrupt()} whileTap={{ scale: 0.88 }}><Square size={13} fill="currentColor" /></motion.button>
           : <motion.button className="buddy-send" disabled={!draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>}
@@ -941,7 +1090,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <div className="shua-island-ears">
@@ -952,15 +1101,24 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </button>
           <span className="shua-island-cam" aria-hidden />
           <span className="shua-island-ear is-live">
-            {voiceLive ? <span className="shua-island-voice"><VoiceBars level={Math.max(level, speaking ? 0.5 : 0.15)} active /></span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
+            {voiceLive ? <span className="shua-island-voice">{processing ? <ThinkWave /> : <MicBars floor={speaking ? 0.5 : 0.15} />}</span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
             {islandOpen && <small>{statusLabel}</small>}
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+          : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
+          : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen}>
+          {visual && <VisualCard v={visual} onClose={() => { setVisual(null); setNook(false); }} />}
+          {timers.length > 0 && <ul className="spark-nook-timers" aria-label="Timers">{[...timers].sort((a, b) => remaining(a, now) - remaining(b, now)).map((t) => <li key={t.id} className={t.paused !== undefined ? "is-paused" : ""}>
+            <span>{t.kind === "alarm" ? <AlarmClock size={13} /> : <Timer size={13} />}{t.label || (t.kind === "alarm" ? "Alarm" : "Timer")}</span>
+            <b>{t.kind === "alarm" ? new Date(t.endsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : <TimeLeft t={t} />}</b>
+            <button type="button" tabIndex={islandOpen ? 0 : -1} aria-label={`Cancel ${t.label || t.kind}`} onClick={() => setTimers(getTimers().filter((x) => x.id !== t.id))}>×</button></li>)}</ul>}
+          {asking?.kind === "delete" && <div className="spark-nook-stuck is-delete"><div><b>{asking.command}?</b><small>{asking.why[0]!.toUpperCase() + asking.why.slice(1)}.</small></div>
+            <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => asking.answer(true)}>{asking.yes ?? "Delete"}</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => asking.answer(false)}>{asking.yes === "Delete" || !asking.yes ? "Keep" : "Cancel"}</button></div>}
           {stuck && <div className="spark-nook-stuck"><div><b>{stuck.kind === "error" ? `Stuck in ${stuck.app}?` : "Still searching?"}</b><small>{stuck.detail}</small></div>
             <button type="button" tabIndex={islandOpen ? 0 : -1} className="is-go" onClick={stuckHelp}>Show me</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={stuckLater}>Not now</button></div>}
           <div className="spark-nook-row">
@@ -971,7 +1129,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
                 : <button type="submit" tabIndex={islandOpen ? 0 : -1} disabled={!nookDraft.trim()} aria-label="Send"><ArrowUp size={14} /></button>}
             </form>
             {prefs.notchControls && <>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-voice ${voiceLive ? "is-on" : ""}`} aria-pressed={voiceLive} onClick={() => { setArmed(true); speech.current.unlock(); setVoiceLive((v) => !v); }} title={voiceLive ? "Voice mode on: just talk. Tap to end." : "Voice mode: talk with Spark in real time"} aria-label="Voice mode">{voiceLive ? <><VoiceBars level={Math.max(level, speaking ? 0.5 : 0.15)} active /><span>End</span></> : <><Mic size={14} /><span>Talk</span></>}</button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-voice ${voiceLive ? "is-on" : ""}`} aria-pressed={voiceLive} onClick={() => { setArmed(true); speech.current.unlock(); setVoiceLive((v) => !v); }} title={voiceLive ? "Voice mode on: just talk. Tap to end." : "Voice mode: talk with Spark in real time"} aria-label="Voice mode">{voiceLive ? <><MicBars floor={speaking ? 0.5 : 0.15} /><span>End</span></> : <><Mic size={14} /><span>Talk</span></>}</button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-toggle ${liveOn ? "is-on" : ""}`} aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive} title={liveOn ? "Watching your screen: tap to stop" : "Let Spark watch your screen"} aria-label="Watch my screen">{liveOn ? <Eye size={14} /> : <EyeOff size={14} />}</button>
             </>}
           </div>

@@ -29,6 +29,15 @@ enum MacKnowledge {
             case "calendar": calendar(a, done)
             case "reminders": reminders(a, done)
             case "add_reminder": addReminder(a, done)
+            case "complete_reminder": finishReminder(a, delete: false, done)
+            case "delete_reminder": finishReminder(a, delete: true, done)
+            case "delete_reminders": finishReminders(a, delete: true, done)
+            case "send_message": sendMessage(a, done)
+            case "facetime": facetime(a, done)
+            case "directions": directions(a, done)
+            case "complete_reminders": finishReminders(a, delete: false, done)
+            case "delete_event": deleteEvent(a, done)
+            case "delete_note": deleteNote(a, done)
             case "notes": notes(a, done)
             case "contacts": contacts(a, done)
             case "status": done(true, "Checked your Mac", status())
@@ -153,6 +162,32 @@ enum MacKnowledge {
         return granted
     }
     private static let when: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE d MMM, h:mm a"; return f }()
+
+    /// Spark's proactive heads-ups: the next day of events and your timed reminders, as data. Only reads what you've
+    /// already allowed — it never asks for access from the background (a surprise permission prompt out of nowhere).
+    static func agenda() -> [String: Any] {
+        let ms = { (d: Date) -> Double in (d.timeIntervalSince1970 * 1000).rounded() }
+        var out: [String: Any] = ["events": [], "reminders": []]
+        let now = Date()
+        if EKEventStore.authorizationStatus(for: .event) == .fullAccess {
+            let found = events.events(matching: events.predicateForEvents(withStart: now.addingTimeInterval(-3600), end: now.addingTimeInterval(86_400), calendars: nil))
+            out["events"] = found.sorted { $0.startDate < $1.startDate }.prefix(40).map { e -> [String: Any] in
+                var v: [String: Any] = ["id": e.calendarItemIdentifier, "title": e.title ?? "Untitled", "start": ms(e.startDate), "end": ms(e.endDate), "allDay": e.isAllDay]
+                if let place = e.location, !place.isEmpty { v["location"] = String(place.prefix(80)) }
+                return v
+            }
+        }
+        if EKEventStore.authorizationStatus(for: .reminder) == .fullAccess {
+            let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var items: [EKReminder] = []
+            events.fetchReminders(matching: events.predicateForIncompleteReminders(withDueDateStarting: now.addingTimeInterval(-86_400), ending: now.addingTimeInterval(86_400), calendars: nil)) { found in items = found ?? []; wait.signal() }
+            _ = wait.wait(timeout: .now() + 10)
+            out["reminders"] = items.prefix(60).compactMap { r -> [String: Any]? in
+                guard let c = r.dueDateComponents, let due = Calendar.current.date(from: c) else { return nil }
+                return ["id": r.calendarItemIdentifier, "title": r.title ?? "Untitled", "due": ms(due), "hasTime": c.hour != nil]
+            }
+        }
+        return out
+    }
     private static func calendar(_ a: [String: Any], _ done: Done) {
         guard access(.event) else { done(false, "Let ShuaCrew see your calendar in System Settings → Privacy & Security → Calendars.", ""); return }
         let days = min(30, max(1, a["days"] as? Int ?? 2)), start = Calendar.current.startOfDay(for: Date())
@@ -174,12 +209,163 @@ enum MacKnowledge {
         guard access(.reminder) else { done(false, "Let ShuaCrew use Reminders in System Settings → Privacy & Security → Reminders.", ""); return }
         let r = EKReminder(eventStore: events)
         r.title = title; r.calendar = events.defaultCalendarForNewReminders()
-        if let iso = a["due"] as? String, let due = ISO8601DateFormatter().date(from: iso) ?? { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd'T'HH:mm"; return f.date(from: iso) }() {
-            r.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
-            r.addAlarm(EKAlarm(absoluteDate: due))
+        if let iso = a["due"] as? String {
+            // A due time it can't read is said, not silently dropped (it used to add the reminder with no time or alert).
+            guard let due = LocalDate.parse(iso) else { done(false, "I couldn't read the time “\(iso)”, so I didn't add it.", ""); return }
+            r.dueDateComponents = Calendar.current.dateComponents(due.dateOnly ? [.year, .month, .day] : [.year, .month, .day, .hour, .minute], from: due.date)
+            if !due.dateOnly { r.addAlarm(EKAlarm(absoluteDate: due.date)) }
         }
         do { try events.save(r, commit: true); done(true, "Added the reminder “\(title)”", "") }
         catch { done(false, "Couldn't add the reminder.", "") }
+    }
+    /// An optional day to narrow a match ("delete Tuesday's standup"): "2026-09-30" or a full ISO date.
+    private static func day(_ a: [String: Any]) -> Date? {
+        guard let iso = a["date"] as? String else { return nil }
+        return LocalDate.parse(iso)?.date ?? LocalDate.parse(String(iso.prefix(10)))?.date
+    }
+    /// "Mark laundry done" / "delete the birthday reminder", by name. Several matches: say which, change nothing.
+    /// Many at once, after one yes (asked in Spark): named ones, "all", or all in one list — one Reminders pass, one save.
+    private static func finishReminders(_ a: [String: Any], delete: Bool, _ done: Done) {
+        guard access(.reminder) else { done(false, "Let ShuaCrew use Reminders in System Settings → Privacy & Security → Reminders.", ""); return }
+        let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var items: [EKReminder] = []
+        events.fetchReminders(matching: events.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)) { found in items = found ?? []; wait.signal() }
+        _ = wait.wait(timeout: .now() + 10)
+        let names = (a["titles"] as? [String]) ?? [], list = a["list"] as? String
+        let m = ItemMatch.pickMany(names, titles: items.map { $0.title ?? "" }, lists: items.map { $0.calendar.title }, all: a["all"] as? Bool ?? false, list: list)
+        guard !m.picked.isEmpty else { done(false, names.isEmpty ? "There are no open reminders\(list.map { " in \($0)" } ?? "") to \(delete ? "delete" : "finish")." : "None of those matched an open reminder.", ""); return }
+        var changed = 0
+        for i in m.picked {
+            let r = items[i]
+            do { if delete { try events.remove(r, commit: false) } else { r.isCompleted = true; try events.save(r, commit: false) }; changed += 1 } catch { continue }
+        }
+        do { try events.commit() } catch { events.reset(); done(false, "Reminders wouldn't save that change, so nothing was \(delete ? "deleted" : "marked done").", ""); return }
+        var said = "\(delete ? "Deleted" : "Marked") \(changed) reminder\(changed == 1 ? "" : "s")\(delete ? "" : " done")"
+        if !m.missing.isEmpty { said += ". Not found: \(m.missing.prefix(4).joined(separator: ", "))" }
+        if !m.unclear.isEmpty { said += ". Left alone (more than one match): \(m.unclear.prefix(4).joined(separator: ", "))" }
+        done(true, said, "")
+    }
+    private static func finishReminder(_ a: [String: Any], delete: Bool, _ done: Done) {
+        guard let q = (a["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty else { done(false, "Which reminder?", ""); return }
+        guard access(.reminder) else { done(false, "Let ShuaCrew use Reminders in System Settings → Privacy & Security → Reminders.", ""); return }
+        let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var items: [EKReminder] = []
+        events.fetchReminders(matching: events.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)) { found in items = found ?? []; wait.signal() }
+        _ = wait.wait(timeout: .now() + 10)
+        switch ItemMatch.pick(q, titles: items.map { $0.title ?? "" }, dates: items.map { $0.dueDateComponents?.date }, on: day(a)) {
+        case .none: done(false, "You don't have an open reminder called “\(q)”.", "")
+        case .several(let ix):
+            let list = ix.prefix(5).map { i in "“\(items[i].title ?? "")”\(items[i].dueDateComponents?.date.map { " (due \(when.string(from: $0)))" } ?? "")" }.joined(separator: ", ")
+            done(false, "More than one reminder matches “\(q)”: \(list). Which one?", "")
+        case .one(let i):
+            let r = items[i], title = r.title ?? q
+            do {
+                if delete { try events.remove(r, commit: true); done(true, "Deleted the reminder “\(title)”", "") }
+                else { r.isCompleted = true; try events.save(r, commit: true); done(true, "Marked “\(title)” done", "") }
+            } catch { done(false, "Couldn't \(delete ? "delete" : "complete") “\(title)”.", "") }
+        }
+    }
+    /// Deletes one event by name (from yesterday to 90 days out); a repeating one loses only that occurrence.
+    private static func deleteEvent(_ a: [String: Any], _ done: Done) {
+        guard let q = (a["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty else { done(false, "Which event?", ""); return }
+        guard access(.event) else { done(false, "Let ShuaCrew use your calendar in System Settings → Privacy & Security → Calendars.", ""); return }
+        let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(-86_400)
+        let found = events.events(matching: events.predicateForEvents(withStart: start, end: start.addingTimeInterval(91 * 86_400), calendars: nil))
+            .filter { $0.calendar.allowsContentModifications }.sorted { $0.startDate < $1.startDate }
+        switch ItemMatch.pick(q, titles: found.map { $0.title ?? "" }, dates: found.map { $0.startDate }, on: day(a)) {
+        case .none: done(false, "There's no event called “\(q)”\(day(a) == nil ? " in the next 90 days" : " that day") that I can change.", "")
+        case .several(let ix):
+            let list = ix.prefix(5).map { i in "“\(found[i].title ?? "")” on \(when.string(from: found[i].startDate))" }.joined(separator: ", ")
+            done(false, "More than one event matches “\(q)”: \(list). Which one?", "")
+        case .one(let i):
+            let e = found[i], title = e.title ?? q, at = when.string(from: e.startDate)
+            do { try events.remove(e, span: .thisEvent, commit: true); done(true, "Deleted “\(title)” on \(at)", "") }
+            catch { done(false, "Couldn't delete “\(title)”.", "") }
+        }
+    }
+    /// Deletes one note by name; Notes keeps it in Recently Deleted for 30 days.
+    private static func deleteNote(_ a: [String: Any], _ done: Done) {
+        let q = ((a["title"] as? String) ?? "").replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "\\", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, q.count <= 120 else { done(false, "Which note?", ""); return }
+        let script = """
+        with timeout of 8 seconds
+        tell application "Notes"
+          set hits to (notes whose name is "\(q)")
+          if (count of hits) = 0 then set hits to (notes whose name contains "\(q)")
+          if (count of hits) = 0 then return "none"
+          if (count of hits) > 1 then
+            set out to "many:"
+            repeat with n in (items 1 thru (min(5, count of hits)) of hits)
+              set out to out & "“" & (name of n) & "” "
+            end repeat
+            return out
+          end if
+          set t to name of item 1 of hits
+          delete item 1 of hits
+          return "ok:" & t
+        end tell
+        end timeout
+        on min(a, b)
+          if a < b then return a
+          return b
+        end min
+        """
+        var error: NSDictionary?
+        let r = NSAppleScript(source: script)?.executeAndReturnError(&error).stringValue ?? ""
+        if error != nil { done(false, "Notes didn't answer. If macOS asks, allow ShuaCrew to control Notes.", ""); return }
+        if r == "none" { done(false, "You don't have a note called “\(q)”.", "") }
+        else if r.hasPrefix("many:") { done(false, "More than one note matches “\(q)”: \(r.dropFirst(5).trimmingCharacters(in: .whitespaces)). Which one?", "") }
+        else { done(true, "Deleted the note “\(r.dropFirst(3))” (it's in Recently Deleted if you want it back)", "") }
+    }
+    /// Who "Mom" or "Sam" is, as something Messages or FaceTime can reach: a number or email as given, or the first
+    /// contact of that name with one (a phone number first — it reaches iMessage and FaceTime alike).
+    private static func reach(_ who: String) -> (name: String, handle: String)? {
+        let t = who.trimmingCharacters(in: .whitespaces)
+        if t.range(of: "^[+0-9() .-]{7,}$", options: .regularExpression) != nil || t.contains("@") { return (t, t) }
+        let store = CNContactStore()
+        if CNContactStore.authorizationStatus(for: .contacts) != .authorized {
+            let wait = DispatchSemaphore(value: 0); nonisolated(unsafe) var ok = false
+            DispatchQueue.main.async { store.requestAccess(for: .contacts) { granted, _ in ok = granted; wait.signal() } }
+            _ = wait.wait(timeout: .now() + 90)
+            guard ok else { return nil }
+        }
+        let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey, CNContactEmailAddressesKey, CNContactPhoneNumbersKey] as [CNKeyDescriptor]
+        let people = (try? store.unifiedContacts(matching: CNContact.predicateForContacts(matchingName: t), keysToFetch: keys)) ?? []
+        for c in people {
+            let name = [c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " ")
+            if let phone = c.phoneNumbers.first?.value.stringValue { return (name.isEmpty ? t : name, phone) }
+            if let email = c.emailAddresses.first?.value as String? { return (name.isEmpty ? t : name, email) }
+        }
+        return nil
+    }
+    /// An iMessage, sent — only after you said yes to exactly this text (Spark asks first, every time).
+    private static func sendMessage(_ a: [String: Any], _ done: Done) {
+        guard let to = a["to"] as? String, let text = (a["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, text.count <= 1000 else { done(false, "Who to, and what should it say?", ""); return }
+        guard let who = reach(to) else { done(false, "I couldn't find a number or email for “\(to)” in your contacts.", ""); return }
+        let esc = { (s: String) in s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") }
+        let script = """
+        tell application "Messages"
+          set svc to 1st account whose service type = iMessage
+          send "\(esc(text))" to participant "\(esc(who.handle))" of svc
+        end tell
+        """
+        var err: NSDictionary?
+        NSAppleScript(source: script)?.executeAndReturnError(&err)
+        err == nil ? done(true, "Sent to \(who.name): “\(text)”", "") : done(false, "Messages wouldn't send it. Allow ShuaCrew to control Messages in Privacy & Security → Automation.", "")
+    }
+    private static func facetime(_ a: [String: Any], _ done: Done) {
+        guard let to = a["to"] as? String, let who = reach(to) else { done(false, "I couldn't find how to reach “\(a["to"] as? String ?? "")”.", ""); return }
+        let audio = a["audio"] as? Bool ?? false
+        let digits = who.handle.contains("@") ? who.handle : who.handle.filter { "+0123456789".contains($0) }
+        guard let url = URL(string: "\(audio ? "facetime-audio" : "facetime")://\(digits)") else { done(false, "That number doesn't look right.", ""); return }
+        DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+        done(true, "Calling \(who.name) on FaceTime\(audio ? " audio" : "")", "")
+    }
+    private static func directions(_ a: [String: Any], _ done: Done) {
+        guard let to = (a["to"] as? String)?.trimmingCharacters(in: .whitespaces), !to.isEmpty else { done(false, "Directions to where?", ""); return }
+        let flag = ["walking": "w", "transit": "r"][a["mode"] as? String ?? ""] ?? "d"
+        var c = URLComponents(string: "maps://")!; c.queryItems = [URLQueryItem(name: "daddr", value: to), URLQueryItem(name: "dirflg", value: flag)]
+        guard let url = c.url else { done(false, "Couldn't open Maps.", ""); return }
+        DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+        done(true, "Directions to \(to) are up in Maps", "")
     }
     private static func contacts(_ a: [String: Any], _ done: Done) {
         guard let q = (a["query"] as? String)?.trimmingCharacters(in: .whitespaces), !q.isEmpty else { done(false, "Who should I look up?", ""); return }
@@ -242,11 +428,13 @@ enum MacKnowledge {
     }
     private static func addEvent(_ a: [String: Any], _ done: Done) {
         guard let title = (a["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty, title.count <= 200 else { done(false, "What's the event?", ""); return }
-        let parse = { (v: Any?) -> Date? in guard let s = v as? String else { return nil }; if let d = ISO8601DateFormatter().date(from: s) { return d }; let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd'T'HH:mm"; return f.date(from: s) }
-        guard let start = parse(a["start"]) else { done(false, "When is it?", ""); return }
+        let parse = { (v: Any?) -> (date: Date, dateOnly: Bool)? in (v as? String).flatMap { LocalDate.parse($0) } }
+        guard let begin = parse(a["start"]) else { done(false, "I couldn't read when it is (“\(a["start"] as? String ?? "")”), so I didn't add it.", ""); return }
+        let start = begin.date
         guard access(.event) else { done(false, "Let ShuaCrew use your calendar in System Settings → Privacy & Security → Calendars.", ""); return }
         let e = EKEvent(eventStore: events)
-        e.title = title; e.startDate = start; e.endDate = parse(a["end"]) ?? start.addingTimeInterval(3600)
+        e.title = title; e.startDate = start; e.isAllDay = begin.dateOnly
+        e.endDate = parse(a["end"])?.date ?? start.addingTimeInterval(begin.dateOnly ? 86_400 : 3600)
         if let place = a["location"] as? String, !place.isEmpty { e.location = String(place.prefix(200)) }
         e.calendar = events.defaultCalendarForNewEvents
         do { try events.save(e, span: .thisEvent); done(true, "Added “\(title)” on \(when.string(from: start))", "") } catch { done(false, "Couldn't add it to your calendar.", "") }

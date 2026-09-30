@@ -26,11 +26,15 @@ import type { Learning } from "./learning.js";
 import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
-import type { Runtime, RuntimeStatus } from "@shuacrew/runtimes";
+import { ClaudeRuntime, type Runtime, type RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
 import { Hub } from "./hub.js";
@@ -258,7 +262,11 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         // Your crew's and ventures' names spell right when Whisper knows to expect them.
         const names = [...Object.values(state.members).map((m) => m.name), ...Object.values(state.ventures).map((v) => v.name)];
         // fast=1: a live caption while you're still talking (quick model, greedy); the final turn uses the accurate one.
-        const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.fast === "1" ? 8_000 : request.query.voice === "1" ? 45_000 : undefined, prompt: request.query.lang && request.query.lang !== "en" ? undefined : vocabulary(names), fast: request.query.fast === "1", language: request.query.lang });
+        const heard = await transcribe(file, { signal: abort.signal, timeoutMs: request.query.fast === "1" ? 8_000 : request.query.voice === "1" ? 45_000 : undefined, prompt: request.query.lang && request.query.lang !== "en" ? undefined : vocabulary(names), fast: request.query.fast === "1", language: request.query.lang,
+          // A spoken turn in English under ~20 s: the quick model, full beam — about 0.3 s instead of ~1.6 s (the big
+          // model spends most of that loading, every turn), and no less accurate on short commands. Dictation, long
+          // recordings and other languages keep the big one.
+          ...(request.query.voice === "1" && (!request.query.lang || request.query.lang === "en") && request.body.length < 20 * 32_000 + 44 ? { model: "fast" as const } : {}) });
         return { text: fixNames(heard, [...names, "ShuaCrew", "Shua", "Codex", "Claude"]) };
       } catch (error) {
         return reply.code(422).send({ error: (error as Error).message });
@@ -818,7 +826,20 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   // "Try now": lift a usage limit you believe has cleared. If it hasn't, the next call says so.
   app.post<{ Params: { runtime: string }; Body: { model?: string } }>("/api/runtimes/:runtime/restore", async (request) => {
     supervisor.restore(request.params.runtime, request.body?.model || undefined);
+    const runtime = options.runtimes.get(request.params.runtime);
+    if (runtime instanceof ClaudeRuntime) runtime.restore(request.body?.model || undefined);
     return { ok: true };
+  });
+
+  // One more Claude subscription: a fresh config folder (sharing your conversations), then a Terminal window
+  // to sign in to it once. From then on runs spread across your accounts and move on when one hits its limit.
+  app.post("/api/runtimes/claude/accounts", async (_request, reply) => {
+    const runtime = options.runtimes.get("claude");
+    if (!(runtime instanceof ClaudeRuntime)) return reply.code(404).send({ error: "Claude isn't enabled" });
+    const dir = runtime.accounts.create();
+    const login = `CLAUDE_CONFIG_DIR=${JSON.stringify(dir)} claude auth login`;
+    await execFileAsync("osascript", ["-e", `tell application "Terminal" to do script ${JSON.stringify(login)}`, "-e", 'tell application "Terminal" to activate']).catch(() => undefined);
+    return { dir, login };
   });
 
   // Ship it: push the session's branch and open a GitHub PR that explains itself.
@@ -976,10 +997,23 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
   const statusCache = new Map<string, { at: number; value: Promise<RuntimeStatus> }>();
+  // Usage limits belong to a login, not to "Claude": when the signed-in accounts change (you ran /login as someone
+  // else, or added one), the old limits no longer apply. Who was signed in is kept on disk, across restarts.
+  const seenFile = path.join(process.env.SHUACREW_HOME ?? path.join(os.homedir(), ".shuacrew"), "runtime-accounts.json");
+  const noticeAccounts = (runtime: string, status: RuntimeStatus) => {
+    const who = (status.accounts ?? []).filter((a) => a.signedIn).map((a) => a.email ?? a.dir).sort().join(",");
+    if (!who) return; // couldn't tell who: change nothing
+    let seen: Record<string, string> = {};
+    try { seen = JSON.parse(readFileSync(seenFile, "utf8")); } catch { /* first look */ }
+    if (seen[runtime] === who) return;
+    seen[runtime] = who;
+    writeFileSync(seenFile, JSON.stringify(seen, null, 2));
+    supervisor.accountsChanged(runtime);
+  };
   const statusOf = (runtime: Runtime, fresh: boolean) => {
     const hit = statusCache.get(runtime.id);
     if (!fresh && hit && Date.now() - hit.at < 30_000) return hit.value;
-    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })).then(status => { supervisor.updateRuntimeStatus(runtime.id, status); return status; });
+    const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })).then(status => { supervisor.updateRuntimeStatus(runtime.id, status); noticeAccounts(runtime.id, status); return status; });
     statusCache.set(runtime.id, { at: Date.now(), value });
     return value;
   };

@@ -7,3 +7,4 @@ export * from "./acp.js";
 export * from "./local.js";
 
 export * from "./teaching.js";
+export * from "./claude-accounts.js";

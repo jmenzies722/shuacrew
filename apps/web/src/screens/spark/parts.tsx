@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState, useSyncExternalStore, type RefObject } from "react";
 import { motion } from "motion/react";
+import { formatLeft, remaining } from "../../lib/timers";
 import { SparkCharacter } from "../../components/SparkCharacter";
 import type { useCompanion } from "../../lib/companion";
 import type { GuideStep } from "../../lib/buddy";
@@ -28,3 +29,49 @@ export function VoiceBars({ level, active }: { level: number; active: boolean })
   return <span className={`spk-bars ${active ? "is-on" : ""}`} aria-hidden="true">{[0.55, 1, 0.75, 0.9, 0.5].map((k, i) => <i key={i} style={{ transform: `scaleY(${active ? Math.max(0.18, Math.min(1, level * 1.6 * k + 0.12 * (i % 2))) : 0.18})` }} />)}</span>;
 }
 
+/**
+ * The mic level lives outside React state: it changes ~23 times a second while the mic is open, and as state it
+ * re-rendered all of Spark (chat, notch, activities) every time. Now only the meters that show it update.
+ */
+const levelSubs = new Set<() => void>();
+let micLevelNow = 0;
+export function setMicLevel(v: number) {
+  const q = Math.round(Math.min(1, Math.max(0, v)) * 12) / 12; // steps you can see; silence stays still
+  if (q === micLevelNow) return;
+  micLevelNow = q; levelSubs.forEach((f) => f());
+}
+export const getMicLevel = () => micLevelNow;
+const subscribeLevel = (f: () => void) => { levelSubs.add(f); return () => { levelSubs.delete(f); }; };
+export function useMicLevel() { return useSyncExternalStore(subscribeLevel, getMicLevel, getMicLevel); }
+/** Bars fed straight from the mic; `floor` keeps them moving gently while Spark talks. */
+export function MicBars({ floor = 0 }: { floor?: number }) { const level = useMicLevel(); return <VoiceBars level={Math.max(level, floor)} active />; }
+/** Keeps a `--lvl` CSS variable on an element in step with the mic, without re-rendering anything. */
+export function useMicLevelVar(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => { const on = () => ref.current?.style.setProperty("--lvl", String(micLevelNow)); on(); return subscribeLevel(on); }, [ref]);
+}
+
+
+/** Working on what you said: the bars become a wave travelling through them, in the theme's accent. */
+export function ThinkWave() {
+  return <span className="spk-think" role="status" aria-label="Working on it">{[0, 1, 2, 3, 4].map((i) => <i key={i} style={{ animationDelay: `${i * 0.11}s` }} />)}</span>;
+}
+
+/** A soft three-note chime for a timer or alarm (Web Audio: no file, plays over whatever else is on). */
+export function chime(times = 2) {
+  try {
+    const ctx = new AudioContext(), t0 = ctx.currentTime + 0.05;
+    for (let r = 0; r < times; r++) [880, 1175, 1568].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), at = t0 + r * 1.1 + i * 0.16;
+      o.type = "sine"; o.frequency.value = f; g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.18, at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+      o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + 1);
+    });
+    setTimeout(() => void ctx.close(), (times * 1.1 + 1.2) * 1000);
+  } catch { /* no audio: the spoken line and the notification still happen */ }
+}
+
+/** A timer's time left, ticking every second on its own — the rest of Spark doesn't re-render for it. */
+export function TimeLeft({ t }: { t: import("../../lib/timers").Timer }) {
+  const [, tick] = useState(0);
+  useEffect(() => { if (t.paused !== undefined) return; const i = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(i); }, [t.paused]);
+  return <>{formatLeft(remaining(t, Date.now()))}</>;
+}

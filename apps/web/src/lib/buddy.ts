@@ -1,5 +1,6 @@
 import { PANES } from "./settings-panes";
 import { noEmoji } from "./no-emoji";
+import { VISUAL_GUIDE } from "./visual";
 /** The desktop buddy's contract with the model: short answers, a place to point on screen, and things to do on the Mac. */
 export interface Point { x: number; y: number; label: string; target?: string }
 
@@ -23,10 +24,11 @@ export type Action =
   | { type: "open_url"; url: string }
   | { type: "open_path"; path: string }
   | { type: "focus"; minutes: number }
+  | { type: "timer"; op: "start" | "alarm" | "cancel" | "pause" | "resume" | "list"; seconds?: number; at?: string; label?: string }
   | { type: "crew"; ask: string }
   | { type: "note"; text: string }
-  | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "open_query" | "volume" | "volume_up" | "volume_down" | "mute" | "playlist" | "shuffle" | "repeat" | "love" | "add_to_library" | "seek"; query?: string; app?: string; level?: number; on?: boolean; mode?: "off" | "one" | "all"; seconds?: number }
-  | { type: "system"; what: "dark_mode" | "sleep_display"; on?: boolean }
+  | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "open_query" | "volume" | "volume_up" | "volume_down" | "mute" | "playlist" | "shuffle" | "repeat" | "love" | "add_to_library" | "seek" | "play_similar"; by?: "artist" | "vibe"; mood?: string; query?: string; app?: string; level?: number; on?: boolean; mode?: "off" | "one" | "all"; seconds?: number }
+  | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "empty_trash"; on?: boolean; level?: number }
   | { type: "shortcut"; name: string }
   | { type: "settings"; changes: SparkChanges }
   | { type: "learn"; topic?: string; drill?: boolean }
@@ -39,7 +41,7 @@ export type Action =
   | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
   | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
   | { type: "open_settings"; pane: string }
-  | { type: "mac"; op: "find" | "read" | "recent" | "calendar" | "reminders" | "add_reminder" | "notes" | "contacts" | "status" | "music_now" | "music_playlists" | "notes_new" | "calendar_add" | "new_folder" | "reveal" | "open_file" | "browser_tabs"; query?: string; path?: string; kind?: string; days?: number; title?: string; due?: string; body?: string; start?: string; end?: string; location?: string; name?: string; in?: string };
+  | { type: "mac"; op: "find" | "read" | "recent" | "calendar" | "reminders" | "add_reminder" | "notes" | "contacts" | "status" | "music_now" | "music_playlists" | "notes_new" | "calendar_add" | "new_folder" | "reveal" | "open_file" | "browser_tabs" | "complete_reminder" | "delete_reminder" | "delete_event" | "delete_note" | "delete_reminders" | "complete_reminders" | "send_message" | "facetime" | "directions"; to?: string; text?: string; mode?: "driving" | "walking" | "transit"; audio?: boolean; titles?: string[]; all?: boolean; list?: string; query?: string; date?: string; path?: string; kind?: string; days?: number; title?: string; due?: string; body?: string; start?: string; end?: string; location?: string; name?: string; in?: string };
 /** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
   { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky" },
@@ -197,9 +199,9 @@ export function elementsText(ctx: ScreenContext | undefined, max = 120) {
 }
 
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
-export function completedBlocks(text: string): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw"; raw: string }> {
-  const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw"; raw: string }> = [];
-  for (const m of text.matchAll(/```(do|act|point|guide|draw)\s*([\s\S]*?)```/gi)) out.push({ key: `${m.index}:${m[1]!.toLowerCase()}`, kind: m[1]!.toLowerCase() as "do", raw: m[0] });
+export function completedBlocks(text: string): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual"; raw: string }> {
+  const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual"; raw: string }> = [];
+  for (const m of text.matchAll(/```(do|act|point|guide|draw|visual)\s*([\s\S]*?)```/gi)) out.push({ key: `${m.index}:${m[1]!.toLowerCase()}`, kind: m[1]!.toLowerCase() as "do", raw: m[0] });
   return out;
 }
 
@@ -220,6 +222,13 @@ function toAction(v: unknown): Action | null {
     case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
     case "open_url": { const url = str(o.url, 2000); try { return url && /^https?:$/.test(new URL(url).protocol) ? { type: "open_url", url } : null; } catch { return null; } }
     case "open_path": { const path = str(o.path, 500); return path && /^~?\//.test(path) && !path.split("/").includes("..") ? { type: "open_path", path } : null; }
+    case "timer": {
+      const op = (["start", "alarm", "cancel", "pause", "resume", "list"] as const).find((x) => x === o.op); if (!op) return null;
+      const seconds = Number(o.seconds), label = str(o.label, 40), at = str(o.at, 40);
+      if (op === "start" && !(seconds >= 1 && seconds <= 43_200)) return null;
+      if (op === "alarm" && !at) return null;
+      return { type: "timer", op, ...(op === "start" ? { seconds } : {}), ...(at && op === "alarm" ? { at } : {}), ...(label ? { label } : {}) };
+    }
     case "focus": { const minutes = Number(o.minutes); return [5, 10, 15, 25, 45, 50, 60, 90].includes(minutes) ? { type: "focus", minutes } : null; }
     case "crew": { const ask = str(o.ask, 4000); return ask ? { type: "crew", ask } : null; }
     case "mail": {
@@ -236,7 +245,7 @@ function toAction(v: unknown): Action | null {
     case "open_settings": { const pane = PANES.find((p) => p.key === o.pane); return pane ? { type: "open_settings", pane: pane.key } : null; }
     case "mac": {
       // Your Mac, read on this Mac: files (Spotlight), calendar, reminders, notes, contacts, status. The Mac app checks again.
-      const op = (["find", "read", "recent", "calendar", "reminders", "add_reminder", "notes", "contacts", "status", "music_now", "music_playlists", "notes_new", "calendar_add", "new_folder", "reveal", "open_file", "browser_tabs"] as const).find((x) => x === o.op);
+      const op = (["find", "read", "recent", "calendar", "reminders", "add_reminder", "notes", "contacts", "status", "music_now", "music_playlists", "notes_new", "calendar_add", "new_folder", "reveal", "open_file", "browser_tabs", "complete_reminder", "delete_reminder", "delete_event", "delete_note", "delete_reminders", "complete_reminders", "send_message", "facetime", "directions"] as const).find((x) => x === o.op);
       if (!op) return null;
       const days = Number.isInteger(o.days) && (o.days as number) >= 1 && (o.days as number) <= 30 ? { days: o.days as number } : {};
       if (op === "find") { const query = str(o.query, 120); const kind = ["pdf", "images", "apps", "folders", "documents"].includes(o.kind as string) ? { kind: o.kind as string } : {}; return query ? { type: "mac", op, query, ...kind } : null; }
@@ -248,19 +257,36 @@ function toAction(v: unknown): Action | null {
       if (op === "new_folder") { const name = str(o.name, 120), dir = str(o.in, 500); return name ? { type: "mac", op, name, ...(dir ? { in: dir } : {}) } : null; }
       if (op === "reveal" || op === "open_file") { const path = str(o.path, 500); return path ? { type: "mac", op, path } : null; }
       if (op === "add_reminder") { const title = str(o.title, 200); const due = str(o.due, 40); return title ? { type: "mac", op, title, ...(due ? { due } : {}) } : null; }
+      // Messages, calls, directions: to a contact by name (or a number/email). Sending and calling always ask first.
+      if (op === "send_message") { const to = str(o.to, 80), text = str(o.text, 1000); return to && text ? { type: "mac", op, to, text } : null; }
+      if (op === "facetime") { const to = str(o.to, 80); return to ? { type: "mac", op, to, ...(o.audio === true ? { audio: true } : {}) } : null; }
+      if (op === "directions") { const to = str(o.to, 200), mode = (["driving", "walking", "transit"] as const).find((m) => m === o.mode); return to ? { type: "mac", op, to, ...(mode ? { mode } : {}) } : null; }
+      // Many at once: named ones, all of them, or all in one list — one yes, one pass on the Mac.
+      if (op === "delete_reminders" || op === "complete_reminders") {
+        const titles = Array.isArray(o.titles) ? o.titles.map((t) => str(t, 200)).filter((t): t is string => !!t).slice(0, 200) : [];
+        const list = str(o.list, 100), all = o.all === true;
+        return titles.length || all ? { type: "mac", op, ...(titles.length ? { titles } : {}), ...(all ? { all } : {}), ...(list ? { list } : {}) } : null;
+      }
+      // Finishing or deleting by name (a date narrows it); the Mac app asks which one if several match.
+      if (op === "complete_reminder" || op === "delete_reminder" || op === "delete_event" || op === "delete_note") { const title = str(o.title, 200), date = str(o.date, 40); return title ? { type: "mac", op, title, ...(date ? { date } : {}) } : null; }
       return { type: "mac", op, ...days };
     }
     case "note": { const text = str(o.text, 2000); return text ? { type: "note", text } : null; }
     case "media": {
-      const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "open_query", "volume", "volume_up", "volume_down", "mute", "playlist", "shuffle", "repeat", "love", "add_to_library", "seek"] as const;
+      const cmds = ["play", "pause", "toggle", "next", "previous", "play_query", "open_query", "volume", "volume_up", "volume_down", "mute", "playlist", "shuffle", "repeat", "love", "add_to_library", "seek", "play_similar"] as const;
       const command = cmds.find((c) => c === o.command); if (!command) return null;
-      const level = Number(o.level), query = str(o.query, 200), app = str(o.app, 20), seconds = Number(o.seconds);
+      const level = Number(o.level), query = str(o.query, 200), app = str(o.app, 20), seconds = Number(o.seconds), mood = str(o.mood, 30);
       if ((command === "play_query" || command === "open_query" || command === "playlist") && !query) return null;
       if (command === "seek" && !(Number.isFinite(seconds) && seconds >= 0)) return null;
       return { type: "media", command, ...(query ? { query } : {}), ...(app ? { app } : {}), ...(Number.isFinite(level) ? { level: Math.max(0, Math.min(100, Math.round(level))) } : {}),
-        ...(typeof o.on === "boolean" ? { on: o.on } : {}), ...(o.mode === "off" || o.mode === "one" || o.mode === "all" ? { mode: o.mode } : {}), ...(command === "seek" ? { seconds: Math.min(36_000, seconds) } : {}) };
+        ...(typeof o.on === "boolean" ? { on: o.on } : {}), ...(o.mode === "off" || o.mode === "one" || o.mode === "all" ? { mode: o.mode } : {}), ...(command === "seek" ? { seconds: Math.min(36_000, seconds) } : {}), ...(command === "play_similar" && (o.by === "artist" || o.by === "vibe") ? { by: o.by } : {}), ...(command === "play_similar" && mood ? { mood } : {}) };
     }
-    case "system": return o.what === "dark_mode" || o.what === "sleep_display" ? { type: "system", what: o.what, ...(typeof o.on === "boolean" ? { on: o.on } : {}) } : null;
+    case "system": {
+      const what = (["dark_mode", "sleep_display", "volume", "volume_up", "volume_down", "mute", "lock", "screenshot", "wifi", "empty_trash"] as const).find((w) => w === o.what); if (!what) return null;
+      const level = Number(o.level);
+      if (what === "volume" && !(level >= 0 && level <= 100)) return null;
+      return { type: "system", what, ...(typeof o.on === "boolean" ? { on: o.on } : {}), ...(what === "volume" ? { level: Math.round(level) } : {}) };
+    }
     case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
     case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
     case "learn": { const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
@@ -288,13 +314,14 @@ export function describeAction(a: Action): string {
     case "open_url": { try { return `Open ${new URL(a.url).host}`; } catch { return "Open link"; } }
     case "open_path": return `Open ${a.path.split("/").filter(Boolean).at(-1) ?? a.path}`;
     case "focus": return `${a.minutes}-minute focus`;
+    case "timer": return a.op === "start" ? `${a.label ? `${a.label} timer` : "Timer"}: ${Math.round((a.seconds ?? 0) / 60) || a.seconds + " s"}${a.seconds && a.seconds >= 60 ? " min" : ""}` : a.op === "alarm" ? `Alarm for ${a.at}` : a.op === "list" ? "Check your timers" : `${a.op[0]!.toUpperCase()}${a.op.slice(1)} ${a.label ? `the ${a.label} timer` : "the timer"}`;
     case "crew": return "Hand to the crew";
     case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
     case "open_settings": return `Open ${PANES.find((p) => p.key === a.pane)?.name ?? "Settings"}`;
-    case "mac": return a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : a.op === "music_now" ? "Check what's playing" : a.op === "music_playlists" ? "Check your playlists" : a.op === "notes_new" ? `New note: ${a.title ?? "…"}` : a.op === "calendar_add" ? `Add “${a.title}” to your calendar` : a.op === "new_folder" ? `New folder “${a.name}”` : a.op === "reveal" ? `Show ${a.path?.split("/").pop()} in Finder` : a.op === "open_file" ? `Open ${a.path?.split("/").pop()}` : a.op === "browser_tabs" ? "Check your open tabs" : "Check your Mac";
+    case "mac": return a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "send_message" ? `Send “${a.text}” to ${a.to}` : a.op === "facetime" ? `Call ${a.to} on FaceTime${a.audio ? " audio" : ""}` : a.op === "directions" ? `Directions to ${a.to}` : a.op === "delete_reminders" || a.op === "complete_reminders" ? `${a.op === "delete_reminders" ? "Delete" : "Finish"} ${a.all ? `all your reminders${a.list ? ` in ${a.list}` : ""}` : `${a.titles?.length ?? 0} reminder${a.titles?.length === 1 ? "" : "s"}`}` : a.op === "complete_reminder" ? `Mark “${a.title}” done` : a.op === "delete_reminder" ? `Delete the reminder “${a.title}”` : a.op === "delete_event" ? `Delete “${a.title}” from your calendar${a.date ? ` (${a.date.slice(0, 10)})` : ""}` : a.op === "delete_note" ? `Delete the note “${a.title}”` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : a.op === "music_now" ? "Check what's playing" : a.op === "music_playlists" ? "Check your playlists" : a.op === "notes_new" ? `New note: ${a.title ?? "…"}` : a.op === "calendar_add" ? `Add “${a.title}” to your calendar` : a.op === "new_folder" ? `New folder “${a.name}”` : a.op === "reveal" ? `Show ${a.path?.split("/").pop()} in Finder` : a.op === "open_file" ? `Open ${a.path?.split("/").pop()}` : a.op === "browser_tabs" ? "Check your open tabs" : "Check your Mac";
     case "note": return "Add to your note";
-    case "media": return a.command === "play_query" ? `Play “${a.query}”` : a.command === "playlist" ? `Play your ${a.query} playlist` : a.command === "open_query" ? `Open ${a.query}` : a.command === "shuffle" ? `Shuffle ${a.on === false ? "off" : "on"}` : a.command === "repeat" ? `Repeat ${a.mode ?? "all"}` : a.command === "love" ? "Favourite this song" : a.command === "add_to_library" ? "Add this song to your library" : `Music: ${a.command.replace(/_/g, " ")}`;
-    case "system": return a.what === "dark_mode" ? "Dark mode" : "Sleep display";
+    case "media": return a.command === "play_similar" ? a.mood ? `Play something ${a.mood} from your library` : (a.by === "vibe" ? "Play something similar from your library" : "Play another song from your library") : a.command === "play_query" ? `Play “${a.query}”` : a.command === "playlist" ? `Play your ${a.query} playlist` : a.command === "open_query" ? `Open ${a.query}` : a.command === "shuffle" ? `Shuffle ${a.on === false ? "off" : "on"}` : a.command === "repeat" ? `Repeat ${a.mode ?? "all"}` : a.command === "love" ? "Favourite this song" : a.command === "add_to_library" ? "Add this song to your library" : `Music: ${a.command.replace(/_/g, " ")}`;
+    case "system": return { dark_mode: "Dark mode", sleep_display: "Sleep display", volume: `Volume to ${a.level}%`, volume_up: "Volume up", volume_down: "Volume down", mute: a.on === false ? "Unmute" : "Mute", lock: "Lock your Mac", screenshot: "Take a screenshot", wifi: `Wi-Fi ${a.on === false ? "off" : "on"}`, empty_trash: "Empty the Trash" }[a.what];
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
     case "learn": return a.drill ? "Quiz drill" : `Course: ${a.topic}`;
@@ -346,7 +373,7 @@ export function actFollowUp(did: string, ok: boolean, screen: { width: number; h
 }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return withoutPositions(noEmoji(text).replace(/```(point|do|guide|draw|act|next)[\s\S]*?(```|$)/gi, "")).trim(); }
+export function speakable(text: string) { return withoutPositions(noEmoji(text).replace(/```(point|do|guide|draw|act|next|visual)[\s\S]*?(```|$)/gi, "")).trim(); }
 /**
  * "Switched it for you." — with nothing actually done. True when a reply says it did (or is doing) something on the
  * Mac but carries no block that would do it. Spark gets sent straight back to either do it or say it can't.
@@ -432,12 +459,13 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Building software, writing code in a repo, or a long written report they asked the crew to produce: ```do [{"type":"crew","ask":"…a clear, complete brief…"}]```. Questions, facts, news, prices, comparisons, recommendations and "look it up": search yourself right now (WebSearch/WebFetch) and answer — never hand those to the crew. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
       "YOU STAY WITH THEM. When they want to learn, find, set up or do something on their Mac or a website, YOU walk them through it yourself, live, one step at a time (guide), or do it for them (act) when they ask you to: never hand that to the crew, never say you can't, never stop after one step. After each step you'll get a fresh screenshot automatically; give the next step until it's done, then the done block. If something unexpected shows up, adapt and keep going.",
+      'SIRI-STYLE on their Mac: system {"what":"volume","level":40} · {"what":"volume_up"} · {"what":"volume_down"} · {"what":"mute","on":true|false} · {"what":"lock"} · {"what":"screenshot"} · {"what":"wifi","on":true|false} · {"what":"empty_trash"} (asks first) · iMessage a contact {"type":"mac","op":"send_message","to":"Mom","text":"Running 10 min late"} (you CAN send texts now — ShuaCrew reads it back and asks them yes/no before it goes; write the exact text they asked for) · FaceTime {"type":"mac","op":"facetime","to":"Sam","audio?":true} (asks first) · directions {"type":"mac","op":"directions","to":"JFK Airport","mode?":"driving|walking|transit"}. Maths, conversions, definitions, jokes: just answer.',
       'Their email (Gmail or any account in the Mac Mail app), read and draft only, NEVER send: unread ```do [{"type":"mail","op":"unread"}]``` · search ```do [{"type":"mail","op":"search","query":"invoice"}]``` · read one (id from a list) ```do [{"type":"mail","op":"read","id":123}]``` · draft a reply ```do [{"type":"mail","op":"draft","to":"a@b.com","subject":"…","body":"…"}]``` (it opens in Mail for them to send). You get the results back; then say the gist in a sentence or two.',
       `SYSTEM SETTINGS — take them to the exact page, never a hunt: \`\`\`do [{"type":"open_settings","pane":"displays"}]\`\`\` (pane: ${PANES.map((p) => p.key).join(" | ")}). Night Shift, brightness, resolution are in displays; dark mode in appearance; permissions like screen-recording, full-disk-access, microphone, accessibility-access open right on that switch. Then point at the exact control if they need to change something there.`,
-      'THEIR MAC — look before you guess (read on this Mac): find files ```do [{"type":"mac","op":"find","query":"lease agreement","kind":"pdf"}]``` (kind?: pdf|images|documents|folders|apps) · read a file or folder ```do [{"type":"mac","op":"read","path":"~/Documents/plan.md"}]``` · recent files {"op":"recent","days":3} · calendar {"op":"calendar","days":2} · reminders {"op":"reminders"} · add a reminder {"op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"} · Apple Notes {"op":"notes","query":"passport"} · contacts {"op":"contacts","query":"Sam"} · this Mac now (apps, battery, storage, Wi-Fi) {"op":"status"}. DO THINGS DIRECTLY (never click through an app for these): new Apple Note {"op":"notes_new","title":"…","body":"…"} · calendar event {"op":"calendar_add","title":"Dentist","start":"2026-10-02T15:00","end?":"…","location?":"…"} · new folder {"op":"new_folder","name":"test","in?":"~/Desktop"} · open a file {"op":"open_file","path":"~/…"} · show it in Finder {"op":"reveal","path":"~/…"} · their open Safari/Chrome tabs {"op":"browser_tabs"}. You get the result back; answer from it with the specifics. Use these whenever the answer lives on their Mac (their files, schedule, people, notes) instead of saying you don\'t know.',
+      'THEIR MAC — look before you guess (read on this Mac): find files ```do [{"type":"mac","op":"find","query":"lease agreement","kind":"pdf"}]``` (kind?: pdf|images|documents|folders|apps) · read a file or folder ```do [{"type":"mac","op":"read","path":"~/Documents/plan.md"}]``` · recent files {"op":"recent","days":3} · calendar {"op":"calendar","days":2} · reminders {"op":"reminders"} · add a reminder {"op":"add_reminder","title":"Call the dentist","due":"2026-10-01T09:00"} · mark a reminder done {"op":"complete_reminder","title":"laundry"} · DELETE a reminder {"op":"delete_reminder","title":"dentist"} · MANY at once (always ONE action, never one per item): {"op":"delete_reminders","titles":["Clean Room","GYM"]} or everything {"op":"delete_reminders","all":true} or one list {"op":"delete_reminders","all":true,"list":"Desk Work"} (complete_reminders works the same) · delete a calendar event {"op":"delete_event","title":"standup","date?":"2026-09-30"} · delete an Apple Note {"op":"delete_note","title":"old ideas"} (you CAN delete these; ShuaCrew asks them "yes or no" itself before anything is deleted, so just send the block — don\'t ask first yourself, and never claim it\'s deleted until the result says so, and don\'t re-check the list to see — the result tells you, after they answer; several matches → the result says which, so ask them to pick) · Apple Notes {"op":"notes","query":"passport"} · contacts {"op":"contacts","query":"Sam"} · this Mac now (apps, battery, storage, Wi-Fi) {"op":"status"}. DO THINGS DIRECTLY (never click through an app for these): new Apple Note {"op":"notes_new","title":"…","body":"…"} · calendar event {"op":"calendar_add","title":"Dentist","start":"2026-10-02T15:00","end?":"…","location?":"…"} · new folder {"op":"new_folder","name":"test","in?":"~/Desktop"} · open a file {"op":"open_file","path":"~/…"} · show it in Finder {"op":"reveal","path":"~/…"} · their open Safari/Chrome tabs {"op":"browser_tabs"}. You get the result back; answer from it with the specifics. Use these whenever the answer lives on their Mac (their files, schedule, people, notes) instead of saying you don\'t know.',
       'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
-      'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. To play or recommend a specific song, give play_query the exact "Title by Artist" (it finds that exact song, even misheard); for "something like this" or "recommend me something", pick one real song that fits what\'s playing now and play it, saying why in a few words. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
+      'Music: for ShuaCrew Radio (lofi, "the radio", "put something on") use radio; for Music/Spotify use media: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. Take what they mean, not the words: "another song", "something else", "play something", "something like this", "recommend me something" → play_similar (by: "vibe" when they want a different artist); a mood ("something chill", "upbeat music", "focus music") → play_similar {mood: "chill"} (their library, by genre) — never play_query a mood or a whole sentence — it picks from THEIR library on the Mac; NEVER name a song from memory for these (it usually isn\'t theirs and won\'t play). "Skip"/"next" → next. "Another song by <Artist>" / "play <Artist>" → play_query {query: "<Artist>"} (a different one of theirs each time). Only when they name a specific song: play_query "Title by Artist" (finds that exact song, even misheard). Say what is now playing from the result, never what you guessed. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
       'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
@@ -445,6 +473,8 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     'YOU ARE CUSTOMIZABLE BY CHAT — when they ask to change you ("talk faster", "use Ryan\'s voice", "be more direct", "call yourself Nova", "be the fox", "make yourself purple", "stop talking", "keep listening", "don\'t click things"), do it with: settings {changes: {name?, character?: spark|orb|byte|kit|blob, color?: name or #hex, size?: s|m|l, tone?: cheerful|chill|direct|coach, length?: brief|detailed, talks?: bool, voice?: ' + (persona.voices?.length ? persona.voices.join("|") : "voice id") + ', speed?: 0.9|1|1.15, conversation?: bool (open-mic), interrupt?: bool, control?: off|ask|auto (mouse & keyboard), guide?: click|manual}}. Confirm in a few words, in your new style.',
     "Say in one short sentence what you're doing (\"Opening Safari for you.\"). Never claim you can't open apps, play music or do things on the Mac. Never use emoji.",
     "NEVER say you did, are doing, or turned something on/off unless the matching block (do / act / guide / settings) is in this SAME reply. No block, no claim: if you can't do it, say so plainly and offer the closest thing you can do.",
+    'TIMERS & ALARMS (any length, several at once, named): ```do [{"type":"timer","op":"start","seconds":420,"label":"pasta"}]``` · alarm at a clock time {"op":"alarm","at":"07:00","label?":"gym"} (24h HH:MM, or a full ISO date-time) · {"op":"cancel","label?":"pasta"} · {"op":"pause"} · {"op":"resume"} · how long is left {"op":"list"}. Use these — NOT reminders and NOT focus — whenever they say timer, countdown, alarm or "wake me".',
+    VISUAL_GUIDE,
     'NEXT MOVES: when you finish a task, a lesson, a lookup or a workflow, end with ```next ["…","…"]``` — 2 or 3 short, specific things they could ask you next (under 8 words each, phrased as they would say them, e.g. "Quiz me on this", "Set it up on my Mac too"). Skip it for small talk and quick commands.',
     "RESEARCH: if you don't know, or it depends on current or specific facts, look it up (WebSearch, then WebFetch the best page) before you answer or teach, and name the source in a few words. Then teach it: point, guide or draw on their screen when that makes it clearer.",
     persona.goal || persona.memory?.length ? [
@@ -488,7 +518,7 @@ export function localSystem(p: Persona): string {
     `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Be accurate; if you don't know, say so.`,
     "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
     '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below} · radio {cmd: play|pause|resume|next|stop, station?: "lofi jazz"|"lofi hip hop"}',
-    "- media {command: play|pause|next|previous|play_query, query?, app?: Music|Spotify} · remember {text} · card {front, back} (a quiz card) · run {command} (a terminal command; risky ones ask first)",
+    "- media {command: play|pause|next|previous|play_query|play_similar, query?, app?: Music|Spotify} ('another song'/'something like this' = play_similar: from their library) · remember {text} · card {front, back} (a quiz card) · run {command} (a terminal command; risky ones ask first)",
     "ShuaCrew pages (what each is for — answer questions about the app from this, never guess):",
     ...SHUACREW_PAGES.map((x) => `- ${x.name} ${x.path}: ${x.about}`),
     p.goal ? `Their career goal: ${p.goal}.` : "",
@@ -560,5 +590,77 @@ export function liveLookup(events: ReadonlyArray<{ kind: string; body?: unknown 
     if (b?.tool === "WebFetch" && b.input?.url) { try { return `Reading ${new URL(b.input.url).hostname.replace(/^www\./, "")}`; } catch { return "Reading a page"; } }
     return null;
   }
+  return null;
+}
+
+/** Actions that can't be undone: Spark asks you first (a tap in the notch or the chat), whatever the control mode. */
+/** Can't be undone, or reaches another person: Spark asks you first, whatever the control mode. */
+export const isDestructive = (a: Action): boolean => (a.type === "mac" && (a.op === "delete_reminder" || a.op === "delete_event" || a.op === "delete_note" || a.op === "delete_reminders" || a.op === "send_message" || a.op === "facetime"))
+  || (a.type === "system" && a.what === "empty_trash");
+
+/**
+ * The one question for every delete in a reply: "Delete 30 reminders (Organize GitHub, Clean Room, GYM and 27 more)".
+ * One yes covers them all — it used to ask once per reminder.
+ */
+export function deleteQuestion(actions: Action[]): string {
+  const names: string[] = [], other: string[] = [];
+  let all = "";
+  for (const a of actions) {
+    if (a.type !== "mac") continue;
+    if (a.op === "delete_reminders") { if (a.all) all = `every reminder${a.list ? ` in ${a.list}` : ""}`; else names.push(...(a.titles ?? [])); }
+    else if (a.op === "delete_reminder" && a.title) names.push(a.title);
+    else if (a.op === "delete_event" || a.op === "delete_note") other.push(describeAction(a).replace(/^Delete /, ""));
+  }
+  // Anything else that needs a yes (a message, a call, emptying the Trash) is said as it is.
+  const rest = actions.filter((a) => isDestructive(a) && !(a.type === "mac" && /^delete_/.test(a.op))).map(describeAction);
+  if (rest.length) {
+    const deletes = names.length || all || other.length ? [deleteQuestion(actions.filter((a) => a.type === "mac" && /^delete_/.test(a.op)))] : [];
+    const all2 = [...deletes, ...rest];
+    return all2.length > 1 ? `${all2.slice(0, -1).join(", ")} and ${all2.at(-1)![0]!.toLowerCase()}${all2.at(-1)!.slice(1)}` : all2[0]!;
+  }
+  const parts: string[] = [];
+  if (all) parts.push(all);
+  if (names.length === 1) parts.push(`the reminder “${names[0]}”`);
+  else if (names.length > 1) parts.push(`${names.length} reminders (${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""})`);
+  parts.push(...other);
+  return `Delete ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0] ?? "that"}`;
+}
+
+/**
+ * What Spark says the instant you finish talking, before the model has a word: Jarvis-style, specific to what you
+ * asked. Only when it says something real ("Checking your calendar."): a plain question gets no filler ("give me a
+ * sec" sounded robotic) — just the answer, with the notch working in between. null = say nothing.
+ */
+export function ackFor(q: string, turn = 0): { text: string; delay: number } | null {
+  const t = q.toLowerCase();
+  const pick = (xs: string[]) => xs[turn % xs.length]!;
+  const quick = 900; // most answers start by ~1.2 s: only a slower one gets a line first
+  const verbs = "remind|set|add|make|create|text|send|email|open|turn|tell|show|check|call|start|schedule|book|delete|remove|find|search|look|put|play";
+  if (new RegExp(`\\b(and|then|also|plus)\\s+(?:${verbs})\\b`).test(t)) return { text: pick(["On it, doing both.", "Got it, both of those.", "On it."]), delay: quick };
+  if (/\b(delete|remove|clear|cancel)\b/.test(t)) return { text: "Let me find that.", delay: quick };
+  if (/\b(remind|reminder)\b/.test(t)) return { text: pick(["Setting that up.", "On it."]), delay: quick };
+  if (/\b(calendar|schedule|meeting|event|appointment)\b/.test(t)) return { text: /\b(add|put|schedule|book|create|make)\b/.test(t) ? "Adding that now." : "Checking your calendar.", delay: quick };
+  if (/\b(email|mail|inbox)\b/.test(t)) return { text: "Checking your mail.", delay: quick };
+  if (/\b(play|put on|queue|song|music|track)\b/.test(t)) return { text: pick(["Queuing that up.", "Coming right up."]), delay: quick };
+  if (/\b(build|code|app|website|landing page|project|repo)\b/.test(t) && /\b(build|make|create|write|fix)\b/.test(t)) return { text: "Handing that to the crew.", delay: quick };
+  if (/\b(look up|search|google|find out|latest|news|price|weather|forecast|score|who won|when is|when's|how much|what time does|open now|near me)\b/.test(t)) return { text: pick(["Let me check.", "Looking that up.", "Checking now."]), delay: quick };
+  return null;
+}
+
+/**
+ * A progress line worth saying on a long turn — what Spark is really doing, from this turn's own tool calls ("Pulling
+ * up space.com."). Nothing specific → null: silence plus the notch's working animation beats filler like "still on it".
+ * `said` is how many progress lines this turn has had (they vary, never repeat).
+ */
+export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknown }> | undefined, said: number): string | null {
+  if (!events) return null;
+  let start = 0;
+  for (let i = events.length - 1; i >= 0; i--) if (events[i]!.kind === "turn.started") { start = i; break; }
+  const calls = events.slice(start).filter((e) => e.kind === "tool.called").map((e) => e.body as { tool?: string; input?: { url?: string } });
+  const pages = calls.filter((c) => c.tool === "WebFetch" && c.input?.url).map((c) => { try { return new URL(c.input!.url!).hostname.replace(/^(www|forecast|m)\./, ""); } catch { return ""; } }).filter(Boolean);
+  const site = pages.at(-1);
+  if (site && pages.length > 1 && said > 0) return `Checking ${site} too.`;
+  if (site) return said === 0 ? `Pulling up ${site}.` : `Reading through ${site}.`;
+  if (calls.some((c) => c.tool === "WebSearch")) return said === 0 ? "Going through the results." : null;
   return null;
 }

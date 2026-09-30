@@ -4,7 +4,7 @@ import type { ApprovalView, CrewMember, RunView } from "@shuacrew/core/projectio
 import { nowPlaying } from "./now-playing";
 import {
   albumOf, channelOpen, cinemaCuts, crewNowBlock, isStudioAsk, masterLevel, mixChannels,
-  parseMix, producerMove, recentlyPlayed, routeLaunch, runRecap, setHeadline, skipToFight, studioAnswer, todaysSet,
+  parseMix, producerMove, recentlyPlayed, routeLaunch, runRecap, setHeadline, skipToFight, studioAnswer, timerMove, todaysSet,
 } from "./studio";
 
 const member = (id: string, name: string, extra: Partial<CrewMember> = {}): CrewMember =>
@@ -199,4 +199,66 @@ itFolder("makes a folder directly, where you said", () => {
   expectFolder(moveFolder("make a new folder called test on my desktop")).toEqual({ kind: "folder", name: "test", in: "~/Desktop" });
   expectFolder(moveFolder("create a folder named Taxes 2026 in documents")).toEqual({ kind: "folder", name: "Taxes 2026", in: "~/Documents" });
   expectFolder(moveFolder("make a folder called Receipts")).toEqual({ kind: "folder", name: "Receipts" });
+});
+
+describe("another song means another of yours", () => {
+  it("never searches for a song literally called 'another song'", () => {
+    expect(producerMove("play another song")).toEqual({ kind: "music", command: "play_similar", by: "artist" });
+    expect(producerMove("play a different song")).toEqual({ kind: "music", command: "play_similar", by: "artist" });
+    expect(producerMove("play something else")).toEqual({ kind: "music", command: "play_similar", by: "vibe" });
+    expect(producerMove("play something like this")).toEqual({ kind: "music", command: "play_similar", by: "vibe" });
+    expect(producerMove("play something similar")).toEqual({ kind: "music", command: "play_similar", by: "vibe" });
+  });
+  it("'another song by X' plays one of X's", () => {
+    expect(producerMove("play another song by Drake")).toEqual({ kind: "play", query: "Drake" });
+  });
+  it("still plays named songs and artists as before", () => {
+    expect(producerMove("play Drake")).toEqual({ kind: "play", query: "Drake" });
+    expect(producerMove("play Ain't Nun by Sleepy Hallow")).toEqual({ kind: "play", query: "Ain't Nun by Sleepy Hallow" });
+  });
+});
+
+describe("moods and two asks at once", () => {
+  it("hands two asks in one sentence to the model instead of searching for the whole sentence", () => {
+    expect(producerMove("Play something chill and remind me to stretch in 20 minutes")).toBeNull();
+    expect(producerMove("play Drake then set a timer for 10 minutes")).toBeNull();
+    expect(producerMove("play Simon and Garfunkel")).toEqual({ kind: "play", query: "Simon and Garfunkel" });
+  });
+  it("plays a mood from the library by genre, never as a song title", () => {
+    expect(producerMove("play something chill")).toEqual({ kind: "music", command: "play_similar", by: "vibe", mood: "chill" });
+    expect(producerMove("play chill music")).toEqual({ kind: "music", command: "play_similar", by: "vibe", mood: "chill" });
+    expect(producerMove("put on some upbeat songs")).toEqual({ kind: "music", command: "play_similar", by: "vibe", mood: "upbeat" });
+    expect(producerMove("play some jazz")).toEqual({ kind: "play", query: "jazz" });
+  });
+});
+
+describe("timers and alarms, instantly", () => {
+  const at = new Date(2026, 8, 29, 17, 0).getTime();
+  it("hears timers the way you say them", () => {
+    expect(producerMove("set a timer for 7 minutes")).toEqual({ kind: "timer", op: "start", seconds: 420 });
+    expect(producerMove("set a pasta timer for 9 minutes")).toEqual({ kind: "timer", op: "start", seconds: 540, label: "pasta" });
+    expect(producerMove("10 minute timer")).toEqual({ kind: "timer", op: "start", seconds: 600 });
+    expect(producerMove("timer for an hour and a half")).toEqual({ kind: "timer", op: "start", seconds: 5400 });
+  });
+  it("sets alarms for the next time it comes round", () => {
+    expect(timerMove("wake me up at 7", at)).toEqual({ kind: "timer", op: "alarm", at: "19:00" }); // at 5 pm, "7" is next at 7 pm
+    expect(timerMove("wake me up at 7 am", at)).toEqual({ kind: "timer", op: "alarm", at: "07:00" });
+  });
+  it("cancels, pauses and says what's left", () => {
+    expect(producerMove("cancel the pasta timer")).toEqual({ kind: "timer", op: "cancel", label: "pasta" });
+    expect(producerMove("cancel the timer")).toEqual({ kind: "timer", op: "cancel" });
+    expect(producerMove("pause the timer")).toEqual({ kind: "timer", op: "pause" });
+    expect(producerMove("how much time is left?")).toEqual({ kind: "timer", op: "list" });
+    expect(producerMove("set an alarm for 6:30 pm")).toEqual({ kind: "timer", op: "alarm", at: "18:30" });
+  });
+});
+
+describe("Mac controls, instantly", () => {
+  it("hears everyday controls", () => {
+    expect(producerMove("set the volume to 30")).toEqual({ kind: "sys", what: "volume", level: 30 });
+    expect(producerMove("lock my Mac")).toEqual({ kind: "sys", what: "lock" });
+    expect(producerMove("take a screenshot")).toEqual({ kind: "sys", what: "screenshot" });
+    expect(producerMove("turn off wifi")).toEqual({ kind: "sys", what: "wifi", on: false });
+    expect(producerMove("unmute")).toEqual({ kind: "sys", what: "mute", on: false });
+  });
 });

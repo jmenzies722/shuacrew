@@ -68,6 +68,8 @@ export interface RuntimeStatus {
   installed: boolean;
   signedIn: boolean | null; // null: the CLI can't say without spending usage
   account?: string;
+  /** Every login this runtime pools (Claude: one per config dir), each with its plan and limit. */
+  accounts?: Array<{ dir: string; email?: string; plan?: string; signedIn: boolean; limitedUntil: number }>;
   version?: string;
   detail: string;
   /** API-key variables present in the gateway's environment that would override a subscription. */
