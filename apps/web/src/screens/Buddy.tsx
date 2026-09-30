@@ -24,7 +24,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -181,7 +181,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const limited = useLive((s) => s.crew.limited);
   const [choice, setChoice] = useState<IntelligenceChoice | null>(null);
   const [choiceError, setChoiceError] = useState("");
-  const [convo, setConvo] = useState<{ run: string; first: string; runtime?: string; model?: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
+  const [convo, setConvo] = useState<{ run: string; first: string; runtime?: string; model?: string; rules?: string } | null>(() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { return null; } });
   const localPersona = { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, memory: memory.facts, goal: memory.goal };
   const localSys = localSystem(localPersona);
   const input = useRef<HTMLTextAreaElement>(null), thread = useRef<HTMLDivElement>(null);
@@ -749,7 +749,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
-      const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status, contextUsed } : null, selected);
+      const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status, contextUsed, rules: convo.rules } : null, { ...selected, rules: SPARK_RULES });
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
@@ -781,7 +781,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (wantLocal && disposition === "new") {
         setBrief(null);
         const r = await api<{ id: string }>("/api/runs", { body: { ask: `<spark-system>\n${localSys}\n\n${appNowBase}\n</spark-system>\n${liveLocal}`, title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: "local", model: selected.model, intelligence, labels: ["buddy"] } });
-        const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: "local", model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: "local", model: selected.model, rules: SPARK_RULES }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
         setDraft(""); return;
       }
       if (wantLocal) { await followSelected(convo!.run, `<spark-system>\n${localSys}\n\n${appNowBase}\n</spark-system>\n${liveLocal}`); setDraft(""); return; }
@@ -793,7 +793,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       } else {
         setBrief(null);
         const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
-        const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model, rules: SPARK_RULES }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
     } catch (e) { if (!stale()) setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { if (!stale()) setBusy(""); }
