@@ -196,6 +196,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let liveSpeech = LiveTranscriber()
     private func updateCursorBuddy() {
         if following && docked { cursorBuddy.start() } else { cursorBuddy.stop() }
+        pointer.onTour = cursorBuddy.active ? { [weak self] tour, start in self?.cursorBuddy.take(tour, start: start) ?? false } : nil
     }
     /// Self-test: part of the screen (fractions from the top-left), captured with every window in it, as PNG.
     static func capture(screen: NSScreen, region: CGRect, to path: String) async -> Bool {
@@ -204,6 +205,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
               let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else { return false }
         let config = SCStreamConfiguration()
         config.width = Int(Double(display.width) * screen.backingScaleFactor); config.height = Int(Double(display.height) * screen.backingScaleFactor)
+        config.showsCursor = false // only Shua's own drawing, not wherever the real pointer happens to be
         guard let image = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: config) else { return false }
         let W = Double(image.width), H = Double(image.height)
         guard let crop = image.cropping(to: CGRect(x: region.minX * W, y: region.minY * H, width: region.width * W, height: region.height * H)),
@@ -215,7 +217,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() } else { try? line.write(toFile: path, atomically: true, encoding: .utf8) }
     }
     /// Where a pointing flight starts: from the buddy beside your pointer when it's there, else from Spark.
-    private func launchPoint() -> NSPoint { cursorBuddy.launch() ?? sparkCenter }
+    private func launchPoint() -> NSPoint { cursorBuddy.globalPosition ?? sparkCenter }
     /// Spark's own windows, which its screenshots always leave out.
     private var ownWindows: [Int] { [panel.windowNumber] + (cursorBuddy.windowNumber.map { [$0] } ?? []) }
 
@@ -712,6 +714,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 LiveTranscriber.log(entry)
             default: break
             }
+        case "buddyCaption":
+            // The sentence Spark is saying right now: in the bubble beside the orb while it points.
+            cursorBuddy.say(String((body["text"] as? String ?? "").prefix(220)))
         case "buddyState":
             // What Spark is doing, shown by the buddy beside your pointer (listening / thinking / speaking / idle).
             if let c = body["color"] as? String { cursorBuddy.color = PointerOverlay.color(c) }
@@ -1022,14 +1027,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 guard let self, let screen = NSScreen.main else { return }
                 try? await Task.sleep(for: .seconds(2))
                 let shapes: [[String: Any]] = [["shape": "circle", "x": 0.42, "y": 0.45, "r": 0.05, "label": "This one"], ["shape": "underline", "x": 0.52, "y": 0.52, "w": 0.16, "h": 0.03]]
-                self.pointer.draw(on: screen, shapes: shapes, color: "#8e48ff", from: NSPoint(x: screen.frame.minX + screen.frame.width * 0.2, y: screen.frame.minY + screen.frame.height * 0.7))
+                self.noteState(.speaking) // as if Spark is explaining: the orb stays on the mark
+                self.pointer.draw(on: screen, shapes: shapes, color: "#8e48ff", from: self.launchPoint())
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.cursorBuddy.say("This is the button that saves your work — press it before you close.") }
                 var last = 0.0
-                for t in [0.3, 0.7, 1.1, 1.5, 2.0] {
+                for t in [0.45, 0.6, 0.75, 0.9, 1.1, 2.6] {
                     try? await Task.sleep(for: .milliseconds(Int((t - last) * 1000))); last = t
                     let ok = await Self.capture(screen: screen, region: CGRect(x: 0.15, y: 0.25, width: 0.6, height: 0.4), to: NSHomeDirectory() + "/.shuacrew/selftest-pen-\(t).png")
                     Self.appendSelfTest("SPARK SELFTEST pen t=\(t) saved=\(ok)\n")
                 }
-                self.pointer.hide()
+                self.pointer.hide(); self.noteState(.idle)
             }
             return
         }
@@ -1233,6 +1240,8 @@ final class BuddyGrip: NSView {
 /// Either way a little comet flies from Spark to the spot first, and nothing here ever takes a click from you.
 @MainActor
 final class PointerOverlay {
+    /// Hand a drawing tour to the cursor buddy (it becomes the pen). True if it took it; else the overlay draws its own tip.
+    var onTour: ((CursorMotion.PenTour, CFTimeInterval) -> Bool)?
     private var panel: NSPanel?
     private var hideWork: DispatchWorkItem?
     private var monitors: [Any] = []
@@ -1296,12 +1305,25 @@ final class PointerOverlay {
         arrow.move(to: .zero); arrow.addLine(to: CGPoint(x: 0, y: -21)); arrow.addLine(to: CGPoint(x: 5.2, y: -16))
         arrow.addLine(to: CGPoint(x: 9.2, y: -24.5)); arrow.addLine(to: CGPoint(x: 12.4, y: -23)); arrow.addLine(to: CGPoint(x: 8.5, y: -14.8))
         arrow.addLine(to: CGPoint(x: 15, y: -14.8)); arrow.closeSubpath()
+        let start = CACurrentMediaTime() + 0.05
+        // The orb beside your pointer is the pen when it can be: it flies the same timeline the ink grows on.
+        let origin = root.window?.frame.origin ?? .zero, global = { (p: CGPoint) in CGPoint(x: p.x + origin.x, y: p.y + origin.y) }
+        if let from, let onTour {
+            let tour = CursorMotion.PenTour(from: global(from), strokes: paths.map { CursorMotion.flatten($0).map(global) }, plan: plan)
+            if onTour(tour, start) {
+                for (step, layer) in zip(plan, strokes) {
+                    let ink = CABasicAnimation(keyPath: "strokeEnd"); ink.fromValue = 0; ink.toValue = 1
+                    ink.duration = step.trace; ink.beginTime = start + step.traceAt; ink.fillMode = .backwards
+                    layer.add(ink, forKey: "ink")
+                }
+                return (plan.last.map { $0.traceAt + $0.trace } ?? 0) + 0.05
+            }
+        }
         let tip = CAShapeLayer()
         tip.path = arrow; tip.fillColor = color.cgColor; tip.strokeColor = NSColor.white.cgColor; tip.lineWidth = 1.6; tip.lineJoin = .round
         tip.shadowColor = NSColor.black.cgColor; tip.shadowOpacity = 0.45; tip.shadowRadius = 6; tip.shadowOffset = CGSize(width: 0, height: -3)
         tip.position = from ?? firstPoint(paths[0])
         root.layer?.addSublayer(tip)
-        let start = CACurrentMediaTime() + 0.05
         var at = tip.position
         for (i, (step, layer)) in zip(plan, strokes).enumerated() {
             guard let path = layer.path else { continue }
@@ -1340,6 +1362,12 @@ final class PointerOverlay {
         guard let from, hypot(from.x - to.x, from.y - to.y) > 40 else { return 0 }
         let distance = hypot(from.x - to.x, from.y - to.y)
         let flight = min(0.95, max(0.5, Double(distance) / 1400)) // longer trips take a little longer, never sluggish
+        // Pointing at one spot: the orb itself flies there and stays while Spark talks about it.
+        if let onTour {
+            let origin = root.window?.frame.origin ?? .zero, g = { (p: CGPoint) in CGPoint(x: p.x + origin.x, y: p.y + origin.y) }
+            let tour = CursorMotion.PenTour(from: g(from), strokes: [[g(to)]], plan: [CursorMotion.PenStep(flyAt: 0, fly: flight, traceAt: flight, trace: 0.01)])
+            if onTour(tour, CACurrentMediaTime()) { return flight }
+        }
         // The arrow, tip at the origin (AppKit's y points up, so the body hangs below the tip).
         let arrow = CGMutablePath()
         arrow.move(to: .zero); arrow.addLine(to: CGPoint(x: 0, y: -21)); arrow.addLine(to: CGPoint(x: 5.2, y: -16))
