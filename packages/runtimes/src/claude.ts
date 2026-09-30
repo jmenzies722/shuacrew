@@ -11,7 +11,7 @@
  * single policy engine.
  */
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -25,7 +25,7 @@ const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
  * Spark's quick conversational turns, cold or warm — one definition, so the two can't drift (the warm path
  * once kept web search blocked while Spark was told it could search). Read is for attached images.
  */
-const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Use Read to look at attached images. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching.";
+const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Screenshots come attached as images you can already see: never Read them. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching.";
 /**
  * Spark's quick turns see only their three tools. Tool search off (it cost a round trip before every web search) —
  * which also means every tool present loads up front, so nothing of your own Claude setup comes along: your claude.ai
@@ -33,6 +33,26 @@ const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly
  */
 const LEAN_ENV = { ENABLE_TOOL_SEARCH: "false", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
 const LEAN_ISOLATION = { settingSources: [], strictMcpConfig: true, mcpServers: {} };
+/**
+ * Screenshots and photos listed under "Attached files:" go in as image blocks, after the text (instructions before
+ * the image point more precisely). Before, Claude had to Read each file first — a tool round trip of 2–3 s, often
+ * repeated, on every look at the screen. Only ShuaCrew's own uploads; anything unreadable stays a path.
+ */
+export function withImages(text: string, uploads = path.join(os.homedir(), ".shuacrew", "uploads")): string | Array<Record<string, unknown>> {
+  const images: Array<Record<string, unknown>> = [];
+  const kept = text.replace(/^- (\/[^\n]+?\.(jpe?g|png|gif|webp)) \((image\/[a-z]+)[^\n]*$/gim, (line, file: string, _ext: string, mime: string) => {
+    const real = path.resolve(file);
+    if (!real.startsWith(uploads + path.sep) || images.length >= 4) return line;
+    try {
+      const data = readFileSync(real);
+      if (data.length > 4.5 * 1024 * 1024) return line;
+      images.push({ type: "image", source: { type: "base64", media_type: mime === "image/jpg" ? "image/jpeg" : mime, data: data.toString("base64") } });
+      return `- ${path.basename(real)} (attached below as an image — you can see it)`;
+    } catch { return line; }
+  });
+  return images.length ? [{ type: "text", text: kept }, ...images] : text;
+}
+
 const LEAN_TOOLS = {
   // Exactly these three exist on a quick turn. Anything else was a trap: AskUserQuestion once parked a Spark step in
   // the approval queue for 3½ minutes (Spark asks by talking), and every extra tool definition slows the first word.
@@ -282,7 +302,7 @@ export class ClaudeRuntime implements Runtime {
     const inputClosed = new Promise<void>((resolve) => (closeInput = resolve));
     abort.signal.addEventListener("abort", () => closeInput(), { once: true });
     async function* input() {
-      yield { type: "user" as const, message: { role: "user" as const, content: run.ask }, parent_tool_use_id: null, session_id: "" };
+      yield { type: "user" as const, message: { role: "user" as const, content: withImages(run.ask) }, parent_tool_use_id: null, session_id: "" };
       await inputClosed;
     }
     const running = new Set<string>(); // subagents that started and haven't stopped
@@ -423,7 +443,7 @@ export class ClaudeRuntime implements Runtime {
     let wake: (() => void) | undefined, closed = false;
     async function* input() {
       while (!closed) {
-        if (queue.length) { yield { type: "user" as const, message: { role: "user" as const, content: queue.shift()! }, parent_tool_use_id: null, session_id: "" }; continue; }
+        if (queue.length) { yield { type: "user" as const, message: { role: "user" as const, content: withImages(queue.shift()!) }, parent_tool_use_id: null, session_id: "" }; continue; }
         await new Promise<void>((resolve) => (wake = resolve));
       }
     }
