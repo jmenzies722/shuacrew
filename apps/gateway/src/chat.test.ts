@@ -171,6 +171,28 @@ describe("stopping a session", () => {
     expect(fold(store.read(0)).approvals).toEqual({});
     expect(status(store, run)).toBe("cancelled");
   });
+  it("stays stopped when the runtime complains about the abort, so the conversation can carry on", async () => {
+    // Claude's SDK ends an aborted turn with an error event ("[ede_diagnostic] …") rather than throwing.
+    const store = new EventStore(":memory:");
+    let started = false, finished = false;
+    const grumpy: Runtime = Object.assign(Object.create(new MockRuntime()), {
+      async *start(_run: RunSpec, ctx: Parameters<Runtime["start"]>[1]) {
+        started = true;
+        await new Promise((ok) => ctx.signal.addEventListener("abort", ok, { once: true }));
+        yield { type: "error", message: "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null" } as const;
+        finished = true;
+      },
+    });
+    const supervisor = new Supervisor(store, new Map([["mock", grumpy]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    cleanups.push(() => (supervisor.shutdown(), store.close()));
+    const run = supervisor.launch({ ask: "Who won the last F1 race?", runtime: "mock" });
+    await until(() => started);
+    supervisor.cancel(run);
+    await until(() => finished);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(status(store, run)).toBe("cancelled");
+    expect(store.forRun(run).some((e) => e.kind === "error.raised")).toBe(false);
+  });
 });
 
 describe("push & open a PR", () => {

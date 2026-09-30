@@ -7,8 +7,12 @@ it("resumes only a compatible completed conversation and never reuses a foreign 
   expect(turnDisposition({ runtime: "claude", model: "c", status: "done" }, { runtime: "local", model: "l" })).toBe("new");
   expect(turnDisposition({ runtime: "claude", model: "c", status: "done" }, { runtime: "claude", model: "other" })).toBe("new");
 });
-it("failed, cancelled, unknown and paused turns cannot masquerade as healthy conversations", () => {
-  for (const status of ["failed", "cancelled", "paused", undefined]) expect(turnDisposition({ runtime: "local", model: "l", status }, { runtime: "local", model: "l" })).toBe("new");
+it("failed, unknown and paused turns cannot masquerade as healthy conversations", () => {
+  for (const status of ["failed", "paused", undefined]) expect(turnDisposition({ runtime: "local", model: "l", status }, { runtime: "local", model: "l" })).toBe("new");
+});
+it("a turn you talked over is still the same conversation (verified live: resumed after a stop mid-search)", () => {
+  expect(turnDisposition({ runtime: "claude", model: "c", status: "cancelled" }, { runtime: "claude", model: "c" })).toBe("resume");
+  expect(turnDisposition({ runtime: "claude", model: "c", status: "cancelled" }, { runtime: "claude", model: "other" })).toBe("new");
 });
 it("keeps an in-flight turn intact even when a preferred provider has returned", () => {
   for (const status of ["queued", "running", "planning", "awaiting_approval"]) expect(turnDisposition({ runtime: "codex", model: "x", status }, { runtime: "claude", model: "c" })).toBe("wait");

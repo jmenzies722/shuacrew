@@ -7,7 +7,9 @@ export interface WeatherPrefs { enabled: boolean; unit: "c" | "f"; source: "mac"
 export interface Weather { at: number; place: string; temp: number; code: number; day: boolean; hi: number; lo: number; wind: number; hours: Array<{ time: string; temp: number; code: number; rain: number }> }
 const PREFS = "shuacrew.weather", CACHE = "shuacrew.weatherCache";
 const read = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : d; } catch { return d; } };
-let prefs: WeatherPrefs = { enabled: false, unit: "c", source: "mac", city: "", ...read<Partial<WeatherPrefs>>(PREFS, {}) };
+/** °F where the region uses it (US, Liberia, Myanmar), else °C — until you pick one in Settings. */
+export const localUnit = (locale = Intl.DateTimeFormat().resolvedOptions().locale): "c" | "f" => (/-(US|LR|MM)\b/i.test(locale) ? "f" : "c");
+let prefs: WeatherPrefs = { enabled: false, unit: localUnit(), source: "mac", city: "", ...read<Partial<WeatherPrefs>>(PREFS, {}) };
 const listeners = new Set<() => void>();
 export function getWeatherPrefs() { return prefs; }
 export function saveWeatherPrefs(patch: Partial<WeatherPrefs>) { prefs = { ...prefs, ...patch }; try { localStorage.setItem(PREFS, JSON.stringify(prefs)); localStorage.removeItem(CACHE); } catch { /* ignore */ } listeners.forEach((l) => l()); }
@@ -79,10 +81,15 @@ export function weatherBrief(r: WeekForecast, place: string, unit: "c" | "f"): s
     `This week: ${week.join(" · ")}`,
   ].join("\n");
 }
-/** Fetch the week and brief it for Spark; "" if weather is off or there's no location yet. */
+/**
+ * Fetch the week and brief it for Spark. Asking about the weather is the go-ahead — it doesn't wait for the top-bar
+ * widget to be switched on (that setting is about showing it). The place is kept for 30 minutes so a follow-up
+ * question skips the location lookup.
+ */
+let spot: { at: number; place: { name: string; lat: number; lon: number } } | null = null;
 export async function weatherForSpark(): Promise<string> {
-  if (!prefs.enabled) return "";
-  const p = await where();
+  if (!spot || Date.now() - spot.at > 30 * 60_000) spot = { at: Date.now(), place: await where() };
+  const p = spot.place;
   const r = await api(`/api/weather/forecast?lat=${p.lat}&lon=${p.lon}&unit=${prefs.unit}&days=7`) as WeekForecast;
   return weatherBrief(r, p.name, prefs.unit);
 }

@@ -23,3 +23,25 @@ it("briefs Spark with now, the next 12 hours and the week, so it answers without
   expect(text).toMatch(/Next 12 hours: 13:00 73° .* 40%/);
   expect(text).toContain("Sat, Oct 3: 66/51°F clear, rain 5%");
 });
+
+it("answers a weather question even with the top-bar widget off, and looks up the place once", async () => {
+  const { vi } = await import("vitest");
+  vi.resetModules();
+  const located = vi.fn(async () => ({ lat: 40.7, lon: -73.3 }));
+  vi.doMock("./native", () => ({ requestLocation: located }));
+  vi.doMock("./api", () => ({ api: async () => ({
+    current: { temperature_2m: 70, weather_code: 0, time: "2026-09-30T13:00" },
+    hourly: { time: ["2026-09-30T13:00"], temperature_2m: [70], weather_code: [0], precipitation_probability: [0] },
+    daily: { time: ["2026-09-30"], temperature_2m_max: [74], temperature_2m_min: [60], weather_code: [0], precipitation_probability_max: [5] },
+  }) }));
+  const w = await import("./weather");
+  expect(w.getWeatherPrefs().enabled).toBe(false);
+  expect(await w.weatherForSpark()).toContain("WEATHER for Your location");
+  await w.weatherForSpark();
+  expect(located).toHaveBeenCalledTimes(1);
+  vi.doUnmock("./native"); vi.doUnmock("./api");
+});
+it("uses °F where the region does, until a unit is picked", async () => {
+  const { localUnit } = await import("./weather");
+  expect(localUnit("en-US")).toBe("f"); expect(localUnit("en-GB")).toBe("c"); expect(localUnit("fr-FR")).toBe("c"); expect(localUnit("en")).toBe("c");
+});

@@ -2,7 +2,7 @@ import AppKit
 import CoreLocation
 import UserNotifications
 
-/// One-shot location for the top-bar weather. Only runs when the page asks (you turned weather on);
+/// One-shot location for the weather (top bar, or a weather question to Spark). Only runs when the page asks;
 /// macOS shows its own permission prompt the first time. Coordinates are rounded to ~1 km.
 @MainActor
 final class LocationOnce: NSObject, CLLocationManagerDelegate {

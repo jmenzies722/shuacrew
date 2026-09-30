@@ -466,6 +466,9 @@ export class Supervisor {
             ended = true;
             break;
           case "error":
+            // Stopped on purpose: the runtime's parting complaint about the abort ("ede_diagnostic …") isn't a failure,
+            // and marking it one made Spark start a new conversation after every interruption.
+            if (controller.signal.aborted) { ended = true; break; }
             this.rec("error.raised", { message: event.message, fatal: true }, { run: runId });
             this.setStatus(runId, "failed", event.message);
             ended = true;
