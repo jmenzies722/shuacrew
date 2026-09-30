@@ -21,7 +21,7 @@ it("briefs Spark with now, the next 12 hours and the week, so it answers without
   expect(text).toContain("no web search");
   expect(text).toContain("Now: 68°F");
   expect(text).toMatch(/Next 12 hours: 13:00 73° .* 40%/);
-  expect(text).toContain("Sat, Oct 3: 66/51°F clear, rain 5%");
+  expect(text).toContain("Sat, Oct 3 (weekend): 66/51°F clear, rain 5%");
 });
 
 it("answers a weather question even with the top-bar widget off, and looks up the place once", async () => {
@@ -44,4 +44,17 @@ it("answers a weather question even with the top-bar widget off, and looks up th
 it("uses °F where the region does, until a unit is picked", async () => {
   const { localUnit } = await import("./weather");
   expect(localUnit("en-US")).toBe("f"); expect(localUnit("en-GB")).toBe("c"); expect(localUnit("fr-FR")).toBe("c"); expect(localUnit("en")).toBe("c");
+});
+
+it("tags today, tomorrow and the weekend so Spark doesn't count Friday as the weekend", async () => {
+  const { weatherBrief: brief } = await import("./weather");
+  const days = ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"];
+  const text = brief({
+    current: { temperature_2m: 69, weather_code: 3, time: "2026-09-30T14:00" },
+    hourly: { time: ["2026-09-30T14:00"], temperature_2m: [69], weather_code: [3], precipitation_probability: [0] },
+    daily: { time: days, temperature_2m_max: [69, 70, 83, 72, 66], temperature_2m_min: [60, 59, 62, 62, 58], weather_code: [3, 3, 51, 3, 51], precipitation_probability_max: [0, 5, 32, 32, 12] },
+  }, "Home", "f");
+  expect(text).toContain("Wed, Sep 30 (today)"); expect(text).toContain("Thu, Oct 1 (tomorrow)");
+  expect(text).toContain("Sat, Oct 3 (weekend)"); expect(text).toContain("Sun, Oct 4 (weekend)");
+  expect(text).toMatch(/Fri, Oct 2: /);
 });

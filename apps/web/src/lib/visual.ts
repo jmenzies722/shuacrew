@@ -21,7 +21,9 @@ export type Visual =
   | { type: "chart"; title: string; points: Array<{ label: string; value: number }>; prefix?: string; unit?: string }
   | { type: "score"; title: string; home: { name: string; score: number }; away: { name: string; score: number }; status?: string }
   | { type: "gauge"; title: string; value: number; max: number; unit?: string; label?: string }
-  | { type: "proscons"; title: string; pros: string[]; cons: string[] };
+  | { type: "proscons"; title: string; pros: string[]; cons: string[] }
+  // Live: ticks down in the notch until the moment (a launch, a flight, kickoff).
+  | { type: "countdown"; title: string; target: string; sub?: string };
 
 export const NODE_KINDS = ["user", "client", "cdn", "lb", "api", "service", "server", "worker", "cache", "db", "queue", "storage", "search", "external", "auth"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
@@ -120,8 +122,28 @@ export function parseVisual(raw: string): Visual | null {
       const pros = arr(o.pros, 4).map((x) => s(x, 60)).filter((x): x is string => !!x), cons = arr(o.cons, 4).map((x) => s(x, 60)).filter((x): x is string => !!x);
       return pros.length && cons.length ? { type: "proscons", title, pros, cons } : null;
     }
+    case "countdown": {
+      // Local wall-clock time ("2026-10-01T11:10:00"), as Spark writes dates; a zone suffix is fine too.
+      const target = s(o.target ?? o.at, 40), sub = s(o.sub, 60);
+      return target && Number.isFinite(new Date(target).getTime()) ? { type: "countdown", title, target, ...(sub ? { sub } : {}) } : null;
+    }
     default: return null;
   }
+}
+
+/**
+ * How much of the time left a countdown shows, biggest unit first — e.g. 20 h 47 m 3 s → [{value:20,unit:"h"},…].
+ * Past the moment it returns []: the card says it's happening.
+ */
+export function countdownParts(ms: number): Array<{ value: number; unit: "d" | "h" | "m" | "s" }> {
+  if (!(ms > 0)) return [];
+  const sec = Math.floor(ms / 1000), d = Math.floor(sec / 86_400), h = Math.floor(sec / 3600) % 24, m = Math.floor(sec / 60) % 60, s = sec % 60;
+  // A day or more out, seconds are noise: days, hours, minutes. Under a day it's a launch clock, to the second.
+  // Zeros inside the row stay (1 d 0 h 5 m reads right); a leading zero unit never shows.
+  const all = d ? [{ value: d, unit: "d" as const }, { value: h, unit: "h" as const }, { value: m, unit: "m" as const }]
+    : [{ value: h, unit: "h" as const }, { value: m, unit: "m" as const }, { value: s, unit: "s" as const }];
+  const first = all.findIndex((p) => p.value > 0);
+  return all.slice(first === -1 ? all.length - 1 : first);
 }
 
 /**
@@ -155,5 +177,6 @@ export const VISUAL_GUIDE = [
   '```visual {"type":"score","title":"NBA · final","home":{"name":"Knicks","score":112},"away":{"name":"Celtics","score":104},"status":"Final"}```',
   '```visual {"type":"gauge","title":"Battery","value":64,"max":100,"unit":"%","label":"about 5 h left"}```',
   '```visual {"type":"proscons","title":"Renting vs buying","pros":["Flexible","No repairs"],"cons":["No equity","Rent rises"]}```',
+  '```visual {"type":"countdown","title":"SpaceX Crew-13 launch","target":"2026-10-01T11:10:00","sub":"Kennedy Space Center"}``` (a live countdown to a real moment: local time, from their calendar or your search)',
   "TEACHING (explaining a system, a design or a concept — ALWAYS add one so they can see it while you talk): system design as an animated flow (kinds: user client cdn lb api service server worker cache db queue storage search external auth) ```visual {\"type\":\"flow\",\"title\":\"URL shortener\",\"nodes\":[{\"id\":\"u\",\"label\":\"User\",\"kind\":\"user\"},{\"id\":\"lb\",\"label\":\"Load balancer\",\"kind\":\"lb\"},{\"id\":\"api\",\"label\":\"API\",\"kind\":\"api\"},{\"id\":\"c\",\"label\":\"Redis\",\"kind\":\"cache\"},{\"id\":\"db\",\"label\":\"Postgres\",\"kind\":\"db\"}],\"edges\":[{\"from\":\"u\",\"to\":\"lb\"},{\"from\":\"lb\",\"to\":\"api\"},{\"from\":\"api\",\"to\":\"c\",\"label\":\"hit?\"},{\"from\":\"api\",\"to\":\"db\",\"label\":\"miss\"}]}``` (≤9 nodes) · who-talks-to-whom in order ```visual {\"type\":\"sequence\",\"title\":\"TCP handshake\",\"actors\":[\"Client\",\"Server\"],\"messages\":[{\"from\":0,\"to\":1,\"label\":\"SYN\"},{\"from\":1,\"to\":0,\"label\":\"SYN-ACK\"},{\"from\":0,\"to\":1,\"label\":\"ACK\"}]}``` · a stack ```visual {\"type\":\"layers\",\"title\":\"Web app\",\"layers\":[{\"label\":\"UI\",\"detail\":\"React\"},{\"label\":\"API\"},{\"label\":\"Database\"}]}``` · a loop ```visual {\"type\":\"cycle\",\"title\":\"Event loop\",\"steps\":[\"Call stack\",\"Web APIs\",\"Task queue\",\"Next tick\"]}``` · one idea ```visual {\"type\":\"concept\",\"title\":\"Concept\",\"term\":\"Idempotency\",\"definition\":\"Doing it twice has the same effect as once.\",\"points\":[\"Safe retries\",\"PUT, not POST\"],\"analogy\":\"Pressing an elevator button again\"}```. Talk through it in the order it animates.",
 ].join(" ");

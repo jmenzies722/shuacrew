@@ -70,7 +70,12 @@ export const asksWeather = (q: string) => /\b(weather|forecast|rain(ing|y)?|umbr
  * answered at once from real data (Open-Meteo), not after a 15–20 s web search and page read.
  */
 export function weatherBrief(r: WeekForecast, place: string, unit: "c" | "f"): string {
-  const deg = unit === "f" ? "°F" : "°C", day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  // Days say which are today, tomorrow and the weekend, so "this weekend" isn't left to date arithmetic (it once led with Friday).
+  const today = r.current.time.slice(0, 10), tomorrow = new Date(new Date(`${today}T12:00:00`).getTime() + 86_400_000).toLocaleDateString("en-CA");
+  const deg = unit === "f" ? "°F" : "°C", day = (iso: string) => {
+    const d = new Date(`${iso}T12:00:00`), tag = iso === today ? " (today)" : iso === tomorrow ? " (tomorrow)" : d.getDay() === 0 || d.getDay() === 6 ? " (weekend)" : "";
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + tag;
+  };
   const start = Math.max(0, r.hourly.time.findIndex((t) => t >= r.current.time.slice(0, 13)));
   const hours = r.hourly.time.slice(start, start + 12).map((t, i) => `${t.slice(11, 16)} ${Math.round(r.hourly.temperature_2m[start + i]!)}° ${describe(r.hourly.weather_code[start + i]!).label.toLowerCase()} ${r.hourly.precipitation_probability[start + i] ?? 0}%`);
   const week = r.daily.time.map((t, i) => `${day(t)}: ${Math.round(r.daily.temperature_2m_max[i]!)}/${Math.round(r.daily.temperature_2m_min[i]!)}${deg} ${describe(r.daily.weather_code[i]!).label.toLowerCase()}, rain ${r.daily.precipitation_probability_max[i] ?? 0}%`);

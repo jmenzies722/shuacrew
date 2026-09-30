@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSun, Moon, Snowflake, Sun, Wind, TrendingDown, TrendingUp, User, Monitor, Globe, Split, Webhook, Boxes, Server, Cog, Zap, Database, Layers, HardDrive, Search, ExternalLink, KeyRound, Check, X, Lightbulb } from "lucide-react";
-import { flowLayout, type NodeKind, type Visual, type WeatherIcon } from "../../lib/visual";
+import { countdownParts, flowLayout, type NodeKind, type Visual, type WeatherIcon } from "../../lib/visual";
 
 const ICONS: Record<WeatherIcon, typeof Sun> = { sun: Sun, partly: CloudSun, cloud: Cloud, rain: CloudRain, storm: CloudLightning, snow: Snowflake, wind: Wind, fog: CloudFog, night: Moon };
 const NODE_ICONS: Record<NodeKind, typeof Sun> = { user: User, client: Monitor, cdn: Globe, lb: Split, api: Webhook, service: Boxes, server: Server, worker: Cog, cache: Zap, db: Database, queue: Layers, storage: HardDrive, search: Search, external: ExternalLink, auth: KeyRound };
@@ -64,6 +64,7 @@ export function VisualCard({ v, onClose }: { v: Visual; onClose?: () => void }) 
       {v.type === "proscons" && <div className="spk-v-proscons">
         <ul>{v.pros.map((p, k) => <li key={k} style={stagger(k)}><Check size={13} />{p}</li>)}</ul>
         <ul>{v.cons.map((c, k) => <li key={k} style={stagger(k + v.pros.length)}><X size={13} />{c}</li>)}</ul></div>}
+      {v.type === "countdown" && <Countdown v={v} />}
     </figure>
   );
 }
@@ -128,5 +129,17 @@ function Chart({ v }: { v: Extract<Visual, { type: "chart" }> }) {
       <circle cx={pts.at(-1)!.x} cy={pts.at(-1)!.y} r="3.5" className={up ? "is-up" : "is-down"} />
     </svg>
     <div className="spk-v-axis">{v.points.filter((_, i) => i === 0 || i === v.points.length - 1 || v.points.length <= 7).map((p, i) => <span key={i}>{p.label}</span>)}</div>
+  </div>;
+}
+
+/** Ticks every second on its own (the rest of the card doesn't re-render); says so once the moment arrives. */
+function Countdown({ v }: { v: Extract<Visual, { type: "countdown" }> }) {
+  const at = new Date(v.target).getTime(), [now, setNow] = useState(Date.now());
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, []);
+  const parts = countdownParts(at - now);
+  const when = new Date(at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  return <div className="spk-v-countdown" role="timer" aria-live="off">
+    {parts.length ? <ol>{parts.map((p, k) => <li key={p.unit} style={stagger(k)}><b>{p.value}</b><small>{p.unit}</small></li>)}</ol> : <b className="is-now">Happening now</b>}
+    <em>{v.sub ? `${when} · ${v.sub}` : when}</em>
   </div>;
 }

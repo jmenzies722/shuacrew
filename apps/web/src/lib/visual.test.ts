@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flowLayout, parseVisual } from "./visual";
+import { countdownParts, flowLayout, parseVisual } from "./visual";
 
 describe("visual cards", () => {
   it("reads each card Spark sends", () => {
@@ -39,4 +39,20 @@ describe("teaching cards", () => {
     expect(parseVisual('{"type":"concept","term":"Idempotency","definition":"Twice = once.","points":["Safe retries"]}')).toMatchObject({ term: "Idempotency" });
     expect(parseVisual('{"type":"gauge","value":140,"max":100}')).toMatchObject({ value: 100 });
   });
+});
+
+it("reads a countdown to a real moment, and drops one without a usable time", () => {
+  expect(parseVisual('```visual {"type":"countdown","title":"Crew-13","target":"2026-10-01T11:10:00","sub":"KSC"}```')).toEqual({ type: "countdown", title: "Crew-13", target: "2026-10-01T11:10:00", sub: "KSC" });
+  expect(parseVisual('{"type":"countdown","title":"Kickoff","at":"2026-10-04T13:00:00-04:00"}')).toMatchObject({ target: "2026-10-04T13:00:00-04:00" });
+  expect(parseVisual('{"type":"countdown","title":"Soon","target":"tomorrow-ish"}')).toBeNull();
+  expect(parseVisual('{"type":"countdown","title":"No time"}')).toBeNull();
+});
+it("counts down in days, hours, minutes when it's far off, and to the second under a day", () => {
+  const t = (d: number, h: number, m: number, s: number) => (((d * 24 + h) * 60 + m) * 60 + s) * 1000 + 400;
+  expect(countdownParts(t(1, 0, 5, 9))).toEqual([{ value: 1, unit: "d" }, { value: 0, unit: "h" }, { value: 5, unit: "m" }]);
+  expect(countdownParts(t(0, 20, 47, 3))).toEqual([{ value: 20, unit: "h" }, { value: 47, unit: "m" }, { value: 3, unit: "s" }]);
+  expect(countdownParts(t(0, 0, 12, 4))).toEqual([{ value: 12, unit: "m" }, { value: 4, unit: "s" }]);
+  expect(countdownParts(t(0, 0, 0, 7))).toEqual([{ value: 7, unit: "s" }]);
+  expect(countdownParts(900)).toEqual([{ value: 0, unit: "s" }]);
+  expect(countdownParts(0)).toEqual([]); expect(countdownParts(-5000)).toEqual([]);
 });
