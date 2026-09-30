@@ -24,12 +24,12 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, ackFor, deleteQuestion, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, looksForAnswer, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseAct, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
-import { HandsFree, yesOrNo, type Phase } from "../lib/handsfree";
+import { echoOf, HandsFree, wakeOnly, yesOrNo, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
 import { SparkWidgets } from "../components/TopBarWidgets";
@@ -42,7 +42,7 @@ import "./buddy.css";
 /** Mac actions whose result Spark says out loud when it lands (you'd otherwise have to go and check). */
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
-import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, webAct } from "./spark/bridge";
+import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
 import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
@@ -117,6 +117,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }, [embedded]);
   // Open-mic conversation.
   const [phase, setPhase] = useState<Phase>("off"), talkBtn = useRef<HTMLButtonElement>(null);
+  // fn held (push-to-talk): the notch shows it is ready the instant the key goes down; `fnSent` keeps the working
+  // state on screen from letting go until Spark's first word.
+  const [fnHeld, setFnHeld] = useState(false), [fnSent, setFnSent] = useState(false);
   useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Spark
   // A command waiting for your yes.
   /** Your last spoken turn: stays in the notch, shimmering, until Spark starts answering — so you can see it heard you. */
@@ -190,6 +193,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const handled = useRef<number | null>(null), spokenUpto = useRef(0), streamId = useRef("");
   const crew = useLive((s) => s.crew), loadRun = useLive((s) => s.loadRun);
   const events = useLive((s) => (convo ? s.runEvents[convo.run] : undefined)), status = convo ? crew.runs[convo.run]?.status : undefined;
+  // How full this conversation is (the newest turn's report): past the limit, the next turn starts fresh with a recap.
+  const contextUsed = useMemo(() => { for (let i = (events?.length ?? 0) - 1; i >= 0; i--) { const e = events![i]!; if (e.kind === "usage.recorded") return Number((e.body as { contextUsed?: number }).contextUsed) || 0; } return 0; }, [events]);
   const recorded = convo ? crew.runs[convo.run] : undefined;
   const actualRuntime = recorded?.runtime ?? convo?.runtime;
   const actualModel = recorded?.model ?? convo?.model;
@@ -254,11 +259,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
       say: (text: string) => { speech.current.unlock(); for (const s of text.split(/(?<=[.!?])\s+/)) speech.current.say(s); },
       notch: (g: { w: number; h: number; real: boolean }) => setNotchGeo((cur) => (cur.w === g.w && cur.h === g.h && cur.real === g.real ? cur : g)),
-      // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release".
-      fn: (kind: "tap" | "hold" | "release") => {
-        if (kind === "tap") { setMini((m) => !m); return; }
-        if (kind === "hold") { setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
-        mic.current.release();
+      // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release". "down" comes the
+      // instant fn is pressed (the mic opens then, so your first words are kept); "cancel" = fn was a modifier after all.
+      fn: (kind: "down" | "cancel" | "tap" | "hold" | "release") => {
+        if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
+        if (kind === "cancel") { mic.current.cool(); return; }
+        if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
+        if (kind === "hold") { setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
+        setFnHeld(false); setFnSent(true); mic.current.release();
       } };
     post({ type: "buddyReady" });
   }, []);
@@ -300,33 +308,49 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     visualTimer.current = setTimeout(() => { setVisual(null); if (!nookFocus.current) setNook(false); }, 25_000);
   };
   const looked = useRef(new Set<string>()), recheck = useRef(new Set<string>());
+  // "Open X and then Y": the do block runs mid-stream, so the look-again waits here until the reply has finished.
+  const finished = useRef(new Set<string>()), carryOn = useRef(new Map<string, () => void>());
   const runBlocks = (text: string, key: string, final: boolean) => {
     const seen = ran.current.get(key) ?? new Set<string>(); ran.current.set(key, seen);
+    if (final) { finished.current.add(key); const go = carryOn.current.get(key); if (go) { carryOn.current.delete(key); go(); } }
     if (ran.current.size > 40) ran.current.delete(ran.current.keys().next().value!);
-    for (const b of completedBlocks(text)) {
-      if (seen.has(b.key) || (b.kind === "act" && !final)) continue;
+    for (const b of completedBlocks(text, screenSize())) {
+      if (seen.has(b.key) || ((b.kind === "act" || b.kind === "zoom") && !final)) continue;
       seen.add(b.key);
       if (b.kind === "point") { const p = parsePoint(b.raw); if (p) { const r = locate({ x: p.x, y: p.y, w: 0.03, h: 0.03, label: p.label, target: p.target }, screenFacts()); post({ type: "buddyPoint", ...p, x: r.x, y: r.y, color: accentOf(prefs.color) }); } }
       else if (b.kind === "visual") { const v = parseVisual(b.raw); if (v) showVisual(v); }
+      else if (b.kind === "zoom") {
+        // Spark asked to look closer: that region at full resolution goes straight back, and it carries on from there.
+        const r = parseZoom(b.raw), size = screenSize();
+        if (r && convo) void (async () => {
+          try {
+            setBusy("Looking closer…");
+            const z = await zoomShot(r), att = await upload(z.file);
+            const px = size ? `pixels x ${Math.round(r.x * size.width)}–${Math.round((r.x + r.w) * size.width)}, y ${Math.round(r.y * size.height)}–${Math.round((r.y + r.h) * size.height)} of the screenshot` : "the region you asked for";
+            await followUp(convo.run, withAttachments(`[zoom] Here is ${px}, at full resolution (attached). Give every position in the ORIGINAL screenshot's pixels, not this image's. Now carry on with the task.`, [att]));
+          } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+        })();
+      }
       else if (b.kind === "draw") { const shapes = parseDraw(b.raw).map(fitShape); if (shapes.length) queueDraw(key, shapes); }
       else if (b.kind === "guide") {
         const g = parseGuide(b.raw);
         if (g?.done) { setGuide(null); post({ type: "buddyGuideStop" }); setCheer(true); setTimeout(() => setCheer(false), 2400); }
         else if (g) void (async () => {
-          // In Chrome the page reports the element's exact box; elsewhere, snap to the real control.
-          const w = g.label ? await webAct("locate", g.label) : null;
-          const r = w?.rect ? { ...w.rect, shape: (/^(button|a|link|tab|summary)$/.test(w.role ?? "") ? "pill" : "rounded") as "pill" | "rounded", exact: true } : locate(g, screenFacts());
+          // Snap to the real control — in a web page too: Shua reads the page's own elements into the look (ShuaWeb).
+          const r = locate(g, screenFacts());
           const exact = { ...g, x: r.x, y: r.y, w: r.w, h: r.h, shape: r.shape, exact: r.exact }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click" });
         })();
       } else if (b.kind === "act") {
-        const act = parseAct(b.raw);
+        const acts = parseActs(b.raw), act = acts[0] ?? null;
+        // A batch runs back to back when Spark may act on its own; asking first, it goes one step at a time.
+        const batch = acts.length > 1 && act?.type !== "done" && (prefs.control === "auto" || autoTask) ? acts : null;
         if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
         else if (act && prefs.control !== "off") {
           const step = (taskRef.current?.step ?? 0) + 1, same = describeAct(act);
           // As long as it takes — but the same move three times in a row means it's stuck: stop and ask, don't loop.
           recentActs.current = [...recentActs.current.slice(-2), same];
           if (recentActs.current.length === 3 && recentActs.current.every((x) => x === same)) { recentActs.current = []; stopTask(`I tried “${same}” three times and it isn't working. Tell me what to try, or take over.`); }
-          else { setTask({ step }); actKey.current = key; if (prefs.control === "auto" || autoTask) void runActRef.current(act, step); else setPending(act); }
+          else { setTask({ step }); actKey.current = key; if (batch) void runActRef.current(batch, step); else if (prefs.control === "auto" || autoTask) void runActRef.current(act, step); else setPending(act); }
         }
       } else if (b.kind === "do") {
         const actions = parseActions(b.raw);
@@ -339,7 +363,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           const approved = deletes.length > 1 && sparkHooks.confirmDelete ? await sparkHooks.confirmDelete(deleteQuestion(deletes)) : null;
           for (const a of actions) {
             if (approved === false && isDestructive(a)) { results.push({ ok: true, message: "Kept it" }); continue; }
-            const r = await perform(a, { confirmed: approved === true }); results.push(r); setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app")) opened = a.type === "open_url" ? a.url : a.name; }
+            const r = await perform(a, { confirmed: approved === true }); results.push(r); setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app" || a.type === "open_path" || a.type === "open_settings")) opened = a.type === "open_url" ? a.url : a.type === "open_app" ? a.name : a.type === "open_path" ? a.path : `System Settings (${a.pane})`; }
           // It already said "Opening X": if that didn't happen (no such app, a blocked step), say so out loud right away,
           // so a failure never passes as done. Once per reply.
           // Done is said, not just shown: the real result, in a few words ("Added “Launch” on Thu 1 Oct, 11:10 AM"),
@@ -353,11 +377,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             corrected.current.add(key);
             speech.current.say(`Actually, that didn't work: ${failed[0]!.replace(/[.\s]+$/, "")}.`);
           }
-          // Opened something to answer a question (weather, a score, a price)? Look at what opened and give the specifics.
+          // Opened something as step one ("open an article and underline…", "what's the weather")? Once the reply has
+          // finished and the thing has loaded, look at it and do the rest — never stop at "I'll do it once it loads".
           const q = [...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? "";
-          if (final && opened && looksForAnswer(q) && !looked.current.has(key)) {
+          if (opened && needsFollowThrough(q, text) && !looked.current.has(key)) {
             looked.current.add(key);
-            setTimeout(() => void askRef.current(`What does it say?\n\n[screen] You just opened ${opened} to answer: “${q.slice(0, 300)}”. A fresh screenshot is attached. Read it and answer with the specifics (numbers, names, times, conditions) in two or three spoken sentences. Don't open anything else unless they ask.`, { look: true }), 3200);
+            // Give the page time to load, and let Spark finish its sentence first: a new turn stops the voice.
+            const go = () => setTimeout(() => speech.current.whenQuiet(() => void askRef.current(followThroughAsk(opened, q), { look: true })), 3200);
+            if (finished.current.has(key)) go(); else carryOn.current.set(key, go);
           }
         })();
       }
@@ -592,18 +619,27 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (why) setError(why);
   };
   /** Do one step with the mouse or keyboard, then look again and ask for the next one. */
-  const runAct = async (a: Act, step: number) => {
+  /** Do one step — or a batch back to back (stopping at the first that fails) — then look again once and ask what's next. */
+  const runAct = async (steps: Act | Act[], step: number) => {
     if (!convo) return;
-    setPending(null); setBusy(describeAct(a) + "…");
+    const list = (Array.isArray(steps) ? steps : [steps]).filter((a) => a.type !== "done");
+    setPending(null);
     try {
-      // In Chrome, a named click happens on the page element itself (exact, even if the page scrolled); else the Mac clicks.
-      const onPage = a.type === "click" && a.label && !("button" in a && a.button === "right") ? await webAct("click", a.label) : null;
-      const r = onPage ? { ok: true, message: `Clicked “${onPage.name}” on the page` } : await perform({ ...a, color: accentOf(prefs.color) });
-      setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
-      await new Promise((ok) => setTimeout(ok, 800)); // let the app react before looking
+      const said: string[] = []; let ok = true;
+      for (const [i, a] of list.entries()) {
+        if (!taskRef.current && i > 0) return; // stopped mid-batch
+        setBusy(describeAct(a) + "…");
+        // Shua does every step itself — in web pages through the page's own elements (ShuaWeb), no browser extension.
+        const r = await perform({ ...a, color: accentOf(prefs.color) });
+        setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
+        said.push(`${describeAct(a)}${r.ok ? (r.message && r.message !== describeAct(a) ? ` (${r.message})` : "") : ` — FAILED: ${r.message}`}`);
+        if (!r.ok) { ok = false; break; }
+        if (i < list.length - 1) await new Promise((go) => setTimeout(go, a.type === "type" || a.type === "key" ? 250 : 450)); // let the app keep up
+      }
+      await new Promise((go) => setTimeout(go, 800)); // let the app react before looking
       if (!taskRef.current) return;
       const shot = await capture(), att = await upload(shot.file);
-      await followUp(convo.run, withAttachments(actFollowUp(describeAct(a) + (r.ok ? "" : ` — ${r.message}`), r.ok, shot, step, MAX_STEPS), [att]));
+      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS), [att]));
     } catch (e) { stopTask((e as Error).message); } finally { setBusy(""); }
   };
   const taskRef = useRef(task); taskRef.current = task;
@@ -635,7 +671,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     const mission = missionTask(q, prefs.nickname);
     if (mission) {
       const r = await perform({ type: "crew", ask: mission });
-      const a = r.ok ? (prefs.persist ? "On it. The crew is working on it and I'll stay with it until it's done." : "On it. The crew is working on it.") : `I couldn't start that: ${r.message}`;
+      const what = mission.length > 70 ? `${mission.slice(0, 67).replace(/\s+\S*$/, "")}…` : mission;
+      const a = r.ok ? `The crew's taking “${what}”.${prefs.persist ? " I'll stay with it until it's done." : ""}` : `I couldn't start that: ${r.message}`;
       setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
     }
     const move = producerMove(q);
@@ -676,16 +713,20 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         setBrief({ q, a }); speech.current.say(a); setDraft(""); return;
       }
     }
-    const look = see || liveOn || !!opt.look;
-    setBusy(see || opt.look ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
+    // Asked to point, click, type, walk through or look at something with the eye off: turn it on (it stays on) and
+    // look — Spark can't do screen work blind.
+    const autoSee = !see && !liveOn && needsScreen(q);
+    if (autoSee) { setSee(true); try { localStorage.setItem(SEE, "1"); } catch { /* ignore */ } }
+    const look = see || autoSee || liveOn || !!opt.look;
+    setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
-      const [selected, mac, playing] = await Promise.all([selectIntelligence(intelligence), macContext(), playingContext(radioNow)]); const personal = [mac, playing].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError("");
+      const [selected, mac, playing] = await Promise.all([selectIntelligence(intelligence), macContext(), playingContext(radioNow)]); const personal = [mac, playing].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
-      const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status } : null, selected);
+      const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status, contextUsed } : null, selected);
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
@@ -711,7 +752,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Keep the live part tiny (it's what the local model must read fresh): earlier-today only when you refer back.
       const runningNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
       const liveStatus = `radio ${playingNow.playing ? `playing ${playingNow.title ?? playingNow.station ?? "a station"}` : "off"} · ${runningNow} crew session${runningNow === 1 ? "" : "s"} working · ${Object.keys(crew.approvals).length} decision${Object.keys(crew.approvals).length === 1 ? "" : "s"} waiting`;
-      const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (you were on another model; carry on naturally):\n${recap}` : ""] });
+      const liveLocal = localAsk(q, { now: new Date(), status: liveStatus, screen: screenLines, extra: [identity, remembered, asksAboutEarlier(q) ? earlier : "", recap ? `Earlier in this conversation (carry on naturally):\n${recap}` : ""] });
       // A replaced paused Spark turn must not wake later and repeat the same actions.
       if (convo && status === "paused" && disposition === "new") await cancelRun(convo.run);
       if (wantLocal && disposition === "new") {
@@ -725,10 +766,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
-        await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000)}` : ""}${screen.context ? `\n\n${elementsText(screen.context)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
+        await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (you were on another model; carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
       setDraft("");
@@ -736,6 +777,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   };
   // Open mic: every turn you speak is a message; talking over Spark stops it.
   const askRef = useRef(ask); askRef.current = ask;
+  // You clicked one of Spark's labels or cards on the screen: it looks again and takes it from there.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const text = (e as CustomEvent<{ text?: string }>).detail?.text?.trim(); if (!text) return;
+      setArmed(true); speech.current.unlock();
+      void askRef.current(`[mark] I clicked “${text.slice(0, 200)}” on your drawing. If it's a step or an action, do it now (act if you can use my mouse and keyboard, otherwise guide me to it exactly); if it's information, tell me more about it in a sentence or two, and mark what you mean on the screen.`, { look: true });
+    };
+    window.addEventListener("shuacrew:mark", on);
+    return () => window.removeEventListener("shuacrew:mark", on);
+  }, []);
   useEffect(() => {
     const m = mic.current;
     m.onPhase = (p, detail) => { setPhase(p); if (p === "error" && detail) setError(detail); };
@@ -745,10 +796,15 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     // a cough, a door or its own voice through the speakers no longer cuts it off mid-sentence.
     m.onTurn = (t) => {
       if (wakeTurn.current) { wakeTurn.current = false; m.mode = prefsRef.current.listen; if (!prefsRef.current.conversation && prefsRef.current.listen !== "hold") m.stop(); }
+      // "Okay, Spark." with a pause after it: that's you getting its attention, not the question. Sent on its own it
+      // cancelled the work in progress and the rest of what you said arrived as fragments. Keep listening instead.
+      if (wakeOnly(t)) { logSense("heard", "Heard its name", t); return; }
+      // Its own voice, transcribed back through the speakers ("Checking your calendar."): not you.
+      if (echoOf(t, speech.current.recent(10_000))) { logSense("heard", "Ignored its own voice", t); return; }
       logSense("heard", "Heard you", t); setLastHeard(t); if (prefsRef.current.interrupt) speech.current.stop();
       const waiting = askingRef.current;
       if (waiting) { const said = yesOrNo(t); if (said !== null) { waiting.answer(said); return; } waiting.answer(false); } // anything else: keep it, and carry on with what you said
-      acknowledge(t);
+      newTurn();
       void askRef.current(t); };
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     // You kept talking over Spark: it stops now, like a person would, instead of waiting for the transcript.
@@ -879,19 +935,21 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
   // Working on what you said: after you stop talking and before Spark's first word. It used to look frozen (the bars sat
   // at their floor and your words vanished), easy to take for "it didn't hear me".
-  const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold")) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
+  const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold") || fnSent) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
   const processingText = processing ? (heard || lastHeard) : "";
   useEffect(() => { if (speaking || streamText) setLastHeard(""); }, [speaking, streamText]);
+  // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.
+  const fnReady = notched && fnHeld && !heard;
+  useEffect(() => { if (speaking || streamText) setFnSent(false); }, [speaking, streamText]);
+  useEffect(() => { if (phase === "error") { setFnHeld(false); setFnSent(false); } }, [phase]); // never stuck "listening"
   const streamingNow = !!streamText && !speaking && !hearingNow;
   // Searching the web or reading a page right now: shown live, so you can watch Spark look it up.
   const lookup = useMemo(() => (busy || working ? liveLookup(events as never) : null), [events, busy, working]);
-  // Jarvis, not a loading spinner: the moment you finish talking Spark says what it's doing ("Checking your calendar."),
-  // unless its real answer has already started. A plain question only gets one if the answer is slow.
   const live$ = useRef({ speaking: false, streaming: false, active: false }); live$.current = { speaking, streaming: !!streamText, active: !!busy || working };
-  const ackTimer = useRef<ReturnType<typeof setTimeout>>(undefined), ackTurns = useRef(0), lastSound = useRef(0), narrated = useRef(0);
+  const lastSound = useRef(0), narrated = useRef(0);
   /**
-   * Spark's own lines (acknowledgment, progress, "done") go through here: each at most once per turn. Two separate
-   * cues both said "Looking that up." on one search — now nothing it says on its own can repeat.
+   * Spark's own lines (progress, "done") go through here: each at most once per turn. Two separate cues both said
+   * "Looking that up." on one search — now nothing it says on its own can repeat.
    */
   const ownLines = useRef(new Set<string>());
   const sayOwn = (text: string) => {
@@ -899,16 +957,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (ownLines.current.has(k)) return false;
     ownLines.current.add(k); lastSound.current = Date.now(); speech.current.say(text); return true;
   };
-  const acknowledge = (said: string) => {
-    clearTimeout(ackTimer.current); ownLines.current.clear(); // a new turn
-    const ack = ackFor(said, ackTurns.current++); if (!ack) return;
-    const { text, delay } = ack;
-    ackTimer.current = setTimeout(() => {
-      const l = live$.current; if (l.speaking || l.streaming) return;
-      sayOwn(text);
-    }, delay);
-  };
-  useEffect(() => { if (speaking || streamText) clearTimeout(ackTimer.current); if (speaking) lastSound.current = Date.now(); }, [speaking, streamText]);
+  // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
+  // arrives in ~1.2 s, and the notch animation covers the gap. The quiet clock restarts so progress waits its 4 s.
+  const newTurn = () => { ownLines.current.clear(); lastSound.current = Date.now(); };
+  useEffect(() => { if (speaking) lastSound.current = Date.now(); }, [speaking]);
   // A long turn never leaves you hanging — but with real news, not filler: after ~4 s of quiet, what it's actually doing
   // ("Pulling up space.com."), twice at most. Nothing specific to say: it stays quiet and the notch shows it working.
   const eventsRef = useRef(events); eventsRef.current = events;
@@ -922,7 +974,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }, 1000);
     return () => clearInterval(tick);
   }, [busy, working, voiceLive, prefs.conversation, prefs.listen]);
-  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads);
+  const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -1090,7 +1142,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${processing ? " is-processing" : ""}${fnHeld ? " is-ready" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandLive ? (hearingNow || streamingNow || (speaking && caption) ? 78 : 64) : 0}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <div className="shua-island-ears">
@@ -1101,12 +1153,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </button>
           <span className="shua-island-cam" aria-hidden />
           <span className="shua-island-ear is-live">
-            {voiceLive ? <span className="shua-island-voice">{processing ? <ThinkWave /> : <MicBars floor={speaking ? 0.5 : 0.15} />}</span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
+            {voiceLive || fnHeld || fnSent ? <span className="shua-island-voice">{processing ? <ThinkWave /> : <MicBars floor={speaking ? 0.5 : 0.15} />}</span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className={`shua-island-dot ${working || busy ? "is-busy" : ""}`} />}
             {islandOpen && <small>{statusLabel}</small>}
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{fnReady ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p> : processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow && prefs.notchCaptions ? <Rolling className="notch-heard">{heard}</Rolling> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
@@ -1136,7 +1188,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} lines={6} />
             : hearingNow || phase === "hearing" ? <Rolling className="notch-heard is-open" lines={6}>{heard || "Listening…"}</Rolling>
             : streamText ? <Rolling className="notch-heard is-open is-stream" lines={6}>{streamText}<i className="notch-caret" /></Rolling>
-            : (busy || working || lastSparkText) && <p className={`spark-nook-say ${busy || working ? "is-busy" : ""}`}>{busy || working ? (lookup ? <><Globe size={12} /> {lookup}<span className="notch-dots"><i /><i /><i /></span></> : <>Thinking<span className="notch-dots"><i /><i /><i /></span></>) : gist(lastSparkText)}</p>}
+            : (busy || working || lastSparkText) && <p key={busy || working ? "busy" : lastSparkText.length} className={`spark-nook-say ${busy || working ? "is-busy" : "is-reply"}`}>{busy || working ? (lookup ? <><Globe size={12} /> {lookup}<span className="notch-dots"><i /><i /><i /></span></> : <>Thinking<span className="notch-dots"><i /><i /><i /></span></>) : restingReply(lastSparkText)}</p>}
           {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
             task={task} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}

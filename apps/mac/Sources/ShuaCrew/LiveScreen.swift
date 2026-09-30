@@ -88,7 +88,7 @@ enum ScreenElements {
     /// window first, then that app's menu bar, the Dock and the menu-bar icons (Wi-Fi, battery, Control Center…), which
     /// live in other processes. Icons without a text name still count, named from their help text or role.
     static func read(on screen: NSScreen) -> [String: Any] {
-        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return [:] }
+        guard AXIsProcessTrusted(), let app = SparkHands.target ?? NSWorkspace.shared.frontmostApplication else { return [:] }
         let root = AXUIElementCreateApplication(app.processIdentifier)
         var windowValue: CFTypeRef?
         AXUIElementCopyAttributeValue(root, kAXFocusedWindowAttribute as CFString, &windowValue)
@@ -97,13 +97,38 @@ enum ScreenElements {
         var out: [[String: Any]] = []
         walk(window ?? root, on: screen, into: &out, limit: 170, budget: 4000)
         if let menuBar = element(root, kAXMenuBarAttribute) { walk(menuBar, on: screen, into: &out, limit: 200, budget: 200, depth: 2) }
-        for id in ["com.apple.dock", "com.apple.controlcenter", "com.apple.systemuiserver"] {
-            guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: id).first?.processIdentifier else { continue }
-            let other = AXUIElementCreateApplication(pid)
-            let start = element(other, "AXExtrasMenuBar") ?? other
-            walk(start, on: screen, into: &out, limit: 260, budget: 600, depth: 4)
+        if let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first?.processIdentifier {
+            walk(AXUIElementCreateApplication(pid), on: screen, into: &out, limit: 260, budget: 600, depth: 4)
         }
-        return ["app": app.localizedName ?? "", "window": title, "elements": out]
+        for extras in menuExtras() { walk(extras, on: screen, into: &out, limit: 300, budget: 80, depth: 2) }
+        return ["app": app.localizedName ?? "", "window": title, "elements": nameControlCenter(out)]
+    }
+
+    /// Every menu-bar icon's owner. macOS 27 moved Wi-Fi, Battery, Focus, the clock and Control Center into
+    /// MenuBarAgent (Control Center's own tree is empty now), and each third-party icon (Weather, Frame, Kiro Crew…)
+    /// lives in its own app's extras bar — so ask them all, right to left as they sit in the bar.
+    /// Asking ~80 apps one by one took a second (≈15 ms each), so they're asked in parallel (≈150 ms), and the dozen
+    /// that have an icon are remembered for 30 s — a look after that asks only them.
+    private static func menuExtras() -> [AXUIElement] {
+        if Date().timeIntervalSince(extrasAt) > 30 {
+            let system = ["com.apple.MenuBarAgent", "com.apple.controlcenter", "com.apple.systemuiserver"]
+            let pids = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy != .prohibited || system.contains($0.bundleIdentifier ?? "") }.map(\.processIdentifier)
+            var have: [pid_t] = []
+            let lock = NSLock()
+            DispatchQueue.concurrentPerform(iterations: pids.count) { i in
+                if extrasBar(pids[i]) != nil { lock.lock(); have.append(pids[i]); lock.unlock() }
+            }
+            extrasPids = have; extrasAt = Date()
+        }
+        return extrasPids.compactMap(extrasBar)
+    }
+    private static var extrasPids: [pid_t] = [], extrasAt = Date.distantPast
+    private nonisolated static func extrasBar(_ pid: pid_t) -> AXUIElement? {
+        let root = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(root, 0.15) // one hung app must not stall Spark's look at the screen
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(root, "AXExtrasMenuBar" as CFString, &v) == .success, let v else { return nil }
+        return (v as! AXUIElement)
     }
 
     private static func walk(_ start: AXUIElement, on screen: NSScreen, into out: inout [[String: Any]], limit: Int, budget: Int, depth maxDepth: Int = 40) {
@@ -116,10 +141,14 @@ enum ScreenElements {
                 // Global top-left points → this screen's fractions from its top-left.
                 let appKitY = mainHeight - c.midY
                 let x = (c.midX - f.minX) / f.width, y = (f.maxY - appKitY) / f.height
-                if (0...1).contains(x), (0...1).contains(y), let name = label(el, role: role) {
+                let subroleRaw = string(el, kAXSubroleAttribute) ?? ""
+                // A menu-bar icon macOS has tucked away (no room, or behind the notch) reports a spot off in a corner:
+                // it isn't on screen, so it can't be pointed at or clicked.
+                let tucked = subroleRaw == "AXMenuExtra" && (c.minY - (mainHeight - f.maxY) > 60 || c.width > f.width / 3)
+                if !tucked, (0...1).contains(x), (0...1).contains(y), let name = label(el, role: role) {
                     // Its size too (fractions), so a highlight can hug the real control instead of the model's guess.
                     let w = min(1, c.width / f.width), h = min(1, c.height / f.height)
-                    let subrole = (string(el, kAXSubroleAttribute) ?? "").replacingOccurrences(of: "AX", with: "").lowercased()
+                    let subrole = subroleRaw.replacingOccurrences(of: "AX", with: "").lowercased()
                     out.append(["name": name, "role": subrole == "menuextra" ? "menuextra" : role.replacingOccurrences(of: "AX", with: "").lowercased(),
                                 "x": (x * 10000).rounded() / 10000, "y": (y * 10000).rounded() / 10000, "w": (w * 10000).rounded() / 10000, "h": (h * 10000).rounded() / 10000])
                 }
@@ -134,11 +163,35 @@ enum ScreenElements {
     /// is ("button", "image") — so icon-only buttons are listed too. Plain images and cells only when they're named.
     private static func label(_ el: AXUIElement, role: String) -> String? {
         let clean = { (s: String?) -> String? in s.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty || $0.count >= 80 ? nil : $0 } }
+        // macOS 27's own menu-bar icons (in MenuBarAgent) carry no title or description at all — only an identifier
+        // like com.apple.menuextra.wifi. Name them as you see them, or Spark can't tell Wi-Fi from Battery.
+        if let id = string(el, "AXIdentifier"), id.hasPrefix("com.apple.menuextra.") { return systemExtra(String(id.dropFirst("com.apple.menuextra.".count))) }
         if let named = [kAXTitleAttribute, kAXDescriptionAttribute, "AXPlaceholderValue", kAXValueAttribute].lazy.compactMap({ clean(string(el, $0)) }).first { return named }
         if role == kAXImageRole || role == kAXCellRole { return nil }
         if let hint = [kAXHelpAttribute, "AXIdentifier"].lazy.compactMap({ clean(string(el, $0)) }).first(where: { !$0.hasPrefix("_NS:") }) { return hint }
         return clean(string(el, kAXRoleDescriptionAttribute)).map { "\($0) (unlabelled icon)" }
     }
+    /// The name you'd use for each of macOS's own menu-bar icons, from the last part of its identifier.
+    static func systemExtra(_ key: String) -> String {
+        let names = ["wifi": "Wi-Fi", "bluetooth": "Bluetooth", "battery": "Battery", "clock": "Clock (date and time)", "controlcenter": "Control Center",
+                     "focusmode": "Focus", "audiovideo": "Camera or microphone in use", "facetime": "FaceTime", "sound": "Sound", "airdrop": "AirDrop",
+                     "display": "Display", "nowplaying": "Now Playing", "screenmirroring": "Screen Mirroring", "siri": "Siri", "spotlight": "Spotlight",
+                     "user": "Fast User Switching", "textinput": "Input menu (keyboard layout)", "timemachine": "Time Machine", "vpn": "VPN",
+                     "keyboardbrightness": "Keyboard Brightness", "accessibility": "Accessibility Shortcuts", "stagemanager": "Stage Manager", "hearing": "Hearing"]
+        return names[key.lowercased()] ?? key.prefix(1).uppercased() + key.dropFirst()
+    }
+
+    /// Several icons can say "Control Center" (its modules — Sound, Bluetooth, Now Playing — share its identifier): only
+    /// the right-most is Control Center itself; the others are named as its modules, so Spark never points at the wrong one.
+    static func nameControlCenter(_ elements: [[String: Any]]) -> [[String: Any]] {
+        let centers = elements.indices.filter { elements[$0]["role"] as? String == "menuextra" && elements[$0]["name"] as? String == "Control Center" }
+        let x = { (i: Int) -> Double in (elements[i]["x"] as? NSNumber)?.doubleValue ?? 0 } // stored as CGFloat: read through NSNumber
+        guard centers.count > 1, let real = centers.max(by: { x($0) < x($1) }) else { return elements }
+        var out = elements
+        for i in centers where i != real { out[i]["name"] = "Control Center module (Sound, Bluetooth or Now Playing)" }
+        return out
+    }
+
     private static func element(_ el: AXUIElement, _ key: String) -> AXUIElement? {
         var v: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, key as CFString, &v) == .success, let v else { return nil }

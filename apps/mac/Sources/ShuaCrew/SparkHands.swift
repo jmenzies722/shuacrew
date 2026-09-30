@@ -11,6 +11,36 @@ enum SparkHands {
     static let offLimits: Set<String> = ["com.agilebits.onepassword7", "com.1password.1password", "com.bitwarden.desktop", "com.apple.keychainaccess", "com.lastpass.LastPass", "com.apple.Passwords"]
 
     static var trusted: Bool { AXIsProcessTrusted() }
+
+    /// The app you're working in. Tapping the notch makes ShuaCrew the active app, so "the front app" would be
+    /// ShuaCrew itself: keys typed into Spark's own panel, buttons searched for in ShuaCrew ("Typing isn't
+    /// registering"). Spark's hands always aim at the last app you used that isn't ShuaCrew.
+    static var target: NSRunningApplication? {
+        watchApps()
+        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != Bundle.main.bundleIdentifier { return front }
+        return workApp.flatMap { $0.isTerminated ? nil : $0 }
+    }
+    private static var workApp: NSRunningApplication?, watching: NSObjectProtocol?
+    static func watchApps() {
+        guard watching == nil else { return }
+        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != Bundle.main.bundleIdentifier { workApp = front }
+        watching = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+            MainActor.assumeIsolated { workApp = app }
+        }
+    }
+    /// Keys go to the key window of the active app — so before typing, pressing keys or pressing by name, give the
+    /// keyboard back to the app you're working in (if the notch took it) and wait until it really has it.
+    static func focusTarget(_ then: @escaping @MainActor () -> Void) {
+        guard let app = target, NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier else { then(); return }
+        MacActions.bringToFront(app.bundleIdentifier, tries: 4)
+        var waited = 0.0
+        func check() {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier || waited >= 1.2 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { then() }; return }
+            waited += 0.05; DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { check() }
+        }
+        check()
+    }
     static func askForAccess() { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
 
     // MARK: mouse & keyboard
@@ -24,7 +54,7 @@ enum SparkHands {
 
     static func act(_ a: [String: Any], screen: NSScreen) -> (ok: Bool, message: String) {
         guard trusted else { askForAccess(); return (false, "Spark needs Accessibility access: System Settings → Privacy & Security → Accessibility → turn on ShuaCrew, then ask again.") }
-        if let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier, offLimits.contains(front) {
+        if let front = target?.bundleIdentifier, offLimits.contains(front) {
             return (false, "Spark doesn't touch password managers.")
         }
         let num = { (k: String) -> Double? in (a[k] as? Double).flatMap { (0...1).contains($0) ? $0 : nil } }
@@ -47,12 +77,30 @@ enum SparkHands {
         case "type":
             guard let text = a["text"] as? String, !text.isEmpty, text.count <= 2000 else { return (false, "Nothing to type.") }
             if focusedIsSecure() { return (false, "That's a password field. Spark won't type there.") }
-            type(text)
-            return (true, "Typed \(text.count) characters")
+            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return (false, "Couldn't give the keyboard back to \(target?.localizedName ?? "your app") — click into it, then ask again.") }
+            let before = focusedValue()
+            // A line break is the Return key and a tab is Tab (typed as text, most fields ignore them or go wrong).
+            for (i, part) in text.components(separatedBy: "\n").enumerated() {
+                if i > 0 { press(CGKeyCode(kVK_Return), flags: []) }
+                for (j, piece) in part.components(separatedBy: "\t").enumerated() {
+                    if j > 0 { press(CGKeyCode(kVK_Tab), flags: []) }
+                    if !piece.isEmpty { type(piece) }
+                }
+            }
+            // Say what's really in the field now, so a step that didn't land is never reported as done, and a retry
+            // can see the text is already there instead of typing it twice.
+            usleep(120_000)
+            let into = target?.localizedName ?? "the app"
+            if let now = focusedValue(), now != before {
+                let shown = now.count > 80 ? "…" + now.suffix(80) : now
+                return (true, "Typed \(text.count) characters into \(into) — the field now reads “\(shown)”")
+            }
+            return (true, "Typed \(text.count) characters into \(into) (couldn't read the field back — check the screenshot before typing again)")
         case "key":
             guard let combo = a["keys"] as? String, let (code, flags) = parseKeys(combo) else { return (false, "Unknown keys.") }
+            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return (false, "Couldn't give the keyboard back to \(target?.localizedName ?? "your app") — click into it, then ask again.") }
             press(code, flags: flags)
-            return (true, "Pressed \(combo)")
+            return (true, "Pressed \(combo) in \(target?.localizedName ?? "the app")")
         case "scroll":
             let p = num("x").flatMap { x in num("y").map { eventPoint(x: x, y: $0, on: screen) } }
             if let p { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap) }
@@ -130,6 +178,14 @@ enum SparkHands {
     }
 
     /// Is keyboard focus in a password field? Then Spark never types.
+    /// The text in whatever field has the keyboard (nil when the app doesn't say).
+    private static func focusedValue() -> String? {
+        var focused: CFTypeRef?, value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &focused) == .success, let el = focused,
+              AXUIElementCopyAttributeValue(el as! AXUIElement, kAXValueAttribute as CFString, &value) == .success else { return nil }
+        return value as? String
+    }
+
     private static func focusedIsSecure() -> Bool {
         let system = AXUIElementCreateSystemWide()
         var focused: CFTypeRef?
@@ -328,8 +384,28 @@ enum SparkHands {
         return (candidates[i].title, candidates[i].artist, results[i]["trackViewUrl"] as? String)
     }
 
+    private static let nightShift: NSObject? = {
+        guard dlopen("/System/Library/PrivateFrameworks/CoreBrightness.framework/CoreBrightness", RTLD_LAZY) != nil,
+              let type = NSClassFromString("CBBlueLightClient") as? NSObject.Type else { return nil }
+        let client = type.init()
+        return client.responds(to: NSSelectorFromString("setEnabled:")) && client.responds(to: NSSelectorFromString("getBlueLightStatus:")) ? client : nil
+    }()
+
     static func system(_ a: [String: Any]) -> (ok: Bool, message: String) {
         switch a["what"] as? String {
+        case "browser_js":
+            guard let app = target, ShuaWeb.supports(app) else { return (false, "Open Chrome or Safari first, then ask again.") }
+            return ShuaWeb.enableJavaScript(in: app)
+        case "night_shift":
+            // Night Shift has no public switch; this is the one Control Center itself uses (CoreBrightness).
+            guard let client = nightShift else { return (false, "Night Shift can't be switched from here on this Mac. It's in System Settings → Displays → Night Shift.") }
+            var status = [UInt8](repeating: 0, count: 64) // {active, enabled, …}: the second byte is "on"
+            let get = unsafeBitCast(client.method(for: NSSelectorFromString("getBlueLightStatus:")), to: (@convention(c) (AnyObject, Selector, UnsafeMutableRawPointer) -> Bool).self)
+            let was = get(client, NSSelectorFromString("getBlueLightStatus:"), &status) ? status[1] != 0 : nil
+            let on = (a["on"] as? Bool) ?? !(was ?? false)
+            let set = unsafeBitCast(client.method(for: NSSelectorFromString("setEnabled:")), to: (@convention(c) (AnyObject, Selector, Bool) -> Bool).self)
+            guard set(client, NSSelectorFromString("setEnabled:"), on) else { return (false, "Night Shift didn't switch. It's in System Settings → Displays → Night Shift.") }
+            return (true, was == on ? "Night Shift was already \(on ? "on" : "off")" : "Night Shift \(on ? "on" : "off")")
         case "dark_mode":
             let on = a["on"] as? Bool
             let script = on == nil ? "tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode" : "tell application \"System Events\" to tell appearance preferences to set dark mode to \(on! ? "true" : "false")"
@@ -366,6 +442,24 @@ enum SparkHands {
             guard (try? p.run()) != nil else { return (false, "Couldn't change Wi-Fi.") }
             p.waitUntilExit()
             return p.terminationStatus == 0 ? (true, "Wi-Fi \(on ? "on" : "off")") : (false, "Couldn't change Wi-Fi.")
+        case "bluetooth":
+            // macOS has no command for Bluetooth power; the small free `blueutil` does it (brew install blueutil).
+            let on = a["on"] as? Bool ?? true
+            guard let tool = ["/opt/homebrew/bin/blueutil", "/usr/local/bin/blueutil"].first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+                // No blueutil: Shua does it itself, in a helper copy of the app (see main.swift) so a crash can't hurt.
+                let h = Process(), out = Pipe(); h.executableURL = Bundle.main.executableURL; h.arguments = ["--bluetooth", on ? "1" : "0"]; h.standardOutput = out; h.standardError = FileHandle.nullDevice
+                if (try? h.run()) != nil {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 5) { if h.isRunning { h.terminate() } } // never hang on a prompt (the page waits 8 s)
+                    h.waitUntilExit()
+                    let now = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if h.terminationStatus == 0, now == (on ? "1" : "0") { return (true, "Bluetooth \(on ? "on" : "off")") }
+                }
+                return (false, "Bluetooth didn't switch from here on this Mac. Run “brew install blueutil” in Terminal once and I'll do it every time — or use Control Center.")
+            }
+            let p = Process(); p.executableURL = URL(fileURLWithPath: tool); p.arguments = ["--power", on ? "1" : "0"]
+            guard (try? p.run()) != nil else { return (false, "Couldn't change Bluetooth.") }
+            p.waitUntilExit()
+            return p.terminationStatus == 0 ? (true, "Bluetooth \(on ? "on" : "off")") : (false, "Couldn't change Bluetooth.")
         case "empty_trash":
             return run("tell application \"Finder\" to empty the trash") ? (true, "Emptied the Trash") : (false, "Couldn't empty the Trash. Allow ShuaCrew to control Finder in Privacy & Security → Automation.")
         default:
@@ -502,7 +596,7 @@ enum SparkPress {
     private static let pressable: Set<String> = [kAXButtonRole, kAXMenuItemRole, kAXMenuBarItemRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole, "AXLink", "AXTab", kAXCellRole, kAXStaticTextRole, kAXImageRole, kAXDisclosureTriangleRole]
 
     static func find(_ label: String) -> Found? {
-        guard let app = NSWorkspace.shared.frontmostApplication, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
+        guard let app = SparkHands.target, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
         let root = AXUIElementCreateApplication(app.processIdentifier)
         let want = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !want.isEmpty else { return nil }
@@ -530,7 +624,7 @@ enum SparkPress {
     static func fits(_ name: String, _ label: String) -> Bool { LabelMatch.fits(name, label) }
     /// The names at a point in the front app: the element there and a few of its ancestors (a label inside a button, a row…).
     private static func names(at p: CGPoint) -> [String] {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return [] }
+        guard let app = SparkHands.target else { return [] }
         var hit: AXUIElement?
         guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(app.processIdentifier), Float(p.x), Float(p.y), &hit) == .success, var el = hit else { return [] }
         var out: [String] = []
@@ -552,7 +646,7 @@ enum SparkPress {
     }
     /// The control that fits a label in the front app, nearest to where Spark aimed.
     static func locate(_ label: String, near p: CGPoint) -> Found? {
-        guard let app = NSWorkspace.shared.frontmostApplication, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
+        guard let app = SparkHands.target, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
         var queue: [AXUIElement] = [AXUIElementCreateApplication(app.processIdentifier)], seen = 0, best: (Found, CGFloat)?
         while !queue.isEmpty, seen < 5000 {
             let el = queue.removeFirst(); seen += 1
@@ -570,10 +664,15 @@ enum SparkPress {
         return best?.0
     }
 
+    static let browsers: Set<String> = ["com.google.Chrome", "com.google.Chrome.beta", "com.apple.Safari", "company.thebrowser.Browser", "com.microsoft.edgemac", "org.mozilla.firefox", "com.brave.Browser", "com.vivaldi.Vivaldi", "com.operasoftware.Opera"]
     static func press(_ found: Found) -> Bool {
-        if AXUIElementPerformAction(found.element, kAXPressAction as CFString) == .success { return true }
+        // A web page answers a real click; an accessibility "press" on a link or tab can report success and do nothing
+        // (GitHub's "Repositories 62", pressed twice, never opened). In browsers: click its exact centre.
+        let web = browsers.contains(SparkHands.target?.bundleIdentifier ?? "")
+        if !web, AXUIElementPerformAction(found.element, kAXPressAction as CFString) == .success { return true }
         // Some controls only answer to a real click.
         let p = found.center
+        CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap); usleep(30_000)
         for type in [CGEventType.leftMouseDown, .leftMouseUp] { CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap); usleep(18_000) }
         return true
     }

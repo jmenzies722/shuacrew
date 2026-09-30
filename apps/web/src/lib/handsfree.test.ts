@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frameAction, meaningful, yesOrNo, vadStart, vadStep, type VadState } from "./handsfree";
+import { echoOf, frameAction, meaningful, wakeOnly, yesOrNo, vadStart, vadStep, type VadState } from "./handsfree";
 
 const run = (s: VadState, rms: number, ms: number, strict = false) => {
   const events: string[] = [];
@@ -84,5 +84,20 @@ describe("noise that isn't a request", () => {
   it("drops lone filler words Whisper makes of key clicks, but keeps yes and no", () => {
     for (const w of ["and", "And.", "so", "the", "Okay.", "mm", "Bye-bye."]) expect(meaningful(w)).toBe(false);
     for (const w of ["yes", "No.", "and then play Drake", "pause"]) expect(meaningful(w)).toBe(true);
+  });
+});
+
+describe("what isn't a request", () => {
+  it("a wake phrase on its own just gets its attention", () => {
+    for (const w of ["Okay, Spark.", "Hey Spark", "spark", "Hey Shua!"]) expect(wakeOnly(w)).toBe(true);
+    for (const w of ["Okay Spark, what's the weather", "Spark play Drake"]) expect(wakeOnly(w)).toBe(false);
+  });
+  it("Spark's own voice heard back isn't you — but your answer to it is", () => {
+    const said = ["Checking your calendar.", "Delete the reminder “dentist”? Say yes or no."];
+    expect(echoOf("Checking your calendar", said)).toBe(true);
+    expect(echoOf("say yes or no", said)).toBe(true);
+    expect(echoOf("yes delete it", said)).toBe(false);
+    expect(echoOf("what's on my calendar tomorrow", said)).toBe(false);
+    expect(echoOf("yes", said)).toBe(false);
   });
 });

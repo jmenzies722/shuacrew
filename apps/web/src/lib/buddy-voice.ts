@@ -68,9 +68,13 @@ export class SpeechQueue {
   duck(on: boolean) { const g = this.out().gain, t = this.ctx().currentTime; g.cancelScheduledValues(t); g.setTargetAtTime(on ? 0.45 : 1, t, 0.08); }
 
   /** Speak a sentence — in Spark's voice, or `as` a crew member's own voice. */
+  /** What Spark said lately (for telling its own echo from you). */
+  private said: Array<{ text: string; at: number }> = [];
+  recent(ms: number): string[] { const since = Date.now() - ms; return this.said.filter((x) => x.at >= since).map((x) => x.text); }
   say(text: string, as?: { voiceId: string; speed: number }) {
     const v = getBuddyVoice();
     if (!v.on || !text.trim()) return;
+    this.said = [...this.said.filter((x) => x.at > Date.now() - 30_000), { text, at: Date.now() }];
     this.lines.push({ key: ++lineKeys, text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, buffers: [], done: false, failed: false, started: false, dur: 0 });
     this.pump();
   }
@@ -151,6 +155,14 @@ export class SpeechQueue {
       const t = c.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + 0.06);
       setTimeout(() => { for (const s of playing) { try { s.stop(); } catch { /* already ended */ } s.disconnect(); } if (this.master) { this.master.gain.cancelScheduledValues(0); this.master.gain.value = 1; } }, 70);
     } else if (this.master) this.master.gain.value = 1; // the next reply starts at full voice
+  }
+  /** Still talking, or has more queued to say. */
+  get busy() { return this.speaking || this.lines.length > 0; }
+  /** Run `then` once Spark has finished what it's saying (so a follow-up turn never cuts its own sentence off). */
+  whenQuiet(then: () => void, maxMs = 30_000) {
+    const until = Date.now() + maxMs;
+    const check = () => (this.busy && Date.now() < until ? setTimeout(check, 150) : then());
+    check();
   }
   /** Browsers only let a page start audio after a click or key; call this from one. */
   unlock() { this.ctx(); }

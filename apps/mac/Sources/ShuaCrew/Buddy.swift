@@ -75,6 +75,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     init(gateway: Gateway) {
+        SparkHands.watchApps() // know the app you're working in before the notch ever takes the keyboard
         self.gateway = gateway
         let config = WKWebViewConfiguration()
         config.userContentController.addUserScript(WKUserScript(
@@ -115,6 +116,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         grip.onClick = { [weak self] in self?.toggle() }
         pointer.onGuideClick = { [weak self] in
             (self?.guideTarget ?? self?.web)?.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:guideClick'))")
+        }
+        // A click on one of Spark's labels or cards: Spark takes it from there (does that step, or tells you more).
+        pointer.onMarkClick = { [weak self] text in
+            guard let data = try? JSONSerialization.data(withJSONObject: ["text": text]), let json = String(data: data, encoding: .utf8) else { return }
+            self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:mark', { detail: \(json) }))")
         }
         grip.onMoved = { [weak self] in self?.rememberCorner() }
         web.uiDelegate = self
@@ -259,7 +265,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
     private func fnSignal(_ signal: FnGesture.Signal) {
         let kind: String
-        switch signal { case .none: return; case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release" }
+        switch signal {
+        case .none: return
+        // fn might still be a modifier (fn+arrow): warm or cool the mic quietly, without bringing Spark forward.
+        case .press, .cancel:
+            guard Self.enabled else { return }
+            web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(signal == .press ? "down" : "cancel")')")
+            return
+        case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release"
+        }
         if !Self.enabled { setEnabled(true) }
         start(); raise()
         web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(kind)')")
@@ -441,8 +455,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in
                     guard let self else { return }
-                    let r = SparkHands.act(action, screen: screen)
-                    self.did(["id": id, "ok": r.ok, "message": r.message], to: sender)
+                    let run = { let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+                    // Typing in a web page goes onto the field itself (exact, never doubled); the keyboard is the fallback.
+                    if action["type"] as? String == "type", let app = SparkHands.target, ShuaWeb.supports(app), let text = action["text"] as? String {
+                        let submit = text.hasSuffix("\n"), value = submit ? String(text.dropLast()) : text
+                        Task { @MainActor in
+                            do { self.did(["id": id, "ok": true, "message": try await ShuaWeb.type(value, into: action["label"] as? String ?? "", submit: submit, in: app)], to: sender) }
+                            catch ShuaWeb.Failure.javascriptOff(let name) { let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message + ". (Typed with the keyboard: turn on browser_js so I can type into \(name) pages exactly.)"], to: sender) }
+                            catch { SparkHands.focusTarget(run) }
+                        }
+                        return
+                    }
+                    // Typing and keys land in the key window: hand the keyboard back to your app first if the notch has it.
+                    if ["type", "key"].contains(action["type"] as? String ?? "") { SparkHands.focusTarget(run) } else { run() }
                 }
             case "run":
                 // The page has already checked this command against ShuaCrew's policy (and asked you if needed).
@@ -457,7 +482,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // Find it by name, fly the cursor there, then press it as the cursor lands.
                 guard SparkHands.trusted else { SparkHands.askForAccess(); did(["id": id, "ok": false, "message": "Spark needs Accessibility access: System Settings → Privacy & Security → Accessibility → ShuaCrew."], to: sender); break }
                 let label = action["label"] as? String ?? ""
-                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in the app in front."], to: sender); break }
+                // In a web page: press the page's own element by name (macOS can't see inside the page).
+                if let app = SparkHands.target, ShuaWeb.supports(app), !label.isEmpty {
+                    Task { @MainActor in
+                        do { let did = try await ShuaWeb.click(label, in: app); self.did(["id": id, "ok": true, "message": did], to: sender); return }
+                        catch ShuaWeb.Failure.javascriptOff(let name) { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": ShuaWeb.Failure.javascriptOff(name).localizedDescription], to: sender); return } }
+                        catch { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": error.localizedDescription], to: sender); return } }
+                        guard let found = SparkPress.find(label) else { return }
+                        _ = SparkPress.press(found); self.did(["id": id, "ok": true, "message": "Pressed “\(found.name)”"], to: sender)
+                    }
+                    break
+                }
+                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in \(SparkHands.target?.localizedName ?? "the app in front")."], to: sender); break }
                 let main = NSScreen.screens.first ?? screen
                 let target = NSScreen.screens.first { s in
                     let f = s.frame, y = main.frame.height - found.center.y
@@ -482,12 +518,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // A System Settings page, straight to it. Only genuine System Settings links are opened.
                 let link = action["url"] as? String ?? ""
                 if link.range(of: #"^x-apple\.systempreferences:com\.apple\.[A-Za-z0-9.\-]+(\?Privacy_[A-Za-z]+)?$"#, options: .regularExpression) != nil, let url = URL(string: link) {
-                    NSWorkspace.shared.open(url); did(["id": id, "ok": true, "message": "Opened"], to: sender)
+                    MacActions.open(url); did(["id": id, "ok": true, "message": "Opened"], to: sender)
                 } else { did(["id": id, "ok": false, "message": "That isn't a System Settings page."], to: sender) }
             case "mac" where (action["op"] as? String ?? "").hasPrefix("music_"):
                 // What's playing / your playlists: on the music queue (one AppleScript at a time, never the main thread).
                 let op = action["op"] as? String ?? ""
                 SparkHands.musicQueue.async { let r = SparkHands.musicInfo(op); Task { @MainActor [weak self] in self?.did(["id": id, "ok": r.ok, "message": r.message, "output": r.output], to: sender) } }
+            case "mac" where action["op"] as? String == "chess":
+                // The board on the page + Stockfish on this Mac → the move and its exact squares (fair play enforced).
+                let screen = shotScreen ?? panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+                Task { @MainActor in let r = await ShuaChess.best(on: screen); self.did(["id": id, "ok": r.ok, "message": r.message, "output": r.output ?? ""], to: sender) }
             case "mac":
                 // Your files, calendar, reminders, notes, contacts and this Mac's state (see MacKnowledge): off the main thread.
                 MacKnowledge.run(action) { [weak self] ok, message, output in
@@ -533,7 +573,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
             if let sender { teaching.handle(body, to: sender) }
         case "buddyCapture":
-            Task { await capture(to: sender) }
+            let hires = body["hires"] as? Bool ?? false
+            Task { await capture(to: sender, hires: hires) }
+        case "buddyZoom":
+            // A region of the last look at full resolution: tiny labels, icons and squares read exactly before a click.
+            guard let full = lastFull, let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double, w > 0, h > 0 else { send("shuacrew:zoom", ["error": "Take a look at the screen first."], to: sender); break }
+            let W = Double(full.width), H = Double(full.height)
+            let rect = CGRect(x: max(0, x * W), y: max(0, y * H), width: min(W, w * W), height: min(H, h * H)).integral.intersection(CGRect(x: 0, y: 0, width: W, height: H))
+            guard let crop = full.cropping(to: rect), let small = ScreenText.scaled(crop, longest: 1400) ?? Optional(crop),
+                  let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { send("shuacrew:zoom", ["error": "Couldn't zoom there."], to: sender); break }
+            send("shuacrew:zoom", ["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height], to: sender)
         case "buddyGlance":
             // Proactive help: a quiet look at the live frame's TEXT only (no image leaves the Mac), so Spark can notice when
             // you're stuck. Only while you've turned on live watching, never on password managers or ShuaCrew itself.
@@ -724,7 +773,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     /// One screenshot of the display Spark is on, only when you ask, with Spark itself left out.
-    private func capture(to target: WKWebView? = nil) async {
+    /// The last full-resolution look, for zooming into part of it.
+    private var lastFull: CGImage?
+    private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
         if !ScreenAccess.granted() {
             guard ScreenAccess.request() else {
                 reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true], to: target)
@@ -748,10 +799,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Live: the stream's newest frame is already here — no capture wait.
             let full: CGImage
             if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
-            let context = ScreenElements.read(on: screen)
+            var context = ScreenElements.read(on: screen)
+            // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
+            if let app = SparkHands.target, ShuaWeb.supports(app), let web = await ShuaWeb.snapshot(of: app, on: screen) {
+                context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
+                context["page"] = web.page
+            }
             // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
             async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
-            guard let small = ScreenText.scaled(full, longest: 1568),
+            // The model points in pixels of the image it sees, so it must see exactly this image: under the API's limits or
+            // it's shrunk again server-side and every coordinate drifts. Older models: 1568 px long edge AND ~1.15 MP.
+            // Opus/Sonnet 5.5 and newer (`hires`): 2576 px and 4784 visual tokens (28 px tiles) — about 1.5× sharper.
+            lastFull = full
+            let long = Double(max(full.width, full.height))
+            let fit = hires ? min(2576 / long, sqrt(4600 * 784 / Double(full.width * full.height))) : min(1568 / long, sqrt(1_150_000 / Double(full.width * full.height)))
+            guard let small = ScreenText.scaled(full, longest: Int((long * min(1, fit)).rounded(.down))),
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
                 reply(["error": "Couldn't encode the screenshot."], to: target); return
             }
@@ -821,6 +883,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         guard let colon = spec.firstIndex(of: ":") else { return }
         let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
         guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("elements:") { // what Spark's screen scan finds in the menu bar, written to spark-selftest.log
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                guard let screen = NSScreen.main else { return }
+                let els = (ScreenElements.read(on: screen)["elements"] as? [[String: Any]] ?? []).filter { $0["role"] as? String == "menuextra" }
+                let lines = els.map { "\($0["name"] ?? "?") @ x=\($0["x"] ?? "?") y=\($0["y"] ?? "?") w=\($0["w"] ?? "?")" }.joined(separator: "\n")
+                try? (lines + "\n").write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8)
+            }
+            return
+        }
+        if spec.hasPrefix("marks:") { // every mark in Spark's visual language at once, to check the overlay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDraw', color: '#a78bfa', shapes: [{ shape: 'spotlight', x: 0.3, y: 0.3, w: 0.2, h: 0.12, label: 'look here' }, { shape: 'highlight', x: 0.7, y: 0.2, w: 0.16, h: 0.03 }, { shape: 'underline', x: 0.7, y: 0.28, w: 0.16, h: 0.03, label: 'typo' }, { shape: 'step', n: 1, x: 0.15, y: 0.62, label: 'Open settings' }, { shape: 'step', n: 2, x: 0.3, y: 0.7, label: 'Pick a size' }, { shape: 'path', points: [[0.5, 0.55], [0.6, 0.75], [0.8, 0.6]], label: 'data flows here' }, { shape: 'card', x: 0.8, y: 0.42, title: 'Why this matters', body: 'This total feeds the invoice, so a wrong cell here bills the client wrong.', items: ['Check row 14', 'Re-run the sum'] }, { shape: 'check', x: 0.55, y: 0.9, label: 'correct' }, { shape: 'cross', x: 0.65, y: 0.9, label: 'wrong' }] })")
+            }
+            return
+        }
         if spec.hasPrefix("draw:") { // sketch a sample annotation, to check on-screen drawing
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDraw', color: '#34d399', shapes: [{ shape: 'box', x: 0.5, y: 0.35, w: 0.3, h: 0.12, label: 'this total looks off' }, { shape: 'arrow', from: [0.25, 0.7], to: [0.38, 0.42], label: 'it comes from here' }, { shape: 'circle', x: 0.75, y: 0.62, r: 0.04 }, { shape: 'text', x: 0.5, y: 0.86, text: \(String(reflecting: String(spec.dropFirst(5)))) }] })")
@@ -952,6 +1029,9 @@ final class PointerOverlay {
     /// The spotlighted area in global screen coordinates, while a guide step waits for your click.
     private var target: NSRect?
     var onGuideClick: (() -> Void)?
+    /// Clickable marks: each label or card gets its own tiny window that takes the click (the drawing itself never does).
+    var onMarkClick: ((String) -> Void)?
+    private var catchers: [NSPanel] = []
 
     static func color(_ hex: String?) -> NSColor {
         guard let hex, hex.count == 7, hex.hasPrefix("#"), let v = UInt32(hex.dropFirst(), radix: 16) else { return NSColor(srgbRed: 0.96, green: 0.71, blue: 0.27, alpha: 1) }
@@ -1203,19 +1283,95 @@ final class PointerOverlay {
         DispatchQueue.main.asyncAfter(deadline: .now() + 900, execute: work)
     }
 
-    /// Spark sketching on your screen: boxes, circles, arrows and notes that draw themselves in, one after another.
-    /// Shapes use fractions of the screenshot (0–1, from the top-left), like everything else Spark shows you.
+    /// Spark sketching on your screen, one mark after another: boxes, circles, arrows and notes, plus a spotlight that
+    /// dims everything else, marker highlights and underlines on text, numbered steps, a route across the screen,
+    /// explainer cards, and ticks and crosses. Shapes use fractions of the screenshot (0–1, from the top-left), like
+    /// everything else Spark shows you. `stay` (seconds) keeps them up longer, for a plan you're working through.
     func draw(on screen: NSScreen, shapes: [[String: Any]], color hex: String?, from: NSPoint?) {
         hide()
         let frame = screen.frame, color = Self.color(hex), W = frame.width, H = frame.height
         let (panel, root) = makePanel(frame)
         let pt = { (x: Double, y: Double) in CGPoint(x: x * W, y: H - y * H) }
         let num = { (d: [String: Any], k: String) -> Double? in (d[k] as? Double).flatMap { (0...1).contains($0) ? $0 : nil } }
-        var layers: [CALayer] = [], labels: [(NSView, CGRect)] = [], firstSpot: CGPoint?
-        for shape in shapes.prefix(12) {
+        let good = NSColor(srgbRed: 0.2, green: 0.83, blue: 0.6, alpha: 1), bad = NSColor(srgbRed: 0.97, green: 0.44, blue: 0.44, alpha: 1)
+        var layers: [CALayer] = [], labels: [(NSView, CGRect)] = [], firstSpot: CGPoint?, holes: [CGRect] = [], fills: [CALayer] = []
+        var clickable: [ObjectIdentifier: String] = [:]
+        var stay = 16.0
+        for shape in shapes.prefix(16) {
+            if let s = shape["stay"] as? Double { stay = max(stay, min(300, s)) }
             let path = CGMutablePath()
-            var anchor = CGRect.zero
+            var anchor = CGRect.zero, stroke = color, badge: Int?
+            let box = { () -> CGRect? in
+                guard let x = num(shape, "x"), let y = num(shape, "y"), let w = num(shape, "w"), let h = num(shape, "h") else { return nil }
+                return Highlight.box(x: x, y: y, w: w, h: h, in: CGSize(width: W, height: H))
+            }
             switch shape["shape"] as? String {
+            case "spotlight":
+                // Everything else dims; this stays bright, ringed in the accent.
+                guard let r = box() else { continue }
+                anchor = r.insetBy(dx: -10, dy: -10); holes.append(anchor)
+                path.addRoundedRect(in: anchor, cornerWidth: 14, cornerHeight: 14)
+            case "highlight":
+                // A marker stroke over text: a soft fill, no outline.
+                guard let r = box() else { continue }
+                anchor = r.insetBy(dx: -3, dy: -2)
+                let fill = CAShapeLayer()
+                fill.path = CGPath(roundedRect: anchor, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                fill.fillColor = color.withAlphaComponent(0.3).cgColor
+                fill.opacity = 0
+                let show = CABasicAnimation(keyPath: "opacity"); show.fromValue = 0; show.toValue = 1; show.duration = 0.35
+                show.beginTime = CACurrentMediaTime() + 0.5 + Double(layers.count + fills.count) * 0.25; show.fillMode = .forwards; show.isRemovedOnCompletion = false
+                fill.add(show, forKey: "show"); fills.append(fill)
+            case "underline":
+                // A hand-drawn wave under a line of text.
+                guard let r = box() else { continue }
+                anchor = r
+                let y0 = r.minY - 3, steps = max(4, Int(r.width / 14))
+                path.move(to: CGPoint(x: r.minX, y: y0))
+                for i in 1...steps {
+                    let x = r.minX + r.width * CGFloat(i) / CGFloat(steps), mid = r.minX + r.width * (CGFloat(i) - 0.5) / CGFloat(steps)
+                    path.addQuadCurve(to: CGPoint(x: x, y: y0), control: CGPoint(x: mid, y: y0 + (i % 2 == 0 ? 4 : -4)))
+                }
+            case "step", "check", "cross":
+                guard let x = num(shape, "x"), let y = num(shape, "y") else { continue }
+                let c = pt(x, y)
+                if shape["shape"] as? String == "step" {
+                    // A numbered marker; with w/h (a real control) it rings it too.
+                    badge = (shape["n"] as? Double).map { Int($0) } ?? (shape["n"] as? Int) ?? 1
+                    if let r = box() { anchor = r.insetBy(dx: -4, dy: -4); path.addRoundedRect(in: anchor, cornerWidth: 8, cornerHeight: 8) }
+                    else { anchor = CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28); path.addEllipse(in: anchor) }
+                } else if shape["shape"] as? String == "check" {
+                    stroke = good; anchor = CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)
+                    path.move(to: CGPoint(x: c.x - 11, y: c.y + 1)); path.addLine(to: CGPoint(x: c.x - 3, y: c.y - 8)); path.addLine(to: CGPoint(x: c.x + 12, y: c.y + 11))
+                } else {
+                    stroke = bad; anchor = CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)
+                    path.move(to: CGPoint(x: c.x - 10, y: c.y - 10)); path.addLine(to: CGPoint(x: c.x + 10, y: c.y + 10))
+                    path.move(to: CGPoint(x: c.x + 10, y: c.y - 10)); path.addLine(to: CGPoint(x: c.x - 10, y: c.y + 10))
+                }
+            case "path":
+                // A route across the screen (where data flows, the order to click things): a smooth line and an arrowhead.
+                guard let raw = shape["points"] as? [[Double]] else { continue }
+                let pts = raw.prefix(8).filter { $0.count == 2 && $0.allSatisfy { (0...1).contains($0) } }.map { pt($0[0], $0[1]) }
+                guard pts.count >= 2 else { continue }
+                path.move(to: pts[0])
+                for i in 1..<pts.count {
+                    if i == pts.count - 1 { path.addLine(to: pts[i]) }
+                    else { path.addQuadCurve(to: CGPoint(x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2), control: pts[i]) }
+                }
+                let b = pts[pts.count - 1], a = pts[pts.count - 2], angle = atan2(b.y - a.y, b.x - a.x), len: CGFloat = 16
+                path.move(to: CGPoint(x: b.x - len * cos(angle - 0.45), y: b.y - len * sin(angle - 0.45))); path.addLine(to: b)
+                path.addLine(to: CGPoint(x: b.x - len * cos(angle + 0.45), y: b.y - len * sin(angle + 0.45)))
+                anchor = CGRect(x: pts[0].x - 4, y: pts[0].y - 4, width: 8, height: 8)
+            case "card":
+                // An explainer pinned beside what it's about: a title, a line or two, a few points.
+                guard let x = num(shape, "x"), let y = num(shape, "y") else { continue }
+                anchor = box() ?? CGRect(origin: pt(x, y), size: CGSize(width: 1, height: 1))
+                let items = (shape["items"] as? [String])?.prefix(4).map { String($0.prefix(80)) } ?? []
+                let title = String((shape["title"] as? String ?? "").prefix(50)), body = String((shape["body"] as? String ?? "").prefix(220))
+                let view = card(title: title, body: body, items: items, color: color)
+                labels.append((view, anchor)); clickable[ObjectIdentifier(view)] = title.isEmpty ? body : title
+                firstSpot = firstSpot ?? CGPoint(x: anchor.midX, y: anchor.midY)
+                continue
             case "box":
                 guard let x = num(shape, "x"), let y = num(shape, "y"), let w = num(shape, "w"), let h = num(shape, "h") else { continue }
                 anchor = Highlight.box(x: x, y: y, w: w, h: h, in: CGSize(width: W, height: H))
@@ -1246,10 +1402,10 @@ final class PointerOverlay {
                 let line = CAShapeLayer()
                 line.path = path
                 line.fillColor = NSColor.clear.cgColor
-                line.strokeColor = color.cgColor
+                line.strokeColor = stroke.cgColor
                 line.lineWidth = 3.5
                 line.lineCap = .round; line.lineJoin = .round
-                line.shadowColor = color.cgColor; line.shadowRadius = 6; line.shadowOpacity = 0.8; line.shadowOffset = .zero
+                line.shadowColor = stroke.cgColor; line.shadowRadius = 6; line.shadowOpacity = 0.8; line.shadowOffset = .zero
                 let sketch = CABasicAnimation(keyPath: "strokeEnd")
                 sketch.fromValue = 0; sketch.toValue = 1; sketch.duration = 0.55
                 sketch.beginTime = CACurrentMediaTime() + 0.5 + Double(layers.count) * 0.35
@@ -1259,9 +1415,24 @@ final class PointerOverlay {
                 layers.append(line)
             }
             if let text = (shape["label"] as? String ?? shape["text"] as? String).map({ String($0.prefix(60)) }), !text.isEmpty {
-                labels.append((pill(text, color: color), anchor))
+                let view = pill(text, color: stroke, badge: badge)
+                labels.append((view, anchor))
+                if shape["shape"] as? String != "text" { clickable[ObjectIdentifier(view)] = badge.map { "step \($0): \(text)" } ?? text }
+            } else if let badge {
+                labels.append((pill("Step \(badge)", color: stroke, badge: nil), anchor))
             }
         }
+        // The spotlight's dimmer goes under everything: the whole screen darkened, with a window over each spot.
+        if !holes.isEmpty {
+            let scrim = CAShapeLayer(), p = CGMutablePath()
+            p.addRect(CGRect(x: 0, y: 0, width: W, height: H))
+            for h in holes { p.addRoundedRect(in: h, cornerWidth: 14, cornerHeight: 14) }
+            scrim.path = p; scrim.fillRule = .evenOdd; scrim.fillColor = NSColor.black.withAlphaComponent(0.55).cgColor
+            let dim = CABasicAnimation(keyPath: "opacity"); dim.fromValue = 0; dim.toValue = 1; dim.duration = 0.4
+            scrim.add(dim, forKey: "dim")
+            root.layer?.addSublayer(scrim)
+        }
+        for f in fills { root.layer?.addSublayer(f) }
         if let spot = firstSpot { _ = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: spot, color: color) }
         for l in layers { root.layer?.addSublayer(l) }
         for (view, anchor) in labels {
@@ -1272,10 +1443,46 @@ final class PointerOverlay {
         }
         panel.orderFrontRegardless()
         self.panel = panel
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) { [weak self] in
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.3; for (v, _) in labels { v.animator().alphaValue = 1 } }
+            guard let self, self.panel === panel, self.onMarkClick != nil else { return }
+            for (v, _) in labels { if let text = clickable[ObjectIdentifier(v)] { self.addClickTarget(NSRect(x: frame.minX + v.frame.minX, y: frame.minY + v.frame.minY, width: v.frame.width, height: v.frame.height), text: text) } }
         }
-        hideWhenDone(after: 16)
+        hideWhenDone(after: stay)
+    }
+
+    /// A tiny window exactly over one label or card: the pointer turns into a hand, and a click goes to Spark.
+    private func addClickTarget(_ rect: NSRect, text: String) {
+        let catcher = NSPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        catcher.level = .popUpMenu; catcher.hidesOnDeactivate = false; catcher.backgroundColor = .clear; catcher.isOpaque = false; catcher.hasShadow = false
+        catcher.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]; catcher.isReleasedWhenClosed = false
+        let view = MarkHit(frame: NSRect(origin: .zero, size: rect.size))
+        view.onClick = { [weak self] in self?.onMarkClick?(text); self?.fadeOut() }
+        catcher.contentView = view
+        catcher.orderFrontRegardless()
+        catchers.append(catcher)
+    }
+
+    /// A small explainer card: dark glass, a title in the accent, a line or two, and up to four points.
+    private func card(title: String, body: String, items: [String], color: NSColor) -> NSView {
+        let width: CGFloat = 300, pad: CGFloat = 14
+        let view = NSView(); view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(srgbRed: 0.09, green: 0.08, blue: 0.11, alpha: 0.94).cgColor
+        view.layer?.cornerRadius = 14; view.layer?.borderWidth = 1; view.layer?.borderColor = color.withAlphaComponent(0.55).cgColor
+        view.layer?.shadowOpacity = 0.5; view.layer?.shadowRadius = 18; view.layer?.shadowOffset = CGSize(width: 0, height: -4)
+        var fields: [NSTextField] = []
+        let add = { (text: String, font: NSFont, tint: NSColor) in
+            let f = NSTextField(wrappingLabelWithString: text); f.font = font; f.textColor = tint
+            f.preferredMaxLayoutWidth = width - pad * 2; f.frame.size = f.fittingSize; fields.append(f)
+        }
+        if !title.isEmpty { add(title, .systemFont(ofSize: 13, weight: .bold), color) }
+        if !body.isEmpty { add(body, .systemFont(ofSize: 12.5), NSColor(white: 0.9, alpha: 1)) }
+        for item in items { add("•  " + item, .systemFont(ofSize: 12), NSColor(white: 0.78, alpha: 1)) }
+        let height = fields.reduce(pad * 2) { $0 + $1.frame.height + 5 } - 5
+        var y = height - pad
+        for f in fields { y -= f.frame.height; f.frame.origin = NSPoint(x: pad, y: y); y -= 5; view.addSubview(f) }
+        view.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        return view
     }
 
     private func fadeOut() {
@@ -1287,12 +1494,22 @@ final class PointerOverlay {
 
     func hide() {
         hideWork?.cancel()
+        for c in catchers { c.orderOut(nil) }
+        catchers.removeAll()
         for m in monitors { NSEvent.removeMonitor(m) }
         monitors.removeAll()
         target = nil
         panel?.orderOut(nil)
         panel = nil
     }
+}
+
+/// The click target over one of Spark's labels or cards: a pointing hand, and a click (never a drag-through).
+final class MarkHit: NSView {
+    var onClick: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseDown(with event: NSEvent) { onClick?() }
 }
 
 /// The things Spark can do on your Mac, each checked here — the page's word is never enough.
@@ -1302,11 +1519,12 @@ enum MacActions {
         switch action["type"] as? String {
         case "open_app":
             guard let name = action["name"] as? String, let url = findApp(name) else { return (false, "Couldn't find an app called \((action["name"] as? String) ?? "that").") }
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            let config = NSWorkspace.OpenConfiguration(); config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { app, _ in Task { @MainActor in bringToFront(app?.bundleIdentifier ?? Bundle(url: url)?.bundleIdentifier) } }
             return (true, "Opened \(url.deletingPathExtension().lastPathComponent)")
         case "open_url":
             guard let s = action["url"] as? String, let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return (false, "Only web links can be opened.") }
-            NSWorkspace.shared.open(url)
+            open(url)
             return (true, "Opened \(url.host ?? "the link")")
         case "open_path":
             guard let raw = action["path"] as? String else { return (false, "No path.") }
@@ -1316,11 +1534,39 @@ enum MacActions {
             let sealed = ["\(home)/Nectar-Work", "\(home)/Developer/work"]
             guard path.hasPrefix(home + "/"), !sealed.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) else { return (false, "Spark only opens things in your home folder.") }
             guard FileManager.default.fileExists(atPath: path) else { return (false, "\(raw) doesn't exist.") }
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            open(URL(fileURLWithPath: path))
             return (true, "Opened \((path as NSString).lastPathComponent)")
         default:
             return (false, "Spark can't do that.")
         }
+    }
+
+    /// Open a link, file or folder in its app and bring that app to the front.
+    static func open(_ url: URL) {
+        let handler = NSWorkspace.shared.urlForApplication(toOpen: url).flatMap { Bundle(url: $0)?.bundleIdentifier }
+        let config = NSWorkspace.OpenConfiguration(); config.activates = true
+        NSWorkspace.shared.open(url, configuration: config) { app, _ in Task { @MainActor in bringToFront(app?.bundleIdentifier ?? handler) } }
+    }
+
+    /// Since macOS 14, activation is cooperative: whatever Spark opened while you were talking to it from another app
+    /// (fn, the notch) came up BEHIND that app — "BBC's still behind the terminal". So ask twice: as ShuaCrew, and
+    /// through accessibility (frontmost + raise its window, as window managers do), until it really is in front.
+    static func bringToFront(_ bundleID: String?, tries: Int = 8) {
+        guard let bundleID, let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else {
+            if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { bringToFront(bundleID, tries: tries - 1) } }
+            return
+        }
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier { return }
+        app.activate(from: .current, options: [.activateAllWindows])
+        if AXIsProcessTrusted() {
+            let el = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetAttributeValue(el, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+            var w: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXMainWindowAttribute as CFString, &w) == .success || AXUIElementCopyAttributeValue(el, kAXFocusedWindowAttribute as CFString, &w) == .success, let w {
+                AXUIElementPerformAction(w as! AXUIElement, kAXRaiseAction as CFString)
+            }
+        }
+        if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { bringToFront(bundleID, tries: tries - 1) } }
     }
 
     /// "vs code", "VS Code", "Visual Studio Code", "chrome": exact name first, then the closest installed app.

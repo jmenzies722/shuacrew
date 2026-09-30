@@ -196,7 +196,7 @@ export type ProducerMove =
   /** "play Drake", "play some jazz on Spotify": search and play in the music app, right away. */
   | { kind: "play"; query: string; app?: "Spotify" | "Music" }
   | { kind: "focus"; minutes: number }
-  | { kind: "sys"; what: "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi"; on?: boolean; level?: number }
+  | { kind: "sys"; what: "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth"; on?: boolean; level?: number }
   | { kind: "timer"; op: "start" | "alarm" | "cancel" | "pause" | "resume" | "list"; seconds?: number; at?: string; label?: string }
   | { kind: "idea"; text: string }
   | { kind: "explain" };
@@ -255,7 +255,9 @@ export function producerMove(q: string): ProducerMove | null {
     if (/^(lock (my |the )?(mac|screen|computer|laptop)|lock it)$/.test(s)) return { kind: "sys", what: "lock" };
     if (/^(take (a )?screenshot|screenshot( this| my screen)?|screen ?shot)$/.test(s)) return { kind: "sys", what: "screenshot" };
     const wifi = /^(?:turn |switch )?(on|off) (?:the )?wi-?fi$|^(?:turn |switch )?(?:the )?wi-?fi (on|off)$/.exec(s);
-    if (wifi) return { kind: "sys", what: "wifi", on: (wifi[1] ?? wifi[2]) === "on" }; }
+    if (wifi) return { kind: "sys", what: "wifi", on: (wifi[1] ?? wifi[2]) === "on" };
+    const bt = /^(?:can you )?(?:turn |switch )?(on|off) (?:the |my )?bluetooth$|^(?:can you )?(?:turn |switch )?(?:the |my )?bluetooth (on|off)$/.exec(s);
+    if (bt) return { kind: "sys", what: "bluetooth", on: (bt[1] ?? bt[2]) === "on" }; }
   if (isStudioAsk(t)) return { kind: "brief" };
   if (/^(new\s+)?idea\s*[:\-–—]\s*\S/i.test(t)) return { kind: "idea", text: t };
   if (/^(explain|break down|what does|what's|what is)\s+(this|that|the selection|what i (selected|highlighted))( (mean|do|code))?\s*[?.!]*$/i.test(t)) return { kind: "explain" };

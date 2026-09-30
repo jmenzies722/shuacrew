@@ -4,7 +4,7 @@ import Testing
 
 @Test func quickCleanPressIsATap() {
     var g = FnGesture()
-    #expect(g.down(at: 0) == .none)
+    #expect(g.down(at: 0) == .press)             // the mic opens now
     #expect(g.tick(at: 0.1) == .none)
     #expect(g.up(at: 0.15) == .tap)
 }
@@ -21,7 +21,8 @@ import Testing
 @Test func fnUsedAsAModifierNeverFires() {
     var g = FnGesture()
     _ = g.down(at: 0)
-    #expect(g.otherKey() == .none)              // fn+F5, fn+arrow…
+    #expect(g.otherKey() == .cancel)            // fn+F5, fn+arrow…: close the mic
+    #expect(g.otherKey() == .none)              // only once
     #expect(g.tick(at: 0.5) == .none)
     #expect(g.up(at: 0.6) == .none)
 }
@@ -37,7 +38,7 @@ import Testing
 @Test func slowPressWithoutHoldTicksIsNotATap() {
     var g = FnGesture()
     _ = g.down(at: 0)
-    #expect(g.up(at: 0.8) == .none)
+    #expect(g.up(at: 0.8) == .cancel)           // neither tap nor hold: close the mic
     _ = g.down(at: 5)
     #expect(g.up(at: 5.1) == .tap)              // state resets between presses
 }

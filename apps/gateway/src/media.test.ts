@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { kindOf, status, tools, transcribe } from "./media.js";
+import { fittedAudioCtx, withoutRepeats, kindOf, status, tools, transcribe } from "./media.js";
 import { Uploads } from "./uploads.js";
 
 const t = tools(path.join(os.homedir(), ".shuacrew", "models"));
@@ -67,4 +67,25 @@ it("hears the wake phrase as \"Hey Shua\", however Whisper split it", () => {
   for (const heard of ["Heishua, pause the music", "Hei Shuaa, pause the music", "hey, shua, pause the music"]) expect(fixWake(heard, [])).toBe("Hey Shua, pause the music");
   expect(fixWake("They should go", [])).toBe("They should go"); // not a lookalike
   expect(vocab([]).startsWith("Hey Shua, ")).toBe(true);
+});
+
+describe("a spoken turn's Whisper window", () => {
+  it("always covers the whole clip (50 frames a second), with room to spare, and never exceeds 30 s", () => {
+    for (const seconds of [0.4, 2, 6.2, 9.5, 12, 18, 27.9]) expect(fittedAudioCtx(seconds)).toBeGreaterThanOrEqual(Math.ceil((seconds + 1) * 50));
+    expect(fittedAudioCtx(1)).toBe(512); // short commands: the smallest window that measured as accurate as the full one
+    expect(fittedAudioCtx(40)).toBe(1500);
+  });
+});
+
+describe("withoutRepeats", () => {
+  it("keeps a turn Whisper said twice or three times once (real turns from the event log)", () => {
+    expect(withoutRepeats("Show me an example of it Show me an example of it")).toBe("Show me an example of it");
+    expect(withoutRepeats("Can you open Finder and highlight the file I changed most recently? Can you open Finder and highlight the file I changed most recently? Can you open Finder and highlight the file I changed most recently?")).toBe("Can you open Finder and highlight the file I changed most recently?");
+    expect(withoutRepeats("What can you do? What can you do?")).toBe("What can you do?");
+  });
+  it("leaves ordinary speech alone", () => {
+    expect(withoutRepeats("no, no, play the other one")).toBe("no, no, play the other one");
+    expect(withoutRepeats("set a timer for 10 minutes and a timer for 5")).toBe("set a timer for 10 minutes and a timer for 5");
+    expect(withoutRepeats("very very good")).toBe("very very good");
+  });
 });
