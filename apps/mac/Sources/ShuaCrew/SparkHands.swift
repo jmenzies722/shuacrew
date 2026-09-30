@@ -391,6 +391,40 @@ enum SparkHands {
         return client.responds(to: NSSelectorFromString("setEnabled:")) && client.responds(to: NSSelectorFromString("getBlueLightStatus:")) ? client : nil
     }()
 
+    /// "Connect my AirPods" / "disconnect my headset": a paired device by name, through blueutil. Runs off the main
+    /// thread (connecting can take seconds) and checks it really connected before saying so.
+    nonisolated static func bluetoothDevice(_ a: [String: Any]) -> (ok: Bool, message: String) {
+        guard let tool = ["/opt/homebrew/bin/blueutil", "/usr/local/bin/blueutil"].first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            return (false, "Connecting devices needs blueutil: run “brew install blueutil” once.")
+        }
+        let run = { (args: [String], timeout: Double) -> String in
+            let p = Process(), out = Pipe(); p.executableURL = URL(fileURLWithPath: tool); p.arguments = args; p.standardOutput = out; p.standardError = out
+            guard (try? p.run()) != nil else { return "" }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
+            p.waitUntilExit()
+            return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let want = (a["device"] as? String ?? "").trimmingCharacters(in: .whitespaces), on = a["on"] as? Bool ?? true
+        guard let data = run(["--paired", "--format", "json"], 5).data(using: .utf8),
+              let paired = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]], !paired.isEmpty else { return (false, "I couldn't read your paired Bluetooth devices.") }
+        let names = paired.map { ($0["name"] as? String ?? "").replacingOccurrences(of: "\u{a0}", with: " ") }
+        switch BluetoothMatch.pick(want, names: names) {
+        case .none: return (false, "No paired device called “\(want)”. Paired: \(names.joined(separator: ", ")).")
+        case .several(let i): return (false, "Which one: \(i.map { names[$0] }.joined(separator: " or "))?")
+        case .one(let i):
+            let name = names[i], address = paired[i]["address"] as? String ?? ""
+            if on {
+                if run(["--power"], 3) != "1" { _ = run(["--power", "1"], 5); usleep(1_200_000) }
+                if run(["--is-connected", address], 3) == "1" { return (true, "\(name) \(name.lowercased().hasSuffix("pods") || name.lowercased().hasSuffix("buds") ? "are" : "is") already connected") }
+                _ = run(["--connect", address], 15)
+                for _ in 0..<8 { if run(["--is-connected", address], 3) == "1" { return (true, "Connected \(name)") }; usleep(500_000) }
+                return (false, "\(name) didn't connect — make sure they're out of the case (or switched on) and nearby, then ask again.")
+            }
+            _ = run(["--disconnect", address], 10)
+            return run(["--is-connected", address], 3) == "1" ? (false, "\(name) is still connected.") : (true, "Disconnected \(name)")
+        }
+    }
+
     static func system(_ a: [String: Any]) -> (ok: Bool, message: String) {
         switch a["what"] as? String {
         case "browser_js":

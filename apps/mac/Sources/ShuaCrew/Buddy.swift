@@ -532,6 +532,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // Off the main thread: a slow music app can't freeze the notch.
                 nonisolated(unsafe) let a = action
                 SparkHands.musicQueue.async { let r = SparkHands.media(a); Task { @MainActor [weak self] in self?.did(["id": id, "ok": r.ok, "message": r.message], to: sender) } }
+            case "system" where action["what"] as? String == "bluetooth_device":
+                nonisolated(unsafe) let a = action
+                DispatchQueue.global(qos: .userInitiated).async { let r = SparkHands.bluetoothDevice(a); Task { @MainActor [weak self] in self?.did(["id": id, "ok": r.ok, "message": r.message], to: sender) } }
             case "system":
                 let r = SparkHands.system(action); did(["id": id, "ok": r.ok, "message": r.message], to: sender)
             case "shortcut":

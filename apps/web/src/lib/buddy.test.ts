@@ -311,3 +311,9 @@ it("says what it's looking up in a few plain words", () => {
   expect(searchTopic("what sports games are on today")).toBe("what sports games are on");
   expect(searchTopic("latest news")).toBe("that");
 });
+
+it("connects or disconnects a paired Bluetooth device by the words they used", () => {
+  expect(parseActions('```do [{"type":"system","what":"bluetooth_device","device":"AirPods"}]```')).toEqual([{ type: "system", what: "bluetooth_device", device: "AirPods" }]);
+  expect(parseActions('```do [{"type":"system","what":"bluetooth_device","device":"headset","on":false}]```')).toEqual([{ type: "system", what: "bluetooth_device", device: "headset", on: false }]);
+  expect(parseActions('```do [{"type":"system","what":"bluetooth_device"}]```')).toEqual([]); // no device: nothing to do
+});
