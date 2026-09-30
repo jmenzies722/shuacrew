@@ -24,7 +24,8 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { earcon, warmSounds, type Earcon } from "../lib/earcons";
+import { earcon, soundStyle, warmSounds, type Earcon } from "../lib/earcons";
+import { setMicRoute } from "../lib/mic-route";
 import { crewDetail, crewFinished, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark } from "../lib/weather";
 import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
@@ -225,6 +226,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [voiceLive, setVoiceLive] = useState(false);
   /** A sound for a moment in the conversation, in your chosen style (spatial by default). */
   const sound = (k: Earcon) => earcon(k, prefsRef.current.sounds);
+  useEffect(() => soundStyle(prefs.sounds), [prefs.sounds]); // the Mac app plays the fn sounds itself: it needs the style
   // Bounce every sound once, and wake the audio engine, as soon as you touch anything (browsers won't start audio before).
   useEffect(() => {
     const warm = () => warmSounds(prefsRef.current.sounds);
@@ -277,7 +279,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }, []);
   useEffect(() => {
     if (embedded) return;
-    (window as unknown as { buddy: unknown }).buddy = { perform, toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTimeout(() => input.current?.focus(), 80); },
+    (window as unknown as { buddy: unknown }).buddy = { audioRoute: setMicRoute, perform, toggle: () => { speech.current.unlock(); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); setOpen(true); setTimeout(() => input.current?.focus(), 80); },
       ask: (text: string) => { speech.current.unlock(); setOpen(true); setTab("chat"); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
@@ -303,8 +305,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
         if (kind === "cancel") { mic.current.cool(); return; }
         if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
-        if (kind === "hold") { sound("listen"); macContext.prefetch(); setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
-        sound("sent"); setFnHeld(false); setFnSent(true); mic.current.release();
+        // The start and "heard you" sounds for fn are played by the Mac app itself, the instant it sees the key.
+        if (kind === "hold") { macContext.prefetch(); setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
+        setFnHeld(false); setFnSent(true); mic.current.release();
       } };
     post({ type: "buddyReady" });
   }, []);

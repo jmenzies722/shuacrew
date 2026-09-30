@@ -1,3 +1,4 @@
+import { micConstraints } from "./mic-route";
 /** Energy endpointing, not speech recognition: short noises never submit a turn. */
 export class SpeechBoundary {
   private loudSince?: number;
@@ -17,7 +18,7 @@ export class VoiceCapture {
   finish?: () => void;
   async start(signal: AbortSignal, utterance: (blob: Blob) => void, error: (message: string) => void, level: (value: number) => void): Promise<() => void> {
     signal.throwIfAborted();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true }) });
     if (signal.aborted) { stream.getTracks().forEach(t => t.stop()); signal.throwIfAborted(); }
     const context = new AudioContext();
     let recorder: MediaRecorder | undefined, timer: ReturnType<typeof setInterval> | undefined, ended = false, deliver = false, bytes = 0;

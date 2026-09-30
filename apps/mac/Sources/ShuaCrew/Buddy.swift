@@ -362,10 +362,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // fn might still be a modifier (fn+arrow): warm or cool the mic quietly, without bringing Spark forward.
         case .press, .cancel:
             guard Self.enabled else { return }
+            if signal == .press {
+                // Wake the sound engine now (it's running when the hold starts), and tell the page where audio goes:
+                // with Bluetooth headphones it listens through the Mac's mic, so they never drop to call quality.
+                SparkSounds.shared.warm()
+                let route: [String: Any] = ["bluetooth": AudioRoute.bluetoothOut(), "mic": AudioRoute.builtInMic() ?? ""]
+                if let json = try? JSONSerialization.data(withJSONObject: route), let arg = String(data: json, encoding: .utf8) {
+                    web.evaluateJavaScript("window.buddy && window.buddy.audioRoute && window.buddy.audioRoute(\(arg))")
+                }
+            }
             web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(signal == .press ? "down" : "cancel")')")
             return
         case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release"
         }
+        // The sound comes first, straight from here — before Spark is brought forward or the page hears about it.
+        if signal == .holdStart { SparkSounds.shared.play(.listen) } else if signal == .holdEnd { SparkSounds.shared.play(.sent) }
         if !Self.enabled { setEnabled(true) }
         start(); raise()
         web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(kind)')")
@@ -830,6 +841,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddySelfTest":
             let line = "SPARK SELFTEST ok=\(body["ok"] as? Bool ?? false) message=\(body["message"] as? String ?? "")\n\(body["output"] as? String ?? "")\n"
             Self.appendSelfTest(line)
+        case "buddySound":
+            if let style = body["style"] as? String { SparkSounds.shared.style = style }
+            if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) { SparkSounds.shared.play(kind) }
+        case "buddySoundStyle":
+            if let style = body["style"] as? String { SparkSounds.shared.style = style }
         case "notify":
             guard let title = body["title"] as? String else { return }
             NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
@@ -1062,6 +1078,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             guard let json = try? JSONSerialization.data(withJSONObject: clips), let arg = String(data: json, encoding: .utf8) else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
+            return
+        }
+        if spec == "sound:check" { // Spark's native sounds: quality through the real chain, and the live delay
+            Task { @MainActor in await SparkSounds.shared.selfTest { Self.appendSelfTest($0 + "\n") } }
             return
         }
         if spec.hasPrefix("ask:") { // real Spark turns, one after another, as if spoken (separate asks with " || ")

@@ -1,4 +1,5 @@
 import { trustLive, type LiveSpeech } from "./live-speech";
+import { micConstraints } from "./mic-route";
 /**
  * Hands-free conversation: the mic stays open, Spark hears when you start and stop talking, transcribes each
  * turn on this Mac (whisper, via the gateway), and you can talk over it to interrupt. No buttons.
@@ -221,7 +222,7 @@ export class HandsFree {
     if (this.stream) return;
     this.onPhase?.("starting");
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }) });
     } catch (e) { this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone."); return; }
     this.ctx = new AudioContext();
     const source = this.ctx.createMediaStreamSource(this.stream);
