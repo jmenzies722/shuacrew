@@ -317,3 +317,10 @@ it("connects or disconnects a paired Bluetooth device by the words they used", (
   expect(parseActions('```do [{"type":"system","what":"bluetooth_device","device":"headset","on":false}]```')).toEqual([{ type: "system", what: "bluetooth_device", device: "headset", on: false }]);
   expect(parseActions('```do [{"type":"system","what":"bluetooth_device"}]```')).toEqual([]); // no device: nothing to do
 });
+
+it("keeps going after opening a page when there's more to do there (real ask from the log)", () => {
+  expect(needsFollowThrough("You bring up chess.com and start a game against a computer?", "Opening chess.com now.")).toBe(true);
+  expect(needsFollowThrough("open Gmail and draft a reply to Sam", "Opening Gmail.")).toBe(true);
+  expect(needsFollowThrough("open YouTube and play lofi", "Opening YouTube.")).toBe(true);
+  expect(needsFollowThrough("open Notes", "Opening Notes.")).toBe(false);
+});
