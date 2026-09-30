@@ -266,6 +266,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       nook: (inside: boolean) => nookHover.current(inside),
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
       say: (text: string) => { speech.current.unlock(); for (const s of text.split(/(?<=[.!?])\s+/)) speech.current.say(s); },
+      // Self-test (Mac app, SHUACREW_SPARK_SELFTEST=gesture:prompt): a real look, and exactly what Spark would be told
+      // about their pointer and what they circled.
+      selfTestLook: async () => {
+        try { const shot = await capture(); post({ type: "buddySelfTest", ok: true, message: `look ${shot.width}x${shot.height}`, output: pointingText(shot.context, shot.text, shot) || "(nothing about the pointer or a gesture)" }); }
+        catch (e) { post({ type: "buddySelfTest", ok: false, message: (e as Error).message }); }
+      },
       // Self-test (Mac app, SHUACREW_SPARK_SELFTEST=voiceturn:…): recordings through the real voice turn path, one by one.
       selfTestVoice: async (clips: Array<{ pcm: string; rate: number; name: string }>) => {
         for (const c of clips) {
