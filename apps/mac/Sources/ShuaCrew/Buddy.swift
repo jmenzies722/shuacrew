@@ -197,6 +197,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private func updateCursorBuddy() {
         if following && docked { cursorBuddy.start() } else { cursorBuddy.stop() }
     }
+    /// Self-test: part of the screen (fractions from the top-left), captured with every window in it, as PNG.
+    static func capture(screen: NSScreen, region: CGRect, to path: String) async -> Bool {
+        let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else { return false }
+        let config = SCStreamConfiguration()
+        config.width = Int(Double(display.width) * screen.backingScaleFactor); config.height = Int(Double(display.height) * screen.backingScaleFactor)
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: config) else { return false }
+        let W = Double(image.width), H = Double(image.height)
+        guard let crop = image.cropping(to: CGRect(x: region.minX * W, y: region.minY * H, width: region.width * W, height: region.height * H)),
+              let small = ScreenText.scaled(crop, longest: 900), let png = NSBitmapImageRep(cgImage: small).representation(using: .png, properties: [:]) else { return false }
+        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+    }
     static func appendSelfTest(_ line: String) {
         let path = NSHomeDirectory() + "/.shuacrew/spark-selftest.log"
         if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() } else { try? line.write(toFile: path, atomically: true, encoding: .utf8) }
@@ -915,6 +928,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
             return
         }
+        if spec == "pen:shot" { // the pen drawing a circle and an underline, captured as it goes (frames at 0.3…2.0 s)
+            Task { @MainActor [weak self] in
+                guard let self, let screen = NSScreen.main else { return }
+                try? await Task.sleep(for: .seconds(2))
+                let shapes: [[String: Any]] = [["shape": "circle", "x": 0.42, "y": 0.45, "r": 0.05, "label": "This one"], ["shape": "underline", "x": 0.52, "y": 0.52, "w": 0.16, "h": 0.03]]
+                self.pointer.draw(on: screen, shapes: shapes, color: "#8e48ff", from: NSPoint(x: screen.frame.minX + screen.frame.width * 0.2, y: screen.frame.minY + screen.frame.height * 0.7))
+                var last = 0.0
+                for t in [0.3, 0.7, 1.1, 1.5, 2.0] {
+                    try? await Task.sleep(for: .milliseconds(Int((t - last) * 1000))); last = t
+                    let ok = await Self.capture(screen: screen, region: CGRect(x: 0.15, y: 0.25, width: 0.6, height: 0.4), to: NSHomeDirectory() + "/.shuacrew/selftest-pen-\(t).png")
+                    Self.appendSelfTest("SPARK SELFTEST pen t=\(t) saved=\(ok)\n")
+                }
+                self.pointer.hide()
+            }
+            return
+        }
         if spec == "buddy:shot" { // the cursor buddy in each state, captured (with the buddy in it) to ~/.shuacrew/selftest-buddy-<state>.png
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -1163,6 +1192,61 @@ final class PointerOverlay {
 
     /// Spark's cursor: a real arrow that glides from Spark to the spot on a natural arc, presses, and ripples.
     /// Returns how long the flight takes, so what it points at appears as it lands.
+    /// The pen: one small cursor that flies to where each mark starts and traces it — each line grows exactly under its
+    /// tip (strokeEnd and a paced position along the same path share one clock) — then on to the next, then fades.
+    /// Returns when the last mark is finished.
+    private func pen(in root: NSView, from: CGPoint?, strokes: [CAShapeLayer], color: NSColor) -> CFTimeInterval {
+        func firstPoint(_ path: CGPath) -> CGPoint {
+            var p: CGPoint?
+            path.applyWithBlock { el in if p == nil, el.pointee.type == .moveToPoint { p = el.pointee.points[0] } }
+            return p ?? CGPoint(x: path.boundingBox.midX, y: path.boundingBox.midY)
+        }
+        let paths = strokes.compactMap { $0.path }
+        let plan = CursorMotion.penPlan(from: from, strokes: paths.map { (firstPoint($0), 1.6 * ($0.boundingBox.width + $0.boundingBox.height)) })
+        let arrow = CGMutablePath()
+        arrow.move(to: .zero); arrow.addLine(to: CGPoint(x: 0, y: -21)); arrow.addLine(to: CGPoint(x: 5.2, y: -16))
+        arrow.addLine(to: CGPoint(x: 9.2, y: -24.5)); arrow.addLine(to: CGPoint(x: 12.4, y: -23)); arrow.addLine(to: CGPoint(x: 8.5, y: -14.8))
+        arrow.addLine(to: CGPoint(x: 15, y: -14.8)); arrow.closeSubpath()
+        let tip = CAShapeLayer()
+        tip.path = arrow; tip.fillColor = color.cgColor; tip.strokeColor = NSColor.white.cgColor; tip.lineWidth = 1.6; tip.lineJoin = .round
+        tip.shadowColor = NSColor.black.cgColor; tip.shadowOpacity = 0.45; tip.shadowRadius = 6; tip.shadowOffset = CGSize(width: 0, height: -3)
+        tip.position = from ?? firstPoint(paths[0])
+        root.layer?.addSublayer(tip)
+        let start = CACurrentMediaTime() + 0.05
+        var at = tip.position
+        for (i, (step, layer)) in zip(plan, strokes).enumerated() {
+            guard let path = layer.path else { continue }
+            let begin = firstPoint(path)
+            if step.fly > 0 { // swoop to where this mark begins
+                let arc = CGMutablePath(); arc.move(to: at)
+                let d = hypot(begin.x - at.x, begin.y - at.y)
+                arc.addQuadCurve(to: begin, control: CGPoint(x: (at.x + begin.x) / 2, y: max(at.y, begin.y) + min(90, d * 0.2)))
+                let fly = CAKeyframeAnimation(keyPath: "position"); fly.path = arc; fly.duration = step.fly
+                fly.beginTime = start + step.flyAt; fly.fillMode = .forwards; fly.isRemovedOnCompletion = false
+                fly.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 0.1, 0.2, 1)
+                tip.add(fly, forKey: "fly\(i)")
+            }
+            // Trace it: the tip moves along the mark at an even pace while the line appears behind it.
+            let trace = CAKeyframeAnimation(keyPath: "position"); trace.path = path; trace.calculationMode = .paced
+            trace.duration = step.trace; trace.beginTime = start + step.traceAt; trace.fillMode = .forwards; trace.isRemovedOnCompletion = false
+            tip.add(trace, forKey: "trace\(i)")
+            let ink = CABasicAnimation(keyPath: "strokeEnd"); ink.fromValue = 0; ink.toValue = 1
+            ink.duration = step.trace; ink.beginTime = start + step.traceAt; ink.fillMode = .backwards
+            layer.add(ink, forKey: "ink")
+            var end = CGPoint.zero; path.applyWithBlock { el in
+                let n: Int; switch el.pointee.type { case .moveToPoint, .addLineToPoint: n = 1; case .addQuadCurveToPoint: n = 2; case .addCurveToPoint: n = 3; default: n = 0 }
+                if n > 0 { end = el.pointee.points[n - 1] }
+            }
+            at = end
+        }
+        let total = (plan.last.map { $0.traceAt + $0.trace } ?? 0) + 0.05
+        let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 1; fade.toValue = 0; fade.duration = 0.3
+        fade.beginTime = start + total + 0.15; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        tip.add(fade, forKey: "fade")
+        DispatchQueue.main.asyncAfter(deadline: .now() + total + 0.6) { tip.removeFromSuperlayer() }
+        return total
+    }
+
     private func comet(in root: NSView, from: CGPoint?, to: CGPoint, color: NSColor) -> CFTimeInterval {
         guard let from, hypot(from.x - to.x, from.y - to.y) > 40 else { return 0 }
         let distance = hypot(from.x - to.x, from.y - to.y)
@@ -1512,13 +1596,7 @@ final class PointerOverlay {
                 line.lineWidth = 3.5
                 line.lineCap = .round; line.lineJoin = .round
                 line.shadowColor = stroke.cgColor; line.shadowRadius = 6; line.shadowOpacity = 0.8; line.shadowOffset = .zero
-                let sketch = CABasicAnimation(keyPath: "strokeEnd")
-                sketch.fromValue = 0; sketch.toValue = 1; sketch.duration = 0.55
-                sketch.beginTime = CACurrentMediaTime() + 0.5 + Double(layers.count) * 0.35
-                sketch.fillMode = .backwards
-                sketch.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                line.add(sketch, forKey: "sketch")
-                layers.append(line)
+                layers.append(line) // drawn on by the pen (see pen(in:)), in step with its tip
             }
             if let text = (shape["label"] as? String ?? shape["text"] as? String).map({ String($0.prefix(60)) }), !text.isEmpty {
                 let view = pill(text, color: stroke, badge: badge)
@@ -1539,8 +1617,14 @@ final class PointerOverlay {
             root.layer?.addSublayer(scrim)
         }
         for f in fills { root.layer?.addSublayer(f) }
-        if let spot = firstSpot { _ = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: spot, color: color) }
         for l in layers { root.layer?.addSublayer(l) }
+        let local = from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }
+        // The cursor is the pen: it flies to each mark and traces it, the line appearing under its tip. Marks with
+        // nothing to trace (cards, text) still get the flight to the first spot.
+        var drawn: CFTimeInterval = 0.6
+        let strokes = layers.compactMap { $0 as? CAShapeLayer }
+        if !strokes.isEmpty { drawn = pen(in: root, from: local, strokes: strokes, color: color) }
+        else if let spot = firstSpot { drawn = max(0.6, comet(in: root, from: local, to: spot, color: color) + 0.2) }
         for (view, anchor) in labels {
             if anchor.size == .zero { view.frame.origin = NSPoint(x: min(max(anchor.minX - view.frame.width / 2, 8), W - view.frame.width - 8), y: min(max(anchor.minY - 15, 8), H - 38)) }
             else { place(view, near: anchor, in: frame.size) }
@@ -1549,7 +1633,7 @@ final class PointerOverlay {
         }
         panel.orderFrontRegardless()
         self.panel = panel
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(layers.count) * 0.35) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + drawn) { [weak self] in // labels once their marks are drawn
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.3; for (v, _) in labels { v.animator().alphaValue = 1 } }
             guard let self, self.panel === panel, self.onMarkClick != nil else { return }
             for (v, _) in labels { if let text = clickable[ObjectIdentifier(v)] { self.addClickTarget(NSRect(x: frame.minX + v.frame.minX, y: frame.minY + v.frame.minY, width: v.frame.width, height: v.frame.height), text: text) } }

@@ -658,7 +658,7 @@ export function looksForAnswer(q: string): boolean {
 export function needsFollowThrough(q: string, reply: string): boolean {
   const t = q.toLowerCase().trim();
   // More work named after the opening: "…and underline…", "…then walk me through…", "…highlight the file…".
-  const more = /\b(underline|highlight|circle|point|mark|number|spotlight|show me|walk me|guide|explain|read|summari[sz]e|find|sort|pick|click|select|scroll|play|search|type|fill|tell me)\b/.test(t);
+  const more = /\b(underline|highlight|circle|point|mark|number|spotlight|show me|walk me|guide|explain|read|summari[sz]e|find|sort|pick|click|select|scroll|play|search|type|fill|tell me|start|begin|join|sign in|log in|book|order|buy|add|create|write|draft|send|reply|download|upload|watch|listen|open (it|the first|that))\b/.test(t);
   // Or Spark itself said it would carry on once it's open.
   const promised = /\b(once|when) (it|that|the page|the article|finder|the window)?\s*(loads|opens|is open|is up)\b|\bthen i'?ll\b|\bi'?ll (underline|highlight|point|circle|mark|walk|read|show|find|click)\b/i.test(reply);
   return more || promised || looksForAnswer(q);

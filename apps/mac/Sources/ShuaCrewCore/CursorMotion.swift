@@ -40,4 +40,19 @@ public enum CursorMotion {
             return (raw >= 1 ? to : p, atan2(ty, tx), 1 + 0.3 * CGFloat(sin(Double.pi * raw)), raw >= 1)
         }
     }
+
+    /// The pen's timeline for drawing several marks: fly to where each mark starts, then trace it (the line appears
+    /// under the tip), then on to the next. Times are seconds from the start. Short hops and small marks are quick; a
+    /// long flight or a big circle takes a little longer — never sluggish.
+    public struct PenStep: Equatable { public let flyAt: Double, fly: Double, traceAt: Double, trace: Double }
+    public static func penPlan(from: CGPoint?, strokes: [(start: CGPoint, length: CGFloat)]) -> [PenStep] {
+        var t = 0.0, at = from
+        return strokes.map { s in
+            let d = at.map { Double(hypot(s.start.x - $0.x, s.start.y - $0.y)) } ?? 0
+            let fly = d < 8 ? 0 : min(0.7, max(0.28, d / 1400)), trace = min(0.95, max(0.4, Double(s.length) / 900))
+            let step = PenStep(flyAt: t, fly: fly, traceAt: t + fly, trace: trace)
+            t += fly + trace + 0.08; at = s.start
+            return step
+        }
+    }
 }

@@ -39,4 +39,14 @@ import Testing
         let corner = CursorMotion.anchor(cursor: CGPoint(x: 995, y: 5), visible: visible)
         #expect(corner.x < 995 && corner.y > 5)
     }
+
+    @Test func thePenFliesThenTracesEachMarkInTurn() {
+        let plan = CursorMotion.penPlan(from: CGPoint(x: 0, y: 0), strokes: [(CGPoint(x: 700, y: 0), 300), (CGPoint(x: 700, y: 10), 2000)])
+        #expect(plan.count == 2)
+        #expect(plan[0].flyAt == 0 && plan[0].fly == 0.5 && plan[0].traceAt == 0.5)
+        #expect(plan[0].trace == 0.4)                    // a small mark: quick
+        #expect(plan[1].flyAt > plan[0].traceAt + plan[0].trace) // the next starts only after this one is drawn
+        #expect(plan[1].trace == 0.95)                   // a big one: capped, never sluggish
+        #expect(CursorMotion.penPlan(from: nil, strokes: [(CGPoint(x: 5, y: 5), 100)])[0].fly == 0) // no start: draw in place
+    }
 }
