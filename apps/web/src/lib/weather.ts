@@ -54,3 +54,35 @@ export async function loadWeather(force = false): Promise<Weather> {
   try { localStorage.setItem(CACHE, JSON.stringify(w)); } catch { /* ignore */ }
   return w;
 }
+
+/** Open-Meteo's week, as the gateway returns it with `days=7`. */
+export interface WeekForecast {
+  current: { temperature_2m: number; weather_code: number; time: string };
+  hourly: { time: string[]; temperature_2m: number[]; weather_code: number[]; precipitation_probability: number[] };
+  daily: { time: string[]; temperature_2m_max: number[]; temperature_2m_min: number[]; weather_code: number[]; precipitation_probability_max: number[] };
+}
+/** Does a question ask about the weather? ("do I need an umbrella", "how hot is it tomorrow", "weekend forecast") */
+export const asksWeather = (q: string) => /\b(weather|forecast|rain(ing|y)?|umbrella|snow(ing)?|temperature|degrees|how (hot|cold|warm)|sunny|cloudy|storm|jacket|coat|humid|wind(y)?)\b/i.test(q);
+/**
+ * The forecast as a few compact lines for Spark: now, the next 12 hours, and the week — so a weather question is
+ * answered at once from real data (Open-Meteo), not after a 15–20 s web search and page read.
+ */
+export function weatherBrief(r: WeekForecast, place: string, unit: "c" | "f"): string {
+  const deg = unit === "f" ? "°F" : "°C", day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const start = Math.max(0, r.hourly.time.findIndex((t) => t >= r.current.time.slice(0, 13)));
+  const hours = r.hourly.time.slice(start, start + 12).map((t, i) => `${t.slice(11, 16)} ${Math.round(r.hourly.temperature_2m[start + i]!)}° ${describe(r.hourly.weather_code[start + i]!).label.toLowerCase()} ${r.hourly.precipitation_probability[start + i] ?? 0}%`);
+  const week = r.daily.time.map((t, i) => `${day(t)}: ${Math.round(r.daily.temperature_2m_max[i]!)}/${Math.round(r.daily.temperature_2m_min[i]!)}${deg} ${describe(r.daily.weather_code[i]!).label.toLowerCase()}, rain ${r.daily.precipitation_probability_max[i] ?? 0}%`);
+  return [
+    `WEATHER for ${place} (live from Open-Meteo, ${deg}; rain = chance of rain) — answer weather questions from this at once, no web search, and show a forecast card when it helps:`,
+    `Now: ${Math.round(r.current.temperature_2m)}${deg}, ${describe(r.current.weather_code).label.toLowerCase()}.`,
+    `Next 12 hours: ${hours.join(" · ")}`,
+    `This week: ${week.join(" · ")}`,
+  ].join("\n");
+}
+/** Fetch the week and brief it for Spark; "" if weather is off or there's no location yet. */
+export async function weatherForSpark(): Promise<string> {
+  if (!prefs.enabled) return "";
+  const p = await where();
+  const r = await api(`/api/weather/forecast?lat=${p.lat}&lon=${p.lon}&unit=${prefs.unit}&days=7`) as WeekForecast;
+  return weatherBrief(r, p.name, prefs.unit);
+}

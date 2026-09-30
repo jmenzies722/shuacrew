@@ -25,7 +25,7 @@ const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
  * Spark's quick conversational turns, cold or warm — one definition, so the two can't drift (the warm path
  * once kept web search blocked while Spark was told it could search). Read is for attached images.
  */
-const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Screenshots come attached as images you can already see: never Read them. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching.";
+const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly and briefly in plain spoken language. Screenshots come attached as images you can already see: never Read them. When you're not sure, or the answer depends on current or specific facts, use WebSearch (then WebFetch the best page) before answering, and name your source in a few words; otherwise answer straight away without searching. Before a search, write ONE short sentence naming exactly what you're checking (\"Checking tonight's Sixers score.\") — it's spoken while you look, so they're never left in silence; never a vague \"let me check\".";
 /**
  * Spark's quick turns see only their three tools. Tool search off (it cost a round trip before every web search) —
  * which also means every tool present loads up front, so nothing of your own Claude setup comes along: your claude.ai
