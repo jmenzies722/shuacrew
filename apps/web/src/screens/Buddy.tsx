@@ -24,7 +24,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { earcon, type Earcon } from "../lib/earcons";
+import { earcon, warmSounds, type Earcon } from "../lib/earcons";
 import { crewDetail, crewFinished, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark } from "../lib/weather";
 import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
@@ -48,7 +48,7 @@ import "../alive.css"; // the desktop Spark loads without the app shell: same ac
 import { nativeLiveSpeech } from "../lib/live-speech";
 import { ctx, capture, shotFiles, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
-import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, getMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
+import { chime, TimeLeft, NotchWave, MicBars, MiniCard, setMicLevel, getMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
 import { LiveActivities } from "./spark/LiveActivities";
 import { VisualCard } from "./spark/Visual";
@@ -225,9 +225,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [voiceLive, setVoiceLive] = useState(false);
   /** A sound for a moment in the conversation, in your chosen style (spatial by default). */
   const sound = (k: Earcon) => earcon(k, prefsRef.current.sounds);
+  // Bounce every sound once, and wake the audio engine, as soon as you touch anything (browsers won't start audio before).
+  useEffect(() => {
+    const warm = () => warmSounds(prefsRef.current.sounds);
+    window.addEventListener("pointerdown", warm, { once: true }); window.addEventListener("keydown", warm, { once: true });
+    const t = setTimeout(warm, 1500); // the Mac app lets it start without a gesture
+    return () => { clearTimeout(t); window.removeEventListener("pointerdown", warm); window.removeEventListener("keydown", warm); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Voice mode on: you're live (the same sound as holding fn). Off: a closing note. Not on first load.
   const voiceWas = useRef(voiceLive);
-  useEffect(() => { if (voiceWas.current !== voiceLive) sound(voiceLive ? "listen" : "off"); voiceWas.current = voiceLive; }, [voiceLive]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (voiceWas.current !== voiceLive) { sound(voiceLive ? "listen" : "off"); if (voiceLive) macContext.prefetch(); } voiceWas.current = voiceLive; }, [voiceLive]); // eslint-disable-line react-hooks/exhaustive-deps
   // Noticing you're stuck (see lib/stuck): glances while live watching is on; one gentle offer, then quiet.
   const [stuck, setStuck] = useState<StuckOffer | null>(null), stuckState = useRef(STUCK_START), quiet = useRef(false);
   // What Music or Spotify is playing, for the notch (asked of the Mac app; faster while the island is open).
@@ -296,7 +303,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
         if (kind === "cancel") { mic.current.cool(); return; }
         if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
-        if (kind === "hold") { sound("listen"); setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
+        if (kind === "hold") { sound("listen"); macContext.prefetch(); setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
         sound("sent"); setFnHeld(false); setFnSent(true); mic.current.release();
       } };
     post({ type: "buddyReady" });
@@ -771,13 +778,20 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (autoSee) { setSee(true); try { localStorage.setItem(SEE, "1"); } catch { /* ignore */ } }
     const look = see || autoSee || liveOn || !!opt.look;
     setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
+    // Where a turn's time goes before the model starts (logged during self-tests: SHUACREW_SPARK_SELFTEST=ask:…).
+    const t0 = performance.now(), marks: Record<string, number> = {}, mark = (k: string) => { marks[k] = Math.round(performance.now() - t0); };
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
       const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
       // Asked about the weather: the real forecast comes along (Open-Meteo, ~0.3 s), so Spark answers at once instead of
       // web-searching and reading a page (17–20 s in the log). Never allowed to hold a turn up for more than 2 s.
       const weather = asksWeather(q) ? Promise.race([weatherForSpark().catch(() => ""), new Promise<string>((ok) => setTimeout(() => ok(""), 2000))]) : Promise.resolve("");
-      const [selected, mac, playing, forecast] = await Promise.all([selectIntelligence(intelligence), macContext(), playingContext(radioNow), weather]); const personal = [mac, playing, forecast].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
+      // The screenshot doesn't depend on which model answers: take it and upload it NOW, alongside the model pick and
+      // your Mac's context (it used to wait for them — ~0.9 s — then run on its own). Measured with the marks above.
+      const shooting = look ? capture().then(async (shot) => { mark("screenshot"); const files = await Promise.all(shotFiles(shot).map(upload)); mark("upload"); return { shot, files }; }) : null;
+      shooting?.catch(() => {}); // a failed look is reported where it's used
+      const radioAnswer = radioNow(); // asked once, used for the context and the status line
+      const [selected, mac, playing, forecast] = await Promise.all([selectIntelligence(intelligence).finally(() => mark("pick")), macContext().finally(() => mark("mac")), playingContext(() => radioAnswer).finally(() => mark("playing")), weather]); mark("context"); const personal = [mac, playing, forecast].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence } });
@@ -785,12 +799,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
-      if (look && (!localNow || aboutScreen(q) || opt.look)) { const shot = await capture(); if (stale()) return; if (!localNow) atts = await Promise.all(shotFiles(shot).map(upload)); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
+      if (look && shooting && (!localNow || aboutScreen(q) || opt.look)) { const { shot, files } = await shooting; if (stale()) return; if (!localNow) atts = files; mark("look"); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
       const detail = crewDetail(crew.runs, crew.approvals, names);
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length) + (detail ? `\n${detail}` : "");
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
-      const playingNow = await radioNow(); setRadio(playingNow);
+      const playingNow = await radioAnswer; setRadio(playingNow); mark("radio");
       const remembered = asksAboutEarlier(q) ? await recall(q) : "";
       if (remembered) logSense("saw", "Checked your screen memory", q);
       const appNowBase = shuacrewNow({
@@ -823,13 +837,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
-        await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
+        mark("post"); await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
+        mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model, rules: SPARK_RULES }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
-      setDraft("");
+      setDraft(""); mark("sent");
+      if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `timing ${q.slice(0, 40)}`, output: JSON.stringify(marks) });
     } catch (e) { if (!stale()) setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { if (!stale()) setBusy(""); }
   };
   // Open mic: every turn you speak is a message; talking over Spark stops it.
@@ -1244,11 +1259,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{fnReady ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p> : processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p> : hearingNow ? (prefs.notchCaptions
-            // While you talk: the waveform stays with your words (older words fade out to the left), so you see it's
-            // hearing you AND what it heard. Captions off: just the waveform.
-            ? <div className="notch-hearing"><MicBars floor={0.2} /><Rolling className="notch-heard">{heard}</Rolling></div>
-            : <p className="notch-ready"><MicBars floor={0.2} /></p>) : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+        <div className="shua-island-live" aria-hidden={!islandLive}>{
+          // While you talk: a waveform (default) — live words flicker as the recogniser revises them. The moment you
+          // stop, your final sentence shows (shimmering while Spark works) so you can catch a mishearing.
+          fnReady && prefs.notchHearing === "words" ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p>
+          : processingText && !lookup ? <p className="notch-heard is-processing" aria-live="polite">“{processingText}”</p>
+          : fnReady || (hearingNow && prefs.notchHearing === "wave") ? <NotchWave />
+          : hearingNow ? <div className="notch-hearing"><MicBars floor={0.2} /><Rolling className="notch-heard">{heard}</Rolling></div> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : lookup ? <p className="shua-island-hint is-lookup"><Globe size={12} /> <span>{lookup}</span></p> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>

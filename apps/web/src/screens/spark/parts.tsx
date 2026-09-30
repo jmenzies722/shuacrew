@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { waveBars } from "../../lib/wave";
 import { motion } from "motion/react";
 import { formatLeft, remaining } from "../../lib/timers";
 import { SparkCharacter } from "../../components/SparkCharacter";
@@ -50,6 +51,29 @@ export function useMicLevelVar(ref: RefObject<HTMLElement | null>) {
   useEffect(() => { const on = () => ref.current?.style.setProperty("--lvl", String(micLevelNow)); on(); return subscribeLevel(on); }, [ref]);
 }
 
+
+/**
+ * The notch's waveform while you talk: 17 bars moving with your voice (lib/wave). It animates itself — each frame
+ * writes the bars' scale straight to the DOM — so nothing else in Spark re-renders 60 times a second.
+ */
+export function NotchWave({ bars = 17 }: { bars?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const still = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0, level = 0, last = performance.now();
+    const frame = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      level += (micLevelNow - level) * (1 - Math.exp(-dt / 0.07)); // glide, don't jump
+      const h = waveBars(level, still ? 0 : now / 1000, bars);
+      for (let i = 0; i < el.children.length; i++) (el.children[i] as HTMLElement).style.transform = `scaleY(${h[i]!.toFixed(3)})`;
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [bars]);
+  return <span className="notch-wave" ref={ref} role="img" aria-label="Listening">{Array.from({ length: bars }, (_, i) => <i key={i} />)}</span>;
+}
 
 /** Working on what you said: the bars become a wave travelling through them, in the theme's accent. */
 export function ThinkWave() {

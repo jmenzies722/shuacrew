@@ -81,7 +81,7 @@ export class Mcp {
 
   /** Connect to the server like an agent would and list its tools (cached until asked again). */
   async tools(id: string, fresh = false): Promise<Connection> {
-    const server = fold(this.store.read(0)).get(id);
+    const server = this.servers().get(id);
     if (!server) throw new Error("no such server");
     const cached = this.connections.get(id);
     if (cached && !fresh) return cached;
@@ -94,18 +94,27 @@ export class Mcp {
   }
 
   /** What's already known about each server's tools, without connecting. */
+  /**
+   * The servers, from just their own events (the kind index) — it used to fold the WHOLE log (26k events, ~100 ms)
+   * on every call, and every Spark follow-up called it twice (profiled: ~205 ms of each follow-up's 210 ms).
+   */
+  private servers() {
+    const events = [...this.store.ofKinds("mcp.set"), ...this.store.ofKinds("mcp.removed"), ...this.store.ofKinds("mcp.spark")];
+    return fold(events.sort((a, b) => a.seq - b.seq));
+  }
+
   known(): Record<string, Connection> {
     return Object.fromEntries(this.connections);
   }
 
   list(): McpServer[] {
     const tokens = this.tokens();
-    return [...fold(this.store.read(0)).values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(tokens[s.id]?.access), brand: resolveMcpBrand({ name: s.name, url: s.url, packageId: mcpPackage(s.command, s.args) }) }));
+    return [...this.servers().values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(tokens[s.id]?.access), brand: resolveMcpBrand({ name: s.name, url: s.url, packageId: mcpPackage(s.command, s.args) }) }));
   }
 
   /** Let Spark use a server's tools (or stop). */
   setSpark(id: string, on: boolean): McpServer {
-    if (!fold(this.store.read(0)).has(id)) throw new Error("no such server");
+    if (!this.servers().has(id)) throw new Error("no such server");
     this.store.append("mcp.spark", { id, on });
     return this.list().find((s) => s.id === id)!;
   }
@@ -114,7 +123,7 @@ export class Mcp {
   forClaude(only: "spark" | "all" = "all"): Record<string, { command: string; args: string[] } | { type: "http"; url: string; headers?: Record<string, string> }> {
     const tokens = this.tokens();
     const out: Record<string, { command: string; args: string[] } | { type: "http"; url: string; headers?: Record<string, string> }> = {};
-    for (const server of fold(this.store.read(0)).values()) {
+    for (const server of this.servers().values()) {
       if (only === "spark" && !server.spark) continue;
       if (server.command) out[server.name] = { command: server.command, args: server.args };
       else if (server.url) {
@@ -129,7 +138,7 @@ export class Mcp {
   forCodex(): Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> {
     const tokens = this.tokens();
     const out: Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> = {};
-    for (const server of fold(this.store.read(0)).values()) {
+    for (const server of this.servers().values()) {
       const name = server.name.replace(/[^A-Za-z0-9_-]/g, "_") || "server";
       if (server.command) out[name] = { command: server.command, args: server.args };
       else if (server.url) {
@@ -144,7 +153,7 @@ export class Mcp {
   forAcp(): Array<{ name: string; command?: string; args?: string[]; type?: "http"; url?: string; headers?: Array<{ name: string; value: string }> }> {
     const tokens = this.tokens();
     const out: Array<{ name: string; command?: string; args?: string[]; type?: "http"; url?: string; headers?: Array<{ name: string; value: string }> }> = [];
-    for (const server of fold(this.store.read(0)).values()) {
+    for (const server of this.servers().values()) {
       if (server.command) out.push({ name: server.name, command: server.command, args: server.args });
       else if (server.url) {
         const access = tokens[server.id]?.access;
@@ -168,7 +177,7 @@ export class Mcp {
   }
 
   remove(id: string): void {
-    if (!fold(this.store.read(0)).has(id)) throw new Error("no such server");
+    if (!this.servers().has(id)) throw new Error("no such server");
     this.store.append("mcp.removed", { id });
     const tokens = this.tokens();
     if (tokens[id]) {
@@ -178,7 +187,7 @@ export class Mcp {
   }
 
   async probe(id: string): Promise<{ ok: boolean; detail: string }> {
-    const server = fold(this.store.read(0)).get(id);
+    const server = this.servers().get(id);
     if (!server) throw new Error("no such server");
     if (server.command) return probeCommand(server.command, server.args);
     const headers: Record<string, string> = {};
@@ -195,7 +204,7 @@ export class Mcp {
 
   /** Authorization-code + PKCE against the server's own metadata. Resolves when the browser returns. */
   async signIn(id: string): Promise<void> {
-    const server = fold(this.store.read(0)).get(id);
+    const server = this.servers().get(id);
     if (!server?.url || server.auth !== "oauth") throw new Error("this server doesn't sign in");
     const meta = await discover(server.url);
     const redirect = await listenOnce();

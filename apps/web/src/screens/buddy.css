@@ -688,6 +688,10 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 :root[data-motion="reduced"] .buddy .spk-think i, :root[data-motion="reduced"] .buddy .notch-heard.is-processing, :root[data-motion="reduced"] .buddy .shua-island.is-processing .shua-island-shape::before { animation: none; }
 /* Ready for you (fn held): the island drops the instant the key goes down — your mic level in bars, "Listening…", and
    a white line breathing along its lower edge, like the Talk button's glow. Your words replace it as they come in. */
+/* The waveform while you talk: 17 bars, white with an accent glow, tallest in the middle (lib/wave.ts). */
+.notch-wave { display: flex; align-items: center; justify-content: center; gap: 3px; height: 26px; margin: 1px 0 3px; }
+.notch-wave i { flex: none; width: 3px; height: 100%; border-radius: 3px; background: linear-gradient(180deg, #fff, color-mix(in srgb, #fff 70%, var(--amber, #8e48ff)));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--amber, #8e48ff) 55%, transparent); transform: scaleY(.12); transform-origin: center; will-change: transform; }
 .notch-hearing { display: flex; align-items: center; gap: 10px; }
 .notch-hearing > .spk-bars { flex: none; color: #fff; }
 .notch-hearing > .notch-heard { flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%); mask-image: linear-gradient(90deg, transparent, #000 18%); }

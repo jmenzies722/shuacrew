@@ -61,6 +61,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let live = LiveScreen()
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
+    /// The last read of a browser page's controls (by browser process), for a look that couldn't wait for a fresh one.
+    private var webCache: (pid: pid_t, at: CFTimeInterval, value: (page: [String: String], elements: [[String: Any]]))?
+    /// A task's result if it arrives within `seconds`, else nil (the task itself keeps going).
+    private static func settle<T>(_ task: Task<T?, Never>, within seconds: Double) async -> T? {
+        await withCheckedContinuation { (done: CheckedContinuation<T?, Never>) in
+            var finished = false
+            Task { @MainActor in let v = await task.value; if !finished { finished = true; done.resume(returning: v) } }
+            Task { @MainActor in try? await Task.sleep(for: .seconds(seconds)); if !finished { finished = true; done.resume(returning: nil) } }
+        }
+    }
     /// Every display in the last look by the number Spark knows it by: 1 = the one with your pointer, 2, 3… the others.
     private var shotScreens: [Int: NSScreen] = [:]
     /// The display a block is about: its "screen" number when Spark points at another display, else the main look.
@@ -913,6 +923,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 return
             }
         }
+        let c0 = CACurrentMediaTime(); var stages: [String] = []
+        let stage = { (k: String) in stages.append("\(k)=\(Int((CACurrentMediaTime() - c0) * 1000))") }
+        defer { if ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] != nil { Self.appendSelfTest("CAPTURE " + stages.joined(separator: " ") + "\n") } }
         do {
             let all = NSScreen.screens, home = panel.screen ?? NSScreen.main ?? all[0]
             let order = DisplayLayout.order(frames: all.map(\.frame), pointer: NSEvent.mouseLocation, fallback: all.firstIndex(of: home) ?? 0).map { all[$0] }
@@ -922,6 +935,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else {
                 reply(["error": "No display to look at."], to: target); return
             }
+            stage("content")
             let own = Set(ownWindows.map { CGWindowID($0) }), mine = content.windows.filter { own.contains($0.windowID) }
             let filter = SCContentFilter(display: display, excludingWindows: mine)
             // Full Retina resolution for reading text exactly; the model's copy is scaled down afterwards.
@@ -932,7 +946,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Live: the stream's newest frame is already here — no capture wait.
             let full: CGImage
             if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
+            stage("frame")
+            // Three reads that don't depend on each other now run at once: the page's controls (Apple Events to the
+            // browser — up to ~1.5 s measured), the screen's text (OCR ~0.3 s) and the app's controls (accessibility).
+            let webApp = SparkHands.target.flatMap { ShuaWeb.supports($0) ? $0 : nil }
+            let webRead = webApp.map { app in Task { @MainActor in await ShuaWeb.snapshot(of: app, on: screen) } }
+            if webRead != nil { await Task.yield() } // let it send its Apple Event before the main-thread accessibility read
+            // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
+            async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
             var context = ScreenElements.read(on: screen)
+            stage("elements")
             // Where your pointer is and what's under it ("what's this?"), and what you just circled with it.
             let f = screen.frame, m = NSEvent.mouseLocation
             if f.contains(m) {
@@ -957,12 +980,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 lastGesture = nil; lastPicks = []
             }
             // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
-            if let app = SparkHands.target, ShuaWeb.supports(app), let web = await ShuaWeb.snapshot(of: app, on: screen) {
-                context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
-                context["page"] = web.page
+            // Never held up more than 0.7 s: a slow read finishes in the background and serves the next look (15 s).
+            if let app = webApp, let webRead {
+                let fresh = await Self.settle(webRead, within: 0.7)
+                if let fresh { webCache = (app.processIdentifier, CACurrentMediaTime(), fresh) }
+                else { Task { @MainActor [weak self] in if let late = await webRead.value { self?.webCache = (app.processIdentifier, CACurrentMediaTime(), late) } } }
+                let cached = webCache.flatMap { $0.pid == app.processIdentifier && CACurrentMediaTime() - $0.at < 15 ? $0.value : nil }
+                if let web = fresh ?? cached {
+                    context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
+                    context["page"] = web.page
+                }
             }
-            // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
-            async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
+            stage("web")
             // The model points in pixels of the image it sees, so it must see exactly this image: under the API's limits or
             // it's shrunk again server-side and every coordinate drifts. Older models: 1568 px long edge AND ~1.15 MP.
             // Opus/Sonnet 5.5 and newer (`hires`): 2576 px and 4784 visual tokens (28 px tiles) — about 1.5× sharper.
@@ -988,6 +1017,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 displays.append(["n": n, "name": side.localizedName, "where": DisplayLayout.relation(of: side.frame, to: screen.frame), "width": img.width, "height": img.height])
             }
             if !displays.isEmpty { context["displays"] = displays }
+            stage("sides"); _ = await text; stage("ocr")
             shotScreen = screen; shotScreens = numbered
             reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
         } catch {
@@ -1040,7 +1070,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 try? await Task.sleep(for: .seconds(4))
                 for q in asks {
                     guard let self, let json = try? JSONSerialization.data(withJSONObject: [q]), let arg = String(data: json, encoding: .utf8) else { return }
-                    _ = try? await self.web.evaluateJavaScript("window.buddy.ask(\(arg)[0])")
+                    _ = try? await self.web.evaluateJavaScript("window.__sparkTiming = true; window.buddy.ask(\(arg)[0])")
                     Self.appendSelfTest("SPARK SELFTEST asked: \(q)\n")
                     try? await Task.sleep(for: .seconds(35))
                 }

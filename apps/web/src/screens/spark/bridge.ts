@@ -71,11 +71,23 @@ export function fitShape(sh: Shape): Shape {
  * Personal context for every question: where you're working, what's next on your calendar, what's due, what you just
  * worked on, anything that needs attention. Read on this Mac, cached for a minute, and never allowed to slow a reply.
  */
-let contextCache: { at: number; text: string } | null = null;
+let contextCache: { at: number; text: string } | null = null, contextLoading: Promise<string> | null = null;
+/**
+ * Stale-while-revalidate: a turn never waits for a fresh read (~0.9 s measured) when there's one from the last 10
+ * minutes — it answers with that and refreshes behind it. Only the first ask of a session waits (at most 1.5 s).
+ * `macContext.prefetch()` runs when you start talking, so a fresh copy is usually ready as you finish.
+ */
 export function macContext(): Promise<string> {
   if (!native()) return Promise.resolve("");
-  if (contextCache && Date.now() - contextCache.at < 60_000) return Promise.resolve(contextCache.text);
-  return new Promise((resolve) => {
+  const age = contextCache ? Date.now() - contextCache.at : Infinity;
+  if (age < 60_000) return Promise.resolve(contextCache!.text);
+  const fresh = readMacContext();
+  return age < 10 * 60_000 ? Promise.resolve(contextCache!.text) : fresh;
+}
+macContext.prefetch = () => { if (native() && (!contextCache || Date.now() - contextCache.at > 20_000)) void readMacContext(); };
+function readMacContext(): Promise<string> {
+  if (contextLoading) return contextLoading;
+  contextLoading = new Promise<string>((resolve) => {
     const id = crypto.randomUUID();
     const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve(contextCache?.text ?? ""); }, 1500);
     const on = (e: CustomEvent<{ id: string; output?: string }>) => {
@@ -84,7 +96,8 @@ export function macContext(): Promise<string> {
     };
     window.addEventListener("shuacrew:did", on as EventListener);
     post({ type: "buddyDo", id, action: { type: "mac", op: "context" } });
-  });
+  }).finally(() => { contextLoading = null; });
+  return contextLoading;
 }
 /**
  * In Chrome, the page itself knows exactly where things are: ask Spark for Chrome to find, click or type into an

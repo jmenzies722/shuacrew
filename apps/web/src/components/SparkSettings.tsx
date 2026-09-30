@@ -221,7 +221,10 @@ function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pa
         </div>
       </div>
     </div>
-    <SettingRow name="Live captions" detail={`While ${name} talks, the notch shows the words as they're said, sentence by sentence, so you can read along when it says a lot.`} modified={!prefs.notchCaptions}><Switch label="Live captions" on={prefs.notchCaptions} onChange={(notchCaptions) => set({ notchCaptions })} /></SettingRow>
+    <SettingRow name="While you talk" detail={`A waveform moves with your voice, and your words appear the moment you stop — so you can catch a mishearing before ${name} answers. Or show your words live as you speak (they shift as it works out what you said).`} modified={prefs.notchHearing !== "wave"}>
+      <Segmented label="While you talk" value={prefs.notchHearing} onChange={(notchHearing) => set({ notchHearing })} options={[["wave", "Waveform"], ["words", "Waveform + words"]]} />
+    </SettingRow>
+    <SettingRow name={`${name}'s captions`} detail={`While ${name} talks, the notch shows the words as they're said, sentence by sentence, so you can read along when it says a lot.`} modified={!prefs.notchCaptions}><Switch label={`${name}'s captions`} on={prefs.notchCaptions} onChange={(notchCaptions) => set({ notchCaptions })} /></SettingRow>
     <SettingRow name="Now playing" detail="Music or Spotify in the notch: artwork, title, progress and play, pause and skip. It only reads a player that's already open." modified={!prefs.notchMedia}><Switch label="Now playing" on={prefs.notchMedia} onChange={(notchMedia) => set({ notchMedia })} /></SettingRow>
     <SettingRow name="Mic & screen controls" detail={`Turn the mic and live screen watching on or off right from the notch and the chat's top edge.`} modified={!prefs.notchControls}><Switch label="Mic and screen controls" on={prefs.notchControls} onChange={(notchControls) => set({ notchControls })} /></SettingRow>
     <SettingRow name="Sounds" detail={`A soft sound when you start talking (hold fn or voice mode), when ${name} has heard you, and when something's done. Spatial places them up at the notch — best with headphones.`} modified={prefs.sounds !== "spatial"}>
