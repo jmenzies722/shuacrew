@@ -116,15 +116,23 @@ const context = () => {
   return live;
 };
 
+/** In the Mac app the sounds are native (instant, Apple's HRTF renderer): the page only says which one. */
+type Native = { postMessage: (m: unknown) => void };
+const native = (): Native | undefined => (typeof window === "undefined" ? undefined : (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew);
+/** Tell the Mac app the chosen style (it plays the fn sounds itself, before the page hears about the key). */
+export function soundStyle(style: SoundStyle) { native()?.postMessage({ type: "buddySoundStyle", style }); }
+
 /** Get sounds ready ahead of time (the audio engine awake, every sound bounced), so the first one is instant and clean. */
 export function warmSounds(style: SoundStyle) {
-  if (style === "off") return;
+  if (style === "off" || native()) return;
   try { context(); for (const k of Object.keys(CUES) as Earcon[]) void bounce(k, style); } catch { /* no audio */ }
 }
 
 /** Play a sound: one buffer, started 25 ms ahead so it never starts late. `volume` 0–1. */
 export function earcon(kind: Earcon, style: SoundStyle = "spatial", volume = 0.7) {
   if (style === "off" || volume <= 0) return;
+  const mac = native();
+  if (mac) { mac.postMessage({ type: "buddySound", kind, style }); return; }
   try {
     const a = context();
     void bounce(kind, style).then((buf) => {

@@ -16,7 +16,7 @@ import "../screens/buddy.css";
 import "../alive.css";
 import { summary, useSparkLog } from "../lib/spark-log";
 import { resetWelcome } from "./Welcome";
-import { earcon } from "../lib/earcons";
+import { earcon, soundStyle } from "../lib/earcons";
 
 /** Where Spark reaches your mail and Notion: Mail on this Mac (read and draft only), Notion through the crew. */
 function SparkReach({ name }: { name: string }) {
@@ -228,7 +228,7 @@ function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pa
     <SettingRow name="Now playing" detail="Music or Spotify in the notch: artwork, title, progress and play, pause and skip. It only reads a player that's already open." modified={!prefs.notchMedia}><Switch label="Now playing" on={prefs.notchMedia} onChange={(notchMedia) => set({ notchMedia })} /></SettingRow>
     <SettingRow name="Mic & screen controls" detail={`Turn the mic and live screen watching on or off right from the notch and the chat's top edge.`} modified={!prefs.notchControls}><Switch label="Mic and screen controls" on={prefs.notchControls} onChange={(notchControls) => set({ notchControls })} /></SettingRow>
     <SettingRow name="Sounds" detail={`A soft sound when you start talking (hold fn or voice mode), when ${name} has heard you, and when something's done. Spatial places them up at the notch — best with headphones.`} modified={prefs.sounds !== "spatial"}>
-      <Segmented label="Sounds" value={prefs.sounds} onChange={(sounds) => { set({ sounds }); earcon("listen", sounds); setTimeout(() => earcon("sent", sounds), 650); }} options={[["spatial", "Spatial"], ["simple", "Simple"], ["off", "Off"]]} />
+      <Segmented label="Sounds" value={prefs.sounds} onChange={(sounds) => { set({ sounds }); soundStyle(sounds); earcon("listen", sounds); setTimeout(() => earcon("sent", sounds), 650); }} options={[["spatial", "Spatial"], ["simple", "Simple"], ["off", "Off"]]} />
     </SettingRow>
     <SettingRow name="Glow" detail="Accent lights the island's edge while it's open or talking; Spectrum runs your palette's gradient round it." modified={prefs.notchGlow !== "accent"}>
       <Segmented label="Glow" value={prefs.notchGlow} onChange={(notchGlow) => set({ notchGlow })} options={[["off", "Off"], ["accent", "Accent"], ["spectrum", "Spectrum"]]} />

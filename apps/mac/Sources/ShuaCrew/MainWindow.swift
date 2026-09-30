@@ -190,6 +190,9 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 guard response == .OK, let url = panel.url else { return }
                 try? text.write(to: url, atomically: true, encoding: .utf8)
             }
+        case "buddySound": // Settings → Sounds preview, played natively like the real thing
+            if let style = body["style"] as? String { SparkSounds.shared.style = style }
+            if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) { SparkSounds.shared.play(kind) }
         case "notify":
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
