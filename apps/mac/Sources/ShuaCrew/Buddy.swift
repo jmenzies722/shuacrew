@@ -1084,13 +1084,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             Task { @MainActor in await SparkSounds.shared.selfTest { Self.appendSelfTest($0 + "\n") } }
             return
         }
-        if spec.hasPrefix("ask:") { // real Spark turns, one after another, as if spoken (separate asks with " || ")
-            let asks = spec.dropFirst(4).components(separatedBy: " || ")
+        if spec.hasPrefix("ask:") || spec.hasPrefix("notchask:") { // real Spark turns, one after another (separate with " || "); notchask: keeps the chat closed, as voice does
+            let notch = spec.hasPrefix("notchask:")
+            let asks = spec.dropFirst(notch ? 9 : 4).components(separatedBy: " || ")
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(4))
                 for q in asks {
                     guard let self, let json = try? JSONSerialization.data(withJSONObject: [q]), let arg = String(data: json, encoding: .utf8) else { return }
-                    _ = try? await self.web.evaluateJavaScript("window.__sparkTiming = true; window.buddy.ask(\(arg)[0])")
+                    _ = try? await self.web.evaluateJavaScript("window.__sparkTiming = true; window.buddy.\(notch ? "notchAsk" : "ask")(\(arg)[0])")
                     Self.appendSelfTest("SPARK SELFTEST asked: \(q)\n")
                     try? await Task.sleep(for: .seconds(35))
                 }
