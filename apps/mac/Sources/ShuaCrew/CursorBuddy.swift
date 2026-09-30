@@ -18,6 +18,9 @@ final class CursorBuddy: NSObject {
     private var link: CADisplayLink?
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
+    /// While you hold fn to talk, what you draw with your cursor (global points) and the glowing ink showing it.
+    private var inking = false, inked: [CGPoint] = [], injected = false
+    private let ink = CAShapeLayer(), halo = CAShapeLayer() // halo: a soft dark edge under the ink, for white pages
     private(set) var state: State = .idle
     var color: NSColor = NSColor(calibratedRed: 0.56, green: 0.28, blue: 1, alpha: 1) { didSet { restyle() } }
     var active: Bool { panel != nil }
@@ -75,6 +78,30 @@ final class CursorBuddy: NSObject {
         CATransaction.commit()
     }
 
+    /// Start recording what you draw with your cursor (fn is down).
+    func beginInk() {
+        guard panel != nil else { return }
+        inking = true; inked = []; injected = false
+        for l in [ink, halo] { l.removeAllAnimations(); l.opacity = 1; l.path = nil }
+    }
+    /// Self-test: points as if drawn with the cursor (global), without touching the real mouse.
+    func injectInk(_ points: [CGPoint]) {
+        guard let panel, inking else { return }
+        inked = points; injected = true
+        let path = CGMutablePath()
+        for (i, p) in points.enumerated() { let q = CGPoint(x: p.x - panel.frame.minX, y: p.y - panel.frame.minY); i == 0 ? path.move(to: q) : path.addLine(to: q) }
+        CATransaction.begin(); CATransaction.setDisableActions(true); ink.path = path; halo.path = path; CATransaction.commit()
+    }
+    /// Stop, fade the ink, and hand back the path (global coordinates) to read as a gesture.
+    func endInk(keep: Bool = true) -> [CGPoint] {
+        guard inking else { return [] }
+        inking = false
+        let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 1; fade.toValue = 0
+        fade.beginTime = CACurrentMediaTime() + (keep ? 1.2 : 0); fade.duration = 0.5; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        ink.add(fade, forKey: "fade"); halo.add(fade, forKey: "fade")
+        return keep ? inked : []
+    }
+
     /// Spark is about to point somewhere: the buddy launches from where it is (the flying arrow takes over from here)
     /// and slips back in beside your pointer once it has landed. Returns its position in global coordinates.
     func launch(for seconds: CFTimeInterval = 1.2) -> NSPoint? {
@@ -109,6 +136,12 @@ final class CursorBuddy: NSObject {
         let now = link.timestamp, dt = lastTick == 0 ? 1.0 / 120 : min(0.05, now - lastTick)
         lastTick = now
         let cursor = NSEvent.mouseLocation
+        if inking, !injected, inked.last.map({ hypot($0.x - cursor.x, $0.y - cursor.y) >= 2 }) ?? true {
+            inked.append(cursor)
+            let path = CGMutablePath()
+            for (i, p) in inked.enumerated() { let q = CGPoint(x: p.x - panel.frame.minX, y: p.y - panel.frame.minY); i == 0 ? path.move(to: q) : path.addLine(to: q) }
+            CATransaction.begin(); CATransaction.setDisableActions(true); ink.path = path; halo.path = path; CATransaction.commit()
+        }
         // Follow the pointer onto another display at once.
         if !panel.frame.contains(cursor), let screen = screenUnderPointer() {
             panel.setFrame(screen.frame, display: false); panel.contentView?.frame = CGRect(origin: .zero, size: screen.frame.size); placed = false
@@ -146,12 +179,18 @@ final class CursorBuddy: NSObject {
         ring.frame = body.bounds; ring.fillColor = NSColor.clear.cgColor; ring.lineCap = .round; ring.opacity = 0
         ring.shadowColor = NSColor.black.cgColor; ring.shadowOpacity = 0.45; ring.shadowRadius = 1.5; ring.shadowOffset = .zero
         body.addSublayer(ring); body.addSublayer(arrow); body.addSublayer(core)
+        ink.fillColor = NSColor.clear.cgColor; ink.lineWidth = 4; ink.lineCap = .round; ink.lineJoin = .round
+        ink.shadowRadius = 6; ink.shadowOpacity = 0.9; ink.shadowOffset = .zero
+        halo.fillColor = NSColor.clear.cgColor; halo.lineWidth = 7; halo.lineCap = .round; halo.lineJoin = .round
+        halo.strokeColor = NSColor.black.withAlphaComponent(0.3).cgColor
+        root.addSublayer(halo); root.addSublayer(ink)
         root.addSublayer(body)
         restyle()
     }
 
     private func restyle() {
         arrow.fillColor = color.cgColor
+        ink.strokeColor = color.withAlphaComponent(0.9).cgColor; ink.shadowColor = color.cgColor
         // The glow in the accent — but a white accent glows soft grey-blue so it still reads on white.
         let light = (color.usingColorSpace(.sRGB)?.brightnessComponent ?? 0.5) > 0.85 && (color.usingColorSpace(.sRGB)?.saturationComponent ?? 0) < 0.2
         arrow.shadowColor = (light ? NSColor(calibratedRed: 0.55, green: 0.62, blue: 0.8, alpha: 1) : color).cgColor
