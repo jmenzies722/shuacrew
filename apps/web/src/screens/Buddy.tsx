@@ -24,7 +24,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
-import { aboutScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -195,6 +195,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const crew = useLive((s) => s.crew), loadRun = useLive((s) => s.loadRun);
   // Live on-device transcription in the Mac app (Apple's recognizer), expecting your crew's and ventures' names.
   const knownNames = useRef<string[]>([]);
+  // They circled/underlined something with the cursor while talking: the next ask looks at the screen.
+  const gestureAt = useRef(0);
+  useEffect(() => { const on = () => { gestureAt.current = Date.now(); }; window.addEventListener("shuacrew:gesture", on); return () => window.removeEventListener("shuacrew:gesture", on); }, []);
   knownNames.current = [...Object.values(crew.members).map((m) => m.name), ...Object.values(crew.ventures ?? {}).map((v) => (v as { name: string }).name)];
   if (mic.current.live === null && !embedded) mic.current.live = nativeLiveSpeech(() => knownNames.current);
   const events = useLive((s) => (convo ? s.runEvents[convo.run] : undefined)), status = convo ? crew.runs[convo.run]?.status : undefined;
@@ -728,7 +731,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }
     // Asked to point, click, type, walk through or look at something with the eye off: turn it on (it stays on) and
     // look — Spark can't do screen work blind.
-    const autoSee = !see && !liveOn && needsScreen(q);
+    // Asked to point, click, type, walk through or look at something — or they just drew on the screen with the cursor.
+    const autoSee = !see && !liveOn && (needsScreen(q) || Date.now() - gestureAt.current < 40_000);
     if (autoSee) { setSee(true); try { localStorage.setItem(SEE, "1"); } catch { /* ignore */ } }
     const look = see || autoSee || liveOn || !!opt.look;
     setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
@@ -779,7 +783,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
-        await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
+        await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
       } else {
         setBrief(null);
         const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });

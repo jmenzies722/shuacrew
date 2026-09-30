@@ -212,13 +212,44 @@ export function isDesign(question: string) {
 }
 
 /** The frontmost app's real controls, from macOS accessibility: exact names and positions. */
-export interface ScreenContext { app?: string; window?: string; page?: { url?: string; title?: string }; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
+export interface Pointing { pointer?: { x: number; y: number; name?: string; role?: string }; gesture?: { kind: string; x: number; y: number; w: number; h: number } }
+export interface ScreenContext extends Pointing { app?: string; window?: string; page?: { url?: string; title?: string }; elements?: Array<{ name: string; role: string; x: number; y: number; w?: number; h?: number }> }
 export function elementsText(ctx: ScreenContext | undefined, max = 120, size?: { width: number; height: number }) {
   if (!ctx?.app && !ctx?.elements?.length) return "";
   const at = (x: number, y: number) => (size ? `${Math.round(x * size.width)},${Math.round(y * size.height)}` : `${x.toFixed(3)},${y.toFixed(3)}`);
   const rows = (ctx.elements ?? []).slice(0, max).map((e, i) => `#${i + 1} ${e.name} [${e.role}] @${at(e.x, e.y)}`);
   const page = ctx.page?.url ? `\nPAGE: ${ctx.page.title ? `“${ctx.page.title}” ` : ""}${ctx.page.url} — its controls are the [web …] rows: exact, read from the page itself. press {label} clicks one on the page; type {label: the field's name, text} fills that field (end text with \\n to press Enter).` : "";
   return `IN FRONT: ${ctx.app ?? "?"}${ctx.window ? ` — “${ctx.window}”` : ""}.${page}${rows.length ? `\nITS CONTROLS — exact, from macOS accessibility, including the menu bar, the Dock and the menu-bar icons ("#id name [role] @x,y"). To use one, act press {label: name} (most reliable); to point or guide at it, give its id as "target" (e.g. "target":"#12") — Spark draws its exact frame, far more precise than coordinates. The ids and numbers are ONLY for blocks: never say or write them; name things the way they see them ("the Share button, top right", "Wi-Fi in the menu bar", "Music in the Dock"):\n${rows.join("\n")}` : ""}`;
+}
+
+/**
+ * What they're showing you with their own cursor: where the pointer is and what's under it ("what's this?"), and
+ * anything they just circled, underlined or scribbled over while holding fn to talk — with what's inside it.
+ */
+export function pointingText(ctx: ScreenContext | undefined, lines: ScreenLine[] | undefined, size?: { width: number; height: number }): string {
+  if (!ctx?.pointer && !ctx?.gesture) return "";
+  const at = (x: number, y: number) => (size ? `${Math.round(x * size.width)},${Math.round(y * size.height)}` : `${x.toFixed(3)},${y.toFixed(3)}`);
+  const inBox = (px: number, py: number, b: { x: number; y: number; w: number; h: number }) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+  const els = (ctx.elements ?? []).map((e, i) => ({ ...e, id: `#${i + 1}` })).filter((e) => e.w && e.h);
+  const txt = (lines ?? []).map((l, i) => ({ ...l, id: `T${i}` }));
+  const out: string[] = [];
+  const p = ctx.pointer;
+  if (p) {
+    // Under the pointer: what macOS says is there, else the smallest control (a web page's own too) or text line around it.
+    const box = (e: { x: number; y: number; w?: number; h?: number }) => ({ x: e.x - (e.w ?? 0) / 2, y: e.y - (e.h ?? 0) / 2, w: e.w ?? 0, h: e.h ?? 0 });
+    const el = els.filter((e) => inBox(p.x, p.y, box(e))).sort((a, b) => a.w! * a.h! - b.w! * b.h!)[0];
+    const line = txt.find((l) => inBox(p.x, p.y, box(l))); // OCR boxes are centre + size, like controls
+    const under = p.name ? `“${p.name}”${p.role ? ` [${p.role}]` : ""}` : el ? `“${el.name}” [${el.role}] (${el.id})` : line ? `the text “${line.t.slice(0, 80)}” (${line.id})` : "";
+    out.push(`THEIR POINTER is at ${at(p.x, p.y)}${under ? `, over ${under}` : ""}. When they say "this", "that" or "here" without naming it, they mean what's under their pointer.`);
+  }
+  const g = ctx.gesture;
+  if (g) {
+    const inside = (x: number, y: number) => inBox(x, y, g);
+    const things = [...els.filter((e) => inside(e.x, e.y)).map((e) => `“${e.name}” (${e.id})`), ...txt.filter((l) => inside(l.x, l.y)).map((l) => `“${l.t.slice(0, 60)}” (${l.id})`)].slice(0, 10);
+    const what = g.kind === "underline" ? "UNDERLINED" : g.kind === "circle" ? "CIRCLED" : "SCRIBBLED OVER";
+    out.push(`THEY JUST ${what} (with their cursor, while talking) the area ${at(g.x, g.y)} to ${at(g.x + g.w, g.y + g.h)}${things.length ? ` — inside it: ${things.join(", ")}` : ""}. That area is what "this"/"these" means now: answer about it, point back at it, and zoom there if it's small.`);
+  }
+  return out.join("\n");
 }
 
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
@@ -606,6 +637,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
         VISUAL_LANGUAGE,
         screen.text?.length ? screenText(screen.text, 9000, screen) : "",
         elementsText(screen.context, 120, screen),
+        pointingText(screen.context, screen.text, screen),
         `GUIDE MODE — when they want to be shown how to do something on screen ("how do I…", "show me", "walk me through"), guide ONE step at a time: say just that step in a sentence, then add \`\`\`guide {"target": "#12", "label": "Click Share", "step": 1}\`\`\` (or by pixels: {"x": centre, "y": centre, "w": width, "h": height, …}) boxing exactly the control to use. Their Mac spotlights it; after an attempt you get a fresh screenshot. A click is not evidence of success. Verify the resulting visible state first. If the attempt is wrong or unclear, keep the same goal, explain what happened gently, and repeat or clarify the current step. Stay with the user until the actual goal is achieved or they stop. If the thing isn't visible yet, guide them to what reveals it (a menu, a tab, scrolling). When the task is complete, say so and add \`\`\`guide {"done": true}\`\`\`.`,
       ].join("\n")
       : "No screenshot this time; answer from the question alone. If they want to be shown something on screen, ask them to turn on the eye so you can see.",

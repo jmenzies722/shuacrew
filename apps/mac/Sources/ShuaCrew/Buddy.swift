@@ -297,7 +297,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             fnSignal(fnGesture.up(at: now))
         }
     }
+    /// What you last drew with your cursor while talking (circle / underline / scribble), for the next look.
+    private var lastGesture: (gesture: PointerGesture, at: Date)?
     private func fnSignal(_ signal: FnGesture.Signal) {
+        // Show, don't just tell: while fn is down, what you draw with the cursor is ink, and a gesture Spark reads.
+        switch signal {
+        case .press: cursorBuddy.beginInk()
+        case .cancel, .tap: _ = cursorBuddy.endInk(keep: false)
+        case .holdEnd:
+            let g = PointerGesture.classify(cursorBuddy.endInk())
+            if g != .none { lastGesture = (g, Date()); send("shuacrew:gesture", ["kind": g.kind]) }
+        default: break
+        }
         let kind: String
         switch signal {
         case .none: return
@@ -865,6 +876,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let full: CGImage
             if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
             var context = ScreenElements.read(on: screen)
+            // Where your pointer is and what's under it ("what's this?"), and what you just circled with it.
+            let f = screen.frame, m = NSEvent.mouseLocation
+            if f.contains(m) {
+                var pointer: [String: Any] = ["x": (m.x - f.minX) / f.width, "y": (f.maxY - m.y) / f.height]
+                let mainHeight = NSScreen.screens.first?.frame.height ?? f.height
+                var hit: AXUIElement?
+                if AXIsProcessTrusted(), AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(m.x), Float(mainHeight - m.y), &hit) == .success, let hit {
+                    let get = { (k: String) -> String? in var v: CFTypeRef?; AXUIElementCopyAttributeValue(hit, k as CFString, &v); return (v as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(80)) } }
+                    if let name = get(kAXTitleAttribute) ?? get(kAXDescriptionAttribute) ?? get(kAXValueAttribute) { pointer["name"] = name }
+                    if let role = get(kAXRoleAttribute) { pointer["role"] = role.replacingOccurrences(of: "AX", with: "").lowercased() }
+                }
+                context["pointer"] = pointer
+            }
+            if let g = lastGesture, Date().timeIntervalSince(g.at) < 40, let r = g.gesture.region, f.intersects(r) {
+                context["gesture"] = ["kind": g.gesture.kind, "x": (r.minX - f.minX) / f.width, "y": (f.maxY - r.maxY) / f.height, "w": r.width / f.width, "h": r.height / f.height]
+                lastGesture = nil
+            }
             // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
             if let app = SparkHands.target, ShuaWeb.supports(app), let web = await ShuaWeb.snapshot(of: app, on: screen) {
                 context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
@@ -926,6 +954,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             guard let json = try? JSONSerialization.data(withJSONObject: clips), let arg = String(data: json, encoding: .utf8) else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
+            return
+        }
+        if spec == "ink:shot" { // a circle "drawn" with the cursor while talking: the ink, and how Spark reads it
+            Task { @MainActor [weak self] in
+                guard let self, let screen = NSScreen.main else { return }
+                try? await Task.sleep(for: .seconds(2))
+                let f = screen.frame, c = CGPoint(x: f.midX, y: f.midY)
+                let loop = (0...70).map { i -> CGPoint in let a = Double(i) / 70 * 2.1 * .pi; return CGPoint(x: c.x + 110 * cos(a) + CGFloat(i % 3), y: c.y + 70 * sin(a)) }
+                self.cursorBuddy.beginInk(); self.cursorBuddy.injectInk(loop)
+                try? await Task.sleep(for: .milliseconds(300))
+                let saved = await Self.capture(screen: screen, region: CGRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4), to: NSHomeDirectory() + "/.shuacrew/selftest-ink.png")
+                let g = PointerGesture.classify(self.cursorBuddy.endInk())
+                self.lastGesture = g == .none ? nil : (g, Date())
+                let r = g.region.map { "x=\(String(format: "%.3f", ($0.minX - f.minX) / f.width)) y=\(String(format: "%.3f", (f.maxY - $0.maxY) / f.height)) w=\(String(format: "%.3f", $0.width / f.width)) h=\(String(format: "%.3f", $0.height / f.height))" } ?? "-"
+                Self.appendSelfTest("SPARK SELFTEST ink saved=\(saved) gesture=\(g.kind) region=\(r) active=\(self.cursorBuddy.active)\n")
+            }
             return
         }
         if spec == "pen:shot" { // the pen drawing a circle and an underline, captured as it goes (frames at 0.3…2.0 s)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actFollowUp, buddyPrompt, parseActs, parseZoom, elementsText, followThroughAsk, needsFollowThrough, needsScreen, restingReply, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
+import { actFollowUp, buddyPrompt, pointingText, parseActs, parseZoom, elementsText, followThroughAsk, needsFollowThrough, needsScreen, restingReply, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
   const reply = 'Click Save.\n```point {"x": 0.82, "y": 0.07, "label": "Save button"}```';
@@ -323,4 +323,24 @@ it("keeps going after opening a page when there's more to do there (real ask fro
   expect(needsFollowThrough("open Gmail and draft a reply to Sam", "Opening Gmail.")).toBe(true);
   expect(needsFollowThrough("open YouTube and play lofi", "Opening YouTube.")).toBe(true);
   expect(needsFollowThrough("open Notes", "Opening Notes.")).toBe(false);
+});
+
+describe("what they show you with their own cursor", () => {
+  const ctx = { elements: [{ name: "Share", role: "button", x: 0.9, y: 0.1, w: 0.04, h: 0.03 }, { name: "Repositories 62", role: "web link", x: 0.3, y: 0.5, w: 0.1, h: 0.03 }] };
+  const lines = [{ t: "Total due: $1,240", x: 0.5, y: 0.8, w: 0.2, h: 0.02 }]; // OCR: centre + size
+  const size = { width: 1000, height: 600 };
+  it("names what's under the pointer — macOS's name first, else the control or text around it", () => {
+    expect(pointingText({ ...ctx, pointer: { x: 0.9, y: 0.1, name: "Share", role: "button" } }, lines, size)).toContain("over “Share” [button]");
+    expect(pointingText({ ...ctx, pointer: { x: 0.31, y: 0.505 } }, lines, size)).toContain("over “Repositories 62” [web link] (#2)");
+    expect(pointingText({ ...ctx, pointer: { x: 0.55, y: 0.805 } }, lines, size)).toContain("the text “Total due: $1,240” (T0)");
+    expect(pointingText({ ...ctx, pointer: { x: 0.05, y: 0.95 } }, lines, size)).toContain("THEIR POINTER is at 50,570.");
+  });
+  it("reads a circle as the area they mean, with what's inside it", () => {
+    const t = pointingText({ ...ctx, gesture: { kind: "circle", x: 0.2, y: 0.4, w: 0.4, h: 0.5 } }, lines, size);
+    expect(t).toContain("THEY JUST CIRCLED");
+    expect(t).toContain("“Repositories 62” (#2)");
+    expect(t).toContain("“Total due: $1,240” (T0)");
+    expect(t).not.toContain("Share");
+  });
+  it("says nothing when there's nothing to show", () => { expect(pointingText({ elements: [] }, [], size)).toBe(""); });
 });
