@@ -132,7 +132,9 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
   return new Promise((resolve) => {
     if (!native()) { resolve({ ok: false, message: "Only in the Mac app" }); return; }
     const id = crypto.randomUUID();
-    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "No answer from the Mac" }); }, 8000);
+    // Connecting a Bluetooth device can take a while (power on, connect, confirm); everything else answers in seconds.
+    const wait = a.type === "system" && a.what === "bluetooth_device" ? 35_000 : 8000;
+    const t = setTimeout(() => { window.removeEventListener("shuacrew:did", on as EventListener); resolve({ ok: false, message: "No answer from the Mac" }); }, wait);
     const on = (e: CustomEvent<{ id: string; ok: boolean; message: string }>) => { if (e.detail.id !== id) return; clearTimeout(t); window.removeEventListener("shuacrew:did", on as EventListener); resolve(e.detail); };
     window.addEventListener("shuacrew:did", on as EventListener);
     post({ type: "buddyDo", id, action: a });
