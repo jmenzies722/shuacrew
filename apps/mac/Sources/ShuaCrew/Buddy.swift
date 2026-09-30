@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import ShuaCrewCore
 import ScreenCaptureKit
@@ -165,6 +166,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         }
         panel.orderFrontRegardless()
         updateCursorBuddy()
+        if !liveSpeech.ready { liveSpeech.prepare() }
     }
 
     func setEnabled(_ on: Bool) {
@@ -190,6 +192,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// In notch mode Spark's home is the notch; beside your pointer rides a tiny native buddy (CursorBuddy) that shows
     /// what Spark is doing and launches to whatever it points at. The Spark window itself never chases the cursor.
     private let cursorBuddy = CursorBuddy()
+    /// Your words live, on this Mac (Apple's streaming recognizer); the page decides whether its final is sure enough.
+    private let liveSpeech = LiveTranscriber()
     private func updateCursorBuddy() {
         if following && docked { cursorBuddy.start() } else { cursorBuddy.stop() }
     }
@@ -641,6 +645,29 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             pointer.draw(on: screen, shapes: shapes, color: body["color"] as? String, from: launchPoint())
         case "buddySpeaking":
             pointer.speaking = body["on"] as? Bool ?? false
+        case "buddyAudio":
+            // The mic frames the page already captures, streamed here for live on-device transcription.
+            guard sender === web, let turn = body["turn"] as? Int else { return }
+            switch body["op"] as? String {
+            case "begin":
+                liveSpeech.onText = { [weak self] t, text in self?.send("shuacrew:speech", ["turn": t, "text": text], to: sender) }
+                liveSpeech.begin(turn: turn, rate: body["rate"] as? Double ?? 48_000, names: body["names"] as? [String] ?? [])
+                send("shuacrew:speech", ["turn": turn, "ready": liveSpeech.ready], to: sender)
+            case "chunk":
+                if let b64 = body["pcm"] as? String, let data = Data(base64Encoded: b64) { liveSpeech.push(turn: turn, pcm: data) }
+            case "end":
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let r = await self.liveSpeech.end(turn: turn)
+                    self.send("shuacrew:speech", ["turn": turn, "final": true, "text": r?.text ?? "", "confidence": r?.confidence ?? 0, "ms": r?.ms ?? -1], to: sender)
+                }
+            case "cancel": liveSpeech.cancel(turn: turn)
+            case "verdict":
+                var entry: [String: Any] = [:]
+                for k in ["apple", "confidence", "whisper", "used", "ms"] { if let v = body[k] { entry[k] = v } }
+                LiveTranscriber.log(entry)
+            default: break
+            }
         case "buddyState":
             // What Spark is doing, shown by the buddy beside your pointer (listening / thinking / speaking / idle).
             if let c = body["color"] as? String { cursorBuddy.color = PointerOverlay.color(c) }
@@ -865,6 +892,32 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
+            }
+            return
+        }
+        if spec.hasPrefix("speech:") { // a recording through the live on-device recognizer, in real time, as the mic would
+            let path = String(spec.dropFirst(7))
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let log = { (line: String) in try? (line + "\n").write(toFile: NSHomeDirectory() + "/.shuacrew/spark-selftest.log", atomically: true, encoding: .utf8) }
+                for _ in 0..<60 where !self.liveSpeech.ready { try? await Task.sleep(for: .milliseconds(500)) }
+                guard self.liveSpeech.ready, let file = try? AVAudioFile(forReading: URL(fileURLWithPath: path)),
+                      let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)), (try? file.read(into: buf)) != nil,
+                      let floats = buf.floatChannelData?[0] else { log("SPARK SELFTEST speech ready=\(self.liveSpeech.ready) could not read \(path)"); return }
+                let rate = file.processingFormat.sampleRate, n = Int(buf.frameLength), chunk = Int(rate / 10)
+                var heard = ""
+                self.liveSpeech.onText = { _, text in heard = text }
+                self.liveSpeech.begin(turn: 1, rate: rate, names: [])
+                var at = 0
+                while at < n {
+                    let m = min(chunk, n - at)
+                    var pcm = Data(count: m * 2)
+                    pcm.withUnsafeMutableBytes { raw in let out = raw.bindMemory(to: Int16.self); for i in 0..<m { out[i] = Int16(max(-1, min(1, floats[at + i])) * 32767).littleEndian } }
+                    self.liveSpeech.push(turn: 1, pcm: pcm); at += m
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                let r = await self.liveSpeech.end(turn: 1)
+                log("SPARK SELFTEST speech ready=true live=\"\(heard)\" final=\"\(r?.text ?? "")\" confidence=\(String(format: "%.2f", r?.confidence ?? 0)) finalMs=\(r?.ms ?? -1)")
             }
             return
         }

@@ -42,6 +42,7 @@ import "./buddy.css";
 /** Mac actions whose result Spark says out loud when it lands (you'd otherwise have to go and check). */
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
+import { nativeLiveSpeech } from "../lib/live-speech";
 import { ctx, capture, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
 import { chime, TimeLeft, MicBars, MiniCard, setMicLevel, ThinkWave, useMicLevelVar, VoiceBars } from "./spark/parts";
@@ -192,6 +193,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Answers already on screen when the panel loaded were handled before; only new ones point, act and speak.
   const handled = useRef<number | null>(null), spokenUpto = useRef(0), streamId = useRef("");
   const crew = useLive((s) => s.crew), loadRun = useLive((s) => s.loadRun);
+  // Live on-device transcription in the Mac app (Apple's recognizer), expecting your crew's and ventures' names.
+  const knownNames = useRef<string[]>([]);
+  knownNames.current = [...Object.values(crew.members).map((m) => m.name), ...Object.values(crew.ventures ?? {}).map((v) => (v as { name: string }).name)];
+  if (mic.current.live === null && !embedded) mic.current.live = nativeLiveSpeech(() => knownNames.current);
   const events = useLive((s) => (convo ? s.runEvents[convo.run] : undefined)), status = convo ? crew.runs[convo.run]?.status : undefined;
   // How full this conversation is (the newest turn's report): past the limit, the next turn starts fresh with a recap.
   const contextUsed = useMemo(() => { for (let i = (events?.length ?? 0) - 1; i >= 0; i--) { const e = events![i]!; if (e.kind === "usage.recorded") return Number((e.body as { contextUsed?: number }).contextUsed) || 0; } return 0; }, [events]);
