@@ -34,6 +34,9 @@ const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly
 const LEAN_ENV = { ENABLE_TOOL_SEARCH: "false", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
 const LEAN_ISOLATION = { settingSources: [], strictMcpConfig: true, mcpServers: {} };
 const LEAN_TOOLS = {
+  // Exactly these three exist on a quick turn. Anything else was a trap: AskUserQuestion once parked a Spark step in
+  // the approval queue for 3½ minutes (Spark asks by talking), and every extra tool definition slows the first word.
+  tools: ["Read", "WebSearch", "WebFetch"],
   allowedTools: ["Read", "WebSearch", "WebFetch"],
   disallowedTools: ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Task", "Agent", "TodoWrite", "Glob", "Grep", "BashOutput", "KillShell", "ExitPlanMode", "SlashCommand"],
 };

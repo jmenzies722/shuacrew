@@ -968,10 +968,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (!busy && !working) { narrated.current = 0; return; }
     if (!(voiceLive || (prefs.conversation && prefs.listen !== "hold"))) return;
     const tick = setInterval(() => {
-      if (live$.current.speaking || live$.current.streaming || narrated.current >= 2 || Date.now() - lastSound.current < 4000) return;
+      // The first real update (what it's searching for, which site it opened) comes after ~1 s of quiet; later ones at 4 s.
+      if (live$.current.speaking || live$.current.streaming || narrated.current >= 2 || Date.now() - lastSound.current < (narrated.current === 0 ? 1100 : 4000)) return;
       const line = progressLine(eventsRef.current as never, narrated.current); if (!line) return;
       if (sayOwn(line)) narrated.current++;
-    }, 1000);
+    }, 400);
     return () => clearInterval(tick);
   }, [busy, working, voiceLive, prefs.conversation, prefs.listen]);
   const islandLive = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking && !!caption || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
@@ -1001,6 +1002,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     nookTimer.current = setTimeout(tryClose, 450);
   };
   const nextMoves = lastSpark && !working && !busy ? parseNext(messages.at(-1)!.text) : [];
+  // Nothing asked yet: the first three starters (the chat's own, fitting the moment), so the open notch is never an empty box.
+  const nookStarters = !messages.length && !working && !busy ? starters.slice(0, 3) : [];
   const quick = nextMoves.length ? nextMoves : lastSpark && !working && !busy ? ["Tell me more", "Make it shorter", ...(see ? ["Show me on screen"] : []), ...(prefs.control !== "off" && see ? ["Do it for me"] : [])] : [];
   const close = () => { speech.current.stop(); if (embedded) onClose?.(); else setOpen(false); };
   // Doze after 15 quiet minutes with nothing running; anything happening wakes it.
@@ -1189,7 +1192,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             : hearingNow || phase === "hearing" ? <Rolling className="notch-heard is-open" lines={6}>{heard || "Listening…"}</Rolling>
             : streamText ? <Rolling className="notch-heard is-open is-stream" lines={6}>{streamText}<i className="notch-caret" /></Rolling>
             : (busy || working || lastSparkText) && <p key={busy || working ? "busy" : lastSparkText.length} className={`spark-nook-say ${busy || working ? "is-busy" : "is-reply"}`}>{busy || working ? (lookup ? <><Globe size={12} /> {lookup}<span className="notch-dots"><i /><i /><i /></span></> : <>Thinking<span className="notch-dots"><i /><i /><i /></span></>) : restingReply(lastSparkText)}</p>}
-          {nextMoves.length > 0 && !hearingNow && !speaking && <div className="spark-nook-next">{nextMoves.map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
+          {(nextMoves.length ? nextMoves : nookStarters).length > 0 && !hearingNow && !speaking && <div className={`spark-nook-next${nextMoves.length ? "" : " is-starter"}`}>{(nextMoves.length ? nextMoves : nookStarters).map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
             task={task} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}
             stopTask={stopTask} advance={() => void advance()} stopGuide={stopGuide} radio={radio} setRadio={setRadio} timer={timer} now={now} focusPct={focusPct} workingRuns={workingRuns} approvals={approvals} />        </div>

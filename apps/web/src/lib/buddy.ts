@@ -768,15 +768,24 @@ export function deleteQuestion(actions: Action[]): string {
  * up space.com."). Nothing specific → null: silence plus the notch's working animation beats filler like "still on it".
  * `said` is how many progress lines this turn has had (they vary, never repeat).
  */
+/** A search query as a few spoken words: no years, operators or site: filters, at most seven words. */
+export function searchTopic(query: string): string {
+  const words = query.replace(/\bsite:\S+/gi, "").replace(/["“”]/g, "").replace(/\b(20\d\d|latest|current|today'?s?|news|official)\b/gi, "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const topic = words.slice(0, 7).join(" ");
+  return topic ? (/^(the|a|an|my|your|what|who|how|when|where|is|are)\b/i.test(topic) ? topic : `the ${topic}`) : "that";
+}
 export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknown }> | undefined, said: number): string | null {
   if (!events) return null;
   let start = 0;
   for (let i = events.length - 1; i >= 0; i--) if (events[i]!.kind === "turn.started") { start = i; break; }
-  const calls = events.slice(start).filter((e) => e.kind === "tool.called").map((e) => e.body as { tool?: string; input?: { url?: string } });
+  const calls = events.slice(start).filter((e) => e.kind === "tool.called").map((e) => e.body as { tool?: string; input?: { url?: string; query?: string } });
   const pages = calls.filter((c) => c.tool === "WebFetch" && c.input?.url).map((c) => { try { return new URL(c.input!.url!).hostname.replace(/^(www|forecast|m)\./, ""); } catch { return ""; } }).filter(Boolean);
   const site = pages.at(-1);
   if (site && pages.length > 1 && said > 0) return `Checking ${site} too.`;
   if (site) return said === 0 ? `Pulling up ${site}.` : `Reading through ${site}.`;
+  const search = calls.filter((c) => c.tool === "WebSearch" && c.input?.query).at(-1)?.input?.query;
+  // What it's looking up, in their words: "Looking up the 76ers schedule tonight." — a fact, not filler.
+  if (search && said === 0) return `Looking up ${searchTopic(search)}.`;
   if (calls.some((c) => c.tool === "WebSearch")) return said === 0 ? "Going through the results." : null;
   return null;
 }
