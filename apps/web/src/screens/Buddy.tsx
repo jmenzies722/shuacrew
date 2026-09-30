@@ -645,6 +645,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const runAct = async (steps: Act | Act[], step: number) => {
     if (!convo) return;
     const list = (Array.isArray(steps) ? steps : [steps]).filter((a) => a.type !== "done");
+    if (step <= 1) failStreak.current = 0; // a new task starts clean
     setPending(null);
     try {
       const said: string[] = []; let ok = true;
@@ -658,13 +659,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (!r.ok) { ok = false; break; }
         if (i < list.length - 1) await new Promise((go) => setTimeout(go, a.type === "type" || a.type === "key" ? 250 : 450)); // let the app keep up
       }
+      // Failing in a row means the approach is wrong, not the wording: it used to re-aim at the same missing field five
+      // times, a new name each time, until you said stop. Two in a row: change tack. Three: stop and say what's blocking.
+      failStreak.current = ok ? 0 : failStreak.current + 1;
+      if (failStreak.current >= 3) { const why = said.at(-1)?.split(" — FAILED: ")[1] ?? "it isn't working"; failStreak.current = 0; stopTask(`Three steps in a row didn't work (${why.replace(/\. Take a fresh look.*$/, "")}). Tell me what to try, or take over from here.`); return; }
       await new Promise((go) => setTimeout(go, 800)); // let the app react before looking
       if (!taskRef.current) return;
       const shot = await capture(), att = await upload(shot.file);
-      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS), [att]));
+      const tack = failStreak.current === 2 ? " TWO STEPS IN A ROW FAILED: don't retry the same thing under another name. Change approach — press it by its exact name from the controls list, bring the right app or window to the front first, use a keyboard shortcut or a do-action — or say plainly what's blocking and ask." : "";
+      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS) + tack, [att]));
     } catch (e) { stopTask((e as Error).message); } finally { setBusy(""); }
   };
   const taskRef = useRef(task); taskRef.current = task;
+  const failStreak = useRef(0);
   const runActRef = useRef(runAct); runActRef.current = runAct;
   useEffect(() => { const on = () => stopTask("Stopped. Nothing else will be clicked."); window.addEventListener("shuacrew:actStop", on); return () => window.removeEventListener("shuacrew:actStop", on); }, []);
   const stopGuide = () => { setGuide(null); post({ type: "buddyGuideStop" }); speech.current.stop(); };

@@ -6,6 +6,8 @@ import ShuaCrewCore
 @MainActor
 final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let web: WKWebView
+    /// The one main window, so Spark can use ShuaCrew's own screens by name ("show me the workflow").
+    static weak var current: MainWindow?
     private let strip = DragStrip()
     private weak var material: NSVisualEffectView?
     /// The page's top bar is this tall; the traffic lights are centred in it.
@@ -75,6 +77,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             strip.heightAnchor.constraint(equalToConstant: Self.titleBarHeight),
         ])
         super.init(window: window)
+        MainWindow.current = self
         voiceAudio.onEvent = { [weak self] body in
             guard let data = try? JSONSerialization.data(withJSONObject: body), let json = String(data: data, encoding: .utf8) else { return }
             self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:voiceAudio', { detail: \(json) }))")

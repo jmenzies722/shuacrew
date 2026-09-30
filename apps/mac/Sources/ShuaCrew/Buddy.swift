@@ -572,7 +572,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     }
                     break
                 }
-                guard let found = SparkPress.find(label) else { did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in \(SparkHands.target?.localizedName ?? "the app in front")."], to: sender); break }
+                guard let found = SparkPress.find(label) else {
+                    // Not in the app you were using: maybe it's in ShuaCrew's own window (a sidebar link, a button).
+                    Task { @MainActor in
+                        if let done = try? await ShuaWeb.actInMainWindow(["kind": "click", "name": label]) { self.did(["id": id, "ok": true, "message": done], to: sender); return }
+                        self.did(["id": id, "ok": false, "message": "Couldn't find “\(label)” in \(SparkHands.target?.localizedName ?? "the app in front") or anything else on screen."], to: sender)
+                    }
+                    break
+                }
+                // Found in another app on screen (ShuaCrew's own window, a second app): bring it forward to use it.
+                if let owner = SparkPress.lastOwner { MacActions.bringToFront(owner.bundleIdentifier) }
                 let main = NSScreen.screens.first ?? screen
                 let target = NSScreen.screens.first { s in
                     let f = s.frame, y = main.frame.height - found.center.y
@@ -1157,6 +1166,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         guard let colon = spec.firstIndex(of: ":") else { return }
         let action = ["type": String(spec[..<colon]), "name": String(spec[spec.index(after: colon)...]), "url": String(spec[spec.index(after: colon)...]), "path": String(spec[spec.index(after: colon)...])]
         guard let data = try? JSONSerialization.data(withJSONObject: action), let json = String(data: data, encoding: .utf8) else { return }
+        if spec.hasPrefix("find:") { // where "press <label>" would land: which app, what name, where (spark-selftest.log)
+            let label = String(spec.dropFirst(5))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                Self.appendSelfTest("SPARK SELFTEST visible apps: \(SparkPress.visibleApps().map { "\($0.localizedName ?? "?")(\($0.activationPolicy.rawValue))" })\n")
+                var wl: CFTypeRef?; AXUIElementCopyAttributeValue(AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier), kAXWindowsAttribute as CFString, &wl)
+                let wins = ((wl as? [AXUIElement]) ?? []).map { w -> String in var t: CFTypeRef?, sr: CFTypeRef?; AXUIElementCopyAttributeValue(w, kAXTitleAttribute as CFString, &t); AXUIElementCopyAttributeValue(w, kAXSubroleAttribute as CFString, &sr); return "\((t as? String) ?? "")[\((sr as? String) ?? "")]" }
+                Self.appendSelfTest("SPARK SELFTEST ShuaCrew windows: \(wins)\n")
+                let t0 = Date(), found = SparkPress.find(label), ms = Int(Date().timeIntervalSince(t0) * 1000)
+                Self.appendSelfTest("SPARK SELFTEST find “\(label)” target=\(SparkHands.target?.localizedName ?? "-") → \(found.map { "“\($0.name)” at \(Int($0.center.x)),\(Int($0.center.y)) in \(SparkPress.lastOwner?.localizedName ?? SparkHands.target?.localizedName ?? "?")" } ?? "not in other apps") (\(ms) ms)\n")
+                if found == nil { Task { @MainActor in
+                    let r: String; do { r = try await ShuaWeb.actInMainWindow(["kind": "click", "name": label]) } catch { r = "FAILED: \(error.localizedDescription)" }
+                    Self.appendSelfTest("SPARK SELFTEST ShuaCrew window → \(r)\n")
+                } }
+            }
+            return
+        }
         if spec.hasPrefix("elements:") { // what Spark's screen scan finds in the menu bar, written to spark-selftest.log
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 guard let screen = NSScreen.main else { return }

@@ -630,11 +630,46 @@ enum SparkPress {
     private static let pressable: Set<String> = [kAXButtonRole, kAXMenuItemRole, kAXMenuBarItemRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole, "AXLink", "AXTab", kAXCellRole, kAXStaticTextRole, kAXImageRole, kAXDisclosureTriangleRole]
 
     static func find(_ label: String) -> Found? {
-        guard let app = SparkHands.target, !SparkHands.offLimits.contains(app.bundleIdentifier ?? "") else { return nil }
+        lastOwner = nil
+        let app = SparkHands.target
+        if let app, !SparkHands.offLimits.contains(app.bundleIdentifier ?? ""), let hit = find(label, in: app) { return hit }
+        // Not in the app you were using (or it isn't known yet): whatever else is on screen, top window first.
+        for other in visibleApps() where other.processIdentifier != app?.processIdentifier {
+            if let hit = find(label, in: other) { lastOwner = other; return hit }
+        }
+        return nil
+    }
+    /// Which app the last cross-app find landed in, so it can be brought forward before it's used.
+    static var lastOwner: NSRunningApplication?
+    /// Apps with ordinary windows on screen, front to back (at most four; password managers never).
+    static func visibleApps() -> [NSRunningApplication] {
+        guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        var pids: [pid_t] = []
+        for w in info where (w[kCGWindowLayer as String] as? Int) == 0 {
+            if let pid = w[kCGWindowOwnerPID as String] as? pid_t, !pids.contains(pid) { pids.append(pid) }
+        }
+        return pids.compactMap { NSRunningApplication(processIdentifier: $0) }
+            // Not ShuaCrew itself: its own accessibility tree doesn't reach inside its page (ShuaWeb.actInMainWindow does).
+            .filter { !SparkHands.offLimits.contains($0.bundleIdentifier ?? "") && $0.activationPolicy == .regular && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }.prefix(4).map { $0 }
+    }
+    static func find(_ label: String, in app: NSRunningApplication) -> Found? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         let want = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !want.isEmpty else { return nil }
-        var queue: [AXUIElement] = [root], seen = 0
+        // The dialog or window you're looking at first — its Cancel is the Cancel you mean, and a big app's full tree
+        // (System Settings) can use up the search before reaching a sheet.
+        var front: [AXUIElement] = []
+        for key in [kAXFocusedWindowAttribute, kAXMainWindowAttribute] {
+            var w: CFTypeRef?
+            if AXUIElementCopyAttributeValue(root, key as CFString, &w) == .success, let w { front.append(w as! AXUIElement) }
+        }
+        var queue: [AXUIElement] = front + [root], seen = 0
+        // ShuaCrew itself: only its ordinary main window — never Spark's notch, panels or cursor (its own Talk button).
+        if app.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+            var list: CFTypeRef?
+            AXUIElementCopyAttributeValue(root, kAXWindowsAttribute as CFString, &list)
+            queue = ((list as? [AXUIElement]) ?? []).filter { string($0, kAXSubroleAttribute) == kAXStandardWindowSubrole as String }
+        }
         var partial: Found?
         while !queue.isEmpty, seen < 5000 {
             let el = queue.removeFirst(); seen += 1
@@ -657,10 +692,12 @@ enum SparkPress {
     /// Does a control's name fit what Spark called it? (See LabelMatch, which is tested.)
     static func fits(_ name: String, _ label: String) -> Bool { LabelMatch.fits(name, label) }
     /// The names at a point in the front app: the element there and a few of its ancestors (a label inside a button, a row…).
-    private static func names(at p: CGPoint) -> [String] {
-        guard let app = SparkHands.target else { return [] }
+    private static func names(at p: CGPoint, systemWide: Bool = false) -> [String] {
+        let scope: AXUIElement
+        if systemWide { scope = AXUIElementCreateSystemWide() }
+        else { guard let app = SparkHands.target else { return [] }; scope = AXUIElementCreateApplication(app.processIdentifier) }
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(app.processIdentifier), Float(p.x), Float(p.y), &hit) == .success, var el = hit else { return [] }
+        guard AXUIElementCopyElementAtPosition(scope, Float(p.x), Float(p.y), &hit) == .success, var el = hit else { return [] }
         var out: [String] = []
         for _ in 0..<4 {
             for key in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, "AXHelp"] { if let n = string(el, key)?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty, n.count < 120 { out.append(n) } }
@@ -675,6 +712,9 @@ enum SparkPress {
     static func verify(label: String, at p: CGPoint) -> Check {
         let here = names(at: p)
         if here.contains(where: { fits($0, label) }) { return .confirmed }
+        // Asking only the app you were using what's at that spot misses a window of another app sitting on top of it
+        // (ShuaCrew's own main window over your terminal): ask the whole system what's really there.
+        if names(at: p, systemWide: true).contains(where: { fits($0, label) }) { return .confirmed }
         if let found = locate(label, near: p) { return hypot(found.center.x - p.x, found.center.y - p.y) < 6 ? .confirmed : .moved(found.center) }
         return here.isEmpty ? .unknown : .gone(here.first)
     }
