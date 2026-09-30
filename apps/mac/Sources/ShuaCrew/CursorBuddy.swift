@@ -19,7 +19,8 @@ final class CursorBuddy: NSObject {
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
     /// While you hold fn to talk, what you draw with your cursor (global points) and the glowing ink showing it.
-    private var inking = false, inked: [CGPoint] = [], injected = false
+    private var inking = false, inked: [CGPoint] = [], injected = false, inkVisible = true
+    var isInking: Bool { inking }
     private let ink = CAShapeLayer(), halo = CAShapeLayer() // halo: a soft dark edge under the ink, for white pages
     private(set) var state: State = .idle
     var color: NSColor = NSColor(calibratedRed: 0.56, green: 0.28, blue: 1, alpha: 1) { didSet { restyle() } }
@@ -79,11 +80,27 @@ final class CursorBuddy: NSObject {
     }
 
     /// Start recording what you draw with your cursor (fn is down).
-    func beginInk() {
+    /// `visible: false` records without drawing (hands-free voice: people move the mouse while talking, so only a
+    /// deliberate loop counts, and it's shown after — see flash).
+    func beginInk(visible: Bool = true) {
         guard panel != nil else { return }
-        inking = true; inked = []; injected = false
+        inking = true; inked = []; injected = false; inkVisible = visible
         for l in [ink, halo] { l.removeAllAnimations(); l.opacity = 1; l.path = nil }
     }
+    /// "Got it — this": a ring drawn round the area you circled while talking hands-free, then fading.
+    func flash(_ region: CGRect) {
+        guard let panel else { return }
+        let r = region.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY).insetBy(dx: -6, dy: -6)
+        let path = CGPath(ellipseIn: r, transform: nil)
+        for l in [ink, halo] { l.removeAllAnimations(); l.opacity = 1 }
+        CATransaction.begin(); CATransaction.setDisableActions(true); ink.path = path; halo.path = path; CATransaction.commit()
+        let draw = CABasicAnimation(keyPath: "strokeEnd"); draw.fromValue = 0; draw.toValue = 1; draw.duration = 0.4
+        ink.add(draw, forKey: "draw"); halo.add(draw, forKey: "draw")
+        let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 1; fade.toValue = 0
+        fade.beginTime = CACurrentMediaTime() + 1.4; fade.duration = 0.5; fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        ink.add(fade, forKey: "fade"); halo.add(fade, forKey: "fade")
+    }
+
     /// Self-test: points as if drawn with the cursor (global), without touching the real mouse.
     func injectInk(_ points: [CGPoint]) {
         guard let panel, inking else { return }
@@ -138,9 +155,12 @@ final class CursorBuddy: NSObject {
         let cursor = NSEvent.mouseLocation
         if inking, !injected, inked.last.map({ hypot($0.x - cursor.x, $0.y - cursor.y) >= 2 }) ?? true {
             inked.append(cursor)
-            let path = CGMutablePath()
-            for (i, p) in inked.enumerated() { let q = CGPoint(x: p.x - panel.frame.minX, y: p.y - panel.frame.minY); i == 0 ? path.move(to: q) : path.addLine(to: q) }
-            CATransaction.begin(); CATransaction.setDisableActions(true); ink.path = path; halo.path = path; CATransaction.commit()
+            if inked.count > 2400 { inked.removeFirst(inked.count - 2400) } // a long monologue: the last ~20 s is plenty
+            if inkVisible {
+                let path = CGMutablePath()
+                for (i, p) in inked.enumerated() { let q = CGPoint(x: p.x - panel.frame.minX, y: p.y - panel.frame.minY); i == 0 ? path.move(to: q) : path.addLine(to: q) }
+                CATransaction.begin(); CATransaction.setDisableActions(true); ink.path = path; halo.path = path; CATransaction.commit()
+            }
         }
         // Follow the pointer onto another display at once.
         if !panel.frame.contains(cursor), let screen = screenUnderPointer() {

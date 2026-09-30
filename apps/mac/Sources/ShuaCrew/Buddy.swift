@@ -299,10 +299,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
     /// What you last drew with your cursor while talking (circle / underline / scribble), for the next look.
     private var lastGesture: (gesture: PointerGesture, at: Date)?
+    /// Hands-free: recording the cursor silently while you talk (no fn), to catch a deliberate circle.
+    private var voiceInking = false
+    private func noteState(_ state: CursorBuddy.State) {
+        cursorBuddy.set(state)
+        // Hands-free voice: while you talk, a loop you draw round something counts as "this" (no fn needed).
+        // Only a loop — the mouse wanders while people talk, and a circle is rarely an accident.
+        if state == .listening, !cursorBuddy.isInking { cursorBuddy.beginInk(visible: false); voiceInking = true }
+        else if state != .listening, voiceInking {
+            voiceInking = false
+            let g = PointerGesture.classify(cursorBuddy.endInk(keep: true))
+            if case .circle(let r) = g { lastGesture = (g, Date()); cursorBuddy.flash(r); send("shuacrew:gesture", ["kind": g.kind]) }
+        }
+    }
     private func fnSignal(_ signal: FnGesture.Signal) {
         // Show, don't just tell: while fn is down, what you draw with the cursor is ink, and a gesture Spark reads.
         switch signal {
-        case .press: cursorBuddy.beginInk()
+        case .press: voiceInking = false; cursorBuddy.beginInk()
         case .cancel, .tap: _ = cursorBuddy.endInk(keep: false)
         case .holdEnd:
             let g = PointerGesture.classify(cursorBuddy.endInk())
@@ -702,7 +715,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyState":
             // What Spark is doing, shown by the buddy beside your pointer (listening / thinking / speaking / idle).
             if let c = body["color"] as? String { cursorBuddy.color = PointerOverlay.color(c) }
-            cursorBuddy.set(CursorBuddy.State(rawValue: body["state"] as? String ?? "") ?? .idle)
+            noteState(CursorBuddy.State(rawValue: body["state"] as? String ?? "") ?? .idle)
         case "buddyGuideStop":
             pointer.hide()
             walkHome()
@@ -954,6 +967,24 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             guard let json = try? JSONSerialization.data(withJSONObject: clips), let arg = String(data: json, encoding: .utf8) else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
+            return
+        }
+        if spec == "voiceink:shot" { // hands-free: talk, circle silently, stop → read as a circle and confirmed with a ring
+            Task { @MainActor [weak self] in
+                guard let self, let screen = NSScreen.main else { return }
+                try? await Task.sleep(for: .seconds(2))
+                let f = screen.frame, c = CGPoint(x: f.midX, y: f.midY)
+                self.noteState(.listening)
+                let approach = (0...30).map { CGPoint(x: c.x - 400 + CGFloat($0) * 9, y: c.y - 250 + CGFloat($0) * 6) } // wandering over first
+                let loop = (0...70).map { i -> CGPoint in let a = Double(i) / 70 * 2.1 * .pi; return CGPoint(x: c.x + 110 * cos(a), y: c.y + 70 * sin(a)) }
+                self.cursorBuddy.injectInk(approach + loop)
+                self.noteState(.thinking) // stopped talking
+                try? await Task.sleep(for: .milliseconds(450))
+                let saved = await Self.capture(screen: screen, region: CGRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4), to: NSHomeDirectory() + "/.shuacrew/selftest-voiceink.png")
+                let g = self.lastGesture?.gesture
+                Self.appendSelfTest("SPARK SELFTEST voiceink gesture=\(g?.kind ?? "none") region=\(g?.region.map { "\(Int($0.width))x\(Int($0.height))pt" } ?? "-") saved=\(saved)\n")
+                self.noteState(.idle)
+            }
             return
         }
         if spec == "ink:shot" { // a circle "drawn" with the cursor while talking: the ink, and how Spark reads it
