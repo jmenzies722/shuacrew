@@ -68,4 +68,16 @@ import Testing
         #expect(pts.count > 20)
         #expect(pts.allSatisfy { abs(hypot($0.x - 50, $0.y - 50) - 50) < 1 })
     }
+
+    @Test func theWaveformFollowsYourVoice() {
+        let quiet = CursorMotion.waveBars(level: 0, t: 1.3), loud = CursorMotion.waveBars(level: 1, t: 1.3)
+        #expect(quiet.count == 5 && loud.count == 5)
+        #expect(quiet.allSatisfy { $0 >= 4 && $0 < 8 })              // silence: a small ripple, never flat, never tall
+        #expect(loud.max()! > 18 && loud.allSatisfy { $0 <= 26 })   // talking: tall, within the orb's space
+        #expect(loud.reduce(0, +) > quiet.reduce(0, +) * 2.5)
+        let mid = CursorMotion.waveBars(level: 0.3, t: 2)
+        #expect(mid.reduce(0, +) > quiet.reduce(0, +))              // soft speech still moves it
+        // It moves over time on its own (ripple), even at a steady level.
+        #expect(CursorMotion.waveBars(level: 0.6, t: 0.5) != CursorMotion.waveBars(level: 0.6, t: 0.62))
+    }
 }
