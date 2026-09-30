@@ -27,7 +27,7 @@ import { upload, withAttachments } from "../lib/attachments";
 import { earcon, soundStyle, warmSounds, type Earcon } from "../lib/earcons";
 import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
-import { crewDetail, crewFinished, statuses } from "../lib/crew-voice";
+import { crewAsks, crewDetail, crewFinished, noteAsked, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark } from "../lib/weather";
 import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, restingReply, pointingText, SPARK_RULES, isDestructive, actFollowUp, liveLookup, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
@@ -807,8 +807,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const localNow = !selected.acceptsImages;
       if (look && shooting && (!localNow || aboutScreen(q) || opt.look)) { const { shot, files } = await shooting; if (stale()) return; if (!localNow) atts = files; mark("look"); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
       const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
-      const detail = crewDetail(crew.runs, crew.approvals, names);
+      const detail = crewDetail(crew.runs, crew.approvals, names, crew.plays);
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length) + (detail ? `\n${detail}` : "");
+      // Every follow-up carries the crew as it is now: a conversation only got it when it began, so Spark answered
+      // "what's the crew doing?" from an hour ago and couldn't find a session started since (measured live).
+      const crewLive = detail ? `\n\n[crew right now]\n${detail}` : "";
       const rs = getRadio(); if (!rs.loaded) void loadRadio();
       const playingNow = await radioAnswer; setRadio(playingNow); mark("radio");
       const remembered = asksAboutEarlier(q) ? await recall(q) : "";
@@ -843,7 +846,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const mapped = (() => { try { return (JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]).includes(convo.run); } catch { return false; } })();
         const withMap = (text: string) => { const t = remembered && !text.includes("\n\n[screen]") ? `${text}\n\n[screen]\n${remembered}` : remembered ? `${text}\n\n${remembered}` : text; return mapped ? `${t}\n\n[app]\n${identity}` : `${t}\n\n[app]\n${appNow}`; };
         if (!mapped) { try { const m = JSON.parse(localStorage.getItem("shuacrew.buddy.mapped") ?? "[]") as string[]; localStorage.setItem("shuacrew.buddy.mapped", JSON.stringify([...m.slice(-50), convo.run])); } catch { /* ignore */ } }
-        mark("post"); await followSelected(convo.run, withAttachments(withMap(screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q), atts));
+        mark("post"); await followSelected(convo.run, withAttachments(withMap((screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(This is a system-design question: use the SYSTEM DESIGN format from before — spoken summary, ---, the written design and a mermaid diagram.)` : q)) + crewLive, atts));
       } else {
         setBrief(null);
         mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: prefs.nickname || "Spark", tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${prefs.nickname || "Spark"} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort: isDesign(q) ? "medium" : "low", labels: ["buddy"] } });
@@ -1059,8 +1062,22 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (!news.length) return;
     sound(news.some((n) => !n.ok) ? "error" : "done");
     logSense("heard", "Crew update", news.map((n) => n.line).join(" "));
-    if (getBuddyVoice().on) sayOwn(news.map((n) => n.line).join(" "));
+    if (getBuddyVoice().on && sayOwn(news.map((n) => n.line).join(" "))) {
+      const question = news.find((n) => n.questionId);
+      if (question?.questionId) noteAsked(question.line, question.questionId);
+    }
   }, [crew.runs]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The crew needs your OK: Spark says so and offers to answer (a bare "yes" approves it). Only new requests.
+  const approvalsWas = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const before = approvalsWas.current; approvalsWas.current = new Set(Object.keys(crew.approvals));
+    if (!before || !prefsRef.current.proactive) return;
+    const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
+    const ask = crewAsks(before, crew.approvals, crew.runs, names);
+    if (!ask) return;
+    logSense("heard", "Crew needs your OK", ask.line);
+    if (getBuddyVoice().on) { sound("done"); if (sayOwn(ask.line)) noteAsked(ask.line, ask.id); }
+  }, [crew.approvals]); // eslint-disable-line react-hooks/exhaustive-deps
   // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
   // arrives in ~1.2 s, and the notch animation covers the gap. The quiet clock restarts so progress waits its 4 s.
   const newTurn = () => { ownLines.current.clear(); lastSound.current = Date.now(); };

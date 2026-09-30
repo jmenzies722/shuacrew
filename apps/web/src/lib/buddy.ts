@@ -38,6 +38,10 @@ export type Action =
   | { type: "crew_decide"; ref: string; allow: boolean }
   | { type: "crew_stop"; ref: string }
   | { type: "crew_open"; ref: string }
+  | { type: "crew_message"; ref: string; text: string }
+  | { type: "crew_delete"; ref: string }
+  | { type: "crew_review"; ref: string; approve: boolean; lesson?: string }
+  | { type: "crew_pr"; ref: string }
   | { type: "note"; text: string }
   | { type: "media"; command: "play" | "pause" | "toggle" | "next" | "previous" | "play_query" | "open_query" | "volume" | "volume_up" | "volume_down" | "mute" | "playlist" | "shuffle" | "repeat" | "love" | "add_to_library" | "seek" | "play_similar"; by?: "artist" | "vibe"; mood?: string; query?: string; app?: string; level?: number; on?: boolean; mode?: "off" | "one" | "all"; seconds?: number }
   | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth" | "night_shift" | "browser_js" | "bluetooth_device" | "empty_trash"; on?: boolean; level?: number; device?: string }
@@ -364,7 +368,9 @@ function toAction(v: unknown): Action | null {
     case "focus": { const minutes = Number(o.minutes); return [5, 10, 15, 25, 45, 50, 60, 90].includes(minutes) ? { type: "focus", minutes } : null; }
     case "crew": { const ask = str(o.ask, 4000); return ask ? { type: "crew", ask } : null; }
     case "crew_decide": { const ref = str(o.ref, 40); return ref && typeof o.allow === "boolean" ? { type: "crew_decide", ref, allow: o.allow } : null; }
-    case "crew_stop": case "crew_open": { const ref = str(o.ref, 40); return ref ? { type: o.type, ref } : null; }
+    case "crew_stop": case "crew_open": case "crew_delete": case "crew_pr": { const ref = str(o.ref, 40); return ref ? { type: o.type, ref } : null; }
+    case "crew_message": { const ref = str(o.ref, 40), text = str(o.text, 4000); return ref && text ? { type: "crew_message", ref, text } : null; }
+    case "crew_review": { const ref = str(o.ref, 40), lesson = str(o.lesson, 500); return ref && typeof o.approve === "boolean" ? { type: "crew_review", ref, approve: o.approve, ...(lesson ? { lesson } : {}) } : null; }
     case "mail": {
       // Their mail through the Mail app: read and draft only. The Mac app checks every field again.
       const op = (["unread", "search", "read", "draft"] as const).find((x) => x === o.op);
@@ -455,6 +461,10 @@ export function describeAction(a: Action): string {
     case "crew_decide": return a.allow ? "Approve the crew's request" : "Decline the crew's request";
     case "crew_stop": return "Stop that crew session";
     case "crew_open": return "Open that crew session";
+    case "crew_message": return "Tell that session";
+    case "crew_delete": return "Delete that session";
+    case "crew_review": return a.approve ? "Merge that work" : "Reject that work";
+    case "crew_pr": return "Push it and open a PR";
     case "mail": return a.op === "unread" ? "Check unread mail" : a.op === "search" ? `Search mail for “${a.query}”` : a.op === "read" ? "Read the message" : `Draft to ${a.to || "…"} (not sent)`;
     case "open_settings": return `Open ${PANES.find((p) => p.key === a.pane)?.name ?? "Settings"}`;
     case "mac": return a.op === "chess" ? "Read the board and find the best move" : a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "send_message" ? `Send “${a.text}” to ${a.to}` : a.op === "facetime" ? `Call ${a.to} on FaceTime${a.audio ? " audio" : ""}` : a.op === "directions" ? `Directions to ${a.to}` : a.op === "delete_reminders" || a.op === "complete_reminders" ? `${a.op === "delete_reminders" ? "Delete" : "Finish"} ${a.all ? `all your reminders${a.list ? ` in ${a.list}` : ""}` : `${a.titles?.length ?? 0} reminder${a.titles?.length === 1 ? "" : "s"}`}` : a.op === "complete_reminder" ? `Mark “${a.title}” done` : a.op === "delete_reminder" ? `Delete the reminder “${a.title}”` : a.op === "delete_event" ? `Delete “${a.title}” from your calendar${a.date ? ` (${a.date.slice(0, 10)})` : ""}` : a.op === "delete_note" ? `Delete the note “${a.title}”` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : a.op === "music_now" ? "Check what's playing" : a.op === "music_playlists" ? "Check your playlists" : a.op === "notes_new" ? `New note: ${a.title ?? "…"}` : a.op === "calendar_add" ? `Add “${a.title}” to your calendar` : a.op === "new_folder" ? `New folder “${a.name}”` : a.op === "reveal" ? `Show ${a.path?.split("/").pop()} in Finder` : a.op === "open_file" ? `Open ${a.path?.split("/").pop()}` : a.op === "browser_tabs" ? "Check your open tabs" : "Check your Mac";
@@ -810,7 +820,7 @@ export function liveLookup(events: ReadonlyArray<{ kind: string; body?: unknown 
 
 /** Actions that can't be undone: Spark asks you first (a tap in the notch or the chat), whatever the control mode. */
 /** Can't be undone, or reaches another person: Spark asks you first, whatever the control mode. */
-export const isDestructive = (a: Action): boolean => a.type === "crew_stop" || (a.type === "mac" && (a.op === "delete_reminder" || a.op === "delete_event" || a.op === "delete_note" || a.op === "delete_reminders" || a.op === "send_message" || a.op === "facetime"))
+export const isDestructive = (a: Action): boolean => a.type === "crew_stop" || a.type === "crew_delete" || a.type === "crew_pr" || (a.type === "crew_review" && a.approve) || (a.type === "mac" && (a.op === "delete_reminder" || a.op === "delete_event" || a.op === "delete_note" || a.op === "delete_reminders" || a.op === "send_message" || a.op === "facetime"))
   || (a.type === "system" && (a.what === "empty_trash" || a.what === "browser_js"));
 
 /**
@@ -870,7 +880,8 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
 
 /** A fingerprint of Spark's instructions: when it changes, Spark starts a fresh conversation so it knows the change. */
 export const SPARK_RULES = (() => {
-  const text = buddyPrompt.toString() + VISUAL_GUIDE + engineLine.toString();
+  // Constants the prompt uses by name must be in here too, or a change to them never reaches a running conversation.
+  const text = buddyPrompt.toString() + VISUAL_GUIDE + CREW_CONTROL + engineLine.toString();
   let h = 5381; for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
 })();

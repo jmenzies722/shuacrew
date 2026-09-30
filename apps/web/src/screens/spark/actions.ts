@@ -3,7 +3,8 @@
  * The panel plugs in the hooks that need it (asking before a command runs, sending results back to Spark).
  */
 import { api, cancelRun, decideApproval, launchRun } from "../../lib/api";
-import { crewRef } from "../../lib/crew-voice";
+import { crewRef, crewStatus, crewTitle } from "../../lib/crew-voice";
+import { removeSession } from "../../lib/session-removal";
 import { logAction } from "../../lib/spark-log";
 import { radioCommand } from "../../lib/radio";
 import { PANES, paneURL } from "../../lib/settings-panes";
@@ -44,15 +45,18 @@ export function perform(a: Action | (Act & { color?: string }), opts: { confirme
   const isAct = ["press", "click", "type", "key", "scroll", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
   // Deleting can't be undone: it waits for your yes, whatever the control mode — and with nobody to ask, it doesn't.
   if (!isAct && !opts.confirmed && isDestructive(a as Action)) return (async () => {
-    const label = describeAction(a as Action);
+    const title = "ref" in a ? crewTitle(a.ref) : "";
+    const label = describeAction(a as Action) + (title ? ` — “${title}”` : "");
     const yes = sparkHooks.confirmDelete ? await sparkHooks.confirmDelete(label) : false;
-    if (!yes) { logAction({ label, ok: true, message: "You said no" }); return { ok: true, message: /^Send/.test(label) ? "Okay, I didn't send it." : /^Call/.test(label) ? "Okay, no call." : "Okay, I kept it. Nothing was deleted." }; }
+    if (!yes) { logAction({ label, ok: true, message: "You said no" }); return { ok: true, message: a.type.startsWith("crew_") ? "Okay, I didn’t do that." : /^Send/.test(label) ? "Okay, I didn't send it." : /^Call/.test(label) ? "Okay, no call." : "Okay, I kept it. Nothing was deleted." }; }
     const r = await performNow(a); logAction({ label, ok: r.ok, message: r.message }); return r;
   })();
   return performNow(a).then((r) => { logAction({ label: isAct ? describeAct(a as Act) : describeAction(a as Action), ok: r.ok, message: r.message }); return r; });
 }
 /** Mac actions go to the app (which checks them again); the rest happen right here. */
 export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
+  if (a.type.startsWith("crew_") && "ref" in a && !crewRef(a.ref, a.type === "crew_decide" ? "A" : "S"))
+    return Promise.resolve({ ok: false, message: "That crew request is no longer listed. Ask about the session again." });
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
   if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
   if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
@@ -128,6 +132,12 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
   if (a.type === "crew_decide") return decideApproval(crewRef(a.ref), a.allow, { comment: "by voice, through Spark" }).then(() => ({ ok: true, message: a.allow ? "Approved" : "Declined" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_stop") return cancelRun(crewRef(a.ref)).then(() => ({ ok: true, message: "Stopped" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_open") { post({ type: "buddyOpen", path: `/sessions/${crewRef(a.ref)}` }); return Promise.resolve({ ok: true, message: "Opened it" }); }
+  if (a.type === "crew_message") return api(`/api/runs/${crewRef(a.ref)}/followup`, { body: { text: a.text } }).then(() => ({ ok: true, message: "Told them" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_delete") return removeSession(crewRef(a.ref), crewStatus(crewRef(a.ref))).then(() => ({ ok: true, message: "Deleted it" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_review" && crewStatus(crewRef(a.ref)) !== "reviewing")
+    return Promise.resolve({ ok: false, message: "That session is not waiting for review." });
+  if (a.type === "crew_review") return api(`/api/runs/${crewRef(a.ref)}/review`, { body: { approve: a.approve, ...(a.lesson ? { lesson: a.lesson } : {}) } }).then(() => ({ ok: true, message: a.approve ? "Queued for merge" : a.lesson ? "Rejected it, and noted why" : "Rejected it" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_pr") return api<{ url?: string }>(`/api/runs/${crewRef(a.ref)}/pr`, { body: {} }).then((r) => ({ ok: true, message: r?.url ? `PR opened: ${r.url}` : "Pushed and opened a PR" }), (e: Error) => ({ ok: false, message: e.message }));
   // A hand-off is a mission: an end-to-end brief, and Spark stays with it until it's finished (see lib/missions).
   if (a.type === "crew") {
     const persist = getCompanion().persist;
