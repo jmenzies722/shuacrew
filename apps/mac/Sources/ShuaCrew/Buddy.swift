@@ -902,7 +902,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 }
                 context["pointer"] = pointer
             }
-            if let g = lastGesture, Date().timeIntervalSince(g.at) < 40, let r = g.gesture.region, f.intersects(r) {
+            if let g = lastGesture, Date().timeIntervalSince(g.at) < 40, let r = g.gesture.region?.intersection(f), !r.isNull, !r.isEmpty { // clipped to the screen
                 context["gesture"] = ["kind": g.gesture.kind, "x": (r.minX - f.minX) / f.width, "y": (f.maxY - r.maxY) / f.height, "w": r.width / f.width, "h": r.height / f.height]
                 lastGesture = nil
             }
@@ -967,6 +967,20 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             guard let json = try? JSONSerialization.data(withJSONObject: clips), let arg = String(data: json, encoding: .utf8) else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.web.evaluateJavaScript("window.buddy.selfTestVoice(\(arg))") }
+            return
+        }
+        if spec == "gesture:prompt" { // a circle round the right of the menu bar, then a real look: what Spark is told
+            Task { @MainActor [weak self] in
+                guard let self, let screen = NSScreen.main else { return }
+                try? await Task.sleep(for: .seconds(3))
+                let f = screen.frame, c = CGPoint(x: f.maxX - 150, y: f.maxY - 16)
+                let loop = (0...80).map { i -> CGPoint in let a = Double(i) / 80 * 2.1 * .pi; return CGPoint(x: c.x + 140 * cos(a), y: c.y + 26 * sin(a)) }
+                self.cursorBuddy.beginInk(); self.cursorBuddy.injectInk(loop)
+                let g = PointerGesture.classify(self.cursorBuddy.endInk())
+                self.lastGesture = g == .none ? nil : (g, Date())
+                Self.appendSelfTest("SPARK SELFTEST gesture=\(g.kind)\n")
+                _ = try? await self.web.evaluateJavaScript("window.buddy.selfTestLook()")
+            }
             return
         }
         if spec == "voiceink:shot" { // hands-free: talk, circle silently, stop → read as a circle and confirmed with a ring
