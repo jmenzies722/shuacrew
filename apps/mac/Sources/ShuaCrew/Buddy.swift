@@ -841,6 +841,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyOpen":
             if let run = body["run"] as? String, run.range(of: "^[A-Za-z0-9_-]{1,80}$", options: .regularExpression) != nil { onOpen?("/sessions/\(run)") }
             else if let path = body["path"] as? String, path.range(of: "^/[A-Za-z0-9/_-]{0,120}$", options: .regularExpression) != nil { onOpen?(path) }
+        case "buddyCopy":
+            // "Paste this into Terminal": the text is on the clipboard before they reach for ⌘V.
+            if let text = body["text"] as? String, !text.isEmpty, text.count <= 100_000 {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
         case "buddySelfTest":
             let line = "SPARK SELFTEST ok=\(body["ok"] as? Bool ?? false) message=\(body["message"] as? String ?? "")\n\(body["output"] as? String ?? "")\n"
             Self.appendSelfTest(line)

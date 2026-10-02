@@ -57,6 +57,8 @@ import { VisualCard } from "./spark/Visual";
 import { due, getTimers, remaining, ringLine, setTimers, useTimers } from "../lib/timers";
 import { parseVisual, type Visual } from "../lib/visual";
 import { announcements, inMeeting, welcomeBack, type Agenda } from "../lib/proactive";
+import { copyForPaste, pasteTarget } from "../lib/paste-hint";
+import { PasteChip } from "../components/PasteChip";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -366,6 +368,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const finished = useRef(new Set<string>()), carryOn = useRef(new Map<string, () => void>());
   const runBlocks = (text: string, key: string, final: boolean) => {
     const seen = ran.current.get(key) ?? new Set<string>(); ran.current.set(key, seen);
+    if (final && !finished.current.has(key)) { const paste = pasteTarget(text); if (paste) copyForPaste(paste, native() ? post : undefined); } // "paste this…": it's already on the clipboard
     if (final) { finished.current.add(key); const go = carryOn.current.get(key); if (go) { carryOn.current.delete(key); go(); } }
     if (ran.current.size > 40) ran.current.delete(ran.current.keys().next().value!);
     for (const b of completedBlocks(text, screenSize())) {
@@ -1175,6 +1178,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       </header>
       {practicing && tab !== "teach" && <div className="buddy-practice-status" role="status"><button onClick={() => setTab("teach")}>{lesson?.practice.status === "checking" ? "Checking your latest attempt…" : "Your guided lesson is still here"}</button><button onClick={() => void pausePractice().catch(e => setError(String(e)))}>Pause</button></div>}
       {liveOn && <button type="button" className="spk-watch-banner" onClick={toggleLive} disabled={liveBusy}><i />Watching your screen live<span>Stop watching</span></button>}
+      <PasteChip copyAgain={(h) => copyForPaste(h, native() ? post : undefined)} />
       {(choiceError || choice?.runtime === null) && <p className="spk-connection-notice" role="status">{choiceError ? "Connection unavailable. Your message stays here." : choice?.reason}</p>}
       {choice?.runtime === "local" && prefs.brain !== "local" && <p className="spk-connection-notice is-fallback" role="status">Claude and Codex are unavailable, so {prefs.nickname || "Spark"} is on this Mac ({choice.model}): chat and quick actions only. Real work waits for them.</p>}
       {tab === "chat" && (phase === "hearing" || phase === "transcribing" || phase === "error") && <p className="spk-mic-status" role="status">{phase === "hearing" ? "Listening…" : phase === "transcribing" ? "Turning your voice into text…" : "Microphone unavailable. You can keep typing."}</p>}
