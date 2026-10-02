@@ -206,7 +206,7 @@ export function Memory() {
                       <span className="mono">{s.name}</span>
                       <span className="ml-auto text-[11px] font-normal text-fg-3">from {s.from.length} runs</span>
                     </div>
-                    {fm && <p className="mt-1.5 text-[12px] leading-snug text-fg-2">{fm}</p>}
+                    {fm && <p className="mt-1.5 line-clamp-3 text-[12px] leading-snug text-fg-2" title={fm}>{fm}</p>}
                     {s.status === "proposed" && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-s)] bg-raised p-2 text-[11.5px] text-fg-2">{body}</pre>}
                     {s.status === "proposed" && (
                       <div className="mt-2 flex gap-1.5">

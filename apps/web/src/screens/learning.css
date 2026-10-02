@@ -169,3 +169,17 @@ kbd { padding:1px 6px; border-radius:5px; font-family:var(--font-mono); font-siz
 @keyframes coach-dot { 50% { transform:translateY(-4px); opacity:.5; } }
 @media (prefers-reduced-motion: reduce) { .coach-orb, .coach-typing span { animation:none; } }
 @media (max-width:1100px) { .coach { grid-template-columns:1fr; } }
+/* Next best steps: the initiative as three moves, the first one lit. */
+.lx-next { margin: 18px 0 18px; }
+.lx-next h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.lx-next > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.lx-next button { display: grid; align-content: start; gap: 5px; padding: 16px 16px 14px; border-radius: 16px; text-align: left; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line-strong); transition: transform .15s, box-shadow .15s; }
+.lx-next button:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 40%, var(--line-strong)), 0 12px 30px rgba(0,0,0,.28); }
+.lx-next button.is-first { background: radial-gradient(130% 130% at 0% 0%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 62%), var(--panel); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 38%, var(--line-strong)); }
+.lx-next-k { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.lx-next button.is-first .lx-next-k { color: var(--accent-text, var(--amber)); }
+.lx-next strong { font-size: 15px; font-weight: 650; line-height: 1.35; color: var(--text); }
+.lx-next p { margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.lx-next em { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-style: normal; font-size: 12px; font-weight: 600; color: var(--accent-text, var(--amber)); }
+@media (max-width: 900px) { .lx-next > div { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .lx-next button { transition: none; } .lx-next button:hover { transform: none; } }

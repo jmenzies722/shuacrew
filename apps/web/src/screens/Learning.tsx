@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { BookOpenCheck, Brain, Check, Dumbbell, GraduationCap, Plus, RotateCcw, Sparkles, Target, Trash2, X } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Brain, Check, Flag, Dumbbell, GraduationCap, Plus, RotateCcw, Sparkles, Target, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import { PaneHeader } from "../components/Pane";
 import { Coach } from "../components/Coach";
@@ -19,6 +19,28 @@ interface State { profile: { goal: string; about: string; tracks: Track[] }; car
 type Tab = "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
 const TABS: Array<[Tab, string]> = [["coach", "Coach"], ["today", "Today"], ["learn", "Learn anything"], ["roadmap", "Roadmap"], ["career", "Career kit"], ["work", "From my work"], ["review", "Review"], ["profile", "Profile"]];
 interface Session { id: string; title: string; at: number; studied: boolean }
+
+/**
+ * The initiative, as the next three moves: the roadmap's next milestone (why it matters, the skills it needs), the next
+ * lesson in a course you've started, and the reviews that keep it. From your own data only — no model call to decide.
+ */
+function NextSteps({ s, road, go }: { s: State; road: Roadmap | undefined; go: (t: Tab) => void }) {
+  const steps: Array<{ key: string; icon: typeof Flag; kicker: string; title: string; why: string; cta: string; tab: Tab }> = [];
+  const milestone = road?.milestones.find((m) => !m.done);
+  if (!s.profile.goal) steps.push({ key: "goal", icon: Target, kicker: "Start here", title: "Name what you're working toward", why: "One goal turns everything here (courses, reviews, drills) toward it.", cta: "Set your goal", tab: "profile" });
+  else if (!road) steps.push({ key: "road", icon: Flag, kicker: "Your initiative", title: `Map “${s.profile.goal}”`, why: "A month-by-month plan: milestones, the skills each needs, a project that proves it.", cta: "Build the roadmap", tab: "roadmap" });
+  else if (milestone) steps.push({ key: "milestone", icon: Flag, kicker: `Next milestone · ${road.milestones.indexOf(milestone) + 1} of ${road.milestones.length}`, title: milestone.title, why: milestone.why || (milestone.skills.length ? `Needs ${milestone.skills.slice(0, 3).join(", ")}.` : ""), cta: "Open the roadmap", tab: "roadmap" });
+  const course = s.courses.find((c) => c.lessons.some((l) => !l.done)), lesson = course?.lessons.find((l) => !l.done);
+  if (course && lesson) steps.push({ key: "lesson", icon: BookOpenCheck, kicker: `Continue · ${course.title || course.topic}`, title: lesson.title, why: lesson.summary, cta: "Continue the course", tab: "learn" });
+  else steps.push({ key: "learn", icon: BookOpenCheck, kicker: "Get sharper", title: milestone?.skills[0] ? `Learn ${milestone.skills[0]}` : "Learn anything at your level", why: "A short course pitched to what you already know, with lessons you can do in one sitting.", cta: "Start a course", tab: "learn" });
+  if (s.due > 0) steps.push({ key: "review", icon: RotateCcw, kicker: "Make it stick", title: `${s.due} card${s.due === 1 ? "" : "s"} due`, why: `About ${Math.max(1, Math.round(s.due * 0.6))} min. Spaced review is what turns a lesson into something you keep.`, cta: "Review now", tab: "review" });
+  return <section className="lx-next" aria-label="Your next steps">
+    <h2>Next best steps</h2>
+    <div>{steps.slice(0, 3).map((st, i) => <button key={st.key} type="button" className={i === 0 ? "is-first" : ""} onClick={() => go(st.tab)}>
+      <span className="lx-next-k"><st.icon size={12} />{st.kicker}</span><strong>{st.title}</strong>{st.why && <p>{st.why}</p>}<em>{st.cta} <ArrowRight size={12} /></em>
+    </button>)}</div>
+  </section>;
+}
 
 /** Suggestions only — nothing is added until you pick it. */
 const SUGGESTED: Array<[string, string]> = [
@@ -58,6 +80,7 @@ export function Learning() {
         <button type="button" onClick={() => go("roadmap")}><strong>{roadDone === null ? "—" : `${roadDone}%`}</strong><span>of your roadmap</span></button>
       </div>
     </section>
+    <NextSteps s={s} road={road} go={go} />
     <nav className="lx-tabs" role="tablist" aria-label="Learning">{TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
     {error && <p className="lx-error" role="alert">{error}</p>}
     {tab === "coach" && <Coach runs={s.coach ?? {}} onChange={() => void load()} />}
