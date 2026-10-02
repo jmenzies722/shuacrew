@@ -99,6 +99,8 @@ export const LIVE_TOOLS = [{
 }];
 
 export interface LiveOptions {
+  /** Keeps a finished call: its transcript goes to the Library, where Spark and the crew can search it. */
+  saveTranscript?: (title: string, markdown: string, summary: string) => void;
   /** ShuaCrew's MCP server for this call (the spark_do tool), in Codex's mcp_servers shape. */
   mcpFor?: (run: string) => Record<string, unknown>;
   home: string; // ~/.shuacrew
@@ -137,6 +139,8 @@ class LiveCall {
   /** The last result from the hands and what the user asked: what the voice may state as fact for the next 25 s. */
   private truth?: { text: string; at: number };
   private heard = "";
+  private said: Array<{ role: "user" | "assistant"; text: string; at: number }> = [];
+  private results: string[] = [];
   private relays = new Map<string, (text: string) => void>();
 
   constructor(private socket: Socket, private options: LiveOptions) {
@@ -210,6 +214,7 @@ class LiveCall {
     if (method === "thread/realtime/sdp") return this.onSdp?.(p.sdp);
     if (method === "thread/realtime/transcript/done" && p.text?.trim()) {
       const role = p.role === "assistant" ? "assistant" : "user", text = String(p.text).trim();
+      this.said.push({ role, text, at: Date.now() });
       if (role === "user") this.heard = `${this.heard} ${text}`.slice(-1000);
       else this.checkTruth(text);
       this.recent = [...this.recent, { role, text }].slice(-RECENT_MAX * 2);
@@ -217,6 +222,8 @@ class LiveCall {
       return this.send({ type: "transcript", role, text });
     }
     if (method === "thread/realtime/transcript/delta" && p.delta) return this.send({ type: "delta", role: p.role === "assistant" ? "assistant" : "user", text: String(p.delta) });
+    // Live runs on the Codex plan: say so before it runs out, not after.
+    if (method === "account/rateLimits/updated" && typeof p.rateLimits?.primary?.usedPercent === "number") return this.send({ type: "usage", percent: p.rateLimits.primary.usedPercent, resetsAt: p.rateLimits.primary.resetsAt ?? null });
     if (method === "thread/realtime/error") return this.send({ type: "error", message: String(p.message ?? "Live voice error").slice(0, 300) });
     if (method === "thread/realtime/closed") { this.send({ type: "closed", reason: p.reason ?? null }); return this.end("closed"); }
     if (method === "turn/started") return this.send({ type: "working", on: true });
@@ -224,7 +231,7 @@ class LiveCall {
     if (method === "item/started" && p.item?.type === "commandExecution") return this.send({ type: "step", text: String(p.item.command ?? "").replace(/^\/bin\/zsh -lc /, "").slice(0, 200) });
     if (method === "item/completed" && p.item?.type === "agentMessage" && p.item.text?.trim()) {
       const final = /^\s*\[COMPLETE\]/.test(p.item.text) || p.item.phase === "final_answer";
-      if (final) this.truth = { text: stripTag(p.item.text), at: Date.now() };
+      if (final) { this.truth = { text: stripTag(p.item.text), at: Date.now() }; this.results.push(this.truth.text); }
       return this.send({ type: "result", final, text: stripTag(p.item.text).slice(0, 8000) });
     }
   }
@@ -269,6 +276,13 @@ class LiveCall {
     return { decision: allow ? "accept" : "decline" };
   }
 
+  private keep() {
+    if (!this.options.saveTranscript || this.said.filter((l) => l.role === "user").length < 1) return;
+    const when = new Date(this.said[0]!.at), first = this.said.find((l) => l.role === "user")!.text;
+    const title = `Live call · ${when.toLocaleDateString([], { month: "short", day: "numeric" })} ${when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${first.slice(0, 48)}`;
+    try { this.options.saveTranscript(title, transcriptMarkdown(this.said, this.results), `A live voice call: ${first.slice(0, 120)}`); } catch { /* the call still ends cleanly */ }
+  }
+
   end(reason: string) {
     if (this.ended) return;
     this.ended = true;
@@ -277,11 +291,21 @@ class LiveCall {
     this.relays.clear();
     this.approvals.clear();
     if (this.threadId) void this.peer?.request("thread/realtime/stop", { threadId: this.threadId }).catch(() => undefined);
+    this.keep();
     const child = this.child;
     setTimeout(() => child?.kill("SIGTERM"), 800).unref();
     try { this.socket.close(); } catch { /* already closed */ }
     void reason;
   }
+}
+
+/** The call as a readable note: who said what, and the results the hands brought back. */
+export function transcriptMarkdown(said: Array<{ role: "user" | "assistant"; text: string; at: number }>, results: string[]): string {
+  const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return [
+    ...said.map((l) => `**${l.role === "user" ? "You" : "Shua"}** (${time(l.at)}): ${l.text}`),
+    ...(results.length ? ["", "## Results", ...results.map((r) => `- ${r}`)] : []),
+  ].join("\n\n");
 }
 
 function readJson<T>(file: string, fallback: T): T {

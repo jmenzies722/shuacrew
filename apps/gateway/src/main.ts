@@ -121,7 +121,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   };
   const terminals = new Terminals(zshIntegration(home));
   // Live calls reach Spark's Mac actions through this gateway's tool server, with a token per call.
-  const liveVoice = new LiveVoice({ home, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
+  const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => void library.save({ title, content, summary, filename: "live-call.md", by: "agent" }), protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
     mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }); // spark_do confirms deletes itself
   tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;

@@ -39,3 +39,14 @@ describe("live truth guard", async () => {
     expect(unsupportedClaims("It's in your Downloads folder, Josh.", "Found lease.pdf in ~/Downloads. user Josh")).toEqual([]);
   });
 });
+
+describe("live transcript", async () => {
+  const { transcriptMarkdown } = await import("./live.js");
+  it("keeps who said what and the results", () => {
+    const md = transcriptMarkdown([{ role: "user", text: "What's on today?", at: 0 }, { role: "assistant", text: "A dentist at 3.", at: 1000 }], ["Today: 3 PM Dentist"]);
+    expect(md).toContain("**You**");
+    expect(md).toContain("**Shua**");
+    expect(md).toContain("## Results");
+    expect(md).toContain("- Today: 3 PM Dentist");
+  });
+});

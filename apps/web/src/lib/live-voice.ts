@@ -12,7 +12,8 @@ export type LiveEvent =
   | { type: "approval"; id: string; kind: "command" | "files"; text: string; why?: string }
   | { type: "levels"; mic: number; voice: number }
   | { type: "do"; id: string; actions: unknown[] }
-  | { type: "correction"; said: string; result: string };
+  | { type: "correction"; said: string; result: string }
+  | { type: "usage"; percent: number };
 
 export interface LiveOptions {
   voice?: string;
@@ -114,6 +115,7 @@ export class LiveCall {
     else if (m.type === "step") this.o.onEvent({ type: "step", text: String(m.text) });
     else if (m.type === "result") this.o.onEvent({ type: "result", text: String(m.text), final: m.final === true });
     else if (m.type === "approval") this.o.onEvent({ type: "approval", id: String(m.id), kind: m.kind === "files" ? "files" : "command", text: String(m.text), why: m.why ? String(m.why) : undefined });
+    else if (m.type === "usage") this.o.onEvent({ type: "usage", percent: Number(m.percent) });
     else if (m.type === "correction") this.o.onEvent({ type: "correction", said: String(m.said), result: String(m.result) });
     else if (m.type === "do" && Array.isArray(m.actions)) this.o.onEvent({ type: "do", id: String(m.id), actions: m.actions });
     else if (m.type === "error") this.fail(String(m.message));
