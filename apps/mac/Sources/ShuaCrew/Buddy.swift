@@ -1077,8 +1077,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// SHUACREW_SPARK_SELFTEST="open_app:Activity Monitor" at launch runs one action through the real page → app → page path and logs the result.
     /// Only whoever launches the app can set it; web pages can't.
+    private var selfTestStarted = false
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] else { return }
+        // Once per launch, in the notch's page: every page that finished loading used to start it, so asks ran twice.
+        guard webView === web, !selfTestStarted, let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] else { return }
+        selfTestStarted = true
         if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
