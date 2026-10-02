@@ -168,7 +168,7 @@ function TopBar() {
       <StatusIsland ctx={{ go: (path) => void navigate({ to: path }) }} running={running} connection={connection}
         limits={limited.map(([key, info]) => {
           const [runtime, model] = key.split(" · "), soon = info.until - Date.now() < 86_400_000;
-          return { key, label: model ?? runtime ?? key, message: info.message, retrying: info.retrying, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
+          return { key, label: model ?? runtime ?? key, message: info.message, retrying: info.retrying, untilMs: info.until, until: new Date(info.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" }), retry: () => void api(`/api/runtimes/${runtime}/restore`, { body: { model } }) };
         })}
         tokens={formatTokens(crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0)} />
       <SparkButton />

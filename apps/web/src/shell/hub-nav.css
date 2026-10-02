@@ -151,10 +151,22 @@
 .side .side-spark { margin-bottom: 8px; }
 .side .side-new { margin-bottom: 0; }
 .side-scroll { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line-strong); }
-/* Sessions sit first in the list, right under New session: the label links to all of them. */
-.side .side-label-link { display: flex; align-items: center; justify-content: space-between; border-radius: 6px; transition: color .15s; }
-.side .side-label-link span { font-size: 11px; opacity: 0; transition: opacity .15s; }
-.side .side-label-link:hover { color: var(--text-2); } .side .side-label-link:hover span { opacity: 1; }
+/* Recent sessions: first in the list, right under New session. The label folds them (remembered); "All" opens the
+   Sessions page; each row shows how long ago it moved, and live ones say "now". */
+.side-recent-head { display: flex; align-items: center; justify-content: space-between; }
+.side .side-recent-toggle { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; transition: color .15s; }
+.side .side-recent-toggle:hover { color: var(--text-2); }
+.side-recent-chev { flex-shrink: 0; transition: transform .18s cubic-bezier(.2,.8,.2,1); }
+.side-recent.is-open .side-recent-chev { transform: rotate(90deg); }
+.side-recent-live { margin-left: 4px; padding: 0 6px; border-radius: 999px; font-style: normal; font-size: 10px; font-weight: 600; color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.side-recent-all { padding: 12px 10px 4px; font-size: 11px; color: var(--text-3); opacity: 0; transition: opacity .15s, color .15s; }
+.side-recent:hover .side-recent-all, .side-recent-all:focus-visible { opacity: 1; } .side-recent-all:hover { color: var(--text); }
+.side-recent-list { overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
+.side-run small { margin-left: auto; padding-left: 6px; flex-shrink: 0; font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.side-run:hover small, .side-run.is-on small { color: var(--text-2); }
+.side-recent-more { align-self: flex-start; height: 24px; margin: 1px 0 2px 25px; padding: 0 6px; border-radius: 6px; font-size: 11.5px; color: var(--text-3); transition: color .15s, background .15s; }
+.side-recent-more:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+@media (prefers-reduced-motion: reduce) { .side-recent-chev { transition: none; } }
 .side .side-recent { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 /* The page list scrolls (no bar): fade its bottom edge so a row half under the footer reads as "more below", not as a
    rendering glitch, and leave room so the last row can scroll fully clear of the fade. */
