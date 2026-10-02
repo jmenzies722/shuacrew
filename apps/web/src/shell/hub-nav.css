@@ -156,3 +156,6 @@
 .side .side-label-link span { font-size: 11px; opacity: 0; transition: opacity .15s; }
 .side .side-label-link:hover { color: var(--text-2); } .side .side-label-link:hover span { opacity: 1; }
 .side .side-recent { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+/* The page list scrolls (no bar): fade its bottom edge so a row half under the footer reads as "more below", not as a
+   rendering glitch, and leave room so the last row can scroll fully clear of the fade. */
+.side-scroll { padding-bottom: 28px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); }

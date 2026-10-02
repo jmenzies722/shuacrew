@@ -44,7 +44,7 @@ export function CrewPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: list.length, label: "members" }, { value: list.filter((m) => m.delegatable).length, label: "available in rooms", tone: "amber", to: "/rooms" }, { value: Object.values(runs).filter((r) => r.member && ["running", "planning"].includes(r.status)).length, label: "working now", live: Object.values(runs).some((r) => r.member && ["running", "planning"].includes(r.status)), to: "/floor" }]} />} eyebrow="Work" icon={Users} title="Your crew" description="A standing team you hand work to. Each member keeps its own thread, model and lessons — and new work is routed to whoever it's for." actions={<>
           <Button onClick={() => setEditing({ color: COLORS[list.length % COLORS.length], triggers: [] })}>
             <Plus size={14} /> New member

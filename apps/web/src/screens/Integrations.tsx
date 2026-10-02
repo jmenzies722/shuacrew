@@ -78,7 +78,7 @@ export function Integrations() {
   useEffect(() => history.replaceState(null, "", `#${tab}`), [tab]);
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader eyebrow="Brain" icon={Cable} title="Tools & Skills" description="Tools connect your agents to real services through MCP. Skills teach them how to do a job well — they load one when the work calls for it. Both reach every new session." actions={
           <div className="seg" role="tablist">
             <button role="tab" aria-selected={tab === "tools"} className={tab === "tools" ? "is-on" : ""} onClick={() => setTab("tools")}>

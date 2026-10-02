@@ -70,7 +70,7 @@ export function Memory() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: lessons.filter((l) => !l.retired).length, label: "lessons in use", tone: "amber" }, { value: lessons.filter((l) => l.retired).length, label: "retired" }, { value: skills.length, label: "skills" }]} />} eyebrow="Brain" icon={BookOpen} title="Memory" description="Lessons with provenance and confidence, skills you approve — all inspectable, all deletable. Confidence moves with the reviews of the runs a lesson was used in."
           actions={<Button onClick={async () => (setEvolve(await api<Evolve>("/api/memory/evolve", { body: {} })), refresh())}>Evolve now</Button>} />
 

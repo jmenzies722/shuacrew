@@ -14,7 +14,7 @@ export { Specs } from "./Specs";
 function Page({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader eyebrow="System" icon={ShieldCheck} title={title} description={subtitle} />
         <div className="flex flex-col gap-5">{children}</div>
       </div>
@@ -52,7 +52,7 @@ export function Policy() {
   const counts = useMemo(() => { const c = { allow: 0, deny: 0, ask: 0 }; for (const e of activity) if (e.kind === "policy.decided") c[(e.body as { verdict: "allow" | "deny" | "ask" }).verdict]++; return c; }, [activity]);
   const tone = (v?: string) => (v === "allow" ? "ok" : v === "deny" ? "bad" : "wait");
   return (
-    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1280px] px-8 pb-12 pt-6">
+    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1440px] px-8 pb-12 pt-6">
       <PaneHeader title="Policy & Audit" description="One policy for every runtime; the tightest rule wins; every decision says which rule made it."
         actions={<span className={`pol-chain is-${verify ? (verify.ok ? "ok" : "bad") : "wait"}`}><StatusGlyph tone={verify ? (verify.ok ? "ok" : "bad") : "wait"} />{verify ? (verify.ok ? `Audit chain intact · ${verify.count.toLocaleString()} events` : `Chain broken at #${verify.brokenAt}`) : "Checking the chain…"}</span>} />
       <SparkToday />

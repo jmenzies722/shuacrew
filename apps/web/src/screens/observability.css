@@ -1,4 +1,4 @@
-.obs-page { padding: 32px clamp(18px, 3vw, 48px) 48px; max-width: 1640px; width: 100%; height: 100%; margin: 0 auto; overflow-y: auto; color: var(--text); }
+.obs-page { padding: 32px 32px 48px; max-width: 1440px; width: 100%; height: 100%; margin: 0 auto; overflow-y: auto; color: var(--text); }
 .metric-line-chart { width: 100%; min-width: 0; }
 .metric-line-chart svg { width: 100%; display: block; overflow: visible; margin-top: 12px; }
 .metric-line-chart svg text { fill: var(--text-3); font-size: 10px; font-family: var(--font-mono,monospace); }
@@ -10,7 +10,8 @@
 .metric-scrubber { display: flex; align-items: center; gap: 14px; color: var(--text-3); font-size: 10px; margin-top: 16px; }.metric-scrubber input { flex: 1; min-width: 30px; accent-color: var(--amber); }
 .obs-hero,.obs-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .obs-kicker { display: flex; align-items: center; gap: 8px; color: var(--amber); font-size: 10px; letter-spacing: .16em; font-weight: 650; }
-.obs-hero h1 { font-size: clamp(25px, 3vw, 38px); letter-spacing: -.045em; margin: 12px 0 8px; font-weight: 600; }
+/* The same title as every other page (PaneHeader), so switching pages doesn't jump. */
+.obs-hero h1 { font-size: 26px; line-height: 1.15; letter-spacing: -.03em; margin: 0 0 8px; font-weight: 650; }
 .obs-hero p,.obs-panel-heading p,.obs-panel>p { color: var(--text-3); font-size: 12px; line-height: 1.6; }
 .obs-page button,.obs-developer button { border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 12px; background: var(--raised); font-size: 12px; }
 .obs-page button:disabled,.obs-developer button:disabled { opacity: .45; }

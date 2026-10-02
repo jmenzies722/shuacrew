@@ -292,13 +292,35 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
         // SHUACREW_SNAPSHOT=/path/shot.png at launch: after the page settles, save what this window's page actually
         // looks like (optionally after SHUACREW_SNAPSHOT_JS runs, e.g. to open Spark) plus the layout of the sidebar and the
         // window buttons, to /path/shot.json. For checking the real app without screen recording or synthetic input.
-        if let path = ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT"], path.hasSuffix(".png") { snapshot(to: path) }
+        if let path = ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT"], path.hasSuffix(".png") {
+            // SHUACREW_SNAPSHOT_ROUTES="/,/activity,/crew": one PNG per page instead (shot-1-root.png, shot-2-activity.png…).
+            let routes = (ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT_ROUTES"] ?? "").split(separator: ",").map(String.init)
+            if routes.isEmpty { snapshot(to: path) } else { snapshotRoutes(routes, base: path) }
+        }
         if let spec = ProcessInfo.processInfo.environment["SHUACREW_APP_SELFTEST"], spec.hasPrefix("{") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                 self?.web.evaluateJavaScript("""
                 window.addEventListener('shuacrew:did', e => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: e.detail.ok, message: 'app window: ' + e.detail.message, output: (e.detail.output || '').slice(0, 600) }), { once: true });
                 window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddyDo', id: 'selftest', action: \(spec) });
                 """)
+            }
+        }
+    }
+
+    /// Each route in turn, in this window: navigate in-page (the router follows popstate), let it settle, save it.
+    private func snapshotRoutes(_ routes: [String], base: String, index: Int = 0) {
+        guard index < routes.count else { return }
+        let route = routes[index], wait = Double(ProcessInfo.processInfo.environment["SHUACREW_SNAPSHOT_WAIT"] ?? "") ?? 2
+        let slug = route.trimmingCharacters(in: CharacterSet(charactersIn: "/")).replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: "#", with: "-")
+        let file = base.replacingOccurrences(of: ".png", with: "-\(index + 1)-\(slug.isEmpty ? "root" : slug).png")
+        DispatchQueue.main.asyncAfter(deadline: .now() + (index == 0 ? 3 : 0)) { [weak self] in
+            guard let self else { return }
+            self.web.evaluateJavaScript("history.pushState({}, '', \(String(reflecting: route))); dispatchEvent(new PopStateEvent('popstate')); dispatchEvent(new HashChangeEvent('hashchange'))")
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                self?.web.takeSnapshot(with: nil) { [weak self] image, _ in
+                    if let tiff = image?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { try? png.write(to: URL(fileURLWithPath: file)) }
+                    self?.snapshotRoutes(routes, base: base, index: index + 1)
+                }
             }
         }
     }
