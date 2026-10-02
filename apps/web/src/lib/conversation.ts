@@ -45,6 +45,10 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
   let lessons: string[] = [];
   let tokens = 0;
   let commit: string | undefined;
+  // The last ask, and whether anything answered it: a run moved to another model after a usage limit starts the same
+  // ask again as a new turn, which used to show your message (and any cut-off partial answer) twice or more.
+  let lastAsk: Extract<Item, { kind: "ask" }> | null = null;
+  let answered = false;
 
   const endProse = () => {
     if (prose) prose.streaming = false;
@@ -54,14 +58,23 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
   for (const e of events) {
     if (e.seq > until) break;
     switch (e.kind) {
-      case "turn.started":
+      case "turn.started": {
         endProse();
+        const retry = lastAsk && !answered && lastAsk.text === e.body.text;
+        if (retry) {
+          // Same ask, never answered: the earlier attempt's half-written prose and thoughts go; tool work stays (it happened).
+          const from = items.indexOf(lastAsk!);
+          for (let i = items.length - 1; i > from; i--) { const it = items[i]!; if (it.kind === "prose" || it.kind === "thought") items.splice(i, 1); }
+          lastAsk!.turn = e.body.turn;
+        }
         turn = e.body.turn;
         lessons = [];
         tokens = 0;
         commit = undefined;
-        items.push({ kind: "ask", seq: e.seq, turn: e.body.turn, text: e.body.text, by: e.body.by, at: e.at });
+        answered = false;
+        if (!retry) { lastAsk = { kind: "ask", seq: e.seq, turn: e.body.turn, text: e.body.text, by: e.body.by, at: e.at }; items.push(lastAsk); }
         break;
+      }
       case "agent.thinking": {
         endProse();
         // The runtime's note that it compacted the conversation gets a card of its own.
@@ -185,6 +198,7 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         break;
       case "turn.completed":
         endProse();
+        answered = true;
         items.push({
           kind: "finished",
           seq: e.seq,

@@ -553,8 +553,12 @@ export class Supervisor {
     until = Number.isFinite(until) && until > Date.now() ? Math.max(until, Date.now() + 1000) : Date.now() + 30_000;
     this.rec("runtime.limited", { runtime, model, until, message, credits });
     this.scheduleResume(runtime, until, model);
-    // Moves are capped, so a run never bounces between limits forever; past that it waits.
-    const moves = this.store.forRun(run).filter((e) => e.kind === "run.routed" && / is out until | needs usage credits /.test(e.body.reason)).length;
+    // Moves are capped, so a run never bounces between limits forever; past that it waits. Siblings and other providers
+    // have separate budgets: three Claude siblings in a row (Sonnet, Fable, Opus all capped for the week) used to spend
+    // the whole budget, so the run paused until Sunday with Codex free.
+    const routes = this.store.forRun(run).filter((e) => e.kind === "run.routed" && / is out until | needs usage credits /.test(e.body.reason));
+    const siblingMoves = routes.filter((e) => e.kind === "run.routed" && / — using /.test(e.body.reason)).length;
+    const otherMoves = routes.length - siblingMoves;
     const created = this.store.forRun(run).find((e) => e.kind === "run.created");
     const launched = created?.kind === "run.created" ? created.body.model : undefined;
     if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) {
@@ -564,24 +568,28 @@ export class Supervisor {
     }
     const what = model ?? runtime;
     const why = credits ? `${what} needs usage credits on your plan` : `${what} is out until ${when(until)}`;
-    // First choice: another model on the same agent (a weekly cap on one model isn't the account's).
-    const sibling = this.options.failover !== false && moves < 3 && model ? this.pickModel(runtime, model, [model]) : undefined;
+    const other =
+      this.options.failover && otherMoves < 2
+        ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local") /* the local model has no tools: never hand it crew work */, runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
+        : undefined;
+    const moveToOther = () => {
+      this.rec("run.routed", { runtime: other!, model: this.pickModel(other!, this.modelFor(run, other!, launched)), reason: `${why} — moved to ${other}` }, { run });
+      this.setStatus(run, "queued", `moved to ${other}`);
+      this.pump();
+    };
+    // Spark's conversation: someone is waiting, and one capped model usually means the account is (they share a weekly
+    // window), so go straight to the other provider rather than trying each sibling in turn.
+    const conversation = created?.kind === "run.created" && created.body.labels.includes("buddy");
+    if (conversation && other) return moveToOther();
+    // Otherwise first another model on the same agent (a weekly cap on one model isn't always the account's).
+    const sibling = this.options.failover !== false && siblingMoves < 2 && model ? this.pickModel(runtime, model, [model]) : undefined;
     if (sibling) {
       this.rec("run.routed", { runtime, model: sibling, reason: `${why} — using ${sibling}` }, { run });
       this.setStatus(run, "queued", `moved to ${sibling}`);
       this.pump();
       return;
     }
-    const other =
-      this.options.failover && moves < 3
-        ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local") /* the local model has no tools: never hand it crew work */, runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
-        : undefined;
-    if (other) {
-      this.rec("run.routed", { runtime: other, model: this.pickModel(other, this.modelFor(run, other, launched)), reason: `${why} — moved to ${other}` }, { run });
-      this.setStatus(run, "queued", `moved to ${other}`);
-      this.pump();
-      return;
-    }
+    if (other) return moveToOther();
     this.setStatus(run, "paused", `${what} usage window — resumes ${when(until)}`);
     this.scheduleResume(runtime, until, model);
   }

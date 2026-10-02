@@ -328,6 +328,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Spark's own step reports ([guide]/[act]) are bookkeeping, not something you said: keep them out of the chat.
       if (e.kind === "run.followup" && /^\[(guide|act|mail)\]/.test((e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, ""))) { streaming = ""; continue; }
       if (e.kind === "run.followup") { out.push({ who: "you", text: (e.body as { text: string }).text.replace(/^<spark-system>\n[\s\S]*?\n<\/spark-system>\n?/, "").split("\n\n[screen]")[0]!.split("\n\n[attachments]")[0]!.split("\n\n[app]")[0]! }); streaming = ""; }
+      // A new attempt (moved to another model after a limit) streams the answer again from the start: drop the cut-off
+      // partial so it never shows twice.
+      else if (e.kind === "turn.started") streaming = "";
       else if (e.kind === "agent.delta") streaming += e.body.text;
       else if (e.kind === "agent.message") { out.push({ who: "spark", text: e.body.text, id: e.seq }); streaming = ""; }
     }

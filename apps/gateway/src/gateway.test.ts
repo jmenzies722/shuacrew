@@ -113,6 +113,35 @@ describe("runs", () => {
     expect(state(store).runs[id]!.runtime).toBe("claudeish");
   });
 
+  it("a capped Spark conversation goes to the other provider, never through every sibling into a pause", async () => {
+    const asks: string[] = [];
+    const base = { authMode: "subscription" as const, capabilities: { subagents: false, checkpoints: false, cost: false, images: false, resume: true }, status: async () => ({ installed: true, signedIn: true, detail: "", overridingKeys: [] }) };
+    // Every model on this account is capped for the week (Sonnet, Fable, Opus, Haiku on 2 Oct).
+    const capped: Runtime = { ...base, id: "claudeish", label: "capped", models: ["s", "f", "o", "h"].map((id) => ({ id, label: id, tier: "balanced" as const })),
+      async *start(run) { asks.push(`claudeish:${run.model}`); yield { type: "limited", model: run.model, until: Date.now() + 3_600_000, message: "weekly limit" }; } };
+    const free: Runtime = { ...base, id: "codexish", label: "free", models: [{ id: "t", label: "t", tier: "balanced" as const }], async *start() { asks.push("codexish"); yield { type: "done", text: "4" }; } };
+    const store = new EventStore();
+    cleanups.push(() => store.close());
+    const supervisor = new Supervisor(store, new Map([["claudeish", capped], ["codexish", free]]), { workspace: os.tmpdir(), failover: true });
+    const id = supervisor.launch({ ask: "what is 2 plus 2", runtime: "claudeish", model: "s", labels: ["buddy"] });
+    await until(() => state(store).runs[id]?.status === "done");
+    expect(asks).toEqual(["claudeish:s", "codexish"]); // straight across: no Fable → Opus → Haiku → paused until Sunday
+  });
+
+  it("crew work tries a sibling model first, and still reaches the other provider after it", async () => {
+    const asks: string[] = [];
+    const base = { authMode: "subscription" as const, capabilities: { subagents: false, checkpoints: false, cost: false, images: false, resume: true }, status: async () => ({ installed: true, signedIn: true, detail: "", overridingKeys: [] }) };
+    const capped: Runtime = { ...base, id: "claudeish", label: "capped", models: ["s", "f", "o"].map((id) => ({ id, label: id, tier: "balanced" as const })),
+      async *start(run) { asks.push(`claudeish:${run.model}`); yield { type: "limited", model: run.model, until: Date.now() + 3_600_000, message: "weekly limit" }; } };
+    const free: Runtime = { ...base, id: "codexish", label: "free", models: [{ id: "t", label: "t", tier: "balanced" as const }], async *start() { asks.push("codexish"); yield { type: "done", text: "done" }; } };
+    const store = new EventStore();
+    cleanups.push(() => store.close());
+    const supervisor = new Supervisor(store, new Map([["claudeish", capped], ["codexish", free]]), { workspace: os.tmpdir(), failover: true });
+    const id = supervisor.launch({ ask: "fix the build", runtime: "claudeish", model: "s" });
+    await until(() => state(store).runs[id]?.status === "done");
+    expect(asks).toEqual(["claudeish:s", "claudeish:f", "claudeish:o", "codexish"]); // two siblings, then across — not paused
+  });
+
   it("answers a follow-up in the same run, resuming the runtime's conversation", async () => {
     const { store, supervisor } = setup();
     const id = supervisor.launch({ ask: "fix the test", runtime: "mock" });
