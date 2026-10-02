@@ -537,7 +537,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             updateNookWatch()
             place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : isMini ? Self.mini : peek ? Self.peek : closed)
             updateFollow()
-            if !open, panel.isKeyWindow {
+            // Not while the notch nook is open: its Ask box is typed into in this "closed" state, and dropping the key
+            // window mid-word (on any layout update) doubled letters as focus bounced away and back.
+            if !open, !isNook, panel.isKeyWindow {
                 // resignKey() is an AppKit notification/override point, not an
                 // operation for changing focus. Calling it directly can leave
                 // AppKit's keyboard ownership inconsistent.
