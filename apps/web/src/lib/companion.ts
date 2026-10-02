@@ -7,6 +7,10 @@ export interface CompanionPreferences {
   celebration: "off" | "subtle" | "expressive"; sound: boolean; volume: number; focus: "hide" | "still";
   /** Spark, made yours: who it is, its colour and size on the desktop, how it talks, how you summon it. */
   character: SparkCharacterId; color: string; eyeColor: string; personality: string; size: "s" | "m" | "l";
+  /** The robots (Scout, Atlas, Nova), piece by piece: eyes and mouth, a trim colour for joints and ears ("auto" is
+   * graphite), what the shell is made of, smooth or pixel art, and a hat, face piece and neck piece worn together. */
+  eyes: RobotEyes; mouth: RobotMouth; trim: string; material: RobotMaterial; style: "smooth" | "pixel";
+  hat: RobotHat; faceWear: RobotFaceWear; neck: RobotNeck;
   tone: "engineer" | "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
   hotkey: SparkHotkey; guide: "click" | "manual";
   /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
@@ -42,6 +46,15 @@ export interface CompanionPreferences {
   /** While you talk, the notch shows a waveform (your words appear once you stop), or the waveform with your words live. */
   notchHearing: "wave" | "words";
 }
+export const ROBOT_EYES = ["round", "pill", "pixel", "visor", "happy", "star"] as const;
+export const ROBOT_MOUTHS = ["smile", "grin", "flat", "cat", "o", "none"] as const;
+export const ROBOT_MATERIALS = ["glossy", "matte", "metal", "glass"] as const;
+export const ROBOT_HATS = ["none", "antenna", "cap", "beanie", "headphones", "crown", "halo", "bow", "tophat"] as const;
+export const ROBOT_FACEWEAR = ["none", "glasses", "shades", "monocle", "blush"] as const;
+export const ROBOT_NECKS = ["none", "scarf", "bowtie", "badge"] as const;
+export type RobotEyes = (typeof ROBOT_EYES)[number]; export type RobotMouth = (typeof ROBOT_MOUTHS)[number];
+export type RobotMaterial = (typeof ROBOT_MATERIALS)[number]; export type RobotHat = (typeof ROBOT_HATS)[number];
+export type RobotFaceWear = (typeof ROBOT_FACEWEAR)[number]; export type RobotNeck = (typeof ROBOT_NECKS)[number];
 export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
 /** Retain saved legacy companions without offering them as new robot choices. */
 export const SPARK_CHARACTERS = [...ROBOT_CHARACTERS, "orb", "byte", "kit", "blob"] as const;
@@ -56,6 +69,13 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     face: choice("face", ["calm", "curious", "bright"], "calm"), accessory: choice("accessory", ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"], "none"),
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
+    // Saved before the robots had separate pieces: the one accessory lands in its slot, the expression picks eyes.
+    eyes: choice("eyes", ROBOT_EYES, v.face === "bright" ? "happy" : v.face === "curious" ? "pill" : "round"), mouth: choice("mouth", ROBOT_MOUTHS, "smile"),
+    trim: v.trim === "auto" || (typeof v.trim === "string" && /^#[0-9a-f]{6}$/i.test(v.trim)) ? (v.trim as string).toLowerCase() : "auto",
+    material: choice("material", ROBOT_MATERIALS, "glossy"), style: choice("style", ["smooth", "pixel"], "smooth"),
+    hat: choice("hat", ROBOT_HATS, (["antenna", "cap", "headphones"] as const).find((a) => a === v.accessory) ?? "none"),
+    faceWear: choice("faceWear", ROBOT_FACEWEAR, v.accessory === "glasses" ? "glasses" : "none"),
+    neck: choice("neck", ROBOT_NECKS, v.accessory === "scarf" ? "scarf" : v.accessory === "badge" ? "badge" : "none"),
     character: choice("character", SPARK_CHARACTERS, "spark"), color: validFinish(v.color) ? (v.color === "theme" ? "theme" : v.color.toLowerCase()) : "theme",
     eyeColor: typeof v.eyeColor === "string" && /^#[0-9a-f]{6}$/i.test(v.eyeColor) ? v.eyeColor.toLowerCase() : "#a5f3fc",
     personality: typeof v.personality === "string" ? v.personality.slice(0, 1000) : "",

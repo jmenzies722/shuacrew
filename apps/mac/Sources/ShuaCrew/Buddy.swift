@@ -777,6 +777,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyState":
             // What Spark is doing, shown by the buddy beside your pointer (listening / thinking / speaking / idle).
             if let c = body["color"] as? String { cursorBuddy.color = PointerOverlay.color(c) }
+            if let g = body["colors"] as? [String], g.count == 2 { cursorBuddy.gradient = (PointerOverlay.color(g[0]), PointerOverlay.color(g[1])) }
             noteState(CursorBuddy.State(rawValue: body["state"] as? String ?? "") ?? .idle)
         case "buddyGuideStop":
             pointer.hide()

@@ -8,7 +8,7 @@ import { MacReach } from "./MacReach";
 import { useLive } from "../lib/live";
 import { api } from "../lib/api";
 import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
-import { parseCompanion, saveCompanion, ROBOT_CHARACTERS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
+import { parseCompanion, saveCompanion, ROBOT_CHARACTERS, ROBOT_EYES, ROBOT_FACEWEAR, ROBOT_HATS, ROBOT_MATERIALS, ROBOT_MOUTHS, ROBOT_NECKS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
 import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
@@ -37,6 +37,19 @@ function SparkReach({ name }: { name: string }) {
     </SettingRow>
   </>;
 }
+const TRIMS = ["auto", "#e5e7eb", "#111114", "#f5b544", "#f472b6", "#60a5fa", "#34d399"] as const;
+const label = (v: string) => ({ o: "O", tophat: "Top hat", bowtie: "Bow tie", faceWear: "Face" } as Record<string, string>)[v] ?? v[0]!.toUpperCase() + v.slice(1);
+
+/** One piece of the robot, as tiles: your own robot (head and shoulders) wearing each choice. */
+function PieceTiles<K extends "eyes" | "mouth" | "hat" | "faceWear" | "neck">({ prefs, piece, options, set }: { prefs: CompanionPreferences; piece: K; options: readonly CompanionPreferences[K][]; set(patch: Partial<CompanionPreferences>): void }) {
+  return <div className="spark-pieces" role="radiogroup" aria-label={label(piece)}>{options.map((o) => {
+    const on = prefs[piece] === o;
+    return <button key={o} type="button" role="radio" aria-checked={on} className={on ? "is-on" : ""} onClick={() => set({ [piece]: o } as Partial<CompanionPreferences>)} title={label(o)}>
+      <SparkCharacter preferences={{ ...prefs, [piece]: o }} size={piece === "neck" ? 58 : 52} crop={piece === "neck" ? "full" : "portrait"} /><small>{label(o)}</small>
+    </button>;
+  })}</div>;
+}
+
 const swatchBg = (f: string) => { if (f === "theme") return "var(--amber)"; const s = stops(f); return s.gradient ? `linear-gradient(135deg, ${s.from}, ${s.to})` : s.from; };
 
 type Native = { postMessage(m: unknown): void };
@@ -98,10 +111,23 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
         <div className="spark-swatches">{SPARK_FINISHES.map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}
           <label className="spark-custom" title="Any colour"><input type="color" value={stops(prefs.color).from} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
       </SettingRow>
-      {ROBOT_CHARACTERS.some(id => id === prefs.character) && <>
-        {prefs.character !== "spark" && <SettingRow name="Eye glow" detail="Give your robot its own little spark."><input type="color" className="spark-eye-color" value={prefs.eyeColor} onChange={e => set({ eyeColor: e.target.value })} aria-label="Robot eye color" /></SettingRow>}
+      {prefs.character === "spark" && <>
         <SettingRow name="Expression"><Segmented label="Expression" value={prefs.face} onChange={(face) => set({ face })} options={[["calm", "Calm"], ["curious", "Curious"], ["bright", "Bright"]]} /></SettingRow>
-        <SettingRow name="Accessory"><select className="setting-input" value={prefs.accessory} onChange={(e) => set({ accessory: e.target.value as CompanionPreferences["accessory"] })} aria-label="Accessory">{["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"].map((a) => <option key={a} value={a}>{a[0]!.toUpperCase() + a.slice(1)}</option>)}</select></SettingRow>
+        <SettingRow name="Accessory" detail="Spark is hand-drawn. Scout, Atlas and Nova take every piece below, in any colour, smooth or pixel."><select className="setting-input" value={prefs.accessory} onChange={(e) => set({ accessory: e.target.value as CompanionPreferences["accessory"] })} aria-label="Accessory">{["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"].map((a) => <option key={a} value={a}>{a[0]!.toUpperCase() + a.slice(1)}</option>)}</select></SettingRow>
+      </>}
+      {prefs.character !== "spark" && ROBOT_CHARACTERS.some(id => id === prefs.character) && <>
+        <SettingRow name="Style" detail="Smooth 3D, or the same robot as pixel art. Every piece and colour carries over."><Segmented label="Style" value={prefs.style} onChange={(style) => set({ style })} options={[["smooth", "Smooth"], ["pixel", "Pixel"]]} /></SettingRow>
+        <SettingRow name="Material" detail="What the shell is made of."><Segmented label="Material" value={prefs.material} onChange={(material) => set({ material })} options={ROBOT_MATERIALS.map((m) => [m, label(m)] as [typeof m, string])} /></SettingRow>
+        <SettingRow name="Trim" detail="Joints, ears and the visor frame. Auto is graphite.">
+          <div className="spark-swatches">{TRIMS.map((t) => <button key={t} type="button" title={t === "auto" ? "Auto (graphite)" : t} aria-label={t === "auto" ? "Auto trim" : `Trim ${t}`} aria-pressed={prefs.trim === t} style={{ background: t === "auto" ? "linear-gradient(135deg, #4a5262, #1c212b)" : t }} onClick={() => set({ trim: t })} />)}
+            <label className="spark-custom" title="Any colour"><input type="color" value={prefs.trim === "auto" ? "#2b3240" : prefs.trim} onChange={(e) => set({ trim: e.target.value })} aria-label="Custom trim colour" /></label></div>
+        </SettingRow>
+        <SettingRow name="Eye glow" detail="The eyes, the core, and the little lights."><input type="color" className="spark-eye-color" value={prefs.eyeColor} onChange={e => set({ eyeColor: e.target.value })} aria-label="Robot eye color" /></SettingRow>
+        <h5 className="spark-sub">Eyes</h5><PieceTiles prefs={prefs} piece="eyes" options={ROBOT_EYES} set={set} />
+        <h5 className="spark-sub">Mouth</h5><PieceTiles prefs={prefs} piece="mouth" options={ROBOT_MOUTHS} set={set} />
+        <h5 className="spark-sub">On its head</h5><PieceTiles prefs={prefs} piece="hat" options={ROBOT_HATS} set={set} />
+        <h5 className="spark-sub">On its face</h5><PieceTiles prefs={prefs} piece="faceWear" options={ROBOT_FACEWEAR} set={set} />
+        <h5 className="spark-sub">Round its neck</h5><PieceTiles prefs={prefs} piece="neck" options={ROBOT_NECKS} set={set} />
       </>}
       <SettingRow name="Energy" detail="Choose how lively your companion feels between conversations."><Segmented label="Robot energy" value={prefs.presence} onChange={presence => set({ presence })} options={[["interaction", "When we talk"], ["subtle", "Easygoing"], ["playful", "Playful"]]} /></SettingRow>
       <SettingRow name="Little victories" detail="How your robot celebrates completed crew work."><Segmented label="Celebrations" value={prefs.celebration} onChange={celebration => set({ celebration })} options={[["off", "Quiet"], ["subtle", "A little joy"], ["expressive", "Celebrate"]]} /></SettingRow>

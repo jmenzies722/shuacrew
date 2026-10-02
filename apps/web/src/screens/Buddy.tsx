@@ -7,7 +7,7 @@ import { logSense } from "../lib/spark-log";
 import { asksAboutEarlier, recall } from "../lib/screen-memory";
 import { earlierToday, rememberAsk } from "../lib/spark-day";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
-import { accentOf, sparkVars } from "../lib/spark-color";
+import { accentOf, cursorGradient, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption, Rolling } from "../components/NotchCaption";
 import { Recommendations } from "../components/Recommendations";
@@ -1020,7 +1020,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const processing = (voiceLive || (prefs.conversation && prefs.listen !== "hold") || fnSent) && (phase === "transcribing" || ((!!busy || working) && !speaking && !streamText));
   // The cursor buddy mirrors Spark: listening while you talk, thinking while it works, speaking while it answers.
   const buddyState = speaking ? "speaking" : fnHeld || phase === "hearing" ? "listening" : busy || working || phase === "transcribing" ? "thinking" : "idle";
-  useEffect(() => { post({ type: "buddyState", state: buddyState, color: accentOf(prefs.color) }); }, [buddyState, prefs.color]);
+  useEffect(() => { post({ type: "buddyState", state: buddyState, color: accentOf(prefs.color), colors: cursorGradient(prefs.color) }); }, [buddyState, prefs.color]);
   // Live level for the buddy (~20×/s, only while you talk or Spark does): its halo moves with your voice, it pulses with Spark's.
   useEffect(() => {
     if (buddyState !== "listening" && buddyState !== "speaking") return;

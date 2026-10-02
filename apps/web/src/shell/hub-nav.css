@@ -151,3 +151,8 @@
 .side .side-spark { margin-bottom: 8px; }
 .side .side-new { margin-bottom: 0; }
 .side-scroll { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line-strong); }
+/* Sessions sit first in the list, right under New session: the label links to all of them. */
+.side .side-label-link { display: flex; align-items: center; justify-content: space-between; border-radius: 6px; transition: color .15s; }
+.side .side-label-link span { font-size: 11px; opacity: 0; transition: opacity .15s; }
+.side .side-label-link:hover { color: var(--text-2); } .side .side-label-link:hover span { opacity: 1; }
+.side .side-recent { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }

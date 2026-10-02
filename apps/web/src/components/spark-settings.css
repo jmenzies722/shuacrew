@@ -69,3 +69,12 @@
 .spark-voice-studio[open] > summary { margin-bottom: 14px; }
 .voice-studio .px-5 { padding-inline: 0; }
 .spark-muted { color: var(--text-3); font-size: 12.5px; }
+/* Robot pieces: tiles showing your robot wearing each choice. */
+.spark-sub { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.spark-pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; }
+.spark-pieces button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px 6px; border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: transform .15s, box-shadow .15s, background .15s; }
+.spark-pieces button:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.spark-pieces button.is-on { box-shadow: inset 0 0 0 1.5px var(--spark-color, var(--amber)), 0 0 0 3px color-mix(in srgb, var(--spark-color, var(--amber)) 14%, transparent); }
+.spark-pieces small { font-size: 10.5px; color: var(--text-3); } .spark-pieces button.is-on small { color: var(--text); }
+.spark-pieces .spark-character * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .spark-pieces button { transition: none; } }

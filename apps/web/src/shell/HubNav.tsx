@@ -96,8 +96,8 @@ export function useSidebarWide() { const [, force] = useState(0); useEffect(() =
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
 
 /**
- * Linear-style sidebar: Ask Spark and New session up top, the five hubs with the active one unfolded into its pages,
- * your recent sessions live, Settings at the bottom. ⌘\ folds it back to the slim rail.
+ * Linear-style sidebar: Ask Spark and New session up top, then your sessions (live ones first) so they're always in
+ * view, then the five hubs' pages, Settings at the bottom. ⌘\ folds it back to the slim rail.
  */
 export function HubSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -120,7 +120,7 @@ export function HubSidebar() {
   });
   const all = Object.values(runs);
   const working = all.filter((r) => r.status === "running" || r.status === "planning").length;
-  const recent = all.filter((r) => isTopLevelWork(r, runs)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6);
+  const recent = all.filter((r) => isTopLevelWork(r, runs)).sort((a, b) => Number(LIVE.has(b.status)) - Number(LIVE.has(a.status)) || b.updatedAt - a.updatedAt).slice(0, 8);
   const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
   const name = prefs.nickname || "Spark";
   return <nav className="side" aria-label="Sidebar">
@@ -135,6 +135,12 @@ export function HubSidebar() {
     </button>
     <button type="button" className="side-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}><Plus size={15} /> New session<kbd>⌘N</kbd></button>
     <div className="side-scroll">
+    {recent.length > 0 && <div className="side-group side-recent">
+      <Link to="/" className="side-label side-label-link" title="All sessions">Recent sessions<span>All</span></Link>
+      {recent.map((r) => { const on = path === `/sessions/${r.id}`; return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
+        <i className={`side-dot is-${LIVE.has(r.status) ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span>
+      </Link>; })}
+    </div>}
     {HUBS.map((hub) => <div key={hub.id} className="side-group">
       {hub.id !== "home" && <div className="side-label">{hub.label}</div>}
       {hub.tabs.map((tab) => { const on = at?.tab === tab, Icon = PAGE_ICON[tab.to] ?? Circle, n = tab.to === "/" ? waiting : tab.to === "/crew" ? working : 0;
@@ -143,12 +149,6 @@ export function HubSidebar() {
           <i className="side-ico"><Icon size={16} strokeWidth={1.8} /></i><span>{tab.label}</span>{n > 0 && <em className={tab.to === "/" ? "is-wait" : "is-live"}>{n}</em>}
         </Link>; })}
     </div>)}
-    {recent.length > 0 && <div className="side-group side-recent">
-      <div className="side-label">Recent</div>
-      {recent.map((r) => { const on = path === `/sessions/${r.id}`; return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
-        <i className={`side-dot is-${LIVE.has(r.status) ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span>
-      </Link>; })}
-    </div>}
     </div>
     <div className="side-foot">
       <button type="button" className={`side-row side-guide ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })}><i className="side-ico" data-hub="guide"><BookOpenText size={14} strokeWidth={2} /></i><span>Guide</span></button>

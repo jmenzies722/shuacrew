@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { companionPose, parseCompanion, celebrateCompletion } from "./companion";
 it("defaults to off and validates presentation without changing authority", () => {
   expect(parseCompanion(null).enabled).toBe(false);
@@ -52,4 +52,21 @@ it("validates eye colors and bounds personality while preserving spaces during e
   expect(parseCompanion({ eyeColor: "#FFAA00", personality: "Curious and kind " })).toMatchObject({ eyeColor: "#ffaa00", personality: "Curious and kind " });
   expect(parseCompanion({ eyeColor: "url(secret)", personality: 42 })).toMatchObject({ eyeColor: "#a5f3fc", personality: "" });
   expect(parseCompanion({ personality: "a".repeat(1500) }).personality).toHaveLength(1000);
+});
+
+describe("robot pieces", () => {
+  it("defaults to a glossy, smooth robot with round eyes and nothing worn", () => {
+    const p = parseCompanion({});
+    expect([p.eyes, p.mouth, p.trim, p.material, p.style, p.hat, p.faceWear, p.neck]).toEqual(["round", "smile", "auto", "glossy", "smooth", "none", "none", "none"]);
+  });
+  it("carries an older single accessory and expression into the new slots", () => {
+    expect(parseCompanion({ accessory: "headphones", face: "bright" })).toMatchObject({ hat: "headphones", eyes: "happy" });
+    expect(parseCompanion({ accessory: "glasses" })).toMatchObject({ faceWear: "glasses", hat: "none" });
+    expect(parseCompanion({ accessory: "scarf" }).neck).toBe("scarf");
+  });
+  it("keeps valid picks and rejects junk", () => {
+    expect(parseCompanion({ hat: "crown", faceWear: "shades", neck: "bowtie", trim: "#FF00AA", style: "pixel", material: "metal" }))
+      .toMatchObject({ hat: "crown", faceWear: "shades", neck: "bowtie", trim: "#ff00aa", style: "pixel", material: "metal" });
+    expect(parseCompanion({ hat: "sombrero", trim: "red", material: "wood" })).toMatchObject({ hat: "none", trim: "auto", material: "glossy" });
+  });
 });

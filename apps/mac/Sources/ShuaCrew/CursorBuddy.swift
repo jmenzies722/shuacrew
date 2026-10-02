@@ -3,16 +3,18 @@ import QuartzCore
 import ScreenCaptureKit
 import ShuaCrewCore
 
-/// Spark beside your pointer, always there and never in the way: a small lit orb that trails yours, shows what Spark
+/// Spark beside your pointer, always there and never in the way: a small lit arrow that trails yours, shows what Spark
 /// is doing and flies to whatever Spark points at — drawing it — then comes back.
 ///
 /// Built for fluidity: a few tiny layers in a transparent, click-through panel, moved in step with the display's own
 /// refresh (120 Hz on ProMotion) by a frame-rate-independent spring. The old follow mode moved the whole Spark window
 /// (a web view) on a 60 Hz timer, which the window server can't keep smooth.
 ///
-/// Design: a lit sphere in your accent (gradient, specular highlight, dark rim so it reads on white pages) that
-/// breathes when idle. Listening, a halo that moves with your voice; thinking, a light sweeping round it; speaking,
-/// it pulses with Spark's voice. In flight it leaves a soft tail and settles with a little bounce; while it points,
+/// Design: a rounded triangle (Clicky's shape, made premium) filled with ShuaCrew's gradient — your finish's two ends,
+/// or the accent running into its pink blend like the logo — under a glass sheen, with a bevel edge (white inside,
+/// dark outside, so it reads on white and black) and a soft glow in its colours. It points at your pointer while it
+/// follows you and along its path while it flies or draws. It stays small when idle. Listening becomes a waveform; thinking has a light sweeping round it; speaking,
+/// a steady ring and a gentle voice pulse. In flight it leaves a soft tail and settles without bouncing; while it points,
 /// a bubble beside it reveals the words as they're spoken.
 @MainActor
 final class CursorBuddy: NSObject {
@@ -20,11 +22,17 @@ final class CursorBuddy: NSObject {
 
     private var panel: NSPanel?
     private let body = CALayer(), pulse = CALayer(), orb = CALayer()
-    private let glow = CAGradientLayer(), sphere = CAGradientLayer(), rim = CAShapeLayer(), spec = CAShapeLayer()
+    private let glow = CAGradientLayer(), sphere = CAGradientLayer(), rim = CAShapeLayer(), spec = CAShapeLayer(), dart = CAShapeLayer()
+    /// The glass sheen over the top half of the triangle (its own mask: a layer can mask only one other).
+    private let sheen = CAGradientLayer(), sheenMask = CAShapeLayer()
+    /// Which way the arrow points (radians, 0 = right, AppKit's y up). It starts up-left, at your pointer.
+    private var heading: CGFloat = 3 * .pi / 4
     private let listenHalo = CAShapeLayer(), sweep = CAGradientLayer(), sweepMask = CAShapeLayer()
     private let trail = CAShapeLayer()
     /// While you talk, the orb becomes a waveform: bars that move with your voice.
     private let wave = CALayer(), bars = (0..<5).map { _ in CALayer() }
+    private var reducedMotion = false
+    private var presenceScale: CGFloat = 0.78
     private var link: CADisplayLink?
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
@@ -46,6 +54,8 @@ final class CursorBuddy: NSObject {
     private let picks = CAShapeLayer(), picksHalo = CAShapeLayer()
     private(set) var state: State = .idle
     var color: NSColor = NSColor(calibratedRed: 0.56, green: 0.28, blue: 1, alpha: 1) { didSet { restyle() } }
+    /// The cursor's fill, tail to tip (the page sends it with the state); nil: drawn from `color`.
+    var gradient: (NSColor, NSColor)? { didSet { restyle() } }
     var active: Bool { panel != nil }
     /// Its window, so Spark's own screenshots leave it out.
     var windowNumber: Int? { panel?.windowNumber }
@@ -59,9 +69,11 @@ final class CursorBuddy: NSObject {
         let root = NSView(frame: CGRect(origin: .zero, size: screen.frame.size))
         root.wantsLayer = true
         p.contentView = root
+        reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         build(in: root.layer!)
+        updateMotion()
         p.orderFrontRegardless()
-        panel = p; placed = false
+        panel = p; placed = false; lastTick = 0
         // Driven by the display itself: every frame it shows, never a timer drifting against it.
         let l = root.displayLink(target: self, selector: #selector(tick(_:)))
         l.add(to: .main, forMode: .common)
@@ -77,19 +89,16 @@ final class CursorBuddy: NSObject {
         guard new != state else { return }
         state = new
         sweep.removeAnimation(forKey: "spin")
-        CATransaction.begin(); CATransaction.setAnimationDuration(0.3)
+        CATransaction.begin(); CATransaction.setAnimationDuration(reducedMotion ? 0 : 0.18)
         sweep.opacity = new == .thinking ? 1 : 0
+        listenHalo.opacity = new == .speaking ? 0.75 : 0
         // Listening: the orb melts into the waveform (and back when you stop).
         let listening = new == .listening
         wave.opacity = listening ? 1 : 0; pulse.opacity = listening ? 0 : 1
         wave.setAffineTransform(listening ? .identity : CGAffineTransform(scaleX: 0.4, y: 0.4))
         pulse.setAffineTransform(listening ? CGAffineTransform(scaleX: 0.4, y: 0.4) : .identity)
-        if new == .thinking { // a light sweeping round the orb: working on it
-            let spin = CABasicAnimation(keyPath: "transform.rotation.z"); spin.fromValue = 0; spin.toValue = -2 * Double.pi
-            spin.duration = 1.1; spin.repeatCount = .infinity
-            sweep.add(spin, forKey: "spin")
-        }
         CATransaction.commit()
+        updateMotion()
         if new == .idle || new == .thinking { levelTarget = 0 }
     }
 
@@ -184,8 +193,10 @@ final class CursorBuddy: NSObject {
         CATransaction.commit()
         if bubble.opacity < 1 {
             bubble.opacity = 1
-            let pop = CASpringAnimation(keyPath: "transform.scale"); pop.fromValue = 0.7; pop.toValue = 1; pop.damping = 13; pop.duration = pop.settlingDuration
-            bubble.add(pop, forKey: "pop")
+            if !reducedMotion {
+                let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 0; fade.toValue = 1; fade.duration = 0.16
+                bubble.add(fade, forKey: "appear")
+            }
         }
     }
     private func attributed(shown: Int) -> NSAttributedString {
@@ -197,19 +208,20 @@ final class CursorBuddy: NSObject {
     }
     /// Words at speaking pace (~3.6 a second), the first one at once.
     private func revealBubble(now: CFTimeInterval) {
-        let n = min(bubbleWords.count, 1 + Int((now - bubbleAt) / 0.28))
+        let n = reducedMotion ? bubbleWords.count : min(bubbleWords.count, 1 + Int((now - bubbleAt) / 0.28))
         guard n != bubbleShown else { return }
         bubbleShown = n; bubbleText.string = attributed(shown: n)
     }
     private func placeBubble(in panel: NSPanel) {
-        let w = bubble.bounds.width, h = bubble.bounds.height, W = panel.frame.width, H = panel.frame.height
-        var x = position.x + 22 + w / 2, y = position.y + 22 + h / 2, left = false, below = false // up and to the right of the orb
-        if x + w / 2 > W - 8 { x = position.x - 22 - w / 2; left = true }
-        if y + h / 2 > H - 8 { y = position.y - 22 - h / 2; below = true }
-        bubble.position = CGPoint(x: x, y: y)
-        // A small tail on the corner facing the orb.
-        // Base on the bubble's edge near the orb's corner, tip leaning out toward the orb.
-        let tx: CGFloat = left ? w - 18 : 18, ty: CGFloat = below ? h - 1 : 1, dir: CGFloat = below ? 1 : -1, dx: CGFloat = left ? 1 : -1
+        let visible = (panel.screen?.visibleFrame ?? panel.frame).offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY)
+        let frame = CursorMotion.captionFrame(near: position, size: bubble.bounds.size, visible: visible)
+        bubble.position = CGPoint(x: frame.midX, y: frame.midY)
+        bubble.bounds.size = frame.size
+        bubbleText.frame.size = CGSize(width: max(0, frame.width - 24), height: max(0, frame.height - 16))
+        let below = frame.midY < position.y
+        let tx = min(frame.width - 18, max(18, position.x - frame.minX))
+        let ty: CGFloat = below ? frame.height - 1 : 1, dir: CGFloat = below ? 1 : -1
+        let dx: CGFloat = frame.midX < position.x ? 1 : -1
         let tail = CGMutablePath()
         // Open path: filled like the bubble, outlined only on its two outer sides (like the bubble's own edge).
         tail.move(to: CGPoint(x: tx - 8, y: ty)); tail.addLine(to: CGPoint(x: tx + 11 * dx, y: ty + 11 * dir)); tail.addLine(to: CGPoint(x: tx + 8, y: ty))
@@ -217,7 +229,7 @@ final class CursorBuddy: NSObject {
     }
     private func hideBubble() {
         guard bubble.opacity > 0 else { return }
-        CATransaction.begin(); CATransaction.setAnimationDuration(0.25); bubble.opacity = 0; CATransaction.commit()
+        CATransaction.begin(); CATransaction.setAnimationDuration(reducedMotion ? 0 : 0.18); bubble.opacity = 0; CATransaction.commit()
     }
 
     /// Spark is about to point somewhere: the buddy launches from where it is (the flying arrow takes over from here)
@@ -253,6 +265,8 @@ final class CursorBuddy: NSObject {
         let now = link.timestamp, dt = lastTick == 0 ? 1.0 / 120 : min(0.05, now - lastTick)
         lastTick = now
         let cursor = NSEvent.mouseLocation
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if reducedMotion != reduce { reducedMotion = reduce; updateMotion() }
         if inking, !injected, inked.last.map({ hypot($0.x - cursor.x, $0.y - cursor.y) >= 2 }) ?? true {
             inked.append(cursor)
             if inked.count > 2400 { inked.removeFirst(inked.count - 2400) } // a long monologue: the last ~20 s is plenty
@@ -267,31 +281,30 @@ final class CursorBuddy: NSObject {
         levelNow += (levelTarget - levelNow) * (1 - exp(-dt / 0.07))
         CATransaction.begin(); CATransaction.setDisableActions(true)
         let lv = CGFloat(levelNow)
-        if state == .listening { layoutWave(heights: CursorMotion.waveBars(level: levelNow, t: now)) }
-        else { let s = state == .speaking ? 1 + 0.35 * lv : 1; pulse.setAffineTransform(CGAffineTransform(scaleX: s, y: s)) }
+        if state == .listening { layoutWave(heights: CursorMotion.waveBars(level: levelNow, t: reducedMotion ? 0 : now)) }
+        else { let s = state == .speaking && !reducedMotion ? 1 + 0.16 * lv : 1; pulse.setAffineTransform(CGAffineTransform(scaleX: s, y: s)) }
         if bubble.opacity > 0 { revealBubble(now: now) }
         CATransaction.commit()
 
         if let t = tour {
-            let g = t.plan.at(now - t.start)
-            position = CGPoint(x: g.point.x - panel.frame.minX, y: g.point.y - panel.frame.minY)
+            let g = t.plan.at(reducedMotion ? t.plan.duration : now - t.start)
+            let next = CGPoint(x: g.point.x - panel.frame.minX, y: g.point.y - panel.frame.minY)
+            // Point along the path while it flies or draws; once it stops, keep pointing at the mark.
+            if hypot(next.x - position.x, next.y - position.y) > 0.5 { aim(atan2(next.y - position.y, next.x - position.x), dt: dt) }
+            position = next
             // A soft tail while it flies (the last ~0.16 s of its path); gone when it slows down.
             wake.append((position, now)); wake.removeAll { now - $0.1 > 0.16 }
             let path = CGMutablePath()
-            if let first = wake.first, hypot(position.x - first.0.x, position.y - first.0.y) > 12 {
+            if !reducedMotion, let first = wake.first, hypot(position.x - first.0.x, position.y - first.0.y) > 12 {
                 path.move(to: first.0); for (p, _) in wake.dropFirst() { path.addLine(to: p) }
             }
             CATransaction.begin(); CATransaction.setDisableActions(true)
             trail.path = path
-            body.position = position; body.setAffineTransform(CGAffineTransform(scaleX: g.scale, y: g.scale))
+            body.position = position; body.setAffineTransform(CGAffineTransform(scaleX: reducedMotion ? 1 : 1 + (g.scale - 1) * 0.3, y: reducedMotion ? 1 : 1 + (g.scale - 1) * 0.3))
             if bubble.opacity > 0 { placeBubble(in: panel) }
             CATransaction.commit()
             if g.done {
-                if tourDone == 0 { // landed: a little settle
-                    tourDone = now
-                    let settle = CASpringAnimation(keyPath: "transform.scale"); settle.fromValue = 1.3; settle.toValue = 1; settle.damping = 9; settle.duration = settle.settlingDuration
-                    orb.add(settle, forKey: "settle")
-                }
+                if tourDone == 0 { tourDone = now }
                 // Home when you move away, when Spark has finished talking about it, or after a while regardless.
                 let movedAway = hypot(cursor.x - t.mouse.x, cursor.y - t.mouse.y) > 100
                 if movedAway || (state != .speaking && now - tourDone > 1.2) || now - tourDone > 12 {
@@ -307,18 +320,44 @@ final class CursorBuddy: NSObject {
         }
         let screen = panel.screen ?? NSScreen.main
         let visible = (screen?.visibleFrame ?? panel.frame).offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY)
-        let target = CursorMotion.anchor(cursor: CGPoint(x: cursor.x - panel.frame.minX, y: cursor.y - panel.frame.minY), visible: visible)
-        position = placed ? CursorMotion.follow(current: position, target: target, dt: dt) : target
+        let target = CursorMotion.anchor(cursor: CGPoint(x: cursor.x - panel.frame.minX, y: cursor.y - panel.frame.minY), visible: visible, size: CGSize(width: 44, height: 44))
+        position = placed && !reducedMotion ? CursorMotion.follow(current: position, target: target, dt: dt, response: 0.055) : target
+        // Beside you, it points at your pointer.
+        let mine = CGPoint(x: cursor.x - panel.frame.minX, y: cursor.y - panel.frame.minY)
+        if hypot(mine.x - position.x, mine.y - position.y) > 4 { aim(atan2(mine.y - position.y, mine.x - position.x), dt: dt) }
+        let desiredScale: CGFloat = state == .idle ? 0.78 : 1
+        presenceScale += (desiredScale - presenceScale) * (reducedMotion ? 1 : CGFloat(1 - exp(-dt / 0.12)))
         placed = true
         let back = awayUntil > 0 && now >= awayUntil
         CATransaction.begin(); CATransaction.setDisableActions(true)
         body.position = position
+        body.setAffineTransform(CGAffineTransform(scaleX: presenceScale, y: presenceScale))
         CATransaction.commit()
-        if back { // back beside you: pop in rather than blink
+        if back { // return with a short fade, without a scale bounce
             awayUntil = 0
-            CATransaction.begin(); CATransaction.setAnimationDuration(0.22); body.opacity = 1; CATransaction.commit()
-            let pop = CASpringAnimation(keyPath: "transform.scale"); pop.fromValue = 0.4; pop.toValue = 1; pop.damping = 11; pop.duration = pop.settlingDuration
-            orb.add(pop, forKey: "pop")
+            CATransaction.begin(); CATransaction.setAnimationDuration(reducedMotion ? 0 : 0.18); body.opacity = 1; CATransaction.commit()
+        }
+    }
+
+    /// Turn the arrow toward `angle`: smoothly, the short way round (at once with Reduce Motion).
+    private func aim(_ angle: CGFloat, dt: Double) {
+        heading = reducedMotion ? angle : CursorMotion.turn(current: heading, target: angle, dt: dt)
+        CATransaction.begin(); CATransaction.setDisableActions(true); orb.setAffineTransform(CGAffineTransform(rotationAngle: heading)); CATransaction.commit()
+    }
+
+    /// State is readable without decorative motion; changing the macOS preference takes effect immediately.
+    private func updateMotion() {
+        orb.removeAllAnimations(); sweep.removeAllAnimations(); bubble.removeAllAnimations()
+        guard !reducedMotion else { return }
+        if state == .idle {
+            let breathe = CABasicAnimation(keyPath: "opacity"); breathe.fromValue = 0.78; breathe.toValue = 1
+            breathe.duration = 2.4; breathe.autoreverses = true; breathe.repeatCount = .infinity
+            breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            orb.add(breathe, forKey: "breathe")
+        } else if state == .thinking {
+            let spin = CABasicAnimation(keyPath: "transform.rotation.z"); spin.fromValue = 0; spin.toValue = -2 * Double.pi
+            spin.duration = 1.6; spin.repeatCount = .infinity
+            sweep.add(spin, forKey: "spin")
         }
     }
 
@@ -326,23 +365,26 @@ final class CursorBuddy: NSObject {
         let box = CGRect(x: 0, y: 0, width: 44, height: 44), c = CGPoint(x: 22, y: 22)
         body.bounds = box
         for l in [pulse, orb] { l.bounds = box; l.position = c }
-        // The lit sphere: soft light behind it, a radial gradient body lit from the upper left, a dark rim so it reads
-        // on white, and a small specular highlight.
+        // The triangle, pointing right (the orb layer turns it), corners rounded: the gradient fill, a glass sheen on
+        // its upper half, then the bevel — a dark outer hairline under a white inner one. It fits inside the thinking ring.
+        let arrow = CGMutablePath(), corners = [CGPoint(x: 34, y: 22), CGPoint(x: 15, y: 29.8), CGPoint(x: 15, y: 14.2)]
+        arrow.move(to: CGPoint(x: (corners[2].x + corners[0].x) / 2, y: (corners[2].y + corners[0].y) / 2))
+        for i in 0..<3 { arrow.addArc(tangent1End: corners[i], tangent2End: corners[(i + 1) % 3], radius: i == 0 ? 2.2 : 3.2) }
+        arrow.closeSubpath()
         glow.type = .radial; glow.frame = box; glow.startPoint = CGPoint(x: 0.5, y: 0.5); glow.endPoint = CGPoint(x: 1, y: 1)
-        sphere.type = .radial; sphere.frame = CGRect(x: 15, y: 15, width: 14, height: 14); sphere.cornerRadius = 7; sphere.masksToBounds = true
-        sphere.startPoint = CGPoint(x: 0.35, y: 0.68); sphere.endPoint = CGPoint(x: 1.05, y: -0.05)
-        rim.path = CGPath(ellipseIn: CGRect(x: 15, y: 15, width: 14, height: 14), transform: nil)
-        rim.fillColor = NSColor.clear.cgColor; rim.lineWidth = 1.1; rim.strokeColor = NSColor.black.withAlphaComponent(0.5).cgColor
-        spec.path = CGPath(ellipseIn: CGRect(x: 18.2, y: 23.4, width: 3.6, height: 2.4), transform: nil)
-        spec.fillColor = NSColor.white.withAlphaComponent(0.9).cgColor
-        orb.addSublayer(glow); orb.addSublayer(sphere); orb.addSublayer(rim); orb.addSublayer(spec)
+        dart.path = arrow; dart.fillColor = NSColor.black.cgColor
+        sphere.type = .axial; sphere.frame = box; sphere.mask = dart
+        sphere.startPoint = CGPoint(x: 0.3, y: 0.75); sphere.endPoint = CGPoint(x: 0.75, y: 0.4)
+        sheenMask.path = arrow; sheenMask.fillColor = NSColor.black.cgColor
+        sheen.frame = box; sheen.mask = sheenMask; sheen.startPoint = CGPoint(x: 0.5, y: 0.72); sheen.endPoint = CGPoint(x: 0.5, y: 0.47)
+        sheen.colors = [NSColor.white.withAlphaComponent(0.42).cgColor, NSColor.white.withAlphaComponent(0).cgColor]
+        rim.path = arrow; rim.lineJoin = .round; rim.fillColor = NSColor.clear.cgColor; rim.lineWidth = 1.8
+        rim.strokeColor = NSColor.black.withAlphaComponent(0.42).cgColor
+        rim.shadowColor = NSColor.black.cgColor; rim.shadowOpacity = 0.3; rim.shadowRadius = 2.5; rim.shadowOffset = .zero
+        spec.path = arrow; spec.lineJoin = .round; spec.fillColor = NSColor.clear.cgColor; spec.lineWidth = 0.7
+        spec.strokeColor = NSColor.white.withAlphaComponent(0.55).cgColor
+        orb.addSublayer(glow); orb.addSublayer(rim); orb.addSublayer(sphere); orb.addSublayer(sheen); orb.addSublayer(spec)
         pulse.addSublayer(orb)
-        // Idle: it breathes and floats, gently — alive, never busy.
-        let breathe = CABasicAnimation(keyPath: "transform.scale"); breathe.fromValue = 1; breathe.toValue = 1.05
-        breathe.duration = 1.6; breathe.autoreverses = true; breathe.repeatCount = .infinity; breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        let float = CABasicAnimation(keyPath: "transform.translation.y"); float.fromValue = -1.2; float.toValue = 1.2
-        float.duration = 2.3; float.autoreverses = true; float.repeatCount = .infinity; float.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        orb.add(breathe, forKey: "breathe"); orb.add(float, forKey: "float")
         // Listening halo (scaled by your voice) and the thinking sweep (a conic light masked to a ring).
         listenHalo.path = CGPath(ellipseIn: CGRect(x: 10, y: 10, width: 24, height: 24), transform: nil)
         listenHalo.bounds = box; listenHalo.position = c; listenHalo.fillColor = NSColor.clear.cgColor; listenHalo.lineWidth = 2; listenHalo.opacity = 0
@@ -357,7 +399,7 @@ final class CursorBuddy: NSObject {
         layoutWave(heights: CursorMotion.waveBars(level: 0, t: 0))
         body.addSublayer(wave)
         // The flight tail, the ink you draw, and the bubble.
-        trail.fillColor = NSColor.clear.cgColor; trail.lineWidth = 5; trail.lineCap = .round; trail.lineJoin = .round
+        trail.fillColor = NSColor.clear.cgColor; trail.lineWidth = 3; trail.lineCap = .round; trail.lineJoin = .round
         ink.fillColor = NSColor.clear.cgColor; ink.lineWidth = 4; ink.lineCap = .round; ink.lineJoin = .round
         ink.shadowRadius = 6; ink.shadowOpacity = 0.9; ink.shadowOffset = .zero
         halo.fillColor = NSColor.clear.cgColor; halo.lineWidth = 7; halo.lineCap = .round; halo.lineJoin = .round
@@ -367,8 +409,8 @@ final class CursorBuddy: NSObject {
         picks.shadowRadius = 5; picks.shadowOpacity = 0.8; picks.shadowOffset = .zero
         root.addSublayer(halo); root.addSublayer(ink); root.addSublayer(picksHalo); root.addSublayer(picks); root.addSublayer(trail)
         bubble.backgroundColor = NSColor(calibratedRed: 0.07, green: 0.065, blue: 0.09, alpha: 0.95).cgColor
-        bubble.cornerRadius = 12; bubble.borderWidth = 1; bubble.opacity = 0
-        bubble.shadowColor = NSColor.black.cgColor; bubble.shadowOpacity = 0.35; bubble.shadowRadius = 12; bubble.shadowOffset = CGSize(width: 0, height: -4)
+        bubble.cornerRadius = 10; bubble.borderWidth = 1; bubble.opacity = 0
+        bubble.shadowColor = NSColor.black.cgColor; bubble.shadowOpacity = 0.22; bubble.shadowRadius = 12; bubble.shadowOffset = CGSize(width: 0, height: -4)
         bubbleText.isWrapped = true; bubbleText.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
         bubbleTail.fillColor = bubble.backgroundColor; bubbleTail.lineWidth = 1; bubbleTail.lineJoin = .round
         bubble.addSublayer(bubbleTail); bubble.addSublayer(bubbleText)
@@ -391,16 +433,18 @@ final class CursorBuddy: NSObject {
         let light = c.brightnessComponent > 0.85 && c.saturationComponent < 0.2
         // A white ("mono") accent becomes a pearl: white to cool grey, with a cool glow so it still reads on white.
         let hi = light ? NSColor.white : c.blended(withFraction: 0.55, of: .white) ?? c
-        let mid = light ? NSColor(calibratedWhite: 0.9, alpha: 1) : c
         let lo = light ? NSColor(calibratedRed: 0.62, green: 0.66, blue: 0.76, alpha: 1) : c.blended(withFraction: 0.45, of: .black) ?? c
-        sphere.colors = [hi.cgColor, mid.cgColor, lo.cgColor]; sphere.locations = [0, 0.45, 1]
-        let aura = light ? NSColor(calibratedRed: 0.6, green: 0.68, blue: 0.9, alpha: 1) : c
-        glow.colors = [aura.withAlphaComponent(0.5).cgColor, aura.withAlphaComponent(0).cgColor]
+        let ends = gradient.map { ($0.0.usingColorSpace(.sRGB) ?? $0.0, $0.1.usingColorSpace(.sRGB) ?? $0.1) } ?? (hi, lo)
+        sphere.colors = [ends.0.cgColor, ends.1.cgColor]; sphere.locations = [0, 1]
+        let aura = light ? NSColor(calibratedRed: 0.6, green: 0.68, blue: 0.9, alpha: 1) : ends.1.blended(withFraction: 0.5, of: ends.0) ?? c
+        glow.colors = [aura.withAlphaComponent(0.32).cgColor, aura.withAlphaComponent(0).cgColor]
         let ringColor = light ? NSColor(calibratedWhite: 0.55, alpha: 1) : c.withAlphaComponent(0.95) // a white ring would vanish on white
         listenHalo.strokeColor = ringColor.cgColor
         // Waveform bars: the accent (pearl for mono) with a thin dark edge and glow, so they read on white and on black.
         for b in bars { b.backgroundColor = (light ? NSColor.white : hi).cgColor; b.borderColor = NSColor.black.withAlphaComponent(0.45).cgColor; b.shadowColor = aura.cgColor }
-        sweep.colors = [ringColor.withAlphaComponent(0).cgColor, ringColor.withAlphaComponent(0.2).cgColor, ringColor.cgColor]
+        // The thinking sweep runs through the same gradient as the cursor (pearl and silver keep the grey ring).
+        let sweepEnds = gradient == nil || light ? (ringColor, ringColor) : (ends.1, ends.0)
+        sweep.colors = [sweepEnds.0.withAlphaComponent(0).cgColor, sweepEnds.0.withAlphaComponent(0.35).cgColor, sweepEnds.1.cgColor]
         trail.strokeColor = aura.withAlphaComponent(0.35).cgColor
         ink.strokeColor = color.withAlphaComponent(0.9).cgColor; ink.shadowColor = (light ? aura : color).cgColor
         picks.strokeColor = (light ? NSColor.white : color).cgColor; picks.shadowColor = (light ? aura : color).cgColor
@@ -415,8 +459,10 @@ final class CursorBuddy: NSObject {
         ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 1).cgColor); ctx.fill(CGRect(x: w / 2, y: 0, width: w / 2, height: h))
         for x in [w / 4, 3 * w / 4] {
             ctx.saveGState(); ctx.translateBy(x: x - 22 * scale, y: h / 2 - 22 * scale); ctx.scaleBy(x: scale, y: scale)
+            if state == .idle { ctx.translateBy(x: 22, y: 22); ctx.scaleBy(x: 0.78, y: 0.78); ctx.translateBy(x: -22, y: -22) }
             if state == .listening { wave.render(in: ctx) }
             if state == .thinking { sweep.render(in: ctx) }
+            if state == .speaking { listenHalo.render(in: ctx) }
             if state != .listening { orb.render(in: ctx) }
             ctx.restoreGState()
         }
