@@ -32,7 +32,9 @@ final class CursorBuddy: NSObject {
     /// While you talk, the orb becomes a waveform: bars that move with your voice.
     private let wave = CALayer(), bars = (0..<5).map { _ in CALayer() }
     private var reducedMotion = false
-    private var presenceScale: CGFloat = 0.78
+    /// A little bigger than it was (0.78 idle, 1 active): easier to follow, still smaller than a hand.
+    static let idleScale: CGFloat = 0.9, activeScale: CGFloat = 1.12
+    private var presenceScale: CGFloat = CursorBuddy.idleScale
     private var link: CADisplayLink?
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
@@ -300,7 +302,8 @@ final class CursorBuddy: NSObject {
             }
             CATransaction.begin(); CATransaction.setDisableActions(true)
             trail.path = path
-            body.position = position; body.setAffineTransform(CGAffineTransform(scaleX: reducedMotion ? 1 : 1 + (g.scale - 1) * 0.3, y: reducedMotion ? 1 : 1 + (g.scale - 1) * 0.3))
+            let landing = (reducedMotion ? 1 : 1 + (g.scale - 1) * 0.3) * Self.activeScale
+            body.position = position; body.setAffineTransform(CGAffineTransform(scaleX: landing, y: landing))
             if bubble.opacity > 0 { placeBubble(in: panel) }
             CATransaction.commit()
             if g.done {
@@ -325,7 +328,7 @@ final class CursorBuddy: NSObject {
         // Beside you, it points at your pointer.
         let mine = CGPoint(x: cursor.x - panel.frame.minX, y: cursor.y - panel.frame.minY)
         if hypot(mine.x - position.x, mine.y - position.y) > 4 { aim(atan2(mine.y - position.y, mine.x - position.x), dt: dt) }
-        let desiredScale: CGFloat = state == .idle ? 0.78 : 1
+        let desiredScale: CGFloat = state == .idle ? Self.idleScale : Self.activeScale
         presenceScale += (desiredScale - presenceScale) * (reducedMotion ? 1 : CGFloat(1 - exp(-dt / 0.12)))
         placed = true
         let back = awayUntil > 0 && now >= awayUntil
@@ -459,7 +462,7 @@ final class CursorBuddy: NSObject {
         ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 1).cgColor); ctx.fill(CGRect(x: w / 2, y: 0, width: w / 2, height: h))
         for x in [w / 4, 3 * w / 4] {
             ctx.saveGState(); ctx.translateBy(x: x - 22 * scale, y: h / 2 - 22 * scale); ctx.scaleBy(x: scale, y: scale)
-            if state == .idle { ctx.translateBy(x: 22, y: 22); ctx.scaleBy(x: 0.78, y: 0.78); ctx.translateBy(x: -22, y: -22) }
+            if state == .idle { ctx.translateBy(x: 22, y: 22); ctx.scaleBy(x: Self.idleScale, y: Self.idleScale); ctx.translateBy(x: -22, y: -22) }
             if state == .listening { wave.render(in: ctx) }
             if state == .thinking { sweep.render(in: ctx) }
             if state == .speaking { listenHalo.render(in: ctx) }

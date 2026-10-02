@@ -1553,6 +1553,7 @@ final class PointerOverlay {
         cursor.lineJoin = .round
         cursor.shadowColor = NSColor.black.cgColor; cursor.shadowOpacity = 0.45; cursor.shadowRadius = 6; cursor.shadowOffset = CGSize(width: 0, height: -3)
         cursor.position = to
+        cursor.setAffineTransform(CGAffineTransform(scaleX: 1.15, y: 1.15)) // a touch bigger than the system arrow, so it reads as Spark's
         root.layer?.addSublayer(cursor)
 
         // A gentle arc, bowing up-and-over like a hand moving a mouse.
@@ -1574,23 +1575,23 @@ final class PointerOverlay {
 
         // The press: a small squash as it lands, then a ripple where it clicked.
         let press = CAKeyframeAnimation(keyPath: "transform.scale")
-        press.values = [1, 0.82, 1]; press.keyTimes = [0, 0.4, 1]; press.duration = 0.22
+        press.values = [1.15, 0.98, 1.15]; press.keyTimes = [0, 0.4, 1]; press.duration = 0.26
+        press.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(controlPoints: 0.2, 1.4, 0.4, 1)]
         press.beginTime = CACurrentMediaTime() + flight
         cursor.add(press, forKey: "press")
-        let ripple = CAShapeLayer()
-        ripple.path = CGPath(ellipseIn: CGRect(x: -14, y: -14, width: 28, height: 28), transform: nil)
-        ripple.position = to
-        ripple.fillColor = color.withAlphaComponent(0.18).cgColor
-        ripple.strokeColor = color.cgColor
-        ripple.lineWidth = 2
-        ripple.opacity = 0
-        root.layer?.insertSublayer(ripple, below: cursor)
-        let grow = CABasicAnimation(keyPath: "transform.scale"); grow.fromValue = 0.3; grow.toValue = 1.9
-        let fade = CAKeyframeAnimation(keyPath: "opacity"); fade.values = [0, 0.9, 0]; fade.keyTimes = [0, 0.15, 1]
-        let ring = CAAnimationGroup(); ring.animations = [grow, fade]; ring.duration = 0.6
-        ring.beginTime = CACurrentMediaTime() + flight + 0.05
-        ring.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        ripple.add(ring, forKey: "ripple")
+        // The click: light spreading from the tip like a drop on water, no hard edge, gone in half a second.
+        let bloom = CAGradientLayer()
+        bloom.type = .radial; bloom.startPoint = CGPoint(x: 0.5, y: 0.5); bloom.endPoint = CGPoint(x: 1, y: 1)
+        bloom.colors = [color.withAlphaComponent(0.55).cgColor, color.withAlphaComponent(0.16).cgColor, color.withAlphaComponent(0).cgColor]
+        bloom.locations = [0, 0.5, 1]
+        bloom.bounds = CGRect(x: 0, y: 0, width: 64, height: 64); bloom.position = to; bloom.opacity = 0
+        root.layer?.insertSublayer(bloom, below: cursor)
+        let spread = CABasicAnimation(keyPath: "transform.scale"); spread.fromValue = 0.25; spread.toValue = 1.5
+        let fadeOut = CAKeyframeAnimation(keyPath: "opacity"); fadeOut.values = [0, 1, 0]; fadeOut.keyTimes = [0, 0.18, 1]
+        let drop = CAAnimationGroup(); drop.animations = [spread, fadeOut]; drop.duration = 0.55
+        drop.beginTime = CACurrentMediaTime() + flight + 0.04
+        drop.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+        bloom.add(drop, forKey: "bloom")
 
         // The cursor rests a beat on the spot, then steps aside for what it's showing you.
         let leave = CABasicAnimation(keyPath: "opacity")
@@ -1599,6 +1600,49 @@ final class PointerOverlay {
         leave.fillMode = .forwards; leave.isRemovedOnCompletion = false
         cursor.add(leave, forKey: "leave")
         return flight
+    }
+
+    /// Where Spark means: a soft light that blooms in on a spring, ringed by a thin gradient arc that draws itself and
+    /// slowly turns. Replaces two hard rings and a dot (too busy, and the forever-pulsing ring read as an alarm).
+    static func focusMarks(at point: CGPoint, color: NSColor, after delay: CFTimeInterval) -> [CALayer] {
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, start = CACurrentMediaTime() + delay
+        let light = CAGradientLayer()
+        light.type = .radial; light.startPoint = CGPoint(x: 0.5, y: 0.5); light.endPoint = CGPoint(x: 1, y: 1)
+        light.colors = [color.withAlphaComponent(0.38).cgColor, color.withAlphaComponent(0.1).cgColor, color.withAlphaComponent(0).cgColor]
+        light.locations = [0, 0.5, 1]
+        light.bounds = CGRect(x: 0, y: 0, width: 84, height: 84); light.position = point
+        let arc = CAGradientLayer()
+        arc.type = .conic; arc.startPoint = CGPoint(x: 0.5, y: 0.5); arc.endPoint = CGPoint(x: 0.5, y: 0)
+        let tint = color.blended(withFraction: 0.22, of: .white) ?? color // stays saturated enough to read on white pages
+        arc.colors = [color.cgColor, tint.cgColor, color.withAlphaComponent(0.25).cgColor]
+        arc.bounds = CGRect(x: 0, y: 0, width: 58, height: 58); arc.position = point
+        arc.shadowColor = color.cgColor; arc.shadowRadius = 6; arc.shadowOpacity = 0.7; arc.shadowOffset = .zero
+        let track = CAShapeLayer()
+        track.path = CGPath(ellipseIn: CGRect(x: 4, y: 4, width: 50, height: 50), transform: nil)
+        track.fillColor = NSColor.clear.cgColor; track.strokeColor = NSColor.black.cgColor; track.lineWidth = 2.8; track.lineCap = .round
+        track.strokeEnd = 0.86
+        arc.mask = track
+        guard !still else { return [light, arc] }
+        let bloom = CASpringAnimation(keyPath: "transform.scale")
+        bloom.fromValue = 0.35; bloom.toValue = 1; bloom.damping = 13; bloom.stiffness = 170; bloom.mass = 1
+        bloom.duration = bloom.settlingDuration; bloom.beginTime = start; bloom.fillMode = .backwards
+        light.add(bloom, forKey: "bloom")
+        let glow = CABasicAnimation(keyPath: "opacity"); glow.fromValue = 0.7; glow.toValue = 1
+        glow.duration = 1.8; glow.autoreverses = true; glow.repeatCount = .infinity
+        glow.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut); glow.beginTime = start + 0.6
+        light.add(glow, forKey: "glow")
+        let draw = CABasicAnimation(keyPath: "strokeEnd"); draw.fromValue = 0; draw.toValue = 0.86
+        draw.duration = 0.55; draw.beginTime = start + 0.05; draw.fillMode = .backwards
+        draw.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+        track.add(draw, forKey: "draw")
+        let turn = CABasicAnimation(keyPath: "transform.rotation.z"); turn.fromValue = 0; turn.toValue = -2 * Double.pi
+        turn.duration = 7; turn.repeatCount = .infinity; turn.beginTime = start
+        arc.add(turn, forKey: "turn")
+        let settle = CASpringAnimation(keyPath: "transform.scale")
+        settle.fromValue = 1.35; settle.toValue = 1; settle.damping = 15; settle.stiffness = 210
+        settle.duration = settle.settlingDuration; settle.beginTime = start; settle.fillMode = .backwards
+        arc.add(settle, forKey: "settle")
+        return [light, arc]
     }
 
     private func pill(_ text: String, color: NSColor, badge: Int? = nil) -> NSView {
@@ -1660,31 +1704,7 @@ final class PointerOverlay {
         // Screenshot fractions are measured from the top-left; AppKit's origin is bottom-left.
         let point = CGPoint(x: x * frame.width, y: frame.height - y * frame.height)
         let delay = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: point, color: color)
-        var layers: [CALayer] = []
-        for (i, d) in [0.0, 0.6].enumerated() {
-            let ring = CAShapeLayer()
-            ring.path = CGPath(ellipseIn: CGRect(x: -22, y: -22, width: 44, height: 44), transform: nil)
-            ring.position = point
-            ring.fillColor = NSColor.clear.cgColor
-            ring.strokeColor = color.cgColor
-            ring.lineWidth = 3
-            ring.shadowColor = color.cgColor; ring.shadowRadius = 8; ring.shadowOpacity = 0.9; ring.shadowOffset = .zero
-            let grow = CABasicAnimation(keyPath: "transform.scale")
-            grow.fromValue = 2.4; grow.toValue = 1; grow.duration = 0.6
-            grow.beginTime = CACurrentMediaTime() + delay + d
-            grow.fillMode = .backwards
-            ring.add(grow, forKey: "in")
-            if i == 1 {
-                let breathe = CABasicAnimation(keyPath: "transform.scale")
-                breathe.fromValue = 1; breathe.toValue = 1.35; breathe.autoreverses = true; breathe.repeatCount = .infinity; breathe.duration = 0.8
-                breathe.beginTime = CACurrentMediaTime() + delay + 1.2
-                ring.add(breathe, forKey: "breathe")
-            }
-            layers.append(ring)
-        }
-        let dot = CALayer()
-        dot.bounds = CGRect(x: 0, y: 0, width: 10, height: 10); dot.cornerRadius = 5; dot.position = point; dot.backgroundColor = color.cgColor
-        layers.append(dot)
+        let layers = Self.focusMarks(at: point, color: color, after: delay)
         var pieces: [NSView] = []
         if !label.isEmpty {
             let p = pill(label, color: color)
