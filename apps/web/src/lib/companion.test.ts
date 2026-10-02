@@ -55,9 +55,10 @@ it("validates eye colors and bounds personality while preserving spaces during e
 });
 
 describe("robot pieces", () => {
-  it("defaults to a glossy, smooth robot with round eyes and nothing worn", () => {
+  it("defaults to a glossy, smooth Spark with its moon eyes and nothing worn; other robots start with round eyes", () => {
     const p = parseCompanion({});
-    expect([p.eyes, p.mouth, p.trim, p.material, p.style, p.hat, p.faceWear, p.neck]).toEqual(["round", "smile", "auto", "glossy", "smooth", "none", "none", "none"]);
+    expect([p.eyes, p.mouth, p.trim, p.material, p.style, p.hat, p.faceWear, p.neck]).toEqual(["moon", "smile", "auto", "glossy", "smooth", "none", "none", "none"]);
+    expect(parseCompanion({ character: "atlas" }).eyes).toBe("round");
   });
   it("carries an older single accessory and expression into the new slots", () => {
     expect(parseCompanion({ accessory: "headphones", face: "bright" })).toMatchObject({ hat: "headphones", eyes: "happy" });

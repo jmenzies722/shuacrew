@@ -111,11 +111,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
         <div className="spark-swatches">{SPARK_FINISHES.map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}
           <label className="spark-custom" title="Any colour"><input type="color" value={stops(prefs.color).from} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
       </SettingRow>
-      {prefs.character === "spark" && <>
-        <SettingRow name="Expression"><Segmented label="Expression" value={prefs.face} onChange={(face) => set({ face })} options={[["calm", "Calm"], ["curious", "Curious"], ["bright", "Bright"]]} /></SettingRow>
-        <SettingRow name="Accessory" detail="Spark is hand-drawn. Scout, Atlas and Nova take every piece below, in any colour, smooth or pixel."><select className="setting-input" value={prefs.accessory} onChange={(e) => set({ accessory: e.target.value as CompanionPreferences["accessory"] })} aria-label="Accessory">{["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"].map((a) => <option key={a} value={a}>{a[0]!.toUpperCase() + a.slice(1)}</option>)}</select></SettingRow>
-      </>}
-      {prefs.character !== "spark" && ROBOT_CHARACTERS.some(id => id === prefs.character) && <>
+      {ROBOT_CHARACTERS.some(id => id === prefs.character) && <>
         <SettingRow name="Style" detail="Smooth 3D, or the same robot as pixel art. Every piece and colour carries over."><Segmented label="Style" value={prefs.style} onChange={(style) => set({ style })} options={[["smooth", "Smooth"], ["pixel", "Pixel"]]} /></SettingRow>
         <SettingRow name="Material" detail="What the shell is made of."><Segmented label="Material" value={prefs.material} onChange={(material) => set({ material })} options={ROBOT_MATERIALS.map((m) => [m, label(m)] as [typeof m, string])} /></SettingRow>
         <SettingRow name="Trim" detail="Joints, ears and the visor frame. Auto is graphite.">

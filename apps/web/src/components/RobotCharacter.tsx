@@ -13,7 +13,9 @@ interface Frame {
   head: { x: number; y: number; w: number; h: number }; visor: { x: number; y: number; w: number; h: number; r: number };
   eyeY: number; gap: number; mouthY: number; neckY: number; badge: [number, number];
 }
-const FRAMES: Record<"scout" | "atlas" | "nova", Frame> = {
+type Kind = "spark" | "scout" | "atlas" | "nova";
+const FRAMES: Record<Kind, Frame> = {
+  spark: { head: { x: 15, y: 9, w: 70, h: 52 }, visor: { x: 22, y: 18, w: 56, h: 35, r: 16 }, eyeY: 34.5, gap: 12, mouthY: 45.5, neckY: 63, badge: [60, 77] },
   scout: { head: { x: 19, y: 14, w: 62, h: 47 }, visor: { x: 27, y: 23, w: 46, h: 30, r: 13 }, eyeY: 36, gap: 11, mouthY: 46, neckY: 63, badge: [63, 70] },
   atlas: { head: { x: 13, y: 17, w: 74, h: 45 }, visor: { x: 21, y: 25, w: 58, h: 28, r: 9 }, eyeY: 37.5, gap: 13, mouthY: 47, neckY: 65, badge: [70, 69] },
   nova: { head: { x: 16, y: 12, w: 68, h: 54 }, visor: { x: 25, y: 25, w: 50, h: 28, r: 14 }, eyeY: 38, gap: 11, mouthY: 47.5, neckY: 68, badge: [58, 72] },
@@ -27,9 +29,11 @@ function tone(hex: string, toward: number, amount: number) {
 export function RobotCharacter({ preferences: p, palette: c, crop }: {
   preferences: CompanionPreferences; palette: Palette; crop: "full" | "portrait";
 }) {
-  const kind = p.character === "atlas" ? "atlas" : p.character === "nova" ? "nova" : "scout", f = FRAMES[kind];
+  const kind: Kind = p.character === "atlas" || p.character === "nova" || p.character === "spark" ? p.character : "scout", f = FRAMES[kind];
   const id = (name: string) => `${name}-${c.id}`, url = (name: string) => `url(#${id(name)})`;
-  const trim = p.trim === "auto" ? "#2b3240" : p.trim, trimLight = tone(trim, 255, 0.28), eyes = p.eyeColor;
+  // Auto trim is graphite, or a light steel on a dark shell so the joints don't disappear into it.
+  const dark = (() => { const v = parseInt(c.base.slice(1), 16); return (0.3 * (v >> 16 & 255) + 0.59 * (v >> 8 & 255) + 0.11 * (v & 255)) < 70; })();
+  const trim = p.trim === "auto" ? (dark ? "#7b8494" : "#2b3240") : p.trim, trimLight = tone(trim, 255, 0.28), eyes = p.eyeColor;
   const m = p.material, glass = m === "glass";
   const shellStops = m === "metal" ? [[0, c.light], [0.32, c.base], [0.5, tone(c.light, 255, 0.35)], [0.68, c.base], [1, c.deep]]
     : m === "matte" ? [[0, tone(c.base, 255, 0.18)], [0.6, c.base], [1, tone(c.base, 0, 0.22)]]
@@ -40,7 +44,7 @@ export function RobotCharacter({ preferences: p, palette: c, crop }: {
   const H = f.head, hx = H.x + H.w / 2;
   const headShape = kind === "nova"
     ? <path d={`M${H.x} ${H.y + 28}Q${H.x} ${H.y} ${hx} ${H.y}Q${H.x + H.w} ${H.y} ${H.x + H.w} ${H.y + 28}Q${H.x + H.w} ${H.y + H.h - 2} ${hx} ${H.y + H.h}Q${H.x} ${H.y + H.h - 2} ${H.x} ${H.y + 28}Z`} />
-    : <rect x={H.x} y={H.y} width={H.w} height={H.h} rx={kind === "atlas" ? 13 : 21} />;
+    : <rect x={H.x} y={H.y} width={H.w} height={H.h} rx={kind === "atlas" ? 13 : kind === "spark" ? 25 : 21} />;
   const V = f.visor;
 
   return <svg className={`robot-art robot-${kind} ${pixel ? "is-pixel" : ""}`} viewBox={crop === "portrait" ? "10 0 80 80" : "0 0 100 110"} fill="none" shapeRendering={pixel ? "crispEdges" : undefined}>
@@ -64,7 +68,7 @@ export function RobotCharacter({ preferences: p, palette: c, crop }: {
       </filter>
     </defs>
     <g filter={pixel ? url("pixel") : undefined}>
-      <ellipse cx="50" cy="104" rx={kind === "nova" ? 17 : kind === "atlas" ? 27 : 22} ry="3.6" fill="#000" opacity=".28" filter={pixel ? undefined : url("soft")} />
+      <ellipse cx="50" cy="104" rx={kind === "nova" ? 17 : kind === "atlas" ? 27 : kind === "spark" ? 20 : 22} ry="3.6" fill="#000" opacity=".28" filter={pixel ? undefined : url("soft")} />
       <g className="robot-body">
         {kind === "nova" && <path className="robot-orbit" d="M16 80Q16 71 50 71Q84 71 84 80" stroke={c.light} strokeWidth="1.6" opacity=".45" />}
         <Body kind={kind} c={c} shell={shell} url={url} eyes={eyes} />
@@ -97,8 +101,29 @@ export function RobotCharacter({ preferences: p, palette: c, crop }: {
   </svg>;
 }
 
-function Body({ kind, c, shell, url, eyes }: { kind: "scout" | "atlas" | "nova"; c: Palette; shell: { fill: string; fillOpacity: number }; url: (n: string) => string; eyes: string }) {
+function Body({ kind, c, shell, url, eyes }: { kind: Kind; c: Palette; shell: { fill: string; fillOpacity: number }; url: (n: string) => string; eyes: string }) {
   const joint = url("trim"), rim = { fill: "none", stroke: url("rim"), strokeWidth: 1 };
+  if (kind === "spark") {
+    // The original: an egg of a body with a glowing button, shell-capped arms ending in little grippers, chunky boots.
+    const egg = "M35 67Q35 60 50 60Q65 60 65 67L64 79Q62 92 50 92Q38 92 36 79Z";
+    const arm = (s: 1 | -1) => <>
+      <circle cx={50 + s * 16} cy="67.5" r="4.6" fill={joint} />
+      <ellipse cx={50 + s * 21} cy="75" rx="5.2" ry="7.4" transform={`rotate(${-s * 22} ${50 + s * 21} 75)`} {...shell} />
+      <path d={`M${50 + s * 22} 81.5L${50 + s * 24} 84`} stroke={joint} strokeWidth="3.4" strokeLinecap="round" />
+      <path d={`M${50 + s * 21.5} 84.5Q${50 + s * 28.5} 85 ${50 + s * 26.5} 91.5M${50 + s * 24} 87Q${50 + s * 22} 90 ${50 + s * 23.5} 92`} stroke={joint} strokeWidth="2.6" strokeLinecap="round" fill="none" />
+    </>;
+    return <>
+      {[44.5, 55.5].map((x) => <rect key={x} x={x - 3.5} y="86" width="7" height="9" rx="3" fill={joint} />)}
+      {[43.5, 56.5].map((x) => <g key={`b${x}`}><rect x={x - 8} y="93" width="16" height="9" rx="4.5" {...shell} /><rect x={x - 8} y="100" width="16" height="3" rx="1.5" fill={joint} />
+        <path d={`M${x - 5} 94.8H${x + 3}`} stroke="#fff" strokeOpacity=".4" strokeWidth="1" strokeLinecap="round" /></g>)}
+      <g className="robot-arm-left">{arm(-1)}</g>
+      <g className="robot-arm-right">{arm(1)}</g>
+      <rect x="43.5" y="57.5" width="13" height="6" rx="3" fill={joint} />
+      <path d={egg} {...shell} /><path d={egg} fill={url("under")} /><path d={egg} {...rim} />
+      <ellipse cx="44" cy="66" rx="5" ry="2.4" fill="#fff" opacity=".35" transform="rotate(-18 44 66)" />
+      <circle cx="50" cy="70" r="4" fill={joint} /><circle className="robot-core" cx="50" cy="70" r="2.6" fill={eyes} filter={url("glow")} />
+    </>;
+  }
   if (kind === "nova") return <>
     <path className="robot-thruster" d="M44 88Q50 108 56 88Z" fill={url("jet")} />
     <path d="M33 71Q22 75 19 87Q28 83 36 79Z" {...shell} /><g className="robot-arm-right"><path d="M67 71Q78 75 81 87Q72 83 64 79Z" {...shell} /></g>
@@ -142,6 +167,8 @@ function Ears({ kind, H, url, eyes, glow }: { kind: string; H: Frame["head"]; ur
   const y = H.y + H.h * 0.52;
   if (kind === "atlas") return <>{[H.x - 5, H.x + H.w - 2].map((x) => <g key={x}><rect x={x} y={y - 10} width="7" height="20" rx="3" fill={url("trim")} />
     <path d={`M${x + 2} ${y - 4}H${x + 5}M${x + 2} ${y}H${x + 5}M${x + 2} ${y + 4}H${x + 5}`} stroke="#000" strokeOpacity=".35" strokeWidth="1" /></g>)}</>;
+  if (kind === "spark") return <>{[H.x - 0.5, H.x + H.w + 0.5].map((x) => <g key={x}><rect x={x - 4.5} y={y - 9.5} width="9" height="19" rx="4.5" fill={url("trim")} />
+    <rect x={x - 2.4} y={y - 6.5} width="4.8" height="13" rx="2.4" fill="none" stroke={eyes} strokeWidth="1.6" filter={glow} /></g>)}</>;
   if (kind === "nova") return <>{[-1, 1].map((s) => <path key={s} d={`M${50 + s * 33} ${y - 8}L${50 + s * 40} ${y - 15}L${50 + s * 38} ${y + 4}Z`} fill={url("trim")} />)}</>;
   return <>{[H.x - 1, H.x + H.w + 1].map((x) => <g key={x}><circle cx={x} cy={y} r="6.8" fill={url("trim")} /><circle cx={x} cy={y} r="2.7" fill={eyes} opacity=".9" filter={glow} /></g>)}</>;
 }
@@ -149,6 +176,7 @@ function Ears({ kind, H, url, eyes, glow }: { kind: string; H: Frame["head"]; ur
 function Eyes({ style, cx, cy, gap, color }: { style: RobotEyes; cx: number; cy: number; gap: number; color: string }) {
   const pair = (draw: (x: number) => ReactNode) => <>{draw(cx - gap)}{draw(cx + gap)}</>;
   return <g className="robot-eyes" fill={color}>
+    {style === "moon" && pair((x) => <g key={x}><circle cx={x} cy={cy} r="5.4" /><circle cx={x + 1.5} cy={cy - 1.3} r="2.9" fill="#100c08" /><circle cx={x + 2.3} cy={cy - 2.1} r=".9" fill="#fff" opacity=".9" /></g>)}
     {style === "round" && pair((x) => <g key={x}><circle cx={x} cy={cy} r="5" /><circle cx={x + 1.7} cy={cy - 1.9} r="1.6" fill="#fff" /><circle cx={x - 1.6} cy={cy + 1.8} r=".75" fill="#fff" opacity=".8" /></g>)}
     {style === "pill" && pair((x) => <rect key={x} x={x - 3.4} y={cy - 6} width="6.8" height="12" rx="3.4" />)}
     {style === "pixel" && pair((x) => <g key={x} shapeRendering="crispEdges"><rect x={x - 4} y={cy - 4} width="8" height="8" /><rect x={x - 6} y={cy - 2} width="12" height="4" /><rect x={x} y={cy - 4} width="2.6" height="2.6" fill="#fff" /></g>)}

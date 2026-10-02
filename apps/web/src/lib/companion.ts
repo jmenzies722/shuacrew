@@ -7,7 +7,7 @@ export interface CompanionPreferences {
   celebration: "off" | "subtle" | "expressive"; sound: boolean; volume: number; focus: "hide" | "still";
   /** Spark, made yours: who it is, its colour and size on the desktop, how it talks, how you summon it. */
   character: SparkCharacterId; color: string; eyeColor: string; personality: string; size: "s" | "m" | "l";
-  /** The robots (Scout, Atlas, Nova), piece by piece: eyes and mouth, a trim colour for joints and ears ("auto" is
+  /** The robots (Spark, Scout, Atlas, Nova), piece by piece: eyes and mouth, a trim colour for joints and ears ("auto" is
    * graphite), what the shell is made of, smooth or pixel art, and a hat, face piece and neck piece worn together. */
   eyes: RobotEyes; mouth: RobotMouth; trim: string; material: RobotMaterial; style: "smooth" | "pixel";
   hat: RobotHat; faceWear: RobotFaceWear; neck: RobotNeck;
@@ -46,7 +46,7 @@ export interface CompanionPreferences {
   /** While you talk, the notch shows a waveform (your words appear once you stop), or the waveform with your words live. */
   notchHearing: "wave" | "words";
 }
-export const ROBOT_EYES = ["round", "pill", "pixel", "visor", "happy", "star"] as const;
+export const ROBOT_EYES = ["moon", "round", "pill", "pixel", "visor", "happy", "star"] as const;
 export const ROBOT_MOUTHS = ["smile", "grin", "flat", "cat", "o", "none"] as const;
 export const ROBOT_MATERIALS = ["glossy", "matte", "metal", "glass"] as const;
 export const ROBOT_HATS = ["none", "antenna", "cap", "beanie", "headphones", "crown", "halo", "bow", "tophat"] as const;
@@ -70,7 +70,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
     // Saved before the robots had separate pieces: the one accessory lands in its slot, the expression picks eyes.
-    eyes: choice("eyes", ROBOT_EYES, v.face === "bright" ? "happy" : v.face === "curious" ? "pill" : "round"), mouth: choice("mouth", ROBOT_MOUTHS, "smile"),
+    eyes: choice("eyes", ROBOT_EYES, v.face === "bright" ? "happy" : v.face === "curious" ? "pill" : v.character === "spark" || v.character === undefined ? "moon" : "round"), mouth: choice("mouth", ROBOT_MOUTHS, "smile"),
     trim: v.trim === "auto" || (typeof v.trim === "string" && /^#[0-9a-f]{6}$/i.test(v.trim)) ? (v.trim as string).toLowerCase() : "auto",
     material: choice("material", ROBOT_MATERIALS, "glossy"), style: choice("style", ["smooth", "pixel"], "smooth"),
     hat: choice("hat", ROBOT_HATS, (["antenna", "cap", "headphones"] as const).find((a) => a === v.accessory) ?? "none"),
