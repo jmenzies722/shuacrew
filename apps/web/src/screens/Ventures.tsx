@@ -2,7 +2,7 @@ import "./ventures-pipe.css";
 import type { PlayView, RunView, VentureStage, VentureView } from "@shuacrew/core/projections";
 import { Button, StatusGlyph, toneOf } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Check, CreditCard, Globe, KeyRound, Pencil, Play, Plus, RefreshCw, Rocket, ShieldCheck, Target, Trash2, TrendingUp, Unplug, X } from "lucide-react";
+import { ArrowRight, ArrowUp, Check, CreditCard, Globe, KeyRound, Pencil, Play, Plus, RefreshCw, Rocket, ShieldCheck, Target, Trash2, TrendingUp, Unplug, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
@@ -45,6 +45,7 @@ export function Ventures() {
   const [editing, setEditing] = useState<Partial<VentureView> | null>(null);
   const list = useMemo(() => Object.values(ventures).sort((a, b) => b.updatedAt - a.updatedAt), [ventures]);
   const mrr = list.reduce((sum, v) => sum + (v.metrics?.mrr ?? 0), 0);
+  const open = list.filter((v) => v.stage !== "paused" && v.stage !== "stopped"), focus = open.length <= 3;
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
@@ -59,6 +60,11 @@ export function Ventures() {
             )}
             <Button variant="quiet" onClick={() => setEditing({})}><Plus size={14} /> New venture</Button>
           </>} />
+        {/* A handful of ventures: each gets the room to say where it is and what's next. More than that: the pipeline. */}
+        {focus ? <div className="vn-focus-list">
+          {open.map((v) => <FocusVenture key={v.id} venture={v} />)}
+          <button type="button" className="vn-new vn-new-row" onClick={() => setEditing({})}><Plus size={15} /><strong>New venture</strong><span>Name the idea and who it's for. The crew validates it first.</span></button>
+        </div> :
         <div className="vn-pipe" role="list" aria-label="Pipeline">
           {STAGES.map((stage, i) => {
             const here = list.filter((v) => v.stage === stage.id);
@@ -71,7 +77,7 @@ export function Ventures() {
               </div>
             </section>;
           })}
-        </div>
+        </div>}
         {list.some((v) => v.stage === "paused" || v.stage === "stopped") && <section className="vn-shelf" aria-label="On the shelf">
           <h2>On the shelf</h2>
           <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">{list.filter((v) => v.stage === "paused" || v.stage === "stopped").map((v) => <VentureCard key={v.id} venture={v} />)}</div>
@@ -79,6 +85,36 @@ export function Ventures() {
       </div>
       {editing && <VentureEditor venture={editing} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+/** One venture, given the full width: what it is, a stage track showing where it stands, its numbers with their
+ *  full labels, and the next move (which opens the venture, where you start it: nothing runs from a click here). */
+function FocusVenture({ venture: v }: { venture: VentureView }) {
+  const plays = useLive((s) => s.crew.plays), runs = useLive((s) => s.crew.runs);
+  const working = Object.values(runs).filter((r) => r.venture === v.id && ["running", "planning", "awaiting_approval"].includes(r.status)).length;
+  const waiting = Object.values(plays).filter((p) => p.venture === v.id && p.status === "waiting").length;
+  const i = stageIndex(v.stage), next = NEXT[v.stage], cur = v.metrics?.currency;
+  return (
+    <Link to="/ventures/$id" params={{ id: v.id }} className="vn-focus" style={{ "--venture": v.color } as React.CSSProperties}>
+      <div className="vn-focus-head">
+        <span className="vn-emoji"><Glyph name={v.emoji} fallback="sprout" label={v.name} size={22} /></span>
+        <div className="min-w-0 flex-1"><strong>{v.name}</strong><p>{v.pitch || "No pitch yet"}</p>{v.goal && <small>Goal: {v.goal}</small>}</div>
+        <span className={`vn-focus-state ${waiting ? "is-wait" : working ? "is-live" : ""}`}>{waiting ? `${waiting} waiting for your review` : working ? `${working} session${working === 1 ? "" : "s"} working` : "Quiet"}</span>
+      </div>
+      <ol className="vn-track" aria-label={`Stage: ${STAGES[i]?.label ?? v.stage}`}>
+        {STAGES.map((s, j) => <li key={s.id} className={j < i ? "is-past" : j === i ? "is-now" : ""}><i>{j < i ? <Check size={11} strokeWidth={3} /> : j + 1}</i><b>{s.label}</b><small>{s.hint}</small></li>)}
+      </ol>
+      <div className="vn-focus-foot">
+        {next && <div className="vn-next"><span>Next move</span><strong>{next.label}</strong><p>{next.why}</p><em>Open {v.name} <ArrowRight size={13} /></em></div>}
+        <div className="vn-focus-metrics">
+          <Metric label="MRR" value={money(v.metrics?.mrr, cur)} num={v.metrics?.mrr} fmt={(n) => money(n, cur)} />
+          <Metric label="Last 30 days" value={money(v.metrics?.revenue30d, cur)} num={v.metrics?.revenue30d} fmt={(n) => money(n, cur)} />
+          <Metric label="Customers" value={v.metrics?.customers !== undefined ? String(v.metrics.customers) : "—"} />
+          <small>{v.stripe?.connected ? `Stripe · ${v.stripe.mode}` : v.metrics ? "Manual numbers" : "No revenue source yet"}</small>
+        </div>
+      </div>
+    </Link>
   );
 }
 
