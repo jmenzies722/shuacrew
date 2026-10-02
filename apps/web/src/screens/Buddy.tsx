@@ -227,7 +227,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [voiceLive, setVoiceLive] = useState(false);
   /** A sound for a moment in the conversation, in your chosen style (spatial by default). */
   const sound = (k: Earcon) => earcon(k, prefsRef.current.sounds);
-  useEffect(() => soundStyle(prefs.sounds), [prefs.sounds]); // the Mac app plays the fn sounds itself: it needs the style
+  useEffect(() => soundStyle(prefs.sounds, prefs.soundPack), [prefs.sounds, prefs.soundPack]); // the Mac app plays the fn sounds itself: it needs the style
   // Bounce every sound once, and wake the audio engine, as soon as you touch anything (browsers won't start audio before).
   useEffect(() => {
     const warm = () => warmSounds(prefsRef.current.sounds);

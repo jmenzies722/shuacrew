@@ -43,9 +43,13 @@ export interface CompanionPreferences {
   notchCaptions: boolean; notchMedia: boolean; notchControls: boolean; notchGlow: "off" | "accent" | "spectrum"; notchSize: "compact" | "roomy";
   /** Little sounds when you start and stop talking, and when something's done: placed up at the notch, or plain, or off. */
   sounds: "spatial" | "simple" | "off";
+  /** Which instrument those sounds use (played natively by the Mac app). */
+  soundPack: SoundPack;
   /** While you talk, the notch shows a waveform (your words appear once you stop), or the waveform with your words live. */
   notchHearing: "wave" | "words";
 }
+export const SOUND_PACKS = ["glass", "pop", "chime", "pulse", "droplet", "felt"] as const;
+export type SoundPack = (typeof SOUND_PACKS)[number];
 export const ROBOT_EYES = ["moon", "round", "pill", "pixel", "visor", "happy", "star"] as const;
 export const ROBOT_MOUTHS = ["smile", "grin", "flat", "cat", "o", "none"] as const;
 export const ROBOT_MATERIALS = ["glossy", "matte", "metal", "glass"] as const;
@@ -89,7 +93,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
-    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
     notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";

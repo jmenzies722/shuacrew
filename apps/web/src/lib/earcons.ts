@@ -120,7 +120,7 @@ const context = () => {
 type Native = { postMessage: (m: unknown) => void };
 const native = (): Native | undefined => (typeof window === "undefined" ? undefined : (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew);
 /** Tell the Mac app the chosen style (it plays the fn sounds itself, before the page hears about the key). */
-export function soundStyle(style: SoundStyle) { native()?.postMessage({ type: "buddySoundStyle", style }); }
+export function soundStyle(style: SoundStyle, pack?: string) { native()?.postMessage({ type: "buddySoundStyle", style, ...(pack ? { pack } : {}) }); }
 
 /** Get sounds ready ahead of time (the audio engine awake, every sound bounced), so the first one is instant and clean. */
 export function warmSounds(style: SoundStyle) {
@@ -129,10 +129,11 @@ export function warmSounds(style: SoundStyle) {
 }
 
 /** Play a sound: one buffer, started 25 ms ahead so it never starts late. `volume` 0–1. */
-export function earcon(kind: Earcon, style: SoundStyle = "spatial", volume = 0.7) {
+export function earcon(kind: Earcon, style: SoundStyle = "spatial", volume = 0.7, pack?: string) {
   if (style === "off" || volume <= 0) return;
   const mac = native();
-  if (mac) { mac.postMessage({ type: "buddySound", kind, style }); return; }
+  // Packs are native-only; a browser plays the original glass set.
+  if (mac) { mac.postMessage({ type: "buddySound", kind, style, ...(pack ? { pack } : {}) }); return; }
   try {
     const a = context();
     void bounce(kind, style).then((buf) => {

@@ -846,9 +846,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             Self.appendSelfTest(line)
         case "buddySound":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
+            if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
             if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) { SparkSounds.shared.play(kind) }
         case "buddySoundStyle":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
+            if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
         case "notify":
             guard let title = body["title"] as? String else { return }
             NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")

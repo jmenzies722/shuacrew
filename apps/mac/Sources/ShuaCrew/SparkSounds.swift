@@ -11,6 +11,14 @@ final class SparkSounds {
     static let shared = SparkSounds()
     /// "spatial", "simple" or "off": the page's Settings → Sounds (it tells us when it changes).
     var style = UserDefaults.standard.string(forKey: "sparkSounds") ?? "spatial" { didSet { UserDefaults.standard.set(style, forKey: "sparkSounds") } }
+    /// Which instrument (Settings → Sound): glass, pop, chime, pulse, droplet or felt. Switching re-renders the buffers.
+    var pack = EarconSynth.Pack(rawValue: UserDefaults.standard.string(forKey: "sparkSoundPack") ?? "") ?? .glass {
+        didSet {
+            guard pack != oldValue else { return }
+            UserDefaults.standard.set(pack.rawValue, forKey: "sparkSoundPack")
+            if built { (buffers, spatialBuffers) = Self.render(pack, format) }
+        }
+    }
 
     private let engine = AVAudioEngine(), room = AVAudioEnvironmentNode()
     private var spatial: [EarconSynth.Kind: AVAudioPlayerNode] = [:], plain: [EarconSynth.Kind: AVAudioPlayerNode] = [:]
@@ -28,18 +36,34 @@ final class SparkSounds {
     private func build() {
         guard !built else { return }
         built = true
-        let nodes = Self.wire(engine, room, format)
+        let nodes = Self.wire(engine, room, format, pack: pack)
         spatial = nodes.spatial; plain = nodes.plain; buffers = nodes.buffers; spatialBuffers = nodes.spatialBuffers
     }
 
     /// The graph, on any engine (live, or offline for the self-test): each sound in mono → Apple's HRTF renderer with a
     /// small room (spatial), or straight to the mixer (simple).
-    private static func wire(_ engine: AVAudioEngine, _ room: AVAudioEnvironmentNode, _ format: AVAudioFormat) -> (spatial: [EarconSynth.Kind: AVAudioPlayerNode], plain: [EarconSynth.Kind: AVAudioPlayerNode], buffers: [EarconSynth.Kind: AVAudioPCMBuffer], spatialBuffers: [EarconSynth.Kind: AVAudioPCMBuffer]) {
-        var spatial: [EarconSynth.Kind: AVAudioPlayerNode] = [:], plain: [EarconSynth.Kind: AVAudioPlayerNode] = [:], buffers: [EarconSynth.Kind: AVAudioPCMBuffer] = [:], spatialBuffers: [EarconSynth.Kind: AVAudioPCMBuffer] = [:]
+    /// Every sound of a pack, as buffers: plain, and a copy +5 dB for the 3-D renderer (it spreads the sound across
+    /// both ears), so both styles sound equally loud.
+    private static func render(_ pack: EarconSynth.Pack, _ format: AVAudioFormat) -> ([EarconSynth.Kind: AVAudioPCMBuffer], [EarconSynth.Kind: AVAudioPCMBuffer]) {
+        var buffers: [EarconSynth.Kind: AVAudioPCMBuffer] = [:], spatialBuffers: [EarconSynth.Kind: AVAudioPCMBuffer] = [:]
+        for kind in EarconSynth.Kind.allCases {
+            let samples = EarconSynth.render(kind, pack: pack, rate: 48_000)
+            guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+                  let loud = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)) else { continue }
+            buf.frameLength = buf.frameCapacity; loud.frameLength = loud.frameCapacity
+            for i in 0..<samples.count { buf.floatChannelData![0][i] = samples[i]; loud.floatChannelData![0][i] = samples[i] * 1.78 }
+            buffers[kind] = buf; spatialBuffers[kind] = loud
+        }
+        return (buffers, spatialBuffers)
+    }
+
+    private static func wire(_ engine: AVAudioEngine, _ room: AVAudioEnvironmentNode, _ format: AVAudioFormat, pack: EarconSynth.Pack) -> (spatial: [EarconSynth.Kind: AVAudioPlayerNode], plain: [EarconSynth.Kind: AVAudioPlayerNode], buffers: [EarconSynth.Kind: AVAudioPCMBuffer], spatialBuffers: [EarconSynth.Kind: AVAudioPCMBuffer]) {
+        var spatial: [EarconSynth.Kind: AVAudioPlayerNode] = [:], plain: [EarconSynth.Kind: AVAudioPlayerNode] = [:]
+        let (buffers, spatialBuffers) = render(pack, format)
         room.renderingAlgorithm = .HRTFHQ
         room.reverbParameters.enable = true
         room.reverbParameters.loadFactoryReverbPreset(.smallRoom)
-        room.reverbParameters.level = -6
+        room.reverbParameters.level = -12 // a hint of room, not an echo: clearer
         room.listenerPosition = AVAudio3DPoint(x: 0, y: 0, z: 0)
         // Position gives direction, not distance loss: by default the renderer fades sources with distance, which made
         // spatial 6–11 dB quieter than simple (measured). No roll-off, and the room's level matched to simple.
@@ -48,17 +72,6 @@ final class SparkSounds {
         engine.attach(room)
         engine.connect(room, to: engine.mainMixerNode, format: nil)
         for kind in EarconSynth.Kind.allCases {
-            let samples = EarconSynth.render(kind, rate: 48_000)
-            guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)) else { continue }
-            buf.frameLength = buf.frameCapacity
-            samples.withUnsafeBufferPointer { src in buf.floatChannelData![0].update(from: src.baseAddress!, count: samples.count) }
-            buffers[kind] = buf
-            // The 3-D render spreads the sound across both ears: +5 dB on its copy so both styles sound equally loud.
-            if let loud = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: buf.frameCapacity) {
-                loud.frameLength = buf.frameLength
-                for i in 0..<samples.count { loud.floatChannelData![0][i] = samples[i] * 1.78 }
-                spatialBuffers[kind] = loud
-            }
             let p3 = AVAudioPlayerNode(), p2 = AVAudioPlayerNode()
             engine.attach(p3); engine.attach(p2)
             engine.connect(p3, to: room, format: format)             // mono into the 3-D renderer
@@ -66,7 +79,7 @@ final class SparkSounds {
             let at = EarconSynth.position[kind] ?? (0, 1, -1)
             p3.position = AVAudio3DPoint(x: at.x, y: at.y, z: at.z)
             p3.renderingAlgorithm = .HRTFHQ
-            p3.reverbBlend = 0.18
+            p3.reverbBlend = 0.08
             spatial[kind] = p3; plain[kind] = p2
         }
         return (spatial, plain, buffers, spatialBuffers)
@@ -81,7 +94,7 @@ final class SparkSounds {
                 let engine = AVAudioEngine(), room = AVAudioEnvironmentNode()
                 let out = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
                 do { try engine.enableManualRenderingMode(.offline, format: out, maximumFrameCount: 4096) } catch { log("SOUND \(kind) offline mode failed: \(error)"); continue }
-                let nodes = Self.wire(engine, room, format)
+                let nodes = Self.wire(engine, room, format, pack: pack)
                 guard let node = (style == "simple" ? nodes.plain : nodes.spatial)[kind], let buf = (style == "simple" ? nodes.buffers : nodes.spatialBuffers)[kind] else { continue }
                 node.volume = 0.75
                 try? engine.start(); node.scheduleBuffer(buf, at: nil, options: [], completionHandler: nil); node.play()

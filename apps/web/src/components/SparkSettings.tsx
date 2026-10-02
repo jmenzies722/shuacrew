@@ -8,7 +8,7 @@ import { MacReach } from "./MacReach";
 import { useLive } from "../lib/live";
 import { api } from "../lib/api";
 import { saveBuddyVoice, useBuddyVoice } from "../lib/buddy-voice";
-import { parseCompanion, saveCompanion, ROBOT_CHARACTERS, ROBOT_EYES, ROBOT_FACEWEAR, ROBOT_HATS, ROBOT_MATERIALS, ROBOT_MOUTHS, ROBOT_NECKS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
+import { parseCompanion, saveCompanion, SOUND_PACKS, ROBOT_CHARACTERS, ROBOT_EYES, ROBOT_FACEWEAR, ROBOT_HATS, ROBOT_MATERIALS, ROBOT_MOUTHS, ROBOT_NECKS, SPARK_HOTKEYS, useCompanion, type CompanionPreferences, type SparkHotkey } from "../lib/companion";
 import { CHARACTER_INFO, SparkCharacter, type Mood } from "./SparkCharacter";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
 import "./spark-settings.css";
@@ -37,6 +37,16 @@ function SparkReach({ name }: { name: string }) {
     </SettingRow>
   </>;
 }
+/** Sound packs: a different instrument each, all clean tones. Played natively, so a preview is the real thing. */
+const PACK_INFO: Record<(typeof SOUND_PACKS)[number], { name: string; blurb: string }> = {
+  glass: { name: "Glass", blurb: "Struck crystal, bright and airy" },
+  pop: { name: "Pop", blurb: "Soft bubbles, quick and playful" },
+  chime: { name: "Chime", blurb: "A plucked kalimba, warm and clear" },
+  pulse: { name: "Pulse", blurb: "Pure digital taps, nothing extra" },
+  droplet: { name: "Droplet", blurb: "Water drops that glide up and down" },
+  felt: { name: "Felt", blurb: "Low muted piano, the gentlest" },
+};
+
 const TRIMS = ["auto", "#e5e7eb", "#111114", "#f5b544", "#f472b6", "#60a5fa", "#34d399"] as const;
 const label = (v: string) => ({ o: "O", tophat: "Top hat", bowtie: "Bow tie", faceWear: "Face" } as Record<string, string>)[v] ?? v[0]!.toUpperCase() + v.slice(1);
 
@@ -284,8 +294,13 @@ function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pa
     <SettingRow name="Now playing" detail="Music or Spotify in the notch: artwork, title, progress and play, pause and skip. It only reads a player that's already open." modified={!prefs.notchMedia}><Switch label="Now playing" on={prefs.notchMedia} onChange={(notchMedia) => set({ notchMedia })} /></SettingRow>
     <SettingRow name="Mic & screen controls" detail={`Turn the mic and live screen watching on or off right from the notch and the chat's top edge.`} modified={!prefs.notchControls}><Switch label="Mic and screen controls" on={prefs.notchControls} onChange={(notchControls) => set({ notchControls })} /></SettingRow>
     <SettingRow name="Sounds" detail={`A soft sound when you start talking (hold fn or voice mode), when ${name} has heard you, and when something's done. Spatial places them up at the notch — best with headphones.`} modified={prefs.sounds !== "spatial"}>
-      <Segmented label="Sounds" value={prefs.sounds} onChange={(sounds) => { set({ sounds }); soundStyle(sounds); earcon("listen", sounds); setTimeout(() => earcon("sent", sounds), 650); }} options={[["spatial", "Spatial"], ["simple", "Simple"], ["off", "Off"]]} />
+      <Segmented label="Sounds" value={prefs.sounds} onChange={(sounds) => { set({ sounds }); soundStyle(sounds, prefs.soundPack); earcon("listen", sounds, 0.7, prefs.soundPack); setTimeout(() => earcon("sent", sounds, 0.7, prefs.soundPack), 650); }} options={[["spatial", "Spatial"], ["simple", "Simple"], ["off", "Off"]]} />
     </SettingRow>
+    {prefs.sounds !== "off" && <SettingRow name="Sound" detail="The instrument. Pick one to hear the start-talking and heard-you pair.">
+      <div className="spark-packs" role="radiogroup" aria-label="Sound">{SOUND_PACKS.map((pack) => <button key={pack} type="button" role="radio" aria-checked={prefs.soundPack === pack} className={prefs.soundPack === pack ? "is-on" : ""}
+        onClick={() => { set({ soundPack: pack }); soundStyle(prefs.sounds, pack); earcon("listen", prefs.sounds, 0.7, pack); setTimeout(() => earcon("sent", prefs.sounds, 0.7, pack), 600); }}>
+        <b><AudioLines size={12} /> {PACK_INFO[pack].name}</b><small>{PACK_INFO[pack].blurb}</small></button>)}</div>
+    </SettingRow>}
     <SettingRow name="Glow" detail="Accent lights the island's edge while it's open or talking; Spectrum runs your palette's gradient round it." modified={prefs.notchGlow !== "accent"}>
       <Segmented label="Glow" value={prefs.notchGlow} onChange={(notchGlow) => set({ notchGlow })} options={[["off", "Off"], ["accent", "Accent"], ["spectrum", "Spectrum"]]} />
     </SettingRow>
