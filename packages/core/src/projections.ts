@@ -224,6 +224,9 @@ export function plainTitle(text: string): string {
  * the title is just the start of the ask cut short, end it at a whole word with an ellipsis. Real titles are untouched.
  */
 export function sessionTitle(title: string, ask: string): string {
+  // "Shua · what's on my screen…": a launcher's name, then the ask (which can sit after instructions in the prompt).
+  const named = /^([^·]{1,40} · )(.+)$/.exec(plainTitle(title)), flat = ask.replace(/\s+/g, " ");
+  if (named && flat.includes(named[2]!)) return named[1]! + sessionTitle(named[2]!, flat.slice(flat.lastIndexOf(named[2]!)));
   const t = plainTitle(title), full = plainTitle(ask.replace(/\s+/g, " "));
   if (!t || t.endsWith("…") || full.length <= t.length || !full.startsWith(t)) return t;
   const cutMidWord = /\S/.test(full[t.length] ?? "") && /\S$/.test(t);

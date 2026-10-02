@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AudioLines, Award, CalendarDays, Briefcase, CheckCircle2, Flame, GraduationCap, Loader2, Lock, Megaphone, Play, Radio as RadioIcon, Sunrise } from "lucide-react";
+import { AudioLines, Award, CalendarDays, Briefcase, CheckCircle2, Flame, GraduationCap, Loader2, Lock, Megaphone, Play, Sunrise } from "lucide-react";
 import { achievements, streak } from "../lib/achievements";
 import { hhmm, upcoming, useDayCalendar } from "../lib/calendar";
 import { useLive } from "../lib/live";
@@ -99,18 +99,21 @@ export function DayHero() {
     { icon: Briefcase, label: "Venture", value: venture ? `${venture.name} · ${venture.stage}` : ventures.length ? "All earning" : "No ventures yet", tone: venture ? "live" : "idle", go: () => void navigate({ to: "/ventures" }) },
   ];
 
+  // Order: who/when, then the brief, then what you can act on; streaks, badges and the standup sit quietly underneath.
   return <section className="day-hero" aria-label="Start your day">
     <div className="day-hero-top">
       <div className="day-hero-hello">
         <span className="day-hero-date"><Sunrise size={13} /> {now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
         <h1>{greeting(now.getHours())}.</h1>
-        {cal.available && (cal.state?.authorized
-          ? <p className="day-hero-wx"><CalendarDays size={15} /> {meetings.length ? `Next: ${meetings[0]!.title} at ${hhmm(meetings[0]!.start)}${meetings.length > 1 ? ` · ${meetings.length} meetings left today` : ""}` : "No more meetings today"}</p>
-          : <button type="button" className="day-cal-connect" onClick={cal.connect}><CalendarDays size={14} /> Connect calendar to plan around meetings</button>)}
-        {w.value && WxIcon && wx && <p className="day-hero-wx"><WxIcon size={16} /> {w.value.temp}° and {wx.label.toLowerCase()}{rainSoon ? ` · rain likely around ${rainSoon.time}` : ""}</p>}
+        <div className="day-hero-facts">
+          {cal.available && (cal.state?.authorized
+            ? <span className="day-fact"><CalendarDays size={13} /> {meetings.length ? `Next: ${meetings[0]!.title} at ${hhmm(meetings[0]!.start)}${meetings.length > 1 ? ` · ${meetings.length} meetings left` : ""}` : "No more meetings today"}</span>
+            : <button type="button" className="day-fact day-cal-connect" onClick={cal.connect}><CalendarDays size={13} /> Connect calendar</button>)}
+          {w.value && WxIcon && wx && <span className="day-fact"><WxIcon size={13} /> {w.value.temp}° {wx.label.toLowerCase()}{rainSoon ? ` · rain around ${rainSoon.time}` : ""}</span>}
+        </div>
       </div>
       <div className="day-hero-actions">
-        <button type="button" className="day-hero-start" onClick={() => void startDay()} disabled={starting}>
+        <button type="button" className="day-hero-start" onClick={() => void startDay()} disabled={starting} title="Turns on Flow mode, puts your radio on, and opens the first thing that needs you">
           <Play size={16} /> {starting ? "Starting…" : "Start my day"}
         </button>
         <button type="button" className={`day-hero-hear ${speaking ? "is-on" : ""}`} onClick={speak} aria-pressed={speaking}>
@@ -119,22 +122,21 @@ export function DayHero() {
       </div>
     </div>
     <p className="day-hero-brief">{brief}</p>
-    <div className="day-hero-row">
-      <p className="day-hero-note"><RadioIcon size={12} /> Start my day turns on Flow mode, puts your radio on, and opens the first thing that needs you.</p>
+    <div className="day-plan">{plan.map((p) => <button key={p.label} type="button" className={`day-plan-card is-${p.tone}`} onClick={p.go}>
+      <p.icon size={15} /><span><small>{p.label}</small><b>{p.value}</b></span>
+    </button>)}</div>
+    <div className="day-hero-foot">
+      <div className="day-streaks" aria-label="Streaks and achievements">
+        {learnStreak > 0 && <span className="day-streak is-on"><Flame size={13} /> {learnStreak}-day learning streak</span>}
+        {shipStreak > 0 && <span className="day-streak is-on"><Flame size={13} /> {shipStreak}-day shipping streak</span>}
+        {earned.length > 0 && <span className="day-badge is-earned" title={earned.map((b) => `${b.name}: ${b.how}`).join("\n")}><Award size={12} /><span className="day-badge-names">{earned.map((b) => b.name).join(" · ")}</span></span>}
+        {nextUp[0] && <span className="day-badge" title={nextUp[0].how}><Lock size={11} /> Next: {nextUp[0].name}{nextUp[0].progress ? ` · ${nextUp[0].progress}` : ""}</span>}
+      </div>
       {standupOn !== null && <span className="day-standup">
         <Megaphone size={13} />
         {standup ? <button type="button" onClick={() => void navigate({ to: "/library", hash: standup.id })}>{standup.title}</button> : <span>Crew standup</span>}
         <button type="button" role="switch" aria-checked={standupOn} className={`day-switch ${standupOn ? "is-on" : ""}`} onClick={toggleStandup} title={standupOn ? "Weekdays at 8:30 · click to turn off" : "Turn on a weekday 8:30 standup from your crew"}><i /></button>
       </span>}
     </div>
-    <div className="day-streaks" aria-label="Streaks and achievements">
-      <span className={`day-streak ${learnStreak ? "is-on" : ""}`}><Flame size={13} /> {learnStreak ? `${learnStreak}-day learning streak` : "No learning streak yet"}</span>
-      <span className={`day-streak ${shipStreak ? "is-on" : ""}`}><Flame size={13} /> {shipStreak ? `${shipStreak}-day shipping streak` : "No shipping streak yet"}</span>
-      {earned.map((b) => <span key={b.id} className="day-badge is-earned" title={b.how}><Award size={12} /> {b.name}</span>)}
-      {nextUp.map((b) => <span key={b.id} className="day-badge" title={b.how}><Lock size={11} /> {b.name}{b.progress ? ` · ${b.progress}` : ""}</span>)}
-    </div>
-    <div className="day-plan">{plan.map((p) => <button key={p.label} type="button" className={`day-plan-card is-${p.tone}`} onClick={p.go}>
-      <p.icon size={15} /><span><small>{p.label}</small><b>{p.value}</b></span>
-    </button>)}</div>
   </section>;
 }
