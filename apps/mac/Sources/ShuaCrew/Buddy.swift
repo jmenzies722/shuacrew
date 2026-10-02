@@ -193,7 +193,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     func summon() {
         if !Self.enabled { setEnabled(true) }
         start()
-        NSApp.activate()
+        panel.acceptsKeyboardInput = true
+        if !NSApp.isActive { NSApp.activate() }
         panel.makeKeyAndOrderFront(nil)
         guard ready else { pendingFocus = true; return }
         web.evaluateJavaScript("window.buddy && window.buddy.focus()")
@@ -427,7 +428,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Open Spark from the menu bar or a shuacrew:// link, optionally asking something right away.
     func open(asking text: String? = nil) {
-        NSApp.activate()
+        panel.acceptsKeyboardInput = true
+        if !NSApp.isActive { NSApp.activate() }
         raise(); panel.makeKeyAndOrderFront(nil)
         if let text, let data = try? JSONSerialization.data(withJSONObject: [text]), let json = String(data: data, encoding: .utf8) {
             web.evaluateJavaScript("window.buddy && window.buddy.ask(\(json)[0])")
@@ -437,7 +439,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     private func toggle() {
-        if !isOpen { NSApp.activate() }
+        panel.acceptsKeyboardInput = true
+        if !isOpen && !NSApp.isActive { NSApp.activate() }
         raise()
         panel.makeKeyAndOrderFront(nil)
         web.evaluateJavaScript("window.buddy && window.buddy.toggle()")
@@ -516,6 +519,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // The embedded companion shares this bridge, but must never change
             // the desktop panel's geometry or keyboard ownership.
             guard sender === web else { return }
+            let wasInteractive = isOpen || isNook || isMini
             if let placement = body["desktopPlacement"] as? String, ["free", "notch"].contains(placement) {
                 docked = placement == "notch"
                 UserDefaults.standard.set(docked, forKey: "buddyNotchDock")
@@ -534,19 +538,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Record open/closed BEFORE re-checking the hover watch: checking first saw the chat as still open when it
             // closed, stopped watching, and nothing restarted it, so hovering the notch did nothing after a click.
             isOpen = open
+            panel.acceptsKeyboardInput = isOpen || isNook || isMini
             updateNookWatch()
             place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : isMini ? Self.mini : peek ? Self.peek : closed)
             updateFollow()
-            // Not while the notch nook is open: its Ask box is typed into in this "closed" state, and dropping the key
-            // window mid-word (on any layout update) doubled letters as focus bounced away and back.
-            if !open, !isNook, panel.isKeyWindow {
-                // resignKey() is an AppKit notification/override point, not an
-                // operation for changing focus. Calling it directly can leave
-                // AppKit's keyboard ownership inconsistent.
-                // Ordering out releases that claim; ordering front does not
-                // make the collapsed character key again.
-                panel.orderOut(nil)
-                panel.orderFrontRegardless()
+            // Doubled letters (Sep 27, Oct 2 twice): focus was released on routine layout updates while you typed, so it
+            // bounced away and back mid-word. Release it only when the companion stops taking input (open/nook/mini →
+            // passive), and hand it to the window you came from instead of ordering the panel out and in.
+            if CompanionFocus.shouldRelease(wasInteractive: wasInteractive, isInteractive: panel.acceptsKeyboardInput, ownsKeyboard: panel.isKeyWindow) {
+                if let main = NSApp.mainWindow, main !== panel, main.isVisible {
+                    main.makeKey()
+                } else if NSApp.isActive {
+                    NSApp.deactivate()
+                }
             }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
@@ -814,7 +818,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyNookFocus":
             // You clicked into the nook's Ask box: let it take the keyboard so you can type.
-            NSApp.activate(); panel.makeKey()
+            guard sender === web, isNook else { return }
+            panel.acceptsKeyboardInput = true
+            if !NSApp.isActive { NSApp.activate() }
+            if !panel.isKeyWindow { panel.makeKey() }
         case "buddyFollow":
             following = body["on"] as? Bool ?? true
             UserDefaults.standard.set(following, forKey: "buddyFollowCursor")
@@ -1373,7 +1380,9 @@ enum ScreenText {
 
 /// Borderless panels can't normally take keyboard focus; this one can, so you can type your question.
 final class BuddyPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    /// Only while you can type into it (open, nook, mini card): a passive companion never takes the keyboard.
+    var acceptsKeyboardInput = false
+    override var canBecomeKey: Bool { acceptsKeyboardInput }
     override var canBecomeMain: Bool { false }
     /// In notch mode the island and its chat must sit flush with the top of the screen, over the camera housing.
     /// macOS normally pushes windows below the menu bar, which drew a second "notch" one notch-height too low.
