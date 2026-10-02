@@ -40,11 +40,29 @@ function SparkReach({ name }: { name: string }) {
 const TRIMS = ["auto", "#e5e7eb", "#111114", "#f5b544", "#f472b6", "#60a5fa", "#34d399"] as const;
 const label = (v: string) => ({ o: "O", tophat: "Top hat", bowtie: "Bow tie", faceWear: "Face" } as Record<string, string>)[v] ?? v[0]!.toUpperCase() + v.slice(1);
 
-/** One piece of the robot, as tiles: your own robot (head and shoulders) wearing each choice. */
-function PieceTiles<K extends "eyes" | "mouth" | "hat" | "faceWear" | "neck">({ prefs, piece, options, set }: { prefs: CompanionPreferences; piece: K; options: readonly CompanionPreferences[K][]; set(patch: Partial<CompanionPreferences>): void }) {
-  return <div className="spark-pieces" role="radiogroup" aria-label={label(piece)}>{options.map((o) => {
+type Look = Partial<CompanionPreferences>;
+/** One-click looks: a whole outfit at once, on whichever robot you have. */
+const PRESETS: Array<{ name: string; look: Look }> = [
+  { name: "Classic", look: { color: "#e5e7eb", material: "glossy", style: "smooth", trim: "auto", eyeColor: "#f5a524", eyes: "moon", mouth: "smile", hat: "none", faceWear: "none", neck: "none" } },
+  { name: "Retro pixel", look: { color: "#ff7a59", material: "glossy", style: "pixel", trim: "auto", eyeColor: "#a5f3fc", eyes: "pixel", mouth: "grin", hat: "cap", faceWear: "none", neck: "none" } },
+  { name: "Gold", look: { color: "#f5b544", material: "metal", style: "smooth", trim: "auto", eyeColor: "#fde68a", eyes: "visor", mouth: "smile", hat: "crown", faceWear: "none", neck: "badge" } },
+  { name: "Night ops", look: { color: "#111114", material: "matte", style: "smooth", trim: "auto", eyeColor: "#34d399", eyes: "visor", mouth: "flat", hat: "headphones", faceWear: "shades", neck: "none" } },
+  { name: "Candy", look: { color: "grad:#f472b6:#f59e0b", material: "glossy", style: "smooth", trim: "#fff1f2", eyeColor: "#f9a8d4", eyes: "happy", mouth: "cat", hat: "bow", faceWear: "blush", neck: "none" } },
+  { name: "Glass", look: { color: "grad:#a78bfa:#60a5fa", material: "glass", style: "smooth", trim: "auto", eyeColor: "#e0f2fe", eyes: "star", mouth: "o", hat: "halo", faceWear: "none", neck: "bowtie" } },
+];
+const pick = <T,>(xs: readonly T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+/** Surprise me: a random but wearable outfit (one face piece at most, so it never looks cluttered). */
+function surprise(): Look {
+  return { color: pick(SPARK_FINISHES.filter((f) => f.id !== "theme")).id, material: pick(ROBOT_MATERIALS), style: Math.random() < 0.2 ? "pixel" : "smooth",
+    trim: pick(TRIMS), eyeColor: pick(["#a5f3fc", "#f5a524", "#34d399", "#f9a8d4", "#fde68a", "#c4b5fd", "#ffffff"]), eyes: pick(ROBOT_EYES), mouth: pick(ROBOT_MOUTHS),
+    hat: pick(ROBOT_HATS), faceWear: Math.random() < 0.5 ? "none" : pick(ROBOT_FACEWEAR), neck: Math.random() < 0.5 ? "none" : pick(ROBOT_NECKS) };
+}
+
+/** One piece of the robot, as tiles: your own robot (head and shoulders) wearing each choice. Hover to try it on. */
+function PieceTiles<K extends "eyes" | "mouth" | "hat" | "faceWear" | "neck">({ prefs, piece, options, set, onTry }: { prefs: CompanionPreferences; piece: K; options: readonly CompanionPreferences[K][]; set(patch: Partial<CompanionPreferences>): void; onTry(look: Look | null): void }) {
+  return <div className="spark-pieces" role="radiogroup" aria-label={label(piece)} onMouseLeave={() => onTry(null)}>{options.map((o) => {
     const on = prefs[piece] === o;
-    return <button key={o} type="button" role="radio" aria-checked={on} className={on ? "is-on" : ""} onClick={() => set({ [piece]: o } as Partial<CompanionPreferences>)} title={label(o)}>
+    return <button key={o} type="button" role="radio" aria-checked={on} className={on ? "is-on" : ""} onClick={() => { onTry(null); set({ [piece]: o } as Partial<CompanionPreferences>); }} onMouseEnter={() => onTry({ [piece]: o } as Look)} onFocus={() => onTry({ [piece]: o } as Look)} onBlur={() => onTry(null)} title={label(o)}>
       <SparkCharacter preferences={{ ...prefs, [piece]: o }} size={piece === "neck" ? 58 : 52} crop={piece === "neck" ? "full" : "portrait"} /><small>{label(o)}</small>
     </button>;
   })}</div>;
@@ -66,6 +84,8 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
   useEffect(() => setNameDraft(prefs.nickname), [prefs.nickname]);
   const set = (patch: Partial<CompanionPreferences>) => saveCompanion({ ...prefs, ...patch });
   const [mood, setMood] = useState<Mood>("idle"), [desktop, setDesktop] = useState(readDesktop);
+  /** What you're hovering in the workshop, worn by the preview robot until you pick it or move away. */
+  const [trial, setTrial] = useState<Look | null>(null);
   const [voices, setVoices] = useState<Array<{ id: string; name: string; description?: string }>>([]);
   const [screen, setScreen] = useState<boolean | null>(null);
   useEffect(() => { void api<{ voices?: Array<{ id: string; name: string; description?: string }> }>("/api/speech/status").then((s) => setVoices(s.voices ?? [])).catch(() => {}); }, []);
@@ -111,20 +131,34 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
         <div className="spark-swatches">{SPARK_FINISHES.map((f) => <button key={f.id} type="button" title={f.name} aria-label={f.name} aria-pressed={prefs.color === f.id} style={{ background: swatchBg(f.id) }} onClick={() => set({ color: f.id })} />)}
           <label className="spark-custom" title="Any colour"><input type="color" value={stops(prefs.color).from} onChange={(e) => set({ color: e.target.value })} aria-label="Custom colour" /></label></div>
       </SettingRow>
-      {ROBOT_CHARACTERS.some(id => id === prefs.character) && <>
-        <SettingRow name="Style" detail="Smooth 3D, or the same robot as pixel art. Every piece and colour carries over."><Segmented label="Style" value={prefs.style} onChange={(style) => set({ style })} options={[["smooth", "Smooth"], ["pixel", "Pixel"]]} /></SettingRow>
-        <SettingRow name="Material" detail="What the shell is made of."><Segmented label="Material" value={prefs.material} onChange={(material) => set({ material })} options={ROBOT_MATERIALS.map((m) => [m, label(m)] as [typeof m, string])} /></SettingRow>
-        <SettingRow name="Trim" detail="Joints, ears and the visor frame. Auto is graphite.">
-          <div className="spark-swatches">{TRIMS.map((t) => <button key={t} type="button" title={t === "auto" ? "Auto (graphite)" : t} aria-label={t === "auto" ? "Auto trim" : `Trim ${t}`} aria-pressed={prefs.trim === t} style={{ background: t === "auto" ? "linear-gradient(135deg, #4a5262, #1c212b)" : t }} onClick={() => set({ trim: t })} />)}
-            <label className="spark-custom" title="Any colour"><input type="color" value={prefs.trim === "auto" ? "#2b3240" : prefs.trim} onChange={(e) => set({ trim: e.target.value })} aria-label="Custom trim colour" /></label></div>
-        </SettingRow>
-        <SettingRow name="Eye glow" detail="The eyes, the core, and the little lights."><input type="color" className="spark-eye-color" value={prefs.eyeColor} onChange={e => set({ eyeColor: e.target.value })} aria-label="Robot eye color" /></SettingRow>
-        <h5 className="spark-sub">Eyes</h5><PieceTiles prefs={prefs} piece="eyes" options={ROBOT_EYES} set={set} />
-        <h5 className="spark-sub">Mouth</h5><PieceTiles prefs={prefs} piece="mouth" options={ROBOT_MOUTHS} set={set} />
-        <h5 className="spark-sub">On its head</h5><PieceTiles prefs={prefs} piece="hat" options={ROBOT_HATS} set={set} />
-        <h5 className="spark-sub">On its face</h5><PieceTiles prefs={prefs} piece="faceWear" options={ROBOT_FACEWEAR} set={set} />
-        <h5 className="spark-sub">Round its neck</h5><PieceTiles prefs={prefs} piece="neck" options={ROBOT_NECKS} set={set} />
-      </>}
+      {ROBOT_CHARACTERS.some(id => id === prefs.character) && <div className="spark-workshop">
+        <aside className="spark-fitting" style={sparkVars((trial?.color as string | undefined) ?? prefs.color)}>
+          <div className="spark-fitting-stage"><SparkCharacter preferences={{ ...prefs, ...trial }} mood={mood} size={168} /></div>
+          {trial && <span className="spark-fitting-trying">Trying on</span>}
+          <div className="spark-moods" role="group" aria-label="Try a mood">{(["idle", "thinking", "speaking", "happy", "sleepy"] as Mood[]).map((m) => <button key={m} type="button" aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div>
+          <div className="spark-fitting-actions">
+            <button type="button" onClick={() => { setTrial(null); set(surprise()); }}>Surprise me</button>
+            <button type="button" onClick={() => { setTrial(null); set({ material: "glossy", style: "smooth", trim: "auto", eyes: prefs.character === "spark" ? "moon" : "round", mouth: "smile", hat: "none", faceWear: "none", neck: "none" }); }} title="Plain shell, no accessories. Keeps your colours.">Reset</button>
+          </div>
+        </aside>
+        <div className="spark-workshop-controls">
+          <h5 className="spark-sub is-first">Looks</h5>
+          <div className="spark-pieces is-looks" onMouseLeave={() => setTrial(null)}>{PRESETS.map((pr) => <button key={pr.name} type="button" onClick={() => { setTrial(null); set(pr.look); }} onMouseEnter={() => setTrial(pr.look)} onFocus={() => setTrial(pr.look)} onBlur={() => setTrial(null)}>
+            <SparkCharacter preferences={{ ...prefs, ...pr.look }} size={60} crop="portrait" /><small>{pr.name}</small></button>)}</div>
+          <SettingRow name="Style" detail="Smooth 3D, or the same robot as pixel art. Every piece and colour carries over."><Segmented label="Style" value={prefs.style} onChange={(style) => set({ style })} options={[["smooth", "Smooth"], ["pixel", "Pixel"]]} /></SettingRow>
+          <SettingRow name="Material" detail="What the shell is made of."><Segmented label="Material" value={prefs.material} onChange={(material) => set({ material })} options={ROBOT_MATERIALS.map((m) => [m, label(m)] as [typeof m, string])} /></SettingRow>
+          <SettingRow name="Trim" detail="Joints, ears and the visor frame. Auto is graphite.">
+            <div className="spark-swatches">{TRIMS.map((t) => <button key={t} type="button" title={t === "auto" ? "Auto (graphite)" : t} aria-label={t === "auto" ? "Auto trim" : `Trim ${t}`} aria-pressed={prefs.trim === t} style={{ background: t === "auto" ? "linear-gradient(135deg, #4a5262, #1c212b)" : t }} onClick={() => set({ trim: t })} onMouseEnter={() => setTrial({ trim: t })} onMouseLeave={() => setTrial(null)} />)}
+              <label className="spark-custom" title="Any colour"><input type="color" value={prefs.trim === "auto" ? "#2b3240" : prefs.trim} onChange={(e) => set({ trim: e.target.value })} aria-label="Custom trim colour" /></label></div>
+          </SettingRow>
+          <SettingRow name="Eye glow" detail="The eyes, the core, and the little lights."><input type="color" className="spark-eye-color" value={prefs.eyeColor} onChange={e => set({ eyeColor: e.target.value })} aria-label="Robot eye color" /></SettingRow>
+          <h5 className="spark-sub">Eyes</h5><PieceTiles prefs={prefs} piece="eyes" options={ROBOT_EYES} set={set} onTry={setTrial} />
+          <h5 className="spark-sub">Mouth</h5><PieceTiles prefs={prefs} piece="mouth" options={ROBOT_MOUTHS} set={set} onTry={setTrial} />
+          <h5 className="spark-sub">On its head</h5><PieceTiles prefs={prefs} piece="hat" options={ROBOT_HATS} set={set} onTry={setTrial} />
+          <h5 className="spark-sub">On its face</h5><PieceTiles prefs={prefs} piece="faceWear" options={ROBOT_FACEWEAR} set={set} onTry={setTrial} />
+          <h5 className="spark-sub">Round its neck</h5><PieceTiles prefs={prefs} piece="neck" options={ROBOT_NECKS} set={set} onTry={setTrial} />
+        </div>
+      </div>}
       <SettingRow name="Energy" detail="Choose how lively your companion feels between conversations."><Segmented label="Robot energy" value={prefs.presence} onChange={presence => set({ presence })} options={[["interaction", "When we talk"], ["subtle", "Easygoing"], ["playful", "Playful"]]} /></SettingRow>
       <SettingRow name="Little victories" detail="How your robot celebrates completed crew work."><Segmented label="Celebrations" value={prefs.celebration} onChange={celebration => set({ celebration })} options={[["off", "Quiet"], ["subtle", "A little joy"], ["expressive", "Celebrate"]]} /></SettingRow>
     </section>}

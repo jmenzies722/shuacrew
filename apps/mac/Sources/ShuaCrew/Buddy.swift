@@ -1170,6 +1170,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             return
         }
+        if spec == "notch:shot" { // the notch at rest, its nook open, and typed into: ~/.shuacrew/selftest-notch-<state>.png
+            Task { @MainActor [weak self] in
+                guard let self, let screen = self.panel.screen ?? NSScreen.main else { return }
+                let shot = { (state: String) async in
+                    let ok = await Self.capture(screen: screen, region: CGRect(x: 0.28, y: 0, width: 0.44, height: 0.42), to: NSHomeDirectory() + "/.shuacrew/selftest-notch-\(state).png")
+                    Self.appendSelfTest("SPARK SELFTEST notch state=\(state) saved=\(ok)\n")
+                }
+                let js = { (code: String) in self.web.evaluateJavaScript(code) }
+                try? await Task.sleep(for: .seconds(3)); await shot("rest")
+                js("window.buddy && window.buddy.nook(true)"); try? await Task.sleep(for: .seconds(1.2)); await shot("open")
+                // Typed the way React sees it (the native value setter, then an input event), never sent.
+                js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'What is on my calendar today'); i.dispatchEvent(new Event('input', { bubbles: true })); })()")
+                try? await Task.sleep(for: .seconds(0.8)); await shot("typed")
+                js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); })(); window.buddy && window.buddy.nook(false)")
+            }
+            return
+        }
         if spec == "buddy:shot" { // the cursor buddy in each state, captured (with the buddy in it) to ~/.shuacrew/selftest-buddy-<state>.png
             Task { @MainActor [weak self] in
                 guard let self else { return }
