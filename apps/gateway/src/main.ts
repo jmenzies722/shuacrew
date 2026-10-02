@@ -24,6 +24,7 @@ import { Backups } from "./backup.js";
 import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
+import { LatencyBook } from "./latency.js";
 import { RoomCoordinator } from "./rooms.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -121,7 +122,10 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   let rooms: RoomCoordinator;
   const settings = new GatewaySettings(path.join(home, "settings.json"));
   const builtinProtected = [path.join(os.homedir(), "Nectar-Work"), path.join(os.homedir(), "Developer/work")];
+  // Seeded from this Mac's own Spark history, then kept current turn by turn.
+  const latency = new LatencyBook().seed(store.read());
   const supervisor = new Supervisor(store, runtimes, {
+    latency,
     settings: () => settings.get(),
     roots: [path.join(os.homedir(), "Developer/projects"), path.join(os.homedir(), "Developer/learn")],
     protectedFolders: builtinProtected,

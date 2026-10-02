@@ -129,6 +129,9 @@ it("routes each turn to the model it needs", () => {
   expect(turnTier("hi!", { screen: false, design: false })).toBe("fast");
   expect(turnTier("help me debug this failing test", { screen: false, design: false })).toBe("balanced");
   expect(turnTier("write me a cover letter for this job", { screen: false, design: false })).toBe("balanced");
+  expect(turnTier("double-check this math for me", { screen: false, design: false })).toBe("frontier");
+  expect(turnTier("think hard about which offer is better", { screen: true, design: false })).toBe("frontier");
+  expect(turnTier("what exactly is a mutex", { screen: false, design: false })).toBe("fast");
   expect(turnTier("what's this?", { screen: true, design: false })).toBe("balanced");
 });
 import { completedBlocks, deleteQuestion, isDestructive, localSystem, parseNext, pixelsToFractions, progressLine, searchTopic } from "./buddy";

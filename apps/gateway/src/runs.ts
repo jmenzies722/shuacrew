@@ -36,6 +36,7 @@ import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, typ
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
 import { selectIntelligence } from "./intelligence.js";
+import type { LatencyBook } from "./latency.js";
 import { inputDigest } from "./mobile/digest.js";
 
 export interface LaunchSpec {
@@ -71,6 +72,8 @@ interface Waiting {
 }
 
 export interface SupervisorOptions {
+  /** First-word wait per model on Spark's turns: Auto picks the fastest model strong enough for the ask. */
+  latency?: LatencyBook;
   /** Gateway-enforced settings (~/.shuacrew/settings.json). */
   settings?: () => GatewaySettingsValue;
   canStart?: (run: string) => boolean;
@@ -112,7 +115,7 @@ export class Supervisor {
       const snapshot = this.runtimeSnapshots.get(runtime.id);
       return { ...runtime, models: snapshot?.models ? runtime.models.filter(m => snapshot.models!.includes(m.id)) : runtime.models,
         status: snapshot?.status ?? { installed: true, signedIn: null, detail: "Not checked", overridingKeys: [] }, limits: this.activeLimits(runtime.id) };
-    }), this.options.settings?.() ?? { router: [], failoverOrder: [] });
+    }), this.options.settings?.() ?? { router: [], failoverOrder: [] }, Date.now(), this.options.latency && ((r, m) => this.options.latency!.estimate(r, m)));
   }
 
   constructor(
@@ -382,6 +385,7 @@ export class Supervisor {
 
     let ended = false;
     let buffered = "";
+    let firstWordAt = 0;
     const flush = () => {
       if (buffered) this.rec("agent.delta", { turn, text: buffered }, { run: runId });
       buffered = "";
@@ -394,6 +398,7 @@ export class Supervisor {
         approve: (tool, input, meta) => this.gate(runId, policy, tool, input, meta?.subagent),
       })) {
         if (event.type !== "text" || event.final) flush();
+        else if (!firstWordAt) firstWordAt = Date.now();
         switch (event.type) {
           case "session":
             this.rec("run.session", { runtime: runtime.id, id: event.id }, { run: runId });
@@ -457,6 +462,7 @@ export class Supervisor {
             return;
           case "done":
             this.confirmRecovery(runtime.id, model, attemptSeq);
+            if (lean && model && firstWordAt) this.options.latency?.record(runtime.id, model, firstWordAt - started);
             this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
             this.rec(
               "turn.completed",

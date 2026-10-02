@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { selectIntelligence, type IntelligenceCandidate } from "./intelligence.js";
 import { GatewaySettingsSchema } from "./settings.js";
+import { LatencyBook } from "./latency.js";
 const now = 1000;
 const request = { ask: "help me", mode: "auto" as const, purpose: "conversation" as const, images: false, tier: "fast" as const };
 const settings = GatewaySettingsSchema.parse({ failoverOrder: ["claude", "codex"] });
@@ -54,4 +55,31 @@ describe("connected intelligence", () => {
     expect(selectIntelligence({...request,preferredRuntime:"codex",preferredModel:"codex-smart"},[c,x],settings,now).runtime).toBeNull();
   });
 
+  it("Auto conversation picks the fastest capable model across providers, measured on this Mac", () => {
+    const tiers = (id: string): IntelligenceCandidate => ({ ...candidate(id), models: [
+      { id: `${id}-fast`, label: "Fast", tier: "fast" }, { id: `${id}-smart`, label: "Smart", tier: "balanced" }, { id: `${id}-max`, label: "Max", tier: "frontier" }] });
+    const book = new LatencyBook();
+    for (let i = 0; i < 5; i++) { book.record("claude", "claude-smart", 1400); book.record("codex", "codex-smart", 7200); book.record("codex", "codex-max", 19000); book.record("claude", "claude-max", 10800); }
+    const order = GatewaySettingsSchema.parse({ failoverOrder: ["codex", "claude"] }); // the provider order alone would pick Codex
+    const est = (r: string, m: string) => book.estimate(r, m);
+    expect(selectIntelligence({ ...request, tier: "balanced" }, [tiers("codex"), tiers("claude")], order, now, est)).toMatchObject({ runtime: "claude", model: "claude-smart" });
+    // quick asks may use a balanced model when it starts sooner than the unmeasured fast ones
+    expect(selectIntelligence(request, [tiers("codex"), tiers("claude")], order, now, est)).toMatchObject({ runtime: "claude", model: "claude-smart" });
+    expect(selectIntelligence({ ...request, tier: "frontier" }, [tiers("codex"), tiers("claude")], order, now, est)).toMatchObject({ runtime: "claude", model: "claude-max" });
+    // a limited provider hands over to the other one's best match
+    const c = tiers("claude"); c.limits = [{ until: 9000 }];
+    expect(selectIntelligence({ ...request, tier: "balanced" }, [tiers("codex"), c], order, now, est)).toMatchObject({ runtime: "codex", model: "codex-smart" });
+    // crew work and explicit picks keep the provider order
+    expect(selectIntelligence({ ...request, purpose: "work", tier: "balanced" }, [tiers("codex"), tiers("claude")], order, now, est)).toMatchObject({ runtime: "codex" });
+    expect(selectIntelligence({ ...request, preferredRuntime: "codex", preferredModel: "codex-smart" }, [tiers("codex"), tiers("claude")], order, now, est)).toMatchObject({ runtime: "codex", model: "codex-smart" });
+  });
+  it("learns first-word latency from Spark turns in the event log", () => {
+    let seq = 0; const ev = (kind: string, run: string, at: number, body: object) => ({ seq: ++seq, at, kind, run, session: null, body, prev: "", hash: "" });
+    const book = new LatencyBook().seed([
+      ev("run.created", "r1", 0, { labels: ["buddy"] }), ev("turn.started", "r1", 1000, {}), ev("agent.delta", "r1", 2500, {}), ev("agent.delta", "r1", 2600, {}),
+      ev("turn.completed", "r1", 4000, { route: { runtime: "claude", model: "s5" } }),
+      ev("run.created", "r2", 0, { labels: [] }), ev("turn.started", "r2", 1000, {}), ev("agent.delta", "r2", 9000, {}), ev("turn.completed", "r2", 9500, { route: { runtime: "claude", model: "s5" } }),
+    ] as never);
+    expect(book.estimate("claude", "s5")).toEqual({ ms: 1500, samples: 1 });
+  });
 });

@@ -5,11 +5,48 @@ export interface IntelligenceCandidate extends Pick<Runtime, "id" | "label" | "c
   status: RuntimeStatus;
   limits: Array<{ model?: string; until: number }>;
 }
+export type LatencyLookup = (runtime: string, model: string) => { ms: number; samples: number } | undefined;
+/** Until this Mac has measured a model, assume the tier's typical first-word wait. */
+const TIER_PRIOR_MS: Record<string, number> = { fast: 3000, balanced: 4000, frontier: 12000 };
+/** Which model tiers can answer a request of each tier. Chat never waits on a frontier model unless precision was asked for. */
+const ELIGIBLE: Record<IntelligenceRequest["tier"], string[]> = { fast: ["fast", "balanced"], balanced: ["balanced", "frontier"], frontier: ["frontier"] };
+
+/**
+ * Auto for Spark's conversation: across every connected provider, the model that starts talking soonest
+ * among those strong enough for the ask. Measured on this Mac (first word), so a slow model loses even
+ * when it's first in the provider order.
+ */
+function fastestCapable(request: IntelligenceRequest, allowed: IntelligenceCandidate[], latency: LatencyLookup, now: number) {
+  const ranked: Array<{ candidate: IntelligenceCandidate; model: IntelligenceCandidate["models"][number]; ms: number; measured: boolean }> = [];
+  for (const tiers of [ELIGIBLE[request.tier], ["fast", "balanced", "frontier"]]) {
+    for (const candidate of allowed) {
+      if (candidate.id === "local" || (request.images && !candidate.capabilities.images)) continue;
+      for (const model of candidate.models) {
+        if (!tiers.includes(model.tier)) continue;
+        if (candidate.limits.some(l => (!l.model || l.model === model.id) && l.until > now)) continue;
+        const seen = latency(candidate.id, model.id);
+        ranked.push({ candidate, model, ms: seen?.ms ?? TIER_PRIOR_MS[model.tier] ?? 5000, measured: !!seen && seen.samples >= 3 });
+      }
+    }
+    if (ranked.length) break; // nothing in the right tiers is free: any free model beats no answer
+  }
+  return ranked.sort((a, b) => a.ms - b.ms)[0];
+}
+
 /** A selection is permission to try, not proof of remaining subscription quota. */
-export function selectIntelligence(request: IntelligenceRequest, candidates: IntelligenceCandidate[], settings: Pick<GatewaySettingsValue, "router" | "failoverOrder">, now = Date.now()): IntelligenceChoice {
+export function selectIntelligence(request: IntelligenceRequest, candidates: IntelligenceCandidate[], settings: Pick<GatewaySettingsValue, "router" | "failoverOrder">, now = Date.now(), latency?: LatencyLookup): IntelligenceChoice {
   const allowed = candidates.filter(c => (!request.preferredRuntime || c.id === request.preferredRuntime) && c.id !== "mock" && c.status.installed && c.status.signedIn !== false &&
     (request.mode === "local" ? c.id === "local" && request.purpose === "conversation" : c.id !== "local" || request.purpose === "conversation"));
   const rule = request.mode === "auto" ? matchRoute(settings.router, request.ask) : undefined;
+  if (latency && request.mode === "auto" && request.purpose === "conversation" && !rule && !request.preferredRuntime && !request.preferredModel) {
+    const best = fastestCapable(request, allowed, latency, now);
+    if (best) {
+      const wait = best.measured ? ` · starts in ~${(best.ms / 1000).toFixed(1)} s here` : "";
+      const why = request.tier === "frontier" ? "Auto · precise ask → strongest model" : request.tier === "balanced" ? "Auto · needs more thought → fastest strong model" : "Auto · quick ask → fastest model";
+      return { runtime: best.candidate.id, model: best.model.id, acceptsImages: best.candidate.capabilities.images, checkedAt: now, verification: "unverified",
+        reason: `${why}${wait}${best.candidate.status.signedIn === null ? " · sign-in unverified" : ""}` };
+    }
+  }
   const preferred = rule?.runtime || allowed.find(c => c.models.some(m => m.id === rule?.model))?.id;
   const cloud = allowed.filter(c => c.id !== "local").map(c => c.id);
   // Auto is cloud only: the on-Mac fallback answered in up to a minute and couldn't do real work. "local" stays explicit.

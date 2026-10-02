@@ -763,6 +763,8 @@ export function followThroughAsk(opened: string, q: string) {
 export function turnTier(q: string, o: { screen: boolean; design: boolean }): "fast" | "balanced" | "frontier" {
   if (o.design) return "balanced";
   const t = q.toLowerCase();
+  // Asked to be careful: worth a frontier model's slower start. (Not "exactly": "what exactly is…" is casual speech.)
+  if (/\b(be (precise|accurate|careful|thorough)|precisely|think (hard|deeply|carefully|it through)|double[- ]check|rigorous(ly)?|step by step proof|prove that|deep dive|best possible)\b/.test(t)) return "frontier";
   const deep = /\b(debug|fix|refactor|implement|architecture|design|plan|strategy|write (a|an|the|me)|draft|essay|analy[sz]e|compare|trade-?offs?|explain why|prove|review|optimi[sz]e|algorithm|step[- ]by[- ]step)\b/.test(t)
     || /```|\bfunction\b|=>|\bclass\b|stack trace|traceback/.test(q) || q.length > 280;
   return deep || o.screen ? "balanced" : "fast";
