@@ -85,6 +85,16 @@ export function unsupportedClaims(spoken: string, sources: string): string[] {
   });
 }
 
+/**
+ * Is this mismatch worth interrupting the call with "Correction: …"? A false alarm costs a few awkward seconds of
+ * speech; a miss lets an invented fact stand.
+ */
+export function worthCorrecting(bad: string[], spoken: string): boolean {
+  // TODO(human): decide the policy. Today: any unsupported specific triggers a correction.
+  void spoken;
+  return bad.length > 0;
+}
+
 const stripTag = (text: string) => text.replace(/^\s*\[(STATUS|COMMENTARY|COMPLETE|ANALYSIS|FINAL)\]\s*/, "");
 export const touchesProtected = (text: string, protectedPaths: string[]) => {
   const home = os.homedir(), t = text.replaceAll("~/", `${home}/`).replaceAll("$HOME/", `${home}/`);
@@ -241,7 +251,7 @@ class LiveCall {
     const t = this.truth;
     if (!t || Date.now() - t.at > 25_000 || !this.threadId) return;
     const bad = unsupportedClaims(spoken, `${t.text} ${this.heard}`);
-    if (!bad.length) return;
+    if (!worthCorrecting(bad, spoken)) return;
     this.truth = undefined; // one correction per result
     this.send({ type: "correction", said: spoken, result: t.text });
     void this.peer?.request("thread/realtime/appendSpeech", { threadId: this.threadId, text: `Correction: I misspoke. The actual result is: ${t.text}` }).catch(() => undefined);
