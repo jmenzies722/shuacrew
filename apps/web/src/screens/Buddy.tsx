@@ -59,6 +59,7 @@ import { parseVisual, type Visual } from "../lib/visual";
 import { announcements, inMeeting, welcomeBack, type Agenda } from "../lib/proactive";
 import { copyForPaste, pasteTarget } from "../lib/paste-hint";
 import { PasteChip } from "../components/PasteChip";
+import { LiveButton, LiveIsland, LivePanel, liveActive, useLive as useLiveCall } from "../components/LiveMode";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -184,6 +185,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [armed, setArmed] = useState(!embedded);
   useEffect(() => { const f = () => setFocused(true), b = () => setFocused(false); window.addEventListener("focus", f); window.addEventListener("blur", b); return () => { window.removeEventListener("focus", f); window.removeEventListener("blur", b); }; }, []);
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
+  // A live call owns the mic and the voice: Spark's open mic, fn push-to-talk and the wake word stand aside meanwhile.
+  const call = useLiveCall();
   const wakeTurn = useRef(false); // "Hey Spark" opened the mic for one request
   const limited = useLive((s) => s.crew.limited);
   const [choice, setChoice] = useState<IntelligenceChoice | null>(null);
@@ -307,6 +310,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release". "down" comes the
       // instant fn is pressed (the mic opens then, so your first words are kept); "cancel" = fn was a modifier after all.
       fn: (kind: "down" | "cancel" | "tap" | "hold" | "release") => {
+        if (liveActive() && kind !== "tap") return;
         if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
         if (kind === "cancel") { mic.current.cool(); return; }
         if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
@@ -898,10 +902,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     m.outputLevel = () => speech.current.level();
     m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
     if (voiceLive) m.mode = "auto";
-    const wanted = (prefs.listen !== "hold" && prefs.conversation) || wakeTurn.current || voiceLive;
+    const wanted = ((prefs.listen !== "hold" && prefs.conversation) || wakeTurn.current || voiceLive) && !call.active;
+    if (call.active) speech.current.stop();
     // Voice mode from the notch listens with the chat closed; otherwise the open mic lives with the open card.
     if (wanted && tab !== "teach" && (open || voiceLive) && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, prefs.listen, prefs.language, open, embedded, focused, armed, tab, voiceLive]);
+  }, [prefs.conversation, prefs.listen, prefs.language, open, embedded, focused, armed, tab, voiceLive, call.active]);
   // Typing while the mic is open: key clicks never start a voice turn (Whisper made "and" of them), and the notch drops
   // the last thing you said aloud — you're writing now.
   useEffect(() => {
@@ -931,6 +936,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => {
     if (embedded) return;
     const on = () => {
+      if (liveActive()) return;
       setOpen(true); setTab("chat"); setArmed(true); speech.current.unlock(); speech.current.stop();
       speech.current.say("Yes?");
       wakeTurn.current = true;
@@ -1099,7 +1105,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }, 400);
     return () => clearInterval(tick);
   }, [busy, working, voiceLive, prefs.conversation, prefs.listen]);
-  const islandWanted = !islandOpen && !open && prefs.desktopPlacement === "notch" && (prefs.notchCaptions && (speaking || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
+  const islandWanted = !islandOpen && !open && prefs.desktopPlacement === "notch" && (call.active || prefs.notchCaptions && (speaking || hearingNow || streamingNow) || !!lookup || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!processingText || !!heads || fnReady);
   // Fluid, never flickering (measured: it opened for 6–58 ms and snapped shut between a reply's sentences, clipping
   // the caption mid-animation): open at once, close only after 0.9 s of real quiet; within a reply the height only
   // grows; and in a gap it keeps showing what it last showed rather than going blank.
@@ -1174,11 +1180,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </div>
         </details>
         {embedded && <button type="button" className="spk-full-toggle" aria-label={full ? "Exit full screen" : "Full screen"} title={full ? "Exit full screen (Esc)" : "Full screen (⌘⇧J)"} aria-pressed={full} onClick={() => setSparkFull(!full)}>{full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button>}
+        <LiveButton />
         <button type="button" aria-label="Close" onClick={close}><X size={15} /></button>
       </header>
       {practicing && tab !== "teach" && <div className="buddy-practice-status" role="status"><button onClick={() => setTab("teach")}>{lesson?.practice.status === "checking" ? "Checking your latest attempt…" : "Your guided lesson is still here"}</button><button onClick={() => void pausePractice().catch(e => setError(String(e)))}>Pause</button></div>}
       {liveOn && <button type="button" className="spk-watch-banner" onClick={toggleLive} disabled={liveBusy}><i />Watching your screen live<span>Stop watching</span></button>}
       <PasteChip copyAgain={(h) => copyForPaste(h, native() ? post : undefined)} />
+      <LivePanel />
       {(choiceError || choice?.runtime === null) && <p className="spk-connection-notice" role="status">{choiceError ? "Connection unavailable. Your message stays here." : choice?.reason}</p>}
       {choice?.runtime === "local" && prefs.brain !== "local" && <p className="spk-connection-notice is-fallback" role="status">Claude and Codex are unavailable, so {prefs.nickname || "Spark"} is on this Mac ({choice.model}): chat and quick actions only. Real work waits for them.</p>}
       {tab === "chat" && (phase === "hearing" || phase === "transcribing" || phase === "error") && <p className="spk-mic-status" role="status">{phase === "hearing" ? "Listening…" : phase === "transcribing" ? "Turning your voice into text…" : "Microphone unavailable. You can keep typing."}</p>}
@@ -1260,7 +1268,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         <span className="is-face"><i className={`shua-island-face ${working || busy ? "is-busy" : ""} ${speaking ? "is-speaking" : ""}`}><SparkCharacter preferences={prefs} mood={mood} size={20} crop="portrait" /></i><strong>{prefs.nickname || "Spark"}</strong></span>
         <span className="shua-island-cam" aria-hidden />
         <span className="is-live">
-          {prefs.notchControls && <><button type="button" className={prefs.conversation ? "is-on" : ""} aria-pressed={prefs.conversation} onClick={toggleTalk} aria-label="Microphone">{prefs.conversation ? <Mic size={13} /> : <MicOff size={13} />}</button>
+          {prefs.notchControls && <><LiveButton compact /><button type="button" className={prefs.conversation ? "is-on" : ""} aria-pressed={prefs.conversation} onClick={toggleTalk} aria-label="Microphone">{prefs.conversation ? <Mic size={13} /> : <MicOff size={13} />}</button>
           <button type="button" className={liveOn ? "is-on" : ""} aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive} aria-label="Watch my screen">{liveOn ? <Eye size={13} /> : <EyeOff size={13} />}</button></>}
           <button type="button" onClick={() => setOpen(false)} aria-label="Tuck into the notch" title="Tuck into the notch"><Minimize2 size={13} /></button>
         </span>
@@ -1296,7 +1304,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={() => { setNook(false); setOpen(true); }} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" aria-hidden={!islandLive}>{keepRow(
+        <div className="shua-island-live" aria-hidden={!islandLive}>{call.active ? <LiveIsland /> : keepRow(
           // While you talk: a waveform (default) — live words flicker as the recogniser revises them. The moment you
           // stop, your final sentence shows (shimmering while Spark works) so you can catch a mishearing.
           fnReady && prefs.notchHearing === "words" ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p>

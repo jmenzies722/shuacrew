@@ -1,0 +1,51 @@
+/* Live call: one accent, a calm orb, and nothing that shouts. */
+.live-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--text); font: 600 12px/1 inherit; cursor: pointer;
+  transition: background .2s, border-color .2s, transform .15s;
+}
+.live-btn:hover { background: var(--active-bg, rgba(255, 255, 255, .06)); }
+.live-btn:active { transform: scale(.96); }
+.live-btn.is-on { border-color: color-mix(in srgb, #ff5a5f 55%, transparent); color: #ff8a8e; }
+.live-btn.is-compact { width: 24px; height: 24px; padding: 0; justify-content: center; border: 0; color: inherit; }
+.live-btn.is-compact.is-on { color: #ff8a8e; background: rgba(255, 90, 95, .14); }
+
+.live-orb {
+  display: inline-block; flex-shrink: 0; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0, color-mix(in srgb, var(--amber, #8e48ff) 70%, #fff) 22%, var(--amber, #8e48ff) 58%, color-mix(in srgb, var(--amber, #8e48ff) 40%, #000) 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 0 18px -4px color-mix(in srgb, var(--amber, #8e48ff) 70%, transparent);
+  transform: scale(var(--live-scale, 1)); transition: transform 90ms linear, filter .3s, opacity .3s;
+}
+.live-orb.is-connecting { opacity: .55; animation: live-breathe 1.4s ease-in-out infinite; }
+.live-orb.is-working { animation: live-spin 1.1s linear infinite; background: conic-gradient(from 0deg, var(--amber, #8e48ff), transparent 60%, var(--amber, #8e48ff)); }
+.live-orb.is-error { filter: grayscale(1); opacity: .5; }
+@keyframes live-breathe { 50% { transform: scale(.88); } }
+@keyframes live-spin { to { transform: rotate(360deg); } }
+
+.live-island { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 4px 2px 6px; color: #f1eef5; }
+.live-island-text { flex: 1; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.live-panel { margin: 8px 10px; padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--raised, rgba(255, 255, 255, .03)); animation: live-in .35s cubic-bezier(.2, .9, .3, 1.1); }
+.live-panel header { display: flex; align-items: center; gap: 11px; }
+.live-panel header > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.live-panel header strong { font-size: 13px; color: var(--text); }
+.live-panel header small { font-size: 11px; color: var(--text-2); }
+.live-lines { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.live-lines li { font-size: 12.5px; line-height: 1.4; color: var(--text); max-width: 92%; }
+.live-lines li.is-user { align-self: flex-end; text-align: right; color: var(--text-2); }
+.live-lines li.is-partial { opacity: .7; }
+.live-steps { list-style: none; margin: 8px 0 0; padding: 0; }
+.live-steps code { font: 10.5px/1.4 var(--font-mono, ui-monospace, monospace); color: var(--text-2); }
+.live-result { margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--sunken, rgba(0, 0, 0, .2)); font-size: 12.5px; line-height: 1.45; color: var(--text); white-space: pre-wrap; }
+.live-voice { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; font-size: 11px; color: var(--text-2); }
+.live-voice select { font-size: 11px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
+
+.live-approval { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 12px; border: 1px solid color-mix(in srgb, #ffb547 45%, transparent); background: rgba(255, 181, 71, .08); color: #ffcf85; }
+.live-approval.is-compact { margin: 0; flex: 1; padding: 4px 8px; }
+.live-approval > span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--text, #f1eef5); }
+.live-approval code { font: 10.5px/1.3 var(--font-mono, ui-monospace, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-approval small { font-size: 10.5px; color: var(--text-2, #b9b3c4); }
+.live-approval button { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line, rgba(255, 255, 255, .14)); background: transparent; color: inherit; cursor: pointer; }
+.live-approval button.is-yes { background: rgba(255, 181, 71, .18); }
+@keyframes live-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .live-orb, .live-panel { animation: none !important; transition: none; } }

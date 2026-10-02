@@ -48,6 +48,7 @@ export function liveBackendInstructions(protectedPaths: string[]): string {
     "Every message must begin at byte zero with [STATUS] and one space for meaningful progress, or [COMPLETE] and one space for the final result, a question, or a blocker. [ANALYSIS] is silent context. Never put the tag anywhere else.",
     "Keep [COMPLETE] short and speakable: one or two plain sentences, no markdown, no code, no long paths. Put detail the user should see (a command, a link) after the first sentence; it is shown, not read.",
     "You are on the user's Mac. Use the shell (open, osascript, shortcuts, mdfind, curl) and web search to get things done. Ask before anything destructive or that sends something on their behalf.",
+    "Your working directory is a private scratch folder, not theirs: \"my folder\" or \"this folder\" means the frontmost Finder window (osascript -e 'tell application \"Finder\" to get POSIX path of (target of front window as alias)'), and their files live under their home folder (find them with mdfind).",
     protectedPaths.length ? `Never read, list, search, or touch these folders or anything inside them: ${protectedPaths.join(", ")}. If asked, say they're off limits.` : "",
   ].filter(Boolean).join("\n");
 }
