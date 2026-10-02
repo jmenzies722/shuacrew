@@ -3,6 +3,8 @@ import { AudioLines, Check, PhoneOff, ShieldAlert, X } from "lucide-react";
 import { LiveCall, type LiveEvent, type LiveState } from "../lib/live-voice";
 import { yesOrNo } from "../lib/handsfree";
 import { copyForPaste, pasteTarget } from "../lib/paste-hint";
+import { describeAction, doVocabulary, parseActions } from "../lib/buddy";
+import { perform, sparkHooks } from "../screens/spark/actions";
 import "./live-mode.css";
 
 /**
@@ -11,8 +13,8 @@ import "./live-mode.css";
  */
 type Line = { role: "user" | "assistant"; text: string; final: boolean };
 export type LiveView = {
-  active: boolean; state: LiveState | "off"; detail?: string; lines: Line[]; steps: string[]; result?: string;
-  approval?: { id: string; kind: "command" | "files"; text: string; why?: string }; mic: number; voice: number;
+  active: boolean; state: LiveState | "off"; detail?: string; lines: Line[]; steps: string[]; result?: string; corrected?: string;
+  approval?: { id: string; kind: "command" | "files" | "action"; text: string; why?: string }; mic: number; voice: number;
 };
 const OFF: LiveView = { active: false, state: "off", lines: [], steps: [], mic: 0, voice: 0 };
 let view: LiveView = OFF, call: LiveCall | null = null;
@@ -38,7 +40,7 @@ function onEvent(e: LiveEvent) {
     if (last) Object.assign(last, { text: e.text, final: e.final }); else lines.push({ role: e.role, text: e.text, final: e.final });
     // "Yes" / "no" to a pending approval, said out loud.
     if (e.final && e.role === "user" && view.approval) { const said = yesOrNo(e.text); if (said !== null) answer(said); }
-    return emit({ lines: lines.slice(-8), ...(e.role === "user" && e.final ? { steps: [], result: undefined } : {}) });
+    return emit({ lines: lines.slice(-8), ...(e.role === "user" && e.final ? { steps: [], result: undefined, corrected: undefined } : {}) });
   }
   if (e.type === "step") return emit({ steps: [...view.steps, e.text].slice(-4) });
   if (e.type === "result") {
@@ -47,6 +49,39 @@ function onEvent(e: LiveEvent) {
     return emit({ result: e.text });
   }
   if (e.type === "approval") return emit({ approval: { id: e.id, kind: e.kind, text: e.text, why: e.why } });
+  if (e.type === "correction") return emit({ result: e.result, corrected: e.said });
+  if (e.type === "do") { const c = call; void runSparkActions(e.actions).then((text) => c?.done(e.id, text)); }
+}
+
+/** A question only this page can answer (a delete Spark's hands want to make): same card, same "yes"/"no". */
+const local = new Map<string, (allow: boolean) => void>();
+const askHere = (text: string) => new Promise<boolean>((resolve) => {
+  const id = `local:${Math.random().toString(36).slice(2, 8)}`;
+  local.set(id, resolve);
+  emit({ approval: { id, kind: "action", text, why: "Shua wants to do this on your Mac" } });
+  setTimeout(() => { if (local.delete(id)) { resolve(false); if (view.approval?.id === id) emit({ approval: undefined }); } }, 60_000);
+});
+
+/**
+ * The hands asked for Spark's native actions: run them exactly as Spark would (its executor, its checks, deletes
+ * confirmed here), and hand back what happened plus anything read (calendar, mail, files).
+ */
+async function runSparkActions(raw: unknown[]): Promise<string> {
+  const actions = parseActions("```do " + JSON.stringify(raw) + "```").filter((a) => a.type !== "run");
+  if (!actions.length) return "Nothing ran: no valid actions. Use the exact shapes from the list.";
+  const results: string[] = [], outputs: string[] = [];
+  const saved = { ...sparkHooks };
+  sparkHooks.onMacOutput = (what, out) => outputs.push(`${what}:\n${out}`);
+  sparkHooks.onMailOutput = (what, out) => outputs.push(`${what}:\n${out}`);
+  sparkHooks.confirmDelete = (what) => askHere(what);
+  try {
+    for (const a of actions) {
+      emit({ steps: [...view.steps, describeAction(a)].slice(-4) });
+      const r = await perform(a);
+      results.push(`${describeAction(a)}: ${r.ok ? "done" : "failed"} — ${r.message}`);
+    }
+  } finally { Object.assign(sparkHooks, saved); }
+  return [...results, ...outputs].join("\n\n").slice(0, 12_000);
 }
 const native = () => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew;
 
@@ -54,11 +89,16 @@ export function startLive() {
   if (call) return;
   emit({ ...OFF, active: true, state: "connecting" });
   window.dispatchEvent(new CustomEvent("shuacrew:live", { detail: { on: true } }));
-  call = new LiveCall({ voice: liveVoice(), onEvent });
+  call = new LiveCall({ voice: liveVoice(), onEvent, vocab: doVocabulary() });
   void call.start();
 }
 export function endLive() { call?.end(); }
-function answer(allow: boolean) { if (view.approval) { call?.approve(view.approval.id, allow); emit({ approval: undefined }); } }
+function answer(allow: boolean) {
+  const a = view.approval; if (!a) return;
+  const mine = local.get(a.id);
+  if (mine) { local.delete(a.id); mine(allow); } else call?.approve(a.id, allow);
+  emit({ approval: undefined });
+}
 
 const LABEL: Record<LiveView["state"], string> = { off: "Live", connecting: "Connecting…", listening: "Listening", speaking: "Speaking", working: "Working on it", ended: "Call ended", error: "Couldn't connect" };
 
@@ -86,7 +126,7 @@ function Approval({ live, compact }: { live: LiveView; compact?: boolean }) {
   return (
     <div className={`live-approval${compact ? " is-compact" : ""}`} role="alertdialog" aria-label="Shua needs your OK">
       <ShieldAlert size={14} />
-      <span><b>{a.kind === "command" ? "Run this?" : "Change files?"}</b> <code title={a.text}>{a.text}</code>{!compact && a.why && <small>{a.why}</small>}<small>Say yes or no</small></span>
+      <span><b>{a.kind === "command" ? "Run this?" : a.kind === "action" ? "OK to do this?" : "Change files?"}</b> <code title={a.text}>{a.text}</code>{!compact && a.why && <small>{a.why}</small>}<small>Say yes or no</small></span>
       <button type="button" className="is-yes" onClick={() => answer(true)}><Check size={13} />Allow</button>
       <button type="button" onClick={() => answer(false)}><X size={13} />Deny</button>
     </div>
@@ -124,7 +164,7 @@ export function LivePanel() {
         {live.lines.slice(-5).map((l, i) => <li key={i} className={`is-${l.role}${l.final ? "" : " is-partial"}`}>{l.text}</li>)}
       </ol>
       {live.steps.length > 0 && <ul className="live-steps">{live.steps.map((s, i) => <li key={i}><code>{s}</code></li>)}</ul>}
-      {live.result && <p className="live-result">{live.result}</p>}
+      {live.result && <p className="live-result">{live.corrected && <small className="live-corrected">Corrected what Shua said (“{live.corrected}”). The real result:</small>}{live.result}</p>}
       <Approval live={live} />
       {live.active && (
         <label className="live-voice">Voice

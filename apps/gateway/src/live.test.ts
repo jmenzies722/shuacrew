@@ -25,3 +25,17 @@ describe("live voice", () => {
     expect(livePrompt("Shua")).toMatch(/Never say something is done or found before the backend says so/);
   });
 });
+
+describe("live truth guard", async () => {
+  const { unsupportedClaims } = await import("./live.js");
+  it("catches specifics the result never said", () => {
+    expect(unsupportedClaims("You’ve got Lunch at noon.", "Your connected Google Calendar shows no events today, October 2. What's on my calendar today")).toEqual(expect.arrayContaining(["Lunch", "noon"]));
+    expect(unsupportedClaims("The secret word is moonlight.", "The secret word is pineapple.")).toEqual([]); // lower-case new words aren't specific enough to flag
+    expect(unsupportedClaims("Your dentist is at 3 PM.", "Today: 3:00 PM Dentist (Dr. Lee)")).toEqual([]);
+    expect(unsupportedClaims("You have 4 events.", "Today: 3:00 PM Dentist, 6:30 PM Dinner with Sam")).toEqual(["4"]);
+  });
+  it("lets paraphrase through", () => {
+    expect(unsupportedClaims("Nothing on your calendar today.", "Your connected Google Calendar shows no events today, October 2.")).toEqual([]);
+    expect(unsupportedClaims("It's in your Downloads folder, Josh.", "Found lease.pdf in ~/Downloads. user Josh")).toEqual([]);
+  });
+});

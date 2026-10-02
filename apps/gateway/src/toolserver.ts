@@ -85,6 +85,8 @@ interface Rpc {
 export class ToolServer {
   private tokens = new Map<string, string>(); // token → run
   private byRun = new Map<string, string>();
+  /** Live calls ("live:…" runs) get only Live's tools, answered by the call's page. */
+  live?: { tools: Array<{ name: string; description: string; inputSchema: object }>; call: (run: string, name: string, args: Record<string, unknown>) => Promise<string> };
 
   constructor(
     private library: Library,
@@ -135,11 +137,17 @@ export class ToolServer {
       case "ping":
         return ok({});
       case "tools/list":
+        if (run.startsWith("live:") && this.live) return ok({ tools: this.live.tools });
         // Crew tools only when a crew is attached; room tools only inside a room.
         return ok({ tools: [...TOOLS.filter((t) => this.crew || !CREW_TOOLS.has(t.name)), ...(this.rooms?.roomFor(run) ? ROOM_TOOLS : [])] });
       case "tools/call": {
         const name = String(m.params?.name ?? "");
         const args = (m.params?.arguments ?? {}) as Record<string, unknown>;
+        if (run.startsWith("live:")) {
+          if (!this.live) return ok({ content: [{ type: "text", text: "Live is unavailable." }], isError: true });
+          try { return ok({ content: [{ type: "text", text: await this.live.call(run, name, args) }] }); }
+          catch (error) { return ok({ content: [{ type: "text", text: (error as Error).message }], isError: true }); }
+        }
         try {
           return ok({ content: [{ type: "text", text: this.call(name, args, run) }] });
         } catch (error) {

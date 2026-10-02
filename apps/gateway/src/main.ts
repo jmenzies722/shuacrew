@@ -25,7 +25,7 @@ import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
 import { LatencyBook } from "./latency.js";
-import { LiveVoice } from "./live.js";
+import { LIVE_TOOLS, LiveVoice } from "./live.js";
 import { RoomCoordinator } from "./rooms.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -120,6 +120,10 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     return { ...mcp.forClaude(), [TOOL_SERVER]: { type: "http" as const, url: self, headers: { Authorization: auth } } };
   };
   const terminals = new Terminals(zshIntegration(home));
+  // Live calls reach Spark's Mac actions through this gateway's tool server, with a token per call.
+  const liveVoice = new LiveVoice({ home, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
+    mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }); // spark_do confirms deletes itself
+  tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;
   const settings = new GatewaySettings(path.join(home, "settings.json"));
   const builtinProtected = [path.join(os.homedir(), "Nectar-Work"), path.join(os.homedir(), "Developer/work")];
@@ -158,7 +162,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const { SpeechService } = await import("./speech.js");
   const { app, hub, state, briefing } = await createServer({
-    live: new LiveVoice({ home, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths] }),
+    live: liveVoice,
     store,
     supervisor,
     runtimes,

@@ -37,6 +37,7 @@
 .live-steps { list-style: none; margin: 8px 0 0; padding: 0; }
 .live-steps code { font: 10.5px/1.4 var(--font-mono, ui-monospace, monospace); color: var(--text-2); }
 .live-result { margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--sunken, rgba(0, 0, 0, .2)); font-size: 12.5px; line-height: 1.45; color: var(--text); white-space: pre-wrap; }
+.live-corrected { display: block; margin-bottom: 4px; font-size: 10.5px; color: #ffcf85; }
 .live-voice { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; font-size: 11px; color: var(--text-2); }
 .live-voice select { font-size: 11px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
 

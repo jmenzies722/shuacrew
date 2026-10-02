@@ -888,3 +888,11 @@ export const SPARK_RULES = (() => {
   let h = 5381; for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
 })();
+
+/**
+ * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to
+ * the spark_do tool. "run" stays out: Live's hands have their own sandboxed shell.
+ */
+export function doVocabulary(): string {
+  return buddyPrompt("", null).split("\n").filter((l) => /```do \[|\{"what"|media \{command/.test(l) && !/"type":"run"/.test(l)).join("\n");
+}
