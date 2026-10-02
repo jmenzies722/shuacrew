@@ -25,6 +25,7 @@ import { Ventures } from "./ventures.js";
 import { LIBRARY_HINT, TOOL_SERVER, ToolServer } from "./toolserver.js";
 import { Supervisor } from "./runs.js";
 import { LatencyBook } from "./latency.js";
+import { LiveVoice } from "./live.js";
 import { RoomCoordinator } from "./rooms.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
@@ -157,6 +158,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const { SpeechService } = await import("./speech.js");
   const { app, hub, state, briefing } = await createServer({
+    live: new LiveVoice({ home, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths] }),
     store,
     supervisor,
     runtimes,

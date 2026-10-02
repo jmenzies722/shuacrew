@@ -33,6 +33,7 @@ const execFileAsync = promisify(execFile);
 import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
+import type { LiveVoice } from "./live.js";
 import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
 import { ClaudeRuntime, type Runtime, type RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -103,6 +104,8 @@ export interface ServerOptions {
   terminals?: Terminals;
   uploads?: Uploads;
   speech?: SpeechService;
+  /** Live: realtime voice calls with Shua (Codex realtime over WebRTC). */
+  live?: LiveVoice;
   rooms?: RoomCoordinator;
   mobile?: MobileRoutesSource;
 }
@@ -237,6 +240,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   mobileRoutes(app, options.mobile);
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
+  if (options.live) { const live = options.live; app.get("/ws/live", { websocket: true }, (socket) => live.attach(socket)); }
 
   if (options.uploads) {
     const uploads = options.uploads;
