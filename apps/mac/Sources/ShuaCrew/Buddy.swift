@@ -10,6 +10,7 @@ import WebKit
 /// macOS activation so keyboard focus cannot remain claimed in another application.
 @MainActor
 final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
+    private var actionGeneration = 0
     private let teaching = TeachingOverlay()
     static let enabledKey = "buddyEnabled"
     private static let cornerKey = "buddyCorner"
@@ -193,7 +194,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     func summon() {
         if !Self.enabled { setEnabled(true) }
         start()
-        NSApp.activate()
+        panel.acceptsKeyboardInput = true
+        if !NSApp.isActive { NSApp.activate() }
         panel.makeKeyAndOrderFront(nil)
         guard ready else { pendingFocus = true; return }
         web.evaluateJavaScript("window.buddy && window.buddy.focus()")
@@ -427,7 +429,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Open Spark from the menu bar or a shuacrew:// link, optionally asking something right away.
     func open(asking text: String? = nil) {
-        NSApp.activate()
+        panel.acceptsKeyboardInput = true
+        if !NSApp.isActive { NSApp.activate() }
         raise(); panel.makeKeyAndOrderFront(nil)
         if let text, let data = try? JSONSerialization.data(withJSONObject: [text]), let json = String(data: data, encoding: .utf8) {
             web.evaluateJavaScript("window.buddy && window.buddy.ask(\(json)[0])")
@@ -437,7 +440,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     private func toggle() {
-        if !isOpen { NSApp.activate() }
+        panel.acceptsKeyboardInput = true
+        if !isOpen && !NSApp.isActive { NSApp.activate() }
         raise()
         panel.makeKeyAndOrderFront(nil)
         web.evaluateJavaScript("window.buddy && window.buddy.toggle()")
@@ -516,6 +520,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // The embedded companion shares this bridge, but must never change
             // the desktop panel's geometry or keyboard ownership.
             guard sender === web else { return }
+            let wasInteractive = isOpen || isNook || isMini
             if let placement = body["desktopPlacement"] as? String, ["free", "notch"].contains(placement) {
                 docked = placement == "notch"
                 UserDefaults.standard.set(docked, forKey: "buddyNotchDock")
@@ -534,20 +539,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // Record open/closed BEFORE re-checking the hover watch: checking first saw the chat as still open when it
             // closed, stopped watching, and nothing restarted it, so hovering the notch did nothing after a click.
             isOpen = open
+            panel.acceptsKeyboardInput = isOpen || isNook || isMini
             updateNookWatch()
             place(size: open ? (body["wide"] as? Bool ?? false ? Self.wide : Self.open) : isMini ? Self.mini : peek ? Self.peek : closed)
             updateFollow()
-            if !open, panel.isKeyWindow {
-                // resignKey() is an AppKit notification/override point, not an
-                // operation for changing focus. Calling it directly can leave
-                // AppKit's keyboard ownership inconsistent.
-                // Ordering out releases that claim; ordering front does not
-                // make the collapsed character key again.
-                panel.orderOut(nil)
-                panel.orderFrontRegardless()
+            if CompanionFocus.shouldRelease(wasInteractive: wasInteractive, isInteractive: panel.acceptsKeyboardInput, ownsKeyboard: panel.isKeyWindow) {
+                if let main = NSApp.mainWindow, main !== panel, main.isVisible {
+                    main.makeKey()
+                } else if NSApp.isActive {
+                    NSApp.deactivate()
+                }
             }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
+            let generation = actionGeneration
+            let current = { [weak self] in self?.actionGeneration == generation }
             let screen = lookedAt(action["screen"]) ?? NSScreen.screens[0]
             switch action["type"] as? String {
             case "click", "type", "key", "scroll":
@@ -559,7 +565,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in
                     guard let self else { return }
-                    let run = { let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+                    guard current() else { self.did(["id": id, "ok": false, "message": "Canceled before execution"], to: sender); return }
+                    let run = { guard current() else { self.did(["id": id, "ok": false, "message": "Canceled before execution"], to: sender); return }; let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
                     // Typing in a web page goes onto the field itself (exact, never doubled); the keyboard is the fallback.
                     if action["type"] as? String == "type", let app = SparkHands.target, ShuaWeb.supports(app), let text = action["text"] as? String {
                         let submit = text.hasSuffix("\n"), value = submit ? String(text.dropLast()) : text
@@ -592,8 +599,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                         do { let did = try await ShuaWeb.click(label, in: app); self.did(["id": id, "ok": true, "message": did], to: sender); return }
                         catch ShuaWeb.Failure.javascriptOff(let name) { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": ShuaWeb.Failure.javascriptOff(name).localizedDescription], to: sender); return } }
                         catch { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": error.localizedDescription], to: sender); return } }
-                        guard let found = SparkPress.find(label) else { return }
-                        _ = SparkPress.press(found); self.did(["id": id, "ok": true, "message": "Pressed “\(found.name)”"], to: sender)
+                        guard current(), let found = SparkPress.find(label) else { self.did(["id": id, "ok": false, "message": "Canceled or target disappeared"], to: sender); return }
+                        let ok = SparkPress.press(found); self.did(["id": id, "ok": ok, "message": ok ? "Pressed “\(found.name)”" : "Could not press “\(found.name)”"], to: sender)
                     }
                     break
                 }
@@ -616,6 +623,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let lead = pointer.show(on: target, x: (found.center.x - f.minX) / f.width, y: (f.maxY - appKitY) / f.height, label: found.name, color: action["color"] as? String, from: launchPoint()) + 0.12
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + lead) { [weak self] in
+                    guard current() else { self?.did(["id": id, "ok": false, "message": "Canceled before execution"], to: sender); return }
                     let ok = SparkPress.press(found)
                     self?.did(["id": id, "ok": ok, "message": ok ? "Pressed “\(found.name)”" : "Couldn't press “\(found.name)”"], to: sender)
                 }
@@ -676,6 +684,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyHotkey":
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":
+            actionGeneration += 1
             stopWatch.map(NSEvent.removeMonitor); stopWatch = nil
         case "buddyLive":
             let on = body["on"] as? Bool ?? false
@@ -691,6 +700,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
             if let sender { teaching.handle(body, to: sender) }
+        case "buddySelectRegion":
+            let request = body["request"] as? String ?? ""
+            regionSelector.start(excluding: ownWindows) { [weak self, weak sender] result in
+                var payload = result; payload["request"] = request
+                self?.send("shuacrew:region", payload, to: sender)
+            }
+        case "buddyCancelRegion": regionSelector.cancel()
         case "buddyCapture":
             let hires = body["hires"] as? Bool ?? false
             Task { await capture(to: sender, hires: hires) }
@@ -777,6 +793,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyState":
             // What Spark is doing, shown by the buddy beside your pointer (listening / thinking / speaking / idle).
             if let c = body["color"] as? String { cursorBuddy.color = PointerOverlay.color(c) }
+            if let g = body["colors"] as? [String], g.count == 2 { cursorBuddy.gradient = (PointerOverlay.color(g[0]), PointerOverlay.color(g[1])) }
             noteState(CursorBuddy.State(rawValue: body["state"] as? String ?? "") ?? .idle)
         case "buddyGuideStop":
             pointer.hide()
@@ -810,8 +827,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 Task { @MainActor [weak self] in self?.send("shuacrew:agenda", agenda, to: sender) }
             }
         case "buddyNookFocus":
-            // You clicked into the nook's Ask box: let it take the keyboard so you can type.
-            NSApp.activate(); panel.makeKey()
+            guard sender === web, isNook else { return }
+            panel.acceptsKeyboardInput = true
+            if !NSApp.isActive { NSApp.activate() }
+            if !panel.isKeyWindow { panel.makeKey() }
         case "buddyFollow":
             following = body["on"] as? Bool ?? true
             UserDefaults.standard.set(following, forKey: "buddyFollowCursor")
@@ -843,9 +862,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             Self.appendSelfTest(line)
         case "buddySound":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
+            if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
             if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) { SparkSounds.shared.play(kind) }
         case "buddySoundStyle":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
+            if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
         case "notify":
             guard let title = body["title"] as? String else { return }
             NativeBanner.post(title: title, body: (body["body"] as? String) ?? "")
@@ -901,6 +922,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         stopWatch = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard e.keyCode == 53 else { return }
             Task { @MainActor in
+                self?.actionGeneration += 1
                 for w in [self?.web, self?.appWeb].compactMap({ $0 }) { w.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:actStop'))") }
                 self?.stopWatch.map(NSEvent.removeMonitor); self?.stopWatch = nil
             }
@@ -931,6 +953,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// A screenshot of the display you're working on (where your pointer is), only when you ask, with Spark itself left
     /// out — and, with more than one display, a smaller look at each of the others so Spark sees your whole desk.
     /// The last full-resolution look, for zooming into part of it.
+    private let regionSelector = RegionSelector()
     private var lastFull: CGImage?
     private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
         if !ScreenAccess.granted() {
@@ -1029,13 +1052,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                       let jpg = NSBitmapImageRep(cgImage: img).representation(using: .jpeg, properties: [.compressionFactor: 0.75]) else { continue }
                 let n = numbered.count + 1
                 numbered[n] = side
-                others.append(["n": n, "data": jpg.base64EncodedString(), "width": img.width, "height": img.height])
+                others.append(["n": n, "display": d.displayID, "data": jpg.base64EncodedString(), "width": img.width, "height": img.height, "text": await ScreenText.read(img, timeout: 2)])
                 displays.append(["n": n, "name": side.localizedName, "where": DisplayLayout.relation(of: side.frame, to: screen.frame), "width": img.width, "height": img.height])
             }
             if !displays.isEmpty { context["displays"] = displays }
             stage("sides"); _ = await text; stage("ocr")
             shotScreen = screen; shotScreens = numbered
-            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
+            reply(["display": (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, "data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
         } catch {
             reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
         }
@@ -1164,6 +1187,23 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     Self.appendSelfTest("SPARK SELFTEST pen t=\(t) saved=\(ok)\n")
                 }
                 self.pointer.hide(); self.noteState(.idle)
+            }
+            return
+        }
+        if spec == "notch:shot" { // the notch at rest, its nook open, and typed into: ~/.shuacrew/selftest-notch-<state>.png
+            Task { @MainActor [weak self] in
+                guard let self, let screen = self.panel.screen ?? NSScreen.main else { return }
+                let shot = { (state: String) async in
+                    let ok = await Self.capture(screen: screen, region: CGRect(x: 0.28, y: 0, width: 0.44, height: 0.42), to: NSHomeDirectory() + "/.shuacrew/selftest-notch-\(state).png")
+                    Self.appendSelfTest("SPARK SELFTEST notch state=\(state) saved=\(ok)\n")
+                }
+                let js = { (code: String) in self.web.evaluateJavaScript(code) }
+                try? await Task.sleep(for: .seconds(3)); await shot("rest")
+                js("window.buddy && window.buddy.nook(true)"); try? await Task.sleep(for: .seconds(1.2)); await shot("open")
+                // Typed the way React sees it (the native value setter, then an input event), never sent.
+                js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'What is on my calendar today'); i.dispatchEvent(new Event('input', { bubbles: true })); })()")
+                try? await Task.sleep(for: .seconds(0.8)); await shot("typed")
+                js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); })(); window.buddy && window.buddy.nook(false)")
             }
             return
         }
@@ -1345,7 +1385,8 @@ enum ScreenText {
 
 /// Borderless panels can't normally take keyboard focus; this one can, so you can type your question.
 final class BuddyPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    var acceptsKeyboardInput = false
+    override var canBecomeKey: Bool { acceptsKeyboardInput }
     override var canBecomeMain: Bool { false }
     /// In notch mode the island and its chat must sit flush with the top of the screen, over the camera housing.
     /// macOS normally pushes windows below the menu bar, which drew a second "notch" one notch-height too low.

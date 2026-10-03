@@ -40,6 +40,25 @@ import Testing
         #expect(corner.x < 995 && corner.y > 5)
     }
 
+    @Test func anchorContainsTheWholeCompanionEvenOutsideTheVisibleArea() {
+        let visible = CGRect(x: -1200, y: 40, width: 1000, height: 700)
+        for cursor in [CGPoint(x: -1300, y: 20), CGPoint(x: -180, y: 800), CGPoint(x: -700, y: 400)] {
+            let p = CursorMotion.anchor(cursor: cursor, visible: visible, size: CGSize(width: 44, height: 44))
+            #expect(visible.contains(CGRect(x: p.x - 22, y: p.y - 22, width: 44, height: 44)))
+        }
+    }
+
+    @Test func captionsStayInsideEveryCornerAndOffsetDisplay() {
+        let visible = CGRect(x: -1200, y: 40, width: 1000, height: 700)
+        for point in [CGPoint(x: -1198, y: 42), CGPoint(x: -202, y: 738), CGPoint(x: -700, y: 400)] {
+            let frame = CursorMotion.captionFrame(near: point, size: CGSize(width: 280, height: 100), visible: visible)
+            #expect(visible.insetBy(dx: 8, dy: 8).contains(frame))
+            #expect(frame.size == CGSize(width: 280, height: 100))
+        }
+        let oversized = CursorMotion.captionFrame(near: .zero, size: CGSize(width: 2000, height: 2000), visible: visible)
+        #expect(visible.contains(oversized))
+    }
+
     @Test func thePenFliesThenTracesEachMarkInTurn() {
         let plan = CursorMotion.penPlan(from: CGPoint(x: 0, y: 0), strokes: [(CGPoint(x: 700, y: 0), 300), (CGPoint(x: 700, y: 10), 2000)])
         #expect(plan.count == 2)
@@ -67,6 +86,22 @@ import Testing
         let pts = CursorMotion.flatten(CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 100, height: 100), transform: nil))
         #expect(pts.count > 20)
         #expect(pts.allSatisfy { abs(hypot($0.x - 50, $0.y - 50) - 50) < 1 })
+    }
+
+    @Test func theArrowTurnsTheShortWayRound() {
+        let a = CursorMotion.turn(current: 170 * .pi / 180, target: -170 * .pi / 180, dt: 1.0 / 120)
+        #expect(a > 170 * .pi / 180) // heading on through 180°, not swinging back through 0°
+        let b = CursorMotion.turn(current: -170 * .pi / 180, target: 170 * .pi / 180, dt: 1.0 / 120)
+        #expect(b < -170 * .pi / 180)
+    }
+
+    @Test func turningIsTheSameAt60And120HzAndSettles() {
+        let one = CursorMotion.turn(current: 0, target: 2, dt: 1.0 / 60)
+        let two = CursorMotion.turn(current: CursorMotion.turn(current: 0, target: 2, dt: 1.0 / 120), target: 2, dt: 1.0 / 120)
+        #expect(abs(one - two) < 0.0001 && one > 0 && one < 2)
+        var h: CGFloat = 0
+        for _ in 0..<60 { h = CursorMotion.turn(current: h, target: 2, dt: 1.0 / 120) } // half a second
+        #expect(abs(h - 2) < 0.01)
     }
 
     @Test func theWaveformFollowsYourVoice() {
