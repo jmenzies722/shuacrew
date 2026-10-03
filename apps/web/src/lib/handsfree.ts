@@ -1,3 +1,4 @@
+import { orderedTranscript } from "./companion-reliability";
 import { trustLive, type LiveSpeech } from "./live-speech";
 import { micConstraints } from "./mic-route";
 /**
@@ -162,16 +163,18 @@ export class HandsFree {
     const restore = () => { this.ctx = saved.ctx; this.onTurn = saved.onTurn; this.onDropped = saved.onDropped; this.lang = saved.lang; };
     this.ctx = { sampleRate: rate } as AudioContext; this.lang = "en";
     return new Promise((resolve) => {
-      const done = (text: string) => { clearTimeout(t); restore(); resolve({ text, source: text ? this.lastSource : "dropped" }); };
+      let finished = false, stepTimer: ReturnType<typeof setTimeout> | undefined;
+      const done = (text: string) => { if (finished) return; finished = true; this.recognitionEpoch++; clearTimeout(t); clearTimeout(stepTimer); this.live?.cancel(this.turnId); this.turnId++; this.turn = null; restore(); resolve({ text, source: text ? this.lastSource : "dropped" }); };
       const t = setTimeout(() => done(""), timeoutMs);
       this.onTurn = (text) => done(text); this.onDropped = () => done("");
       this.turn = []; this.turnId++; this.liveBegin();
       let at = 0;
       const step = () => {
+        if (finished) return;
         if (at >= samples.length) { void this.finish(true); return; }
         const f = samples.slice(at, at + 2048); at += 2048;
         this.turn?.push(f); if (this.liveUsing()) this.live!.push(this.turnId, f);
-        setTimeout(step, (2048 / rate) * 1000);
+        stepTimer = setTimeout(step, (2048 / rate) * 1000);
       };
       step();
     });
@@ -207,7 +210,8 @@ export class HandsFree {
   private yielded = false;
   private lastCaption = ""; private steadied: Steady = STEADY;
   /** Turns already transcribed but not yet sent: if you pause and carry on, they go as one message. */
-  private pending: string[] = [];
+  private pending: Array<{order:number;text:string}> = [];
+  private recognitionEpoch = 0;
   private inflight = 0;
   /**
    * A head start: once you've been quiet ~0.35 s, the final transcript starts on what you've said so far. If you stay
@@ -217,14 +221,54 @@ export class HandsFree {
   private spec: { talk: number; result: Promise<{ text: string; error?: string }> } | null = null;
 
   get active() { return !!this.stream; }
+  private captureEpoch = 0;
+  private starting?: Promise<void>;
+  private listening = false;
+  private recoveryTimer?: ReturnType<typeof setTimeout>;
+  private recover = () => {
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = setTimeout(() => {
+      if (!this.listening) return;
+      if (this.turn) { this.recover(); return; }
+      this.stop();
+      void this.start();
+    }, 400);
+  };
+  private disconnected = () => {
+    const interrupted = !!this.turn;
+    this.turn = null;
+    if (interrupted) this.onPartial?.("Microphone disconnected. Please repeat your last sentence.");
+    this.recover();
+  };
 
   async start() {
     if (this.stream) return;
+    if (this.starting) return this.starting;
+    this.listening = true;
+    navigator.mediaDevices.addEventListener?.("devicechange", this.recover);
+    if (typeof window !== "undefined") window.addEventListener("shuacrew:mic-route", this.recover);
+    const epoch = this.captureEpoch;
+    const pending = this.openMicrophone(epoch);
+    this.starting = pending;
+    try { await pending; } catch {
+      if (epoch === this.captureEpoch) {
+        this.releaseCapture();
+        this.onPhase?.("error", "Couldn't initialize microphone audio. Check your input device and try again.");
+      }
+    } finally { if (this.starting === pending) this.starting = undefined; }
+  }
+
+  private async openMicrophone(epoch: number) {
     this.onPhase?.("starting");
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }) });
-    } catch (e) { this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone."); return; }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }) });
+      if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); return; }
+      this.stream = stream;
+    } catch (e) { if (epoch !== this.captureEpoch) return; this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone. Check your selected input device and try again."); return; }
     this.ctx = new AudioContext();
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    if (epoch !== this.captureEpoch) return;
+    this.stream.getAudioTracks().forEach(track => track.addEventListener("ended", this.disconnected));
     const source = this.ctx.createMediaStreamSource(this.stream);
     this.node = this.ctx.createScriptProcessor(2048, 1, 1);
     // Push-to-talk keeps more: the mic opens the moment fn goes down, and the ~0.3 s before it counts as a hold is yours.
@@ -334,6 +378,7 @@ export class HandsFree {
   }
 
   private async finish(keep: boolean, talk?: number) {
+    const epoch = this.recognitionEpoch, order = this.turnId, rate = this.ctx?.sampleRate;
     const liveTurn = this.liveUsing() ? this.turnId : -1;
     const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = ""; this.steadied = STEADY;
     const spec = this.spec; this.spec = null;
@@ -343,7 +388,7 @@ export class HandsFree {
     this.inflight++; this.onPhase?.("transcribing");
     try {
       // The head start covered everything you said (you stayed quiet since): use it. Otherwise transcribe it all now.
-      const whisper = () => (spec && talk !== undefined && spec.talk === talk ? spec.result.catch(() => this.transcribe(turn, this.ctx!.sampleRate)) : this.transcribe(turn, this.ctx!.sampleRate));
+      const whisper = () => (spec && talk !== undefined && spec.talk === talk ? spec.result.catch(() => this.transcribe(turn, rate!)) : this.transcribe(turn, rate!));
       // Apple's final is ready ~0.1 s after you stop: used only when it's sure of every word; else Whisper decides.
       const quick = liveTurn >= 0 ? await this.live!.end(liveTurn) : null;
       let result: { text: string; error?: string };
@@ -354,28 +399,42 @@ export class HandsFree {
         result = await whisper(); this.lastSource = "whisper";
         if (quick && HandsFree.calibrating()) { HandsFree.calibrated(); this.live?.verdict({ apple: quick.text, confidence: quick.confidence, whisper: result.text, used: "whisper", ms: quick.ms }); }
       }
+      if (epoch !== this.recognitionEpoch) return;
       const { text = "", error } = result;
       if (error) this.onPhase?.("error", error);
-      else if (meaningful(text)) this.pending.push(text.trim());
+      else if (meaningful(text)) this.pending.push({order,text:text.trim()});
       else this.onDropped?.();
       this.onPartial?.("");
-    } catch { this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
+    } catch { if (epoch === this.recognitionEpoch) this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
     finally { this.inflight--; this.paused = false; this.deliver(); if (this.stream && !this.turn && !this.inflight) this.onPhase?.("listening"); }
   }
   /** Send what you said once you've really finished: nothing still transcribing and you're not mid-sentence again. */
   private deliver() {
     if (this.inflight || this.turn || !this.pending.length) return;
     // The same words twice in a row (a re-press that re-sent them) are said once.
-    const text = this.pending.filter((t, i, all) => i === 0 || t.toLowerCase() !== all[i - 1]!.toLowerCase()).join(" "); this.pending = [];
+    const text = orderedTranscript(this.pending); this.pending = [];
     this.onTurn?.(text);
   }
 
   stop() {
+    this.listening = false;
+    this.captureEpoch++; this.starting = undefined;
+    clearTimeout(this.recoveryTimer);
+    navigator.mediaDevices?.removeEventListener?.("devicechange", this.recover);
+    if (typeof window !== "undefined") window.removeEventListener("shuacrew:mic-route", this.recover);
+    this.stream?.getAudioTracks().forEach(track => track.removeEventListener("ended", this.disconnected));
+    this.recognitionEpoch++; this.pending = []; this.live?.cancel(this.turnId); this.turnId++;
     clearTimeout(this.tail); this.tail = undefined; this.holding = false; this.pressed = false;
+    this.releaseCapture();
+    this.turn = null; this.preroll = [];
+    this.onPhase?.("off");
+  }
+
+  private releaseCapture() {
+    this.stream?.getAudioTracks().forEach(track => track.removeEventListener("ended", this.disconnected));
     if (this.node) { this.node.onaudioprocess = null; this.node.disconnect(); }
     this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close().catch(() => {});
-    this.stream = undefined; this.ctx = undefined; this.node = undefined; this.turn = null; this.preroll = [];
-    this.onPhase?.("off");
+    this.stream = undefined; this.ctx = undefined; this.node = undefined;
   }
 }

@@ -1,0 +1,17 @@
+[
+ {"name":"speech-only interrupt","expected":"stop talking","control":"silence"},
+ {"name":"polite interruption","expected":"Please stop speaking!","control":"silence"},
+ {"name":"cancel pending work","expected":"cancel this request","control":"cancel"},
+ {"name":"bare stop","expected":"stop","control":"cancel"},
+ {"name":"repeat speech","expected":"say that again","control":"repeat"},
+ {"name":"open history","expected":"open our chat","control":"open-chat"},
+ {"name":"reacquire target","expected":"show me again","control":"show-again"},
+ {"name":"named crew cancellation","expected":"stop the parser crew session","control":null},
+ {"name":"similar crew name Eli","expected":"Tell Eli to add tests","control":null},
+ {"name":"similar crew name Ellie","expected":"Tell Ellie to list tests","control":null},
+ {"name":"correction","expected":"Add tests actually only list the missing tests","control":null},
+ {"name":"media repeat","expected":"repeat this song","control":null},
+ {"name":"instruction not silence","expected":"tell Eli to stop talking","control":null},
+ {"name":"multi-step not simple stop","expected":"stop talking and open Settings","control":null},
+ {"name":"noise must be silent","expected":"","control":null}
+]

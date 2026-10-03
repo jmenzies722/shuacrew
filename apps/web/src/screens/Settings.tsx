@@ -125,7 +125,7 @@ export function Settings() {
     { id: "layout", section: "workspace", title: "Layout & navigation", terms: "density comfortable compact labels icons rail sidebar start page home screen floor board today ventures", body: <div className="settings-card">
       <Choice name="Density" detail="Spacing in navigation, settings, and workspace cards." field="density" options={[["comfortable", "Comfortable"], ["compact", "Compact"]]} />
       <Choice name="Navigation" detail="Keep screen names visible, or leave more room for your work." field="navigation" options={[["icons", "Icons"], ["labels", "Icons & labels"]]} />
-      <Choice name="Start screen" detail="Where a fresh launch opens. Direct links keep their destination." field="startPage" options={[["/", "Sessions"], ["/floor", "Crew floor"], ["/activity", "Today"], ["/ventures", "Ventures"], ["/board", "Board"]]} />
+      <Choice name="Start screen" detail="Where a fresh launch opens. Direct links keep their destination." field="startPage" options={[["/", "Sessions"], ["/floor", "Crew HQ"], ["/activity", "Today"], ["/ventures", "Ventures"], ["/board", "Board"]]} />
     </div> },
     { id: "keys", section: "workspace", title: "Keyboard shortcuts", terms: "commands keyboard shortcuts hotkeys search", body: <button className="settings-link-card" onClick={() => keymap(true)}><Keyboard size={22} /><span><strong>Stay in the flow</strong><small>Explore shortcuts for sessions, search, navigation, and more.</small></span><kbd>?</kbd></button> },
     { id: "composer", section: "chat", title: "Composer & conversation", terms: "send enter command control shortcut spell check spelling minimap map turn navigator queue messages", body: <div className="settings-card">
@@ -153,7 +153,8 @@ export function Settings() {
     setNotice(`${selected.title} restored to defaults.`);
   };
   return <div className="settings-page">
-    <header className="settings-hero"><div><span className="settings-kicker"><SlidersHorizontal size={12} /> YOUR WORKSPACE</span><h1>Your workspace, connected.</h1><p>A place for your best work. A companion for everything around it.</p></div><span className="settings-save" role="status">{saved ? <><Check size={13} /> Preferences save on this device</> : "Storage unavailable · changes last this session"}</span></header>
+    {/* The banner introduces Settings once, on the overview; a section opens straight to its own title. */}
+    {overview && !words.length && <header className="settings-hero"><div><span className="settings-kicker"><SlidersHorizontal size={12} /> YOUR WORKSPACE</span><h1>Your workspace, connected.</h1><p>A place for your best work. A companion for everything around it.</p></div><span className="settings-save" role="status">{saved ? <><Check size={13} /> Preferences save on this device</> : "Storage unavailable · changes last this session"}</span></header>}
     <div className="settings-layout"><aside className="settings-sidebar">
       <label className="settings-search"><Search size={15} /><input aria-label="Search settings" placeholder="Find a setting…" value={query} onChange={(e) => { setQuery(e.target.value); if (e.target.value) setOverview(false); }} />{query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
       {!overview && <button type="button" className="settings-overview-link" onClick={() => { setOverview(true); history.replaceState(null, "", "/settings"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← Workspace overview</button>}

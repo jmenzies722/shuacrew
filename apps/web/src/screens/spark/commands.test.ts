@@ -29,7 +29,7 @@ it("pauses whatever is actually playing: the radio first, else Music/Spotify, el
   expect(radioCommand).toHaveBeenCalledWith({ cmd: "pause" }); expect(perform).not.toHaveBeenCalled();
   radio = { playing: false }; media = { app: "Spotify", playing: true, title: "Midnight City" };
   expect(await say({ kind: "player", cmd: "pause" })).toBe("Paused.");
-  expect(perform).toHaveBeenCalledWith({ type: "media", command: "pause", app: "Spotify" });
+  expect(perform).toHaveBeenCalledWith({ type: "media", command: "pause", app: "Spotify" }, expect.objectContaining({active:expect.any(Function)}));
   media = null;
   expect(await say({ kind: "player", cmd: "pause" })).toBe("Nothing's playing.");
 });
@@ -37,9 +37,9 @@ it("answers what's playing, and plays or opens in the app that's in use", async 
   media = { app: "Music", playing: true, title: "Knife Talk", artist: "Drake" };
   expect(await say({ kind: "whatsong" })).toBe("That's Knife Talk by Drake.");
   await say({ kind: "play", query: "Miguel" });
-  expect(perform).toHaveBeenLastCalledWith({ type: "media", command: "play_query", query: "Miguel", app: "Music" });
+  expect(perform).toHaveBeenLastCalledWith({ type: "media", command: "play_query", query: "Miguel", app: "Music" }, expect.objectContaining({active:expect.any(Function)}));
   await say({ kind: "browse", query: "Drake", app: "Spotify" });
-  expect(perform).toHaveBeenLastCalledWith({ type: "media", command: "open_query", query: "Drake", app: "Spotify" });
+  expect(perform).toHaveBeenLastCalledWith({ type: "media", command: "open_query", query: "Drake", app: "Spotify" }, expect.objectContaining({active:expect.any(Function)}));
 });
 
 it("only says the radio is off once it really is, and says so honestly when it isn't", async () => {
@@ -51,4 +51,13 @@ it("only says the radio is off once it really is, and says so honestly when it i
   const said = say({ kind: "stop-radio" }); await vi.advanceTimersByTimeAsync(8000);
   expect(await said).toMatch(/still playing/); expect(radioCommand).toHaveBeenCalledTimes(3); // the first stop, then one retry
   vi.useRealTimers();
+});
+
+it("does not dispatch canceled commands or announce late results", async () => {
+ let active=false;const done=vi.fn();
+ await runInstant({kind:"play",query:"test"},done,{...deps,active:()=>active,requestId:"test"});
+ expect(perform).not.toHaveBeenCalled();expect(done).not.toHaveBeenCalled();
+ active=true;perform.mockImplementationOnce(async()=>{active=false;return {ok:true,message:"Played"};});
+ await runInstant({kind:"play",query:"test"},done,{...deps,active:()=>active,requestId:"test"});
+ expect(done).not.toHaveBeenCalled();
 });

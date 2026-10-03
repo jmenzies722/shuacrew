@@ -17,3 +17,38 @@
 .vn-lane-empty { display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; border: 1px dashed var(--line); border-radius: 12px; font-size: 12px; color: var(--text-2); }
 .vn-lane-empty span { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .vn-shelf { margin-top: 28px; } .vn-shelf h2 { margin: 0 0 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+/* Focus layout (three ventures or fewer): one wide card each — what it is, where it stands, what's next. */
+.vn-focus-list { display: grid; gap: 14px; }
+.vn-focus { display: grid; gap: 18px; padding: 20px 22px; border-radius: 18px; background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--venture, var(--amber)) 9%, transparent), transparent 60%), var(--panel); box-shadow: inset 0 0 0 1px var(--line-strong); transition: box-shadow .18s, transform .18s; }
+.vn-focus:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--venture, var(--amber)) 45%, var(--line-strong)), 0 14px 34px rgba(0,0,0,.28); transform: translateY(-1px); }
+.vn-focus-head { display: flex; align-items: flex-start; gap: 14px; }
+.vn-focus-head strong { display: block; font-size: 19px; font-weight: 650; letter-spacing: -.02em; color: var(--text); }
+.vn-focus-head p { margin: 3px 0 0; max-width: 78ch; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+.vn-focus-head small { display: block; margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.vn-focus-state { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; color: var(--text-3); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.vn-focus-state.is-wait { color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent); }
+.vn-focus-state.is-live { color: #4cc38a; box-shadow: inset 0 0 0 1px color-mix(in srgb, #4cc38a 40%, transparent); }
+/* The stage track: five steps on one line, done ones ticked, the current one lit in the venture's colour. */
+.vn-track { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.vn-track li { position: relative; display: grid; justify-items: start; gap: 3px; padding-right: 8px; }
+.vn-track li::before { content: ""; position: absolute; top: 12px; left: 26px; right: 0; height: 2px; border-radius: 2px; background: var(--line-strong); }
+.vn-track li:last-child::before { display: none; }
+.vn-track li.is-past::before { background: color-mix(in srgb, var(--venture, var(--amber)) 70%, transparent); }
+.vn-track i { position: relative; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-style: normal; font-size: 11px; font-weight: 650; color: var(--text-3); background: var(--panel); box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.vn-track li.is-past i { color: var(--on-accent, #fff); background: color-mix(in srgb, var(--venture, var(--amber)) 80%, #000); box-shadow: none; }
+.vn-track li.is-now i { color: var(--on-accent, #fff); background: var(--venture, var(--amber)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--venture, var(--amber)) 22%, transparent); }
+.vn-track b { margin-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-2); } .vn-track li.is-now b { color: var(--text); }
+.vn-track small { font-size: 11px; color: var(--text-3); }
+.vn-focus-foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px; align-items: stretch; }
+.vn-next { display: grid; align-content: start; gap: 3px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--venture, var(--amber)) 8%, var(--ink)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--venture, var(--amber)) 25%, var(--line)); }
+.vn-next span { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.vn-next strong { font-size: 15px; font-weight: 650; color: var(--text); }
+.vn-next p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.vn-next em { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-style: normal; font-size: 12px; font-weight: 600; color: var(--venture, var(--amber)); }
+.vn-focus:hover .vn-next em svg { transform: translateX(2px); } .vn-next em svg { transition: transform .15s; }
+.vn-focus-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start; }
+.vn-focus-metrics > small { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-3); }
+.vn-new-row { flex-direction: row; align-items: center; gap: 10px; padding: 14px 18px; text-align: left; }
+.vn-new-row span { margin-left: 4px; }
+@media (max-width: 900px) { .vn-focus-foot { grid-template-columns: 1fr; } .vn-track small { display: none; } }
+@media (prefers-reduced-motion: reduce) { .vn-focus, .vn-next em svg { transition: none; } .vn-focus:hover { transform: none; } }

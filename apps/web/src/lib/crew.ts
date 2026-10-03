@@ -53,3 +53,11 @@ export function pauseClock(
   const until = new Date(hit.until).toLocaleString([], soon ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
   return `Paused · resumes ${until}`;
 }
+
+/** Recent work a person can reopen, respecting the active project and excluding companion/internal threads. */
+export function recentWork(runs: Record<string, RunView>, scope: string | null, limit = 4): RunView[] {
+  return Object.values(scopeRuns(runs, scope))
+    .filter(r => isTopLevelWork(r, runs) && !("archived" in r && r.archived))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, Math.max(0, limit));
+}

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, BookMarked, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, LayoutDashboard, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
+import { since } from "@shuacrew/ui";
+import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
 import { isTopLevelWork } from "../lib/crew";
@@ -14,7 +15,7 @@ import { LogoMark } from "../lib/motion";
 import "./hub-nav.css";
 
 const PAGE_ICON: Record<string, typeof House> = {
-  "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": LayoutDashboard, "/studio": Clapperboard,
+  "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": Layers3, "/studio": Clapperboard,
   "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
   "/library": Library, "/memory": Brain, "/learn": GraduationCap, "/teach": Presentation, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
 };
@@ -94,10 +95,13 @@ export function setSidebarWide(next: boolean) { wide = next; try { localStorage.
 export function useSidebarWide() { const [, force] = useState(0); useEffect(() => { const l = () => force((n) => n + 1); wideListeners.add(l); return () => { wideListeners.delete(l); }; }, []); return wide; }
 
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
+/** Recent sessions in the sidebar: folded or open (remembered), and how many show before "Show more". */
+const RECENT_OPEN = "shuacrew.side.recentOpen", RECENT_SHORT = 5, RECENT_LONG = 12;
+const readRecentOpen = () => { try { return localStorage.getItem(RECENT_OPEN) !== "0"; } catch { return true; } };
 
 /**
- * Linear-style sidebar: Ask Spark and New session up top, the five hubs with the active one unfolded into its pages,
- * your recent sessions live, Settings at the bottom. ⌘\ folds it back to the slim rail.
+ * Linear-style sidebar: Ask Spark and New session up top, then your sessions (live ones first) so they're always in
+ * view, then the five hubs' pages, Settings at the bottom. ⌘\ folds it back to the slim rail.
  */
 export function HubSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -120,7 +124,11 @@ export function HubSidebar() {
   });
   const all = Object.values(runs);
   const working = all.filter((r) => r.status === "running" || r.status === "planning").length;
-  const recent = all.filter((r) => isTopLevelWork(r, runs)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6);
+  const [recentOpen, setRecentOpen] = useState(readRecentOpen), [recentMore, setRecentMore] = useState(false);
+  const toggleRecent = () => setRecentOpen((v) => { try { localStorage.setItem(RECENT_OPEN, v ? "0" : "1"); } catch { /* ignore */ } return !v; });
+  const recentAll = all.filter((r) => isTopLevelWork(r, runs)).sort((a, b) => Number(LIVE.has(b.status)) - Number(LIVE.has(a.status)) || b.updatedAt - a.updatedAt);
+  const recent = recentAll.slice(0, recentMore ? RECENT_LONG : RECENT_SHORT);
+  const liveCount = recentAll.filter((r) => LIVE.has(r.status)).length;
   const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
   const name = prefs.nickname || "Spark";
   return <nav className="side" aria-label="Sidebar">
@@ -135,6 +143,20 @@ export function HubSidebar() {
     </button>
     <button type="button" className="side-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}><Plus size={15} /> New session<kbd>⌘N</kbd></button>
     <div className="side-scroll">
+    {recent.length > 0 && <div className={`side-group side-recent ${recentOpen ? "is-open" : ""}`}>
+      <div className="side-recent-head">
+        <button type="button" className="side-label side-recent-toggle" aria-expanded={recentOpen} onClick={toggleRecent}>
+          <ChevronRight size={12} className="side-recent-chev" />Recent sessions{!recentOpen && liveCount > 0 && <em className="side-recent-live">{liveCount} live</em>}
+        </button>
+        <Link to="/" className="side-recent-all" title="All sessions">All</Link>
+      </div>
+      <AnimatePresence initial={false}>{recentOpen && <motion.div key="recent" className="side-recent-list" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}>
+        {recent.map((r) => { const on = path === `/sessions/${r.id}`, live = LIVE.has(r.status); return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
+          <i className={`side-dot is-${live ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span><small>{live ? "now" : since(r.updatedAt).replace(/ ago$/, "").replace("just now", "now")}</small>
+        </Link>; })}
+        {recentAll.length > RECENT_SHORT && <button type="button" className="side-recent-more" onClick={() => setRecentMore((v) => !v)}>{recentMore ? "Show less" : `Show ${Math.min(RECENT_LONG, recentAll.length) - RECENT_SHORT} more`}</button>}
+      </motion.div>}</AnimatePresence>
+    </div>}
     {HUBS.map((hub) => <div key={hub.id} className="side-group">
       {hub.id !== "home" && <div className="side-label">{hub.label}</div>}
       {hub.tabs.map((tab) => { const on = at?.tab === tab, Icon = PAGE_ICON[tab.to] ?? Circle, n = tab.to === "/" ? waiting : tab.to === "/crew" ? working : 0;
@@ -143,12 +165,6 @@ export function HubSidebar() {
           <i className="side-ico"><Icon size={16} strokeWidth={1.8} /></i><span>{tab.label}</span>{n > 0 && <em className={tab.to === "/" ? "is-wait" : "is-live"}>{n}</em>}
         </Link>; })}
     </div>)}
-    {recent.length > 0 && <div className="side-group side-recent">
-      <div className="side-label">Recent</div>
-      {recent.map((r) => { const on = path === `/sessions/${r.id}`; return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
-        <i className={`side-dot is-${LIVE.has(r.status) ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span>
-      </Link>; })}
-    </div>}
     </div>
     <div className="side-foot">
       <button type="button" className={`side-row side-guide ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })}><i className="side-ico" data-hub="guide"><BookOpenText size={14} strokeWidth={2} /></i><span>Guide</span></button>

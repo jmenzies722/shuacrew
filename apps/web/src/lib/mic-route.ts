@@ -1,14 +1,22 @@
-/**
- * Which microphone Spark listens through. Bluetooth headphones (AirPods, Beats…) drop to a muffled call mode the
- * moment their own mic opens — right as Spark's start sound plays. So when the Mac says sound is going to Bluetooth,
- * Spark listens through the Mac's built-in mic and the headphones stay high quality. The Mac app sends the route
- * each time fn goes down (window.buddy.audioRoute).
- */
 let route: { bluetooth: boolean; mic: string } = { bluetooth: false, mic: "" };
 export function setMicRoute(r: { bluetooth?: boolean; mic?: string }) { route = { bluetooth: !!r.bluetooth, mic: typeof r.mic === "string" ? r.mic : "" }; }
+const KEY = "shuacrew.microphone";
+let preference = (() => { try { return localStorage.getItem(KEY) || "default"; } catch { return "default"; } })();
+export const getMicPreference = () => preference;
+export function setMicPreference(value: string) {
+  preference = value;
+  try { localStorage.setItem(KEY, value); } catch {}
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("shuacrew:mic-route"));
+}
+if (typeof window !== "undefined") window.addEventListener("storage", event => {
+  if (event.key !== KEY) return;
+  preference = event.newValue || "default";
+  window.dispatchEvent(new Event("shuacrew:mic-route"));
+});
 
-/** getUserMedia audio constraints, pinned to the built-in mic when the headphones are Bluetooth. */
 export async function micConstraints(base: MediaTrackConstraints): Promise<MediaTrackConstraints> {
+  if (preference === "default") return base;
+  if (preference !== "built-in") return { ...base, deviceId: { ideal: preference } };
   if (!route.bluetooth || !route.mic) return base;
   try {
     const mic = (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === "audioinput" && d.label === route.mic);

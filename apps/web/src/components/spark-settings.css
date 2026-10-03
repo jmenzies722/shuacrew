@@ -69,3 +69,41 @@
 .spark-voice-studio[open] > summary { margin-bottom: 14px; }
 .voice-studio .px-5 { padding-inline: 0; }
 .spark-muted { color: var(--text-3); font-size: 12.5px; }
+/* Robot pieces: tiles showing your robot wearing each choice. */
+.spark-sub { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.spark-pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; }
+.spark-pieces button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px 6px; border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: transform .15s, box-shadow .15s, background .15s; }
+.spark-pieces button:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.spark-pieces button.is-on { box-shadow: inset 0 0 0 1.5px var(--spark-color, var(--amber)), 0 0 0 3px color-mix(in srgb, var(--spark-color, var(--amber)) 14%, transparent); }
+.spark-pieces small { font-size: 10.5px; color: var(--text-3); } .spark-pieces button.is-on small { color: var(--text); }
+.spark-pieces .spark-character * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .spark-pieces button { transition: none; } }
+/* The workshop: a fitting-room preview that stays in view (sticky) beside the controls; hovering a tile tries it on. */
+.spark-workshop { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 22px; align-items: start; margin: 6px 0 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.spark-fitting { position: sticky; top: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 10px 12px; border-radius: 18px;
+  background: radial-gradient(circle at 50% 36%, color-mix(in srgb, var(--spark-color) 24%, transparent), transparent 66%), var(--sunken); box-shadow: inset 0 0 0 1px var(--line); }
+.spark-fitting-stage { display: grid; place-items: center; min-height: 176px; }
+.spark-fitting-stage .spark-character { filter: drop-shadow(0 14px 22px rgba(0,0,0,.42)); animation: spark-bob 3.6s ease-in-out infinite; }
+.spark-fitting-trying { position: absolute; top: 10px; left: 12px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text); background: color-mix(in srgb, var(--spark-color) 30%, var(--raised)); }
+.spark-fitting-actions { display: flex; gap: 6px; }
+.spark-fitting-actions button { padding: 5px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 550; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); transition: color .15s, background .15s; }
+.spark-fitting-actions button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.spark-fitting-actions button:first-child { color: var(--on-accent, #fff); background: var(--spark-color, var(--amber)); box-shadow: none; }
+.spark-fitting-actions button:first-child:hover { filter: brightness(1.08); }
+.spark-workshop-controls { min-width: 0; }
+.spark-sub.is-first { margin-top: 0; }
+.spark-pieces.is-looks { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); margin-bottom: 8px; }
+@media (max-width: 760px) { .spark-workshop { grid-template-columns: 1fr; } .spark-fitting { position: static; } }
+@media (prefers-reduced-motion: reduce) { .spark-fitting-stage .spark-character { animation: none; } }
+/* The card clips its corners with overflow: hidden, which pins sticky children inside it. clip draws the same edge
+   without making the card a scroll box, so the fitting room stays in view while the page scrolls. */
+.settings-card:has(.spark-workshop) { overflow: clip; }
+/* Sound packs: pick an instrument; choosing one plays it. */
+.spark-packs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: min(100%, 460px); }
+.spark-packs button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border-radius: 10px; text-align: left; background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, box-shadow .15s; }
+.spark-packs button:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.spark-packs button.is-on { box-shadow: inset 0 0 0 1.5px var(--spark-color, var(--amber)); background: color-mix(in srgb, var(--spark-color, var(--amber)) 10%, transparent); }
+.spark-packs b { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.spark-packs b svg { color: var(--text-3); } .spark-packs button.is-on b svg { color: var(--spark-color, var(--amber)); }
+.spark-packs small { font-size: 10.5px; line-height: 1.35; color: var(--text-3); }
+@media (max-width: 760px) { .spark-packs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -4,7 +4,10 @@
  * while the voice walks through it. Spark fills it with real data (from its search or your Mac), never made up.
  */
 
+import { parseArchitecture, type ArchitectureLesson } from "./notch-lesson";
+
 export type Visual =
+  | ArchitectureLesson
   | { type: "stat"; title: string; value: number; unit?: string; prefix?: string; delta?: number; deltaLabel?: string; sub?: string }
   | { type: "compare"; title: string; items: Array<{ label: string; value: number; display?: string }>; better?: "high" | "low" }
   | { type: "forecast"; title: string; items: Array<{ label: string; temp: number; icon: WeatherIcon; rain?: number }> }
@@ -48,6 +51,7 @@ export function parseVisual(raw: string): Visual | null {
   try { o = rec(JSON.parse(body)); } catch { return null; }
   const title = s(o.title, 60) ?? "";
   switch (o.type) {
+    case "architecture": return parseArchitecture(o);
     case "stat": {
       const value = n(o.value); if (value === undefined) return null;
       const delta = n(o.delta), unit = s(o.unit, 12), prefix = s(o.prefix, 4), deltaLabel = s(o.deltaLabel, 30), sub = s(o.sub, 80);
@@ -197,6 +201,7 @@ export function flowLayout(nodes: Array<{ id: string }>, edges: Array<{ from: st
 
 /** How Spark is told about cards (part of its instructions). */
 export const VISUAL_GUIDE = [
+  'CONCEPT STUDIO: Architecture explanations MUST include ONE complete paced ```visual {"type":"architecture","version":2,"id":"request-path","revision":1,"title":"Request path","scope":"Proposed teaching example; not a verified production deployment","summary":"A cache avoids repeated reads.","assumptions":["Read-heavy service"],"nodes":[{"id":"api","label":"API","role":"Service","group":"Read path"},{"id":"cache","label":"Cache","role":"Storage","group":"Read path"}],"edges":[{"id":"lookup","from":"api","to":"cache","label":"lookup"}],"steps":[{"id":"read","title":"Read","body":"The API checks the cache before fetching fresh data.","focus":["api","cache"],"edgeFocus":["lookup"]}],"example":"A cached product avoids a repeated fetch.","tradeoffs":["Caching needs an invalidation policy"],"failureModes":["A cache outage falls back to the source with rate limits"],"sources":[],"followups":["Walk one request through this design"]}```. Replace this example with the requested system. Maximum 12 nodes, 20 edges, 12 short steps; use stable IDs and named path groups for larger designs. Emit the complete card BEFORE the written explanation. The app narrates the summary and step bodies and synchronizes to actual playback; do not emit a second spoken explanation or competing diagram. Keep the written explanation readable if the visual fails validation. Follow-ups preserve the lesson ID and unchanged node IDs, increment revision, and emit the complete refined lesson. Ask one scale question only if essential; otherwise state assumptions and proceed. Separate the control plane from video ingestion/storage/CDN delivery for streaming architectures. Explain decisions, trade-offs and failures, not merely product names. Label proposed designs explicitly; a Netflix-like design is NOT a verified description of Netflix internals. Research current real-company claims with available tools and cite checked primary sources with title and http(s) URL, stating what each supports. If research unavailable, say so and offer a proposed design; never invent citations. Review graph connectivity, edge direction, component responsibilities and explanation consistency before sending. Schema validation is not factual verification. Offer at most three relevant next steps; never claim the user advanced, answered, or approved anything.',
   "VISUALS: when a picture explains it better than words — a price or score, a comparison, a forecast, a schedule or timeline, steps, top picks — add ONE ```visual {…}``` block with the REAL numbers you found (never invented; skip the card if you don't have the data). The notch drops open with it, animated, while you talk them through it; keep your spoken answer short since they can see the details. Shapes:",
   '```visual {"type":"stat","title":"Bitcoin","value":83979,"prefix":"$","delta":-1.8,"deltaLabel":"today","sub":"CoinDesk, 3:10 PM"}```',
   '```visual {"type":"compare","title":"Battery life (hours)","items":[{"label":"iPhone 17 Pro","value":31},{"label":"Pixel 11 Pro","value":28}],"better":"high"}```',

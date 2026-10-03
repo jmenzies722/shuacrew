@@ -1,0 +1,53 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { QuietAnnouncements } from "./quiet-announcements";
+
+afterEach(() => vi.useRealTimers());
+it("acknowledges a decision prompt only when announced, once", () => {
+  vi.useFakeTimers();
+  let busy = true;
+  const speak = vi.fn();
+  const delivered = vi.fn();
+  const queue = new QuietAnnouncements(() => busy, speak);
+  queue.add("Approve this?", () => true, delivered);
+  queue.add("Approve this?", () => true, delivered);
+  vi.advanceTimersByTime(1500);
+  expect(delivered).not.toHaveBeenCalled();
+  busy = false;
+  vi.advanceTimersByTime(1500);
+  expect(speak).toHaveBeenCalledExactlyOnceWith("Approve this?");
+  expect(delivered).toHaveBeenCalledTimes(1);
+  queue.stop();
+});
+it("waits for the conversation to finish and drops superseded updates", () => {
+  vi.useFakeTimers();
+  let busy = true;
+  let current = true;
+  const spoken: string[] = [];
+  const queue = new QuietAnnouncements(() => busy, text => spoken.push(text));
+  queue.add("Old session update", () => current);
+  queue.add("Your work is ready");
+  vi.advanceTimersByTime(5000);
+  expect(spoken).toEqual([]);
+  current = false;
+  busy = false;
+  vi.advanceTimersByTime(2000);
+  expect(spoken).toEqual(["Your work is ready"]);
+  queue.stop();
+});
+it("expires old news and clears pending announcements on unmount", () => {
+  vi.useFakeTimers();
+  let busy = true;
+  const spoken: string[] = [];
+  const queue = new QuietAnnouncements(() => busy, text => spoken.push(text));
+  queue.add("Stale news");
+  vi.advanceTimersByTime(121000);
+  busy = false;
+  vi.advanceTimersByTime(1000);
+  expect(spoken).toEqual([]);
+  busy = true;
+  queue.add("Unmounted news");
+  queue.stop();
+  busy = false;
+  vi.advanceTimersByTime(1000);
+  expect(spoken).toEqual([]);
+});

@@ -7,6 +7,10 @@ export interface CompanionPreferences {
   celebration: "off" | "subtle" | "expressive"; sound: boolean; volume: number; focus: "hide" | "still";
   /** Spark, made yours: who it is, its colour and size on the desktop, how it talks, how you summon it. */
   character: SparkCharacterId; color: string; eyeColor: string; personality: string; size: "s" | "m" | "l";
+  /** The robots (Spark, Scout, Atlas, Nova), piece by piece: eyes and mouth, a trim colour for joints and ears ("auto" is
+   * graphite), what the shell is made of, smooth or pixel art, and a hat, face piece and neck piece worn together. */
+  eyes: RobotEyes; mouth: RobotMouth; trim: string; material: RobotMaterial; style: "smooth" | "pixel";
+  hat: RobotHat; faceWear: RobotFaceWear; neck: RobotNeck;
   tone: "engineer" | "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
   hotkey: SparkHotkey; guide: "click" | "manual";
   /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
@@ -39,9 +43,22 @@ export interface CompanionPreferences {
   notchCaptions: boolean; notchMedia: boolean; notchControls: boolean; notchGlow: "off" | "accent" | "spectrum"; notchSize: "compact" | "roomy";
   /** Little sounds when you start and stop talking, and when something's done: placed up at the notch, or plain, or off. */
   sounds: "spatial" | "simple" | "off";
+  /** Which instrument those sounds use (played natively by the Mac app). */
+  soundPack: SoundPack;
   /** While you talk, the notch shows a waveform (your words appear once you stop), or the waveform with your words live. */
   notchHearing: "wave" | "words";
 }
+export const SOUND_PACKS = ["glass", "pop", "chime", "pulse", "droplet", "felt"] as const;
+export type SoundPack = (typeof SOUND_PACKS)[number];
+export const ROBOT_EYES = ["moon", "round", "pill", "pixel", "visor", "happy", "star"] as const;
+export const ROBOT_MOUTHS = ["smile", "grin", "flat", "cat", "o", "none"] as const;
+export const ROBOT_MATERIALS = ["glossy", "matte", "metal", "glass"] as const;
+export const ROBOT_HATS = ["none", "antenna", "cap", "beanie", "headphones", "crown", "halo", "bow", "tophat"] as const;
+export const ROBOT_FACEWEAR = ["none", "glasses", "shades", "monocle", "blush"] as const;
+export const ROBOT_NECKS = ["none", "scarf", "bowtie", "badge"] as const;
+export type RobotEyes = (typeof ROBOT_EYES)[number]; export type RobotMouth = (typeof ROBOT_MOUTHS)[number];
+export type RobotMaterial = (typeof ROBOT_MATERIALS)[number]; export type RobotHat = (typeof ROBOT_HATS)[number];
+export type RobotFaceWear = (typeof ROBOT_FACEWEAR)[number]; export type RobotNeck = (typeof ROBOT_NECKS)[number];
 export const ROBOT_CHARACTERS = ["spark", "scout", "atlas", "nova"] as const;
 /** Retain saved legacy companions without offering them as new robot choices. */
 export const SPARK_CHARACTERS = [...ROBOT_CHARACTERS, "orb", "byte", "kit", "blob"] as const;
@@ -56,6 +73,13 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     face: choice("face", ["calm", "curious", "bright"], "calm"), accessory: choice("accessory", ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"], "none"),
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
+    // Saved before the robots had separate pieces: the one accessory lands in its slot, the expression picks eyes.
+    eyes: choice("eyes", ROBOT_EYES, v.face === "bright" ? "happy" : v.face === "curious" ? "pill" : v.character === "spark" || v.character === undefined ? "moon" : "round"), mouth: choice("mouth", ROBOT_MOUTHS, "smile"),
+    trim: v.trim === "auto" || (typeof v.trim === "string" && /^#[0-9a-f]{6}$/i.test(v.trim)) ? (v.trim as string).toLowerCase() : "auto",
+    material: choice("material", ROBOT_MATERIALS, "glossy"), style: choice("style", ["smooth", "pixel"], "smooth"),
+    hat: choice("hat", ROBOT_HATS, (["antenna", "cap", "headphones"] as const).find((a) => a === v.accessory) ?? "none"),
+    faceWear: choice("faceWear", ROBOT_FACEWEAR, v.accessory === "glasses" ? "glasses" : "none"),
+    neck: choice("neck", ROBOT_NECKS, v.accessory === "scarf" ? "scarf" : v.accessory === "badge" ? "badge" : "none"),
     character: choice("character", SPARK_CHARACTERS, "spark"), color: validFinish(v.color) ? (v.color === "theme" ? "theme" : v.color.toLowerCase()) : "theme",
     eyeColor: typeof v.eyeColor === "string" && /^#[0-9a-f]{6}$/i.test(v.eyeColor) ? v.eyeColor.toLowerCase() : "#a5f3fc",
     personality: typeof v.personality === "string" ? v.personality.slice(0, 1000) : "",
@@ -69,7 +93,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
-    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
     notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";

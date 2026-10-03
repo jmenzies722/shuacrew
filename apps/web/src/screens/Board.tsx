@@ -33,7 +33,7 @@ export function Board() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-8 pt-8">
+      <div className="mx-auto w-full max-w-[1440px] px-8 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: all.filter((r) => ["running", "planning", "queued"].includes(r.status)).length, label: "in flight", live: all.some((r) => ["running", "planning"].includes(r.status)) }, { value: all.filter((r) => r.status === "awaiting_approval").length, label: "need you", tone: "wait" }, { value: all.filter((r) => ["done", "merged"].includes(r.status) && r.updatedAt > Date.now() - 7 * 86_400_000).length, label: "done this week", tone: "ok" }]} />} eyebrow="Plan" icon={KanbanSquare} title="Board" description="Every session by where it stands. Drag a queued card to the top to run it next; cards move on their own as the work changes."
           actions={runtimes.length > 1 ? <>
         <div className="flex items-center gap-1.5 text-[12px]" role="radiogroup" aria-label="Filter by runtime">
@@ -52,7 +52,7 @@ export function Board() {
           </> : undefined} />
       </div>
       <LayoutGroup>
-        <div className="grid min-h-0 flex-1 grid-cols-5 gap-3 overflow-x-auto px-8 pb-8 max-[1200px]:grid-cols-[repeat(5,300px)]">
+        <div className="mx-auto grid min-h-0 w-full max-w-[1440px] flex-1 grid-cols-5 gap-3 overflow-x-auto px-8 pb-8 max-[1200px]:grid-cols-[repeat(5,300px)]">
           {COLUMNS.map((column) => {
             const cards = shown
               .filter((r) => column.statuses.includes(r.status))
