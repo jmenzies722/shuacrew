@@ -158,7 +158,7 @@ export function LivePanel() {
     <section className={`live-panel is-${live.state}`} aria-label="Live call">
       <header>
         <Orb live={live} size={34} />
-        <div><strong>{LABEL[live.state]}</strong><small>{live.state === "error" ? `${live.detail ?? ""} You can still hold fn and talk to Spark.` : live.usage !== undefined && live.usage >= 80 ? `Codex plan ${Math.round(live.usage)}% used this week. Live runs on it.` : "Talk any time; interrupt like a call"}</small></div>
+        <div><strong>{LABEL[live.state]}</strong><small>{live.state === "error" ? `${(live.detail ?? "Live isn't available right now").replace(/[.!?]?\s*$/, ".")} You can still hold fn and talk to Spark.` : live.usage !== undefined && live.usage >= 80 ? `Codex plan ${Math.round(live.usage)}% used this week. Live runs on it.` : "Talk any time; interrupt like a call"}</small></div>
         {live.active ? <LiveButton /> : <button type="button" className="live-btn" onClick={startLive}>Try again</button>}
       </header>
       <ol className="live-lines" aria-live="polite">

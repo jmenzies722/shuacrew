@@ -94,7 +94,8 @@ export class LiveCall {
         this.set(loud ? "speaking" : this.working ? "working" : "listening");
       }, 50);
     } catch (e) {
-      this.fail((e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : (e as Error).message);
+      const name = (e as Error).name;
+      this.fail(name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : name === "NotFoundError" ? "No microphone found." : name === "NotSupportedError" || !navigator.mediaDevices ? "This window can't use the microphone." : (e as Error).message);
     }
   }
 
