@@ -44,6 +44,20 @@ export function luminance(hex: string) {
  * The one solid colour the interface uses for this finish (rings, the cursor, text accents): a gradient's brighter
  * end, and for near-black finishes a soft silver, so a black companion never means black-on-black buttons.
  */
+/**
+ * The cursor buddy's two-colour gradient, in ShuaCrew's own style (the logo runs from the accent to accent-2, the
+ * accent blended toward pink): a gradient finish keeps its own two ends; a solid colour gets a lit end and that pink
+ * blend; white goes pearl and black goes silver, so the cursor always reads on light and dark screens.
+ */
+export function cursorGradient(finish: string): [string, string] {
+  const { from, to, gradient } = stops(finish);
+  const lift = (c: string) => (luminance(c) < 0.03 ? mix(c, "#ffffff", 0.55) : c);
+  if (gradient) return luminance(from) < 0.03 && luminance(to) < 0.03 ? ["#f4f4f5", "#71717a"] : [lift(from), lift(to)];
+  if (luminance(from) > 0.75) return ["#ffffff", "#b4bccc"];
+  if (luminance(from) < 0.03) return ["#f4f4f5", "#71717a"];
+  return [mix(from, "#ffffff", 0.18), mix(from, "#ff4fa3", 0.38)];
+}
+
 export function accentOf(finish: string) {
   const { from, to } = stops(finish);
   const brightest = luminance(from) >= luminance(to) ? from : to;

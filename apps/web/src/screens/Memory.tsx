@@ -70,7 +70,7 @@ export function Memory() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: lessons.filter((l) => !l.retired).length, label: "lessons in use", tone: "amber" }, { value: lessons.filter((l) => l.retired).length, label: "retired" }, { value: skills.length, label: "skills" }]} />} eyebrow="Brain" icon={BookOpen} title="Memory" description="Lessons with provenance and confidence, skills you approve — all inspectable, all deletable. Confidence moves with the reviews of the runs a lesson was used in."
           actions={<Button onClick={async () => (setEvolve(await api<Evolve>("/api/memory/evolve", { body: {} })), refresh())}>Evolve now</Button>} />
 
@@ -206,7 +206,7 @@ export function Memory() {
                       <span className="mono">{s.name}</span>
                       <span className="ml-auto text-[11px] font-normal text-fg-3">from {s.from.length} runs</span>
                     </div>
-                    {fm && <p className="mt-1.5 text-[12px] leading-snug text-fg-2">{fm}</p>}
+                    {fm && <p className="mt-1.5 line-clamp-3 text-[12px] leading-snug text-fg-2" title={fm}>{fm}</p>}
                     {s.status === "proposed" && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-s)] bg-raised p-2 text-[11.5px] text-fg-2">{body}</pre>}
                     {s.status === "proposed" && (
                       <div className="mt-2 flex gap-1.5">

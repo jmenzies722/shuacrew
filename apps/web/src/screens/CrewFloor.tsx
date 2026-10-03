@@ -1,9 +1,9 @@
 import { plain } from "../lib/plain";
 import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
-import { Button, formatTokens } from "@shuacrew/ui";
+import { Button, formatTokens, since } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldAlert, SquareTerminal, Wrench, Check, Waypoints } from "lucide-react";
+import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldAlert, SquareTerminal, Wrench, Check, Layers3 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
@@ -51,6 +51,21 @@ function kindOf(tool: string, input: unknown): Kind {
 }
 
 /** What a step touched, said briefly: `~/app/src/upload.ts` → `src/upload.ts`, temp paths → the file. */
+/** A shell command as you'd type it: without the /bin/zsh -lc '…' wrapper the runtimes add. */
+export function plainCommand(cmd: string): string {
+  const m = /^\s*(?:\/bin\/|\/usr\/bin\/)?(?:zsh|bash|sh)\s+-l?c\s+(['"])([\s\S]*)\1\s*$/.exec(cmd);
+  return (m ? m[2]! : cmd).replace(/\s+/g, " ").trim();
+}
+/** What a tool touched: a file name for file edits (not the tool's own name), the plain command for shells. */
+function target(tool: string, input: unknown): string {
+  const o = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const changes = Array.isArray(o.changes) ? o.changes as Array<{ path?: unknown }> : null;
+  if (changes?.length) { const first = String(changes[0]?.path ?? "").split("/").pop(); return changes.length > 1 ? `${first} and ${changes.length - 1} more` : first || "files"; }
+  const text = brief(input);
+  if (!text || text === tool || /^fileChange$/i.test(text)) return "files";
+  return plainCommand(text);
+}
+
 function brief(input: unknown): string {
   const text = describe(input);
   return text.replace(/(?:\/private)?\/(?:tmp|var\/folders)\/\S*?\/((?:src|lib|app|test|tests)\/\S+|[^/\s]+)(?=\s|$)/g, "$1").replace(/\/Users\/[^/\s]+/g, "~").replace(/~\/Developer\/projects\//g, "");
@@ -98,7 +113,7 @@ export function CrewFloor() {
   const onFloor = useMemo(
     () =>
       Object.values(runs)
-        .filter((r) => !r.parent && (WORKING.has(r.status) || now - r.updatedAt < LINGER))
+        .filter((r) => isTopLevelWork(r, runs) && (WORKING.has(r.status) || now - r.updatedAt < LINGER))
         .sort((a, b) => Number(WORKING.has(b.status)) - Number(WORKING.has(a.status)) || a.createdAt - b.createdAt),
     [runs, Math.floor(now / 5000)],
   );
@@ -112,18 +127,18 @@ export function CrewFloor() {
     for (const e of activity) if (e.run) (out[e.run] ??= []).push(e);
     return out;
   }, [activity]);
-  const working = onFloor.filter((r) => WORKING.has(r.status)).length;
+  const working = onFloor.filter((r) => r.status === "running" || r.status === "planning").length;
   const waiting = Object.keys(approvals).length;
   const perMinute = activity.filter((e) => e.kind === "tool.called" && now - e.at < 60_000).length;
 
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Work" icon={Waypoints} title="Crew floor" description="Every agent at work, live. Select one to open its session." actions={<div className="flex flex-wrap items-center gap-2">
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew HQ" description="Your crew in motion. Follow the work, catch a handoff, step in when needed." actions={<div className="flex flex-wrap items-center gap-2">
           <Stat value={working} label="working" live={working > 0} />
           <Stat value={waiting} label="waiting on you" tone={waiting ? "wait" : undefined} />
           <Stat value={perMinute} label="steps / min" />
-          <Stat value={formatTokens(today.tokens)} label="tokens today" />
+          <Stat value={formatTokens(today.tokens)} label="tokens today · all projects" />
         </div>} />
       </header>
 
@@ -425,7 +440,8 @@ function Feed({ activity, runs }: { activity: AnyEvent[]; runs: Record<string, R
   );
   return (
     <aside className="floor-feed" aria-label="Activity feed">
-      <div className="px-4 pb-2 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3">Live activity</div>
+      {/* "Live" only while something is running; otherwise it's the record of what happened, with how long ago. */}
+      <div className="px-4 pb-2 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3">{Object.values(runs).some((r) => ["running", "planning"].includes(r.status)) ? "Live activity" : "Recent activity"}</div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {items.length === 0 && <div className="px-2 py-6 text-center text-[12px] text-fg-3">Steps from every agent appear here as they happen.</div>}
         <AnimatePresence initial={false}>
@@ -447,7 +463,7 @@ function Feed({ activity, runs }: { activity: AnyEvent[]; runs: Record<string, R
                   <span className="truncate">{run.title}</span>
                 </span>
               </span>
-              <span className="mono shrink-0 text-[10.5px] text-fg-3">{new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
+              <span className="shrink-0 text-[10.5px] tabular-nums text-fg-3" title={new Date(e.at).toLocaleString()}>{since(e.at)}</span>
             </motion.button>
           ))}
         </AnimatePresence>
@@ -460,10 +476,10 @@ function feedLine(e: AnyEvent): { icon: typeof Wrench; color: string; text: stri
   switch (e.kind) {
     case "tool.called": {
       const k = kindOf(e.body.tool, e.body.input);
-      return { icon: KIND_ICON[k], color: KIND_COLOR[k], text: `${KIND_LABEL[k]} ${brief(e.body.input) || e.body.tool}` };
+      return { icon: KIND_ICON[k], color: KIND_COLOR[k], text: `${KIND_LABEL[k]} ${target(e.body.tool, e.body.input)}` };
     }
     case "check.ran":
-      return { icon: e.body.exitCode === 0 ? Check : CircleX, color: e.body.exitCode === 0 ? "var(--ok)" : "var(--bad)", text: `${e.body.exitCode === 0 ? "Checks passed" : "Checks failed"} · ${e.body.command}` };
+      return { icon: e.body.exitCode === 0 ? Check : CircleX, color: e.body.exitCode === 0 ? "var(--ok)" : "var(--bad)", text: `${e.body.exitCode === 0 ? "Checks passed" : "Checks failed"} · ${plainCommand(e.body.command)}` };
     case "approval.requested":
       return { icon: Hand, color: "var(--wait)", text: `Asked you: ${e.body.tool} ${describe(e.body.input)}` };
     case "approval.decided":

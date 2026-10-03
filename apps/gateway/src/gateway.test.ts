@@ -354,3 +354,13 @@ describe("archiving a session", () => {
     }
   });
 });
+
+it("validates and persists companion receipts through the authenticated action routes", async () => {
+ const {store,supervisor}=setup(); const {app}=await createServer({store,supervisor,runtimes:new Map(),briefingAt:false});cleanups.push(()=>app.close());
+ const headers={"x-shuacrew":"1"};const payload={id:"voice-test:0",owner:"12345678-1234-1234-1234-123456789abc",fingerprint:"a".repeat(64)};
+ expect((await app.inject({method:"POST",url:"/api/companion/actions/claim",headers,payload})).json().claimed).toBe(true);
+ expect((await app.inject({method:"POST",url:"/api/companion/actions/claim",headers,payload})).json().claimed).toBe(false);
+ expect((await app.inject({method:"POST",url:"/api/companion/actions/finish",headers,payload:{id:payload.id,owner:payload.owner,result:{ok:true,message:"Verified"}}})).json().saved).toBe(true);
+ expect((await app.inject({method:"POST",url:"/api/companion/actions/claim",headers,payload})).json().result.message).toBe("Verified");
+ expect((await app.inject({method:"POST",url:"/api/companion/actions/claim",headers,payload:{}})).statusCode).toBe(400);
+});

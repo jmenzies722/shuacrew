@@ -47,7 +47,7 @@ export function Specs() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: specs.length, label: specs.length === 1 ? "spec" : "specs" }, { value: specs.filter((x) => !x.approved.includes(x.phase)).length, label: "waiting for your approval", tone: "wait" }]} />} eyebrow="Plan" icon={FileText} title="Specs" description="Requirements, then design, then tasks. A session writes the draft; you approve it here. Tasks land on the board as runs."
           actions={<Button onClick={() => (setStarting(true), setOpen(null))}>Start a spec</Button>} />
 

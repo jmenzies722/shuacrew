@@ -4,7 +4,7 @@ export interface Hub { id: "home" | "crew" | "build" | "know" | "system"; label:
 
 export const HUBS: Hub[] = [
   { id: "home", label: "Home", hint: "Talk to the crew, see your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions"] }, { to: "/activity", label: "Today" }] },
-  { id: "crew", label: "Crew", hint: "Your team, live", tabs: [{ to: "/crew", label: "Team" }, { to: "/rooms", label: "Rooms" }, { to: "/floor", label: "Floor" }, { to: "/studio", label: "Studio" }] },
+  { id: "crew", label: "Crew", hint: "Your team, live", tabs: [{ to: "/crew", label: "Team" }, { to: "/rooms", label: "Rooms" }, { to: "/floor", label: "Crew HQ" }, { to: "/studio", label: "Studio" }] },
   { id: "build", label: "Build", hint: "Ventures, plans and the board", tabs: [{ to: "/ventures", label: "Ventures" }, { to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/specs", label: "Specs" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/schedules", label: "Schedules" }] },
   { id: "know", label: "Know", hint: "Library, memory, learning", tabs: [{ to: "/library", label: "Library" }, { to: "/memory", label: "Memory" }, { to: "/learn", label: "Learning" }, { to: "/teach", label: "Visual teaching" }] },
   { id: "system", label: "System", hint: "Tools, policy, insights", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/usage", "/developer", "/insights"] }, { to: "/terminal", label: "Terminal" }] },

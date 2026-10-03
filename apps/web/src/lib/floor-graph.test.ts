@@ -5,6 +5,23 @@ const now = 1_000_000;
 const member = (id: string) => ({ id, name: id.toUpperCase(), role: "r", persona: "", color: "#fff", emoji: "", triggers: [] });
 const run = (id: string, extra: Record<string, unknown>) => ({ id, status: "done", updatedAt: now - 1000, labels: [], subagents: [], runtime: "claude", ...extra });
 
+it("does not draw delegations for runs outside the current scope", () => {
+  const graph = buildStage({ now, members: { rhea: member("rhea"), eli: member("eli") } as never, runs: {}, approvals: {}, activity: [], rooms: { elsewhere: { coordinator: "rhea", assignments: { assignment: { id: "assignment", memberId: "eli", runId: "excluded", task: "Build", status: "running", updatedAt: now } } } } as never });
+  expect(graph.edges).toEqual([]);
+});
+
+it("shows a failed session as failed and selects live work ahead of newer finished work", () => {
+  const graph = buildStage({ now, members: { eli: member("eli") } as never, runs: { failed: run("failed", { runtime: "codex", status: "failed" }), active: run("active", { member: "eli", status: "running", updatedAt: now - 5000 }), done: run("done", { member: "eli" }) } as never, rooms: {}, approvals: {}, activity: [] });
+  expect(graph.nodes.find(node => node.id === "agent:codex")?.state).toBe("failed");
+  expect(graph.nodes.find(node => node.id === "eli")?.runId).toBe("active");
+});
+
+it("does not animate queued work as an actively running agent", () => {
+  const graph = buildStage({ now, members: {}, runs: { queued: run("queued", { status: "queued" }) } as never, rooms: {}, approvals: {}, activity: [] });
+  expect(graph.nodes.find(node => node.id === "agent:claude")?.state).toBe("queued");
+  expect(graph.edges[0]?.live).toBe(false);
+});
+
 it("draws only real work: sessions from you, room delegations, waiting and idle states", () => {
   const g = buildStage({
     now,

@@ -12,6 +12,9 @@ import { applyTheme, connect, useLive } from "./lib/live";
 import { folderPicked } from "./lib/native";
 import { router } from "./routes";
 import { Buddy } from "./screens/Buddy";
+import { protectKeyboardDelivery } from "./lib/keyboard-delivery";
+
+if (document.documentElement.dataset.shell === "mac") protectKeyboardDelivery(window);
 
 applyTheme(useLive.getState().theme);
 // While ShuaCrew isn't the app in front, its purely decorative motion rests (see alive.css); it resumes on return.

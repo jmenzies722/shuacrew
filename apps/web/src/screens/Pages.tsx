@@ -14,7 +14,7 @@ export { Specs } from "./Specs";
 function Page({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1180px] px-8 pb-12 pt-8">
+      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader eyebrow="System" icon={ShieldCheck} title={title} description={subtitle} />
         <div className="flex flex-col gap-5">{children}</div>
       </div>
@@ -52,7 +52,7 @@ export function Policy() {
   const counts = useMemo(() => { const c = { allow: 0, deny: 0, ask: 0 }; for (const e of activity) if (e.kind === "policy.decided") c[(e.body as { verdict: "allow" | "deny" | "ask" }).verdict]++; return c; }, [activity]);
   const tone = (v?: string) => (v === "allow" ? "ok" : v === "deny" ? "bad" : "wait");
   return (
-    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1280px] px-8 pb-12 pt-6">
+    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1440px] px-8 pb-12 pt-6">
       <PaneHeader title="Policy & Audit" description="One policy for every runtime; the tightest rule wins; every decision says which rule made it."
         actions={<span className={`pol-chain is-${verify ? (verify.ok ? "ok" : "bad") : "wait"}`}><StatusGlyph tone={verify ? (verify.ok ? "ok" : "bad") : "wait"} />{verify ? (verify.ok ? `Audit chain intact · ${verify.count.toLocaleString()} events` : `Chain broken at #${verify.brokenAt}`) : "Checking the chain…"}</span>} />
       <SparkToday />
@@ -73,7 +73,7 @@ export function Policy() {
           <header><Eyebrow>Decisions</Eyebrow><span className="pol-counts"><i className="is-ok">{counts.allow} allowed</i><i className="is-wait">{counts.ask} asked</i><i className="is-bad">{counts.deny} denied</i></span></header>
           {decisions.length === 0 && <p className="pol-empty">Decisions appear here as your crew works: every tool call the policy allowed, asked about or blocked, and what you decided.</p>}
           {decisions.map((e) => { const b = e.body as { tool?: string; verdict?: string; rule?: string; reason?: string; allow?: boolean; by?: string }; const v = e.kind === "approval.decided" ? (b.allow ? "allow" : "deny") : b.verdict;
-            return <div key={e.seq} className="pol-row"><StatusGlyph tone={tone(v)} /><span className="pol-row-main"><b>{e.kind === "approval.decided" ? `${b.by?.startsWith("you") ? "You" : "Policy"} ${b.allow ? "allowed" : "denied"} ${asked.get((b as { id?: string }).id ?? "") ?? "a tool call"}` : b.tool}</b><small>{e.kind === "approval.decided" ? (b.by === "timeout" ? "timed out" : `decided ${b.by?.includes("(") ? b.by.slice(b.by.indexOf("(") + 1, -1) : "in the app"}`) : `${b.rule} · ${b.reason}`}</small></span><span className="pol-when">{since(e.at)}</span></div>; })}
+            return <div key={e.seq} className="pol-row"><StatusGlyph tone={tone(v)} /><span className="pol-row-main"><b>{e.kind === "approval.decided" ? `${b.by === "timeout" ? "Timed out:" : `${b.by?.startsWith("you") ? "You" : "Policy"} ${b.allow ? "allowed" : "denied"}`} ${toolPhrase(asked.get((b as { id?: string }).id ?? ""))}` : toolPhrase(b.tool)}</b><small>{e.kind === "approval.decided" ? (b.by === "timeout" ? "timed out" : `decided ${b.by?.includes("(") ? b.by.slice(b.by.indexOf("(") + 1, -1) : "in the app"}`) : `${b.rule} · ${b.reason}`}</small></span><span className="pol-when">{since(e.at)}</span></div>; })}
         </section>
         <section className="pol-card">
           <header><Eyebrow>Audit chain</Eyebrow><Button onClick={async () => setVerify(await api("/api/audit/verify"))}>Verify now</Button></header>
@@ -333,4 +333,15 @@ function ThemePreview({ palette, accent }: { palette: Palette; accent: string })
       <circle cx="151" cy="83" r="4" fill={accent} />
     </svg>
   );
+}
+
+/** A tool as a person would say it: "a command", not "commandExecution". */
+export function toolPhrase(tool: string | undefined): string {
+  if (!tool) return "a tool call";
+  if (/^(Bash|shell|commandExecution)$/i.test(tool)) return "a command";
+  if (/^(Edit|Write|MultiEdit|NotebookEdit|apply_patch|fileChange)$/.test(tool)) return "a file edit";
+  if (/^(Read|Grep|Glob|LS)$/.test(tool)) return "a file read";
+  if (/^(WebFetch|WebSearch)$/.test(tool)) return "a web lookup";
+  const mcp = /^mcp__([^_]+)__(.+)$/.exec(tool); if (mcp) return `${mcp[1]}: ${mcp[2]!.replace(/[-_]/g, " ")}`;
+  return tool;
 }

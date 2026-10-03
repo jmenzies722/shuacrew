@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Check, ChevronRight, Copy, CornerUpLeft, ExternalLink, MessageSquare, PanelRightClose, PanelRightOpen, Pause, Play, Plus, Search, ShieldCheck, Square, Users } from "lucide-react";
+import { Activity, ArrowUp, Check, ChevronRight, Settings2, Copy, CornerUpLeft, ExternalLink, MessageSquare, PanelRightClose, PanelRightOpen, Pause, Play, Plus, Search, ShieldCheck, Square, Users } from "lucide-react";
 import { Glyph } from "../lib/glyphs";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import type { RoomView } from "@shuacrew/core/rooms";
@@ -12,8 +12,10 @@ import type { RoomQueueInput } from "@shuacrew/core/room-queue";
 import { RoomComposer } from "../components/RoomComposer";
 import { RoomResults } from "../components/RoomResults";
 import { Markdown } from "../components/Markdown";
+import { WorkspaceIllustration } from "../components/WorkspaceIllustration";
 import "./rooms.css";
 import { useFlag } from "../components/BatchSettings";
+import { shouldSend } from "../lib/composer-keys";
 
 const LIVE = ["running", "planning", "awaiting_approval", "queued"];
 const STARTERS = [
@@ -100,7 +102,7 @@ export function Rooms() {
           : view === "work" ? <div className="rx-scroll"><div className="rx-column"><CrewWorkspace room={room} /></div></div>
           : <div className="rx-scroll" ref={thread}><div className="rx-column">
             {!room.messages.length && <div className="rx-hello">
-              <span className="rx-orb" aria-hidden="true" />
+              <WorkspaceIllustration kind="rooms" />
               <h2>What should the crew take on?</h2>
               <p>Describe the outcome. {members[room.coordinator]?.name ?? "Your coordinator"} plans it and hands concrete tasks to the others.</p>
               <div className="rx-starters">{STARTERS.map(s => <button key={s} onClick={() => setDrafts(d => ({ ...d, [room.id]: s }))}>{s}<ChevronRight size={13} /></button>)}</div>
@@ -130,15 +132,60 @@ export function Rooms() {
           {view === "chat" && <RoomComposer room={room} replyTo={replies[room.id]} onClearReply={() => setReplies(v => ({ ...v, [room.id]: undefined }))} draft={drafts[room.id] ?? ""} recipient={recipient} busy={busy} online={online} active={active} uncertain={Boolean(uncertain.current[room.id])} onDraft={text => setDrafts(d => ({ ...d, [room.id]: text }))} onRecipient={setRecipient} onSend={() => void action(send)} onCancel={requestId => void action(async () => { const result = await api<{ outcome: string }>(`/api/rooms/${room.id}/queue-cancel`, { body: { requestId } }); if (result.outcome === "already-started") throw new Error("This instruction already started. Use Stop work to cancel active runs."); })} />}
         </section>
         {activityOpen && <aside id="rx-panel" className="rx-panel"><CrewWorkspace room={room} /></aside>}
-      </> : <section className="rx-stage rx-welcome">
-        <span className="rx-orb is-big" aria-hidden="true" />
-        <h1>Your crew, in one conversation.</h1>
-        <p>Bring a coordinator and specialists together. Follow every handoff, review the work, decide what matters.</p>
-        <button className="rx-primary" onClick={() => setCreating(true)}><Plus size={15} />{Object.keys(rooms).length ? "New room" : "Create your first room"}</button>
-        {Object.keys(rooms).length > 0 && <p className="rx-muted">Or pick a room on the left.</p>}
-      </section>}
+      </> : <RoomsHome eligible={eligible} allMembers={Object.values(members)} online={online} busy={busy} hasRooms={Object.keys(rooms).length > 0}
+          onCustomize={() => { setCreating(true); setError(""); }}
+          onStart={(text) => void action(async () => {
+            // Ask first, set up after: the room is named from what you asked, the first opted-in member coordinates and
+            // everyone else opted in specialises. Then your message goes in as the room's first request.
+            const coordinatorId = (eligible.find((m) => /lead|coordinat|operator|producer/i.test(m.role)) ?? eligible[0])!.id;
+            const name = text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, "")}…` : text;
+            const made = await api<RoomView>("/api/rooms", { body: { title: name, coordinator: coordinatorId, members: [...new Set([coordinatorId, ...eligible.map((m) => m.id)])], concurrency: 3 } });
+            await navigate({ to: "/rooms/$id", params: { id: made.id } });
+            await enqueueRoomMessage(uncertain.current, made.id, text, undefined, undefined);
+          })}
+          onOptIn={(ids) => void action(async () => { for (const id of ids) { const m = members[id]; if (m) await api("/api/crew", { body: { ...m, delegatable: true } }); } })} />}
     </div>
   </div>;
+}
+
+/** No room open: ask, like a chat home. What you type becomes a room with your opted-in crew and its first request. */
+function RoomsHome({ eligible, allMembers, online, busy, hasRooms, onStart, onCustomize, onOptIn }: {
+  eligible: Array<{ id: string; name: string; role: string; color: string; emoji: string; runtime?: string }>;
+  allMembers: Array<{ id: string; name: string; role: string; color: string; emoji: string; runtime?: string; delegatable?: boolean }>;
+  online: boolean; busy: boolean; hasRooms: boolean; onStart: (text: string) => void; onCustomize: () => void; onOptIn: (ids: string[]) => void;
+}) {
+  const [text, setText] = useState(""), [pick, setPick] = useState<string[]>([]), field = useRef<HTMLTextAreaElement>(null);
+  const shortcut = useLive((s) => s.appearance.sendShortcut);
+  useEffect(() => { const el = field.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 220)}px`; }, [text]);
+  const ready = eligible.length > 0, can = ready && online && !busy && text.trim().length > 0;
+  const candidates = allMembers.filter((m) => !m.delegatable && ["claude", "codex"].includes(m.runtime ?? ""));
+  const send = () => { if (can) { onStart(text.trim()); setText(""); } };
+  return <section className="rx-stage rx-home">
+    <div className="rx-home-inner">
+      <WorkspaceIllustration kind="rooms" />
+      <h1>What should the crew take on?</h1>
+      <p>Say the outcome. {ready ? `${eligible[0]!.name} plans it and hands the pieces to ${eligible.length > 1 ? eligible.slice(1).map((m) => m.name).join(", ") : "the room"}.` : "First, choose who can work together in rooms."}</p>
+      {ready ? <div className="rx-home-crew" aria-label="In this room">{eligible.map((m) => <span key={m.id} className="rx-avatar" style={{ "--c": m.color } as React.CSSProperties} title={`${m.name} · ${m.role}`}><Glyph name={m.emoji} label={m.name} size={13} /></span>)}<small>{eligible.length} in the room</small></div>
+      : <div className="rx-home-optin">
+        <div className="rx-pick">{candidates.map((m) => <button type="button" key={m.id} aria-pressed={pick.includes(m.id)} onClick={() => setPick((p) => p.includes(m.id) ? p.filter((x) => x !== m.id) : [...p, m.id])}>
+          <span className="rx-avatar" style={{ "--c": m.color } as React.CSSProperties}><Glyph name={m.emoji} label={m.name} size={13} /></span><span><strong>{m.name}</strong><small>{m.role}</small></span></button>)}</div>
+        <button type="button" className="rx-primary" disabled={!pick.length || busy || !online} onClick={() => onOptIn(pick)}>Let {pick.length ? pick.length : ""} work in rooms</button>
+        <small className="rx-muted">They still work within your permissions. You can change this per member on Team.</small>
+      </div>}
+      <form className="rx-composer rx-home-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
+        <textarea ref={field} rows={2} aria-label="What should the crew take on?" placeholder={ready ? "Launch my side project's landing page by Friday…" : "Choose your crew above to start"} value={text} disabled={!ready} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (shouldSend(e.nativeEvent, shortcut)) { e.preventDefault(); send(); } }} />
+        <footer>
+          <span className="rx-pill is-static" title="Risky actions ask you first"><ShieldCheck size={12} />Supervised</span>
+          <button type="button" className="rx-pill" onClick={onCustomize} title="Name it, pick a coordinator, a repo, how much runs at once"><Settings2 size={12} />Customize the room</button>
+          <span className="rx-hint">{ready ? "↵ start · ⇧↵ new line" : ""}</span>
+          <button className="rx-send" disabled={!can} aria-label="Start the room"><ArrowUp size={17} /></button>
+        </footer>
+      </form>
+      {ready && <div className="rx-home-starters">{STARTERS.map((s) => <button key={s} type="button" onClick={() => { setText(s); field.current?.focus(); }}>{s}</button>)}</div>}
+      {hasRooms && <p className="rx-muted">Or pick up a room on the left.</p>}
+    </div>
+  </section>;
 }
 
 function CreateRoom(p: {

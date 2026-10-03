@@ -655,6 +655,24 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spark-nook-voice:hover { background: linear-gradient(180deg, rgb(255 255 255 / .18), rgb(255 255 255 / .08)); border-color: rgb(255 255 255 / .22); }
 .spark-nook-voice.is-on { color: #fff; background: linear-gradient(180deg, rgb(255 255 255 / .22), rgb(255 255 255 / .1)); border-color: rgb(255 255 255 / .4); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 0 0 3px rgb(255 255 255 / .08), 0 0 18px rgb(255 255 255 / .22); }
 .shua-island-voice { display: inline-flex; align-items: center; color: #f1eef5; }
+.notch-thinking { display:inline-flex; align-items:center; justify-content:center; gap:6px; color:#d3d8eb; min-width:0; }
+.notch-thinking time { font-size:9px; color:#a5acc0; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.notch-thinking-orbit { position:relative; display:inline-block; width:15px; height:15px; border:1px solid #ffffff24; border-radius:50%; flex-shrink:0; }
+.notch-thinking-orbit i { position:absolute; inset:-1px; border:1px solid transparent; border-top-color:var(--amber); border-right-color:color-mix(in srgb,var(--amber) 40%,transparent); border-radius:50%; animation:notch-orbit 1.8s linear infinite; }
+.notch-thinking-orbit b { position:absolute; inset:5px; border-radius:50%; background:#dce7ff; box-shadow:0 0 6px var(--amber); animation:notch-breathe 2.4s ease-in-out infinite; }
+.notch-thinking.is-detail { gap:10px; font-size:12px; }.notch-thinking.is-detail time { margin-left:3px; font-size:11px; }.notch-thinking.is-detail .notch-thinking-orbit { width:20px; height:20px; }.notch-thinking.is-detail .notch-thinking-orbit b { inset:7px; }
+.notch-work-status { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border:1px solid #ffffff12; border-radius:12px; background:linear-gradient(135deg,#18203280,#111117); }
+.notch-work-status > button { padding:8px; border-radius:8px; background:#ffffff0b; color:#c9cfdd; }
+.notch-update-peek { display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; color:#f1f4fb; font-size:12px; text-align:left; }
+.notch-update-peek > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }.notch-update-peek > svg { flex-shrink:0; color:#85d9af; }.notch-update-peek.is-wait > svg { color:#f6c572; }
+.notch-update { display:grid; gap:8px; padding:14px; border:1px solid #ffffff16; border-radius:14px; background:linear-gradient(135deg,#1a2430,#111217); text-align:left; }
+.notch-update header { display:flex; align-items:center; justify-content:space-between; gap:10px; }.notch-update header span { font-size:9px; font-weight:600; letter-spacing:.12em; color:#85d9af; }.notch-update.is-wait header span { color:#f6c572; }.notch-update header button { padding:4px; color:#a6adbc; }.notch-update strong { font-size:13px; line-height:1.4; font-weight:600; color:#f1f4fb; }.notch-update p { margin:0; color:#b0b8c8; font-size:12px; line-height:1.6; }
+.notch-update-open { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; background:#ffffff08; border:1px solid #ffffff0e; border-radius:8px; color:#e0e8fa; font-size:11px; }
+.notch-update button:focus-visible, .notch-update-peek:focus-visible, .notch-work-status button:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+@keyframes notch-orbit { to { transform:rotate(360deg); } }
+@keyframes notch-breathe { 50% { opacity:.4; transform:scale(.75); } }
+@media (prefers-reduced-motion:reduce) { .notch-thinking * { animation:none!important; } }
+:root[data-motion="reduced"] .notch-thinking * { animation:none!important; }
 /* Streaming in the notch: the reply appears as it's written, newest words in view, with a soft caret. */
 .notch-heard.is-stream p { color: #e9e5ef; }
 .notch-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; border-radius: 1px; background: var(--amber); animation: notch-caret 1s steps(2) infinite; }
@@ -855,3 +873,34 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spk-v-proscons li { display: flex; gap: 5px; align-items: flex-start; line-height: 1.35; }
 .spk-v-proscons ul:first-child svg { color: #4ade80; flex: none; margin-top: 2px; } .spk-v-proscons ul:last-child svg { color: #f87171; flex: none; margin-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .spk-v-edge path, .spk-v-msg path, .spk-v-chart .is-line { animation: none; stroke-dashoffset: 0; } .spk-v-msg text, .spk-v-chart .is-area { animation: none; opacity: 1; } .spk-v-node, .spk-v-layers li, .spk-v-cycle ellipse { animation: none; } }
+
+/* Conversation clarity: one identity header, a quiet reading surface, stable writing controls. */
+.buddy-card.spk .spk-head { grid-template-columns: 32px minmax(0,1fr) repeat(4,28px); grid-template-rows: 24px 18px; padding: 10px 12px; gap: 0 5px; }
+.buddy-card.spk .spk-avatar { width: 32px; height: 32px; align-self: center; border-radius: 10px; }
+.spk-head .spk-status { font-size: 10.5px; background: transparent; padding: 0; }
+.buddy-card.spk .spk-thread { padding: 20px 18px; gap: 24px; overscroll-behavior: contain; }
+.buddy-card.spk .buddy-msg.is-spark { padding: 0; background: transparent !important; box-shadow: none !important; border-radius: 0; color: var(--text); }
+.buddy-card.spk .buddy-msg.is-spark .prose-agent { font-size: var(--chat-text); line-height: 1.75; overflow-wrap: anywhere; }
+.buddy-card.spk .buddy-msg.is-you { white-space: pre-wrap; overflow-wrap: anywhere; }
+.buddy-card.spk .spk-row { align-items: flex-start; min-width: 0; }
+.buddy-card.spk .spk-thread > .spk-row > .spk-mini { display: none; }
+.spk-followups { color: var(--text-3); font-size: 11.5px; }
+.spk-followups > summary { display: flex; align-items: center; gap: 5px; list-style: none; cursor: pointer; width: fit-content; padding: 5px 0; }
+.spk-followups > summary::-webkit-details-marker { display: none; }
+.spk-followups[open] > summary svg { transform: rotate(90deg); }
+.spk-followups .spk-quick { margin: 8px 0; }
+.buddy-card.spk .buddy-error { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid color-mix(in srgb,var(--bad) 24%,var(--line)); border-radius: 12px; background: color-mix(in srgb,var(--bad) 5%,var(--panel)); line-height: 1.5; }
+.buddy-error > span { min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.buddy-error > button { flex: none; padding: 5px 7px; border-radius: 6px; color: var(--text); background: var(--raised); }
+.spk .buddy-input.chat-composer { grid-template-columns: 32px 32px 32px minmax(0,1fr); }
+.spk .chat-composer .buddy-area { grid-column: 2; }
+.spk .chat-composer .buddy-talk { grid-column: 3; }
+.composer-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; flex: none; }
+.spk .chat-composer > .composer-actions { grid-row: 2; grid-column: 4; justify-self: end; }
+.spk .chat-composer .composer-actions .buddy-send { width: 32px; height: 32px; }
+.spk .chat-composer .composer-actions .is-stop { color: var(--text); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.spark-nook-ask .composer-actions { gap: 4px; }
+.buddy-card.spk :is(button, summary):focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+.buddy-card.spk.is-embedded .spk-head { grid-template-columns: 32px minmax(0,1fr) repeat(5,28px); }
+.buddy-card.spk .spk-head > .spk-close { grid-column: -2; grid-row: 1; }

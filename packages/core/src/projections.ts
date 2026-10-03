@@ -219,6 +219,21 @@ export function plainTitle(text: string): string {
   return text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s{2,}/g, " ").trim();
 }
 
+/**
+ * A session's title as shown. Many launchers shorten the ask with a plain slice ("…architecture, UX, performa"); when
+ * the title is just the start of the ask cut short, end it at a whole word with an ellipsis. Real titles are untouched.
+ */
+export function sessionTitle(title: string, ask: string): string {
+  // "Shua · what's on my screen…": a launcher's name, then the ask (which can sit after instructions in the prompt).
+  const named = /^([^·]{1,40} · )(.+)$/.exec(plainTitle(title)), flat = ask.replace(/\s+/g, " ");
+  if (named && flat.includes(named[2]!)) return named[1]! + sessionTitle(named[2]!, flat.slice(flat.lastIndexOf(named[2]!)));
+  const t = plainTitle(title), full = plainTitle(ask.replace(/\s+/g, " "));
+  if (!t || t.endsWith("…") || full.length <= t.length || !full.startsWith(t)) return t;
+  const cutMidWord = /\S/.test(full[t.length] ?? "") && /\S$/.test(t);
+  const whole = (cutMidWord ? t.replace(/\s*\S+$/, "") : t).replace(/[\s,;:–—-]+$/, "");
+  return `${whole || t}…`;
+}
+
 function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -243,7 +258,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       const b = event.body;
       state.runs[event.run ?? ""] = {
         id: event.run ?? "",
-        title: plainTitle(b.title),
+        title: sessionTitle(b.title, b.ask),
         ask: b.ask,
         project: b.project,
         repo: b.repo,

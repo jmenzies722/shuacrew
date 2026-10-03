@@ -360,6 +360,8 @@ export class Supervisor {
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
     const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
+    const selectedRoute = this.store.forRun(runId).findLast(e => e.kind === "run.routed" && e.body.effort !== undefined);
+    const effort = selectedRoute?.kind === "run.routed" ? selectedRoute.body.effort || undefined : spec.effort;
     // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
     const lean = spec.labels.includes("buddy");
     const run: RunSpec = {
@@ -369,7 +371,7 @@ export class Supervisor {
       ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : spec.forkOf && turn === 1 ? `${spec.ask}\n\n---\n\n${ask}` : ask,
       cwd,
       model,
-      effort: spec.effort,
+      effort,
       resume,
       agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
       disableNativeAgents: lean || spec.labels.includes("crew-room"),
@@ -378,7 +380,7 @@ export class Supervisor {
       mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
-    this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort: spec.effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
+    this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
 
     let ended = false;
     let buffered = "";
@@ -393,6 +395,8 @@ export class Supervisor {
         env: agentEnv(process.env, runtime.authMode),
         approve: (tool, input, meta) => this.gate(runId, policy, tool, input, meta?.subagent),
       })) {
+        // A runtime can finish or deliver buffered tokens after abort. Stop remains terminal.
+        if (controller.signal.aborted) break;
         if (event.type !== "text" || event.final) flush();
         switch (event.type) {
           case "session":
@@ -460,7 +464,7 @@ export class Supervisor {
             this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
             this.rec(
               "turn.completed",
-              { turn, route: { runtime: runtime.id, model, effort: spec.effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },
+              { turn, route: { runtime: runtime.id, model, effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },
               { run: runId },
             );
             // A top-level run with changes goes to review; a task's step is just done (the task is reviewed).
@@ -477,7 +481,7 @@ export class Supervisor {
             break;
         }
       }
-      if (!ended) this.setStatus(runId, "done");
+      if (!ended && !controller.signal.aborted) this.setStatus(runId, "done");
     } catch (error) {
       if (this.halted) return; // shutting down: the log must keep saying this run was running
       const message = (error as Error).message;
@@ -510,7 +514,7 @@ export class Supervisor {
   /** The model to use on this runtime: the launch's choice if it belongs here; after a failover,
    * this runtime's model of the same tier (a fast model moves to a fast model, not the priciest). */
   private modelFor(run: string, runtime: string, launched?: string): string | undefined {
-    for (const e of this.store.forRun(run)) if (e.kind === "run.routed" && e.body.runtime === runtime && e.body.model) return e.body.model;
+    for (const e of this.store.forRun(run).slice().reverse()) if (e.kind === "run.routed" && e.body.runtime === runtime) return e.body.model;
     const models = this.runtimes.get(runtime)?.models ?? [];
     if (!launched) return undefined;
     if (models.length === 0 || models.some((m) => m.id === launched)) return launched;
@@ -521,7 +525,10 @@ export class Supervisor {
   /** The runtime's own conversation for this run — only if that runtime owns it. */
   private backendSession(run: string, runtime: string): string | undefined {
     let found: string | undefined;
-    for (const e of this.store.forRun(run)) if (e.kind === "run.session" && e.body.runtime === runtime) found = e.body.id;
+    for (const e of this.store.forRun(run)) {
+      if (e.kind === "run.routed" && e.body.reason === "Model selected by you") found = undefined;
+      if (e.kind === "run.session" && e.body.runtime === runtime) found = e.body.id;
+    }
     return found;
   }
 
@@ -821,9 +828,17 @@ export class Supervisor {
   /** Send another message to a run: a new turn in the same runtime conversation. */
   isActive(run: string): boolean { return this.active.has(run); }
 
-  followUp(run: string, text: string, by = "you", requestId?: string): string {
+  followUp(run: string, text: string, by = "you", requestId?: string, selection?: {runtime:string;model?:string;effort?:string}): string {
     const created = this.store.forRun(run).find(e => e.kind === "run.created");
     if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) throw new Error("Continue this conversation in its crew room, not the source session.");
+    if (selection) {
+      const runtime = this.runtimes.get(selection.runtime);
+      if (!runtime || (selection.model && !runtime.models.some(m => m.id === selection.model))) throw new Error("That model is not available for the selected agent.");
+      if (!this.status(run)) throw new Error(`no run ${run}`);
+      if (this.active.has(run) || ["queued", "running", "planning", "awaiting_approval"].includes(this.status(run)!)) throw new Error("Wait for this turn to finish before changing its model.");
+      this.expand(text);
+      this.rec("run.routed", {...selection, reason:"Model selected by you"}, {run});
+    }
     return this.enqueueFollowUp(run, text, by, requestId);
   }
 

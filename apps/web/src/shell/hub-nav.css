@@ -87,7 +87,7 @@
 @media (prefers-reduced-motion: reduce) { .side, .side-dot.is-live { animation: none; } }
 
 /* ── Sidebar, Kiro Crew style: a floating rounded panel, plain line icons, one violet selection. ── */
-.side { width: 244px; margin: var(--gutter-top) 0 var(--gutter) var(--gutter); padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
+.side { width: 264px; margin: var(--gutter-top) 0 var(--gutter) var(--gutter); padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
   background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
 .side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
 /* The ShuaCrew mark (same as the app icon): a lit core with three crew on an orbit, drawn in the theme's accent. */
@@ -151,3 +151,29 @@
 .side .side-spark { margin-bottom: 8px; }
 .side .side-new { margin-bottom: 0; }
 .side-scroll { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line-strong); }
+/* Recent sessions: first in the list, right under New session. The label folds them (remembered); "All" opens the
+   Sessions page; each row shows how long ago it moved, and live ones say "now". */
+.side-recent-head { display: flex; align-items: center; justify-content: space-between; }
+.side .side-recent-toggle { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; transition: color .15s; }
+.side .side-recent-toggle:hover { color: var(--text-2); }
+.side-recent-chev { flex-shrink: 0; transition: transform .18s cubic-bezier(.2,.8,.2,1); }
+.side-recent.is-open .side-recent-chev { transform: rotate(90deg); }
+.side-recent-live { margin-left: 4px; padding: 0 6px; border-radius: 999px; font-style: normal; font-size: 10px; font-weight: 600; color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.side-recent-all { padding: 12px 10px 4px; font-size: 11px; color: var(--text-3); opacity: 0; transition: opacity .15s, color .15s; }
+.side-recent:hover .side-recent-all, .side-recent-all:focus-visible { opacity: 1; } .side-recent-all:hover { color: var(--text); }
+.side-recent-list { overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
+.side-run small { margin-left: auto; padding-left: 6px; flex-shrink: 0; font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.side-run:hover small, .side-run.is-on small { color: var(--text-2); }
+.side-recent-more { align-self: flex-start; height: 24px; margin: 1px 0 2px 25px; padding: 0 6px; border-radius: 6px; font-size: 11.5px; color: var(--text-3); transition: color .15s, background .15s; }
+.side-recent-more:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+@media (prefers-reduced-motion: reduce) { .side-recent-chev { transition: none; } }
+.side .side-recent { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+/* The page list scrolls (no bar): fade its bottom edge so a row half under the footer reads as "more below", not as a
+   rendering glitch, and leave room so the last row can scroll fully clear of the fade. */
+.side-scroll { padding-bottom: 28px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); }
+
+/* Session rows read as titles, not stubs: up to two lines, the dot and time aligned to the first. */
+.side-recent-list .side-run { align-items: flex-start; height: auto; min-height: 30px; padding: 6px 10px; }
+.side-recent-list .side-run span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; line-height: 1.35; }
+.side-recent-list .side-dot { margin-top: 5px; }
+.side-recent-list .side-run small { margin-top: 1px; }

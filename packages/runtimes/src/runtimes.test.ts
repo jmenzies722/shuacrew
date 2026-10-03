@@ -64,6 +64,13 @@ describe("usage-window messages", () => {
 });
 
 describe("Codex's stream", () => {
+  it.each([null, -1, "120", NaN, Infinity])("omits an invalid duration %s instead of failing event validation", (durationMs) => {
+    const translator = new CodexTranslator();
+    const result = translator.translate("item/completed", { item: { id: "duration", type: "commandExecution", status: "completed", exitCode: 0, durationMs } });
+    expect(result[0]).toMatchObject({ type: "tool-result", ok: true });
+    expect(result[0]).toHaveProperty("durationMs", undefined);
+    expect(translator.translate("turn/completed", { turn: { status: "completed", durationMs } }).at(-1)).toHaveProperty("durationMs", undefined);
+  });
   it("deduplicates cumulative usage and does not add reasoning twice", () => {
     const t = new CodexTranslator(); t.translate("turn/started", { turn: { id: "turn1" } });
     const first = { turnId: "turn1", tokenUsage: { last: { inputTokens: 100, outputTokens: 30, reasoningOutputTokens: 20, cachedInputTokens: 40 }, total: { inputTokens: 100, outputTokens: 30, cachedInputTokens: 40, totalTokens: 130 } } };
