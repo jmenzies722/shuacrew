@@ -1,113 +1,168 @@
 /*
- * Spark, redesigned: calm, quick, made for reading and talking. One layer over the older rules (which kept piling up
- * overrides): it keeps your chat settings — tone, glass, corner radius (--chat-radius) and text size (--chat-text) —
- * and only changes the shape of things. Motion is opacity/transform only, so it stays on the GPU.
+ * Spark — obsidian. In the notch the chat is the island grown down: one continuous black shape out of the hardware
+ * notch, glass on black, a soft light from the notch that brightens while Spark listens or speaks. Off the notch it
+ * follows your theme. Your chat settings (tone, glass, corner radius --chat-radius, text size --chat-text) still apply.
+ * Motion is transform/opacity only (GPU), and it all rests with Reduce Motion.
  */
 
-/* ── Thread ─────────────────────────────────────────────────────────────────────────────────────────────────────── */
-.buddy-card.spk .spk-thread { gap: 16px; padding: 16px 18px 10px; scroll-padding-bottom: 12px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 18%, transparent) transparent; }
-.buddy-card.spk .spk-thread::-webkit-scrollbar { width: 6px; }
-.buddy-card.spk .spk-thread::-webkit-scrollbar-thumb { border-radius: 3px; background: color-mix(in srgb, var(--text) 16%, transparent); }
+/* ── Obsidian tokens: inside the notch the palette is always the island's ─────────────────────────────────────── */
+.spk-pop.is-notched .buddy-card.spk {
+  --text: #f5f3f8; --text-2: rgba(245, 243, 248, .68); --text-3: rgba(245, 243, 248, .44);
+  --raised: rgba(255, 255, 255, .07); --sunken: rgba(255, 255, 255, .045); --panel: #0b0b0e;
+  --line: rgba(255, 255, 255, .075); --line-strong: rgba(255, 255, 255, .12); --composer-fill: rgba(255, 255, 255, .055);
+}
 
-/* Spark speaks in plain prose — no box, no repeated avatar (the top bar already says who's talking). */
+/* ── The shape: one black surface from the notch down ─────────────────────────────────────────────────────────── */
+.buddy.is-docked .spk-pop.is-notched {
+  background: #000; padding: 0 8px 8px; border-radius: 0 0 34px 34px; transform-origin: top center;
+  box-shadow: 0 36px 90px -34px rgba(0, 0, 0, .95), 0 0 0 1px rgba(255, 255, 255, .055);
+}
+.spk-pop.is-notched > .buddy-card.spk {
+  position: relative; isolation: isolate; overflow: hidden;
+  background: transparent !important; box-shadow: none !important; border: 0 !important; border-radius: 0 0 28px 28px !important;
+}
+/* Light from the notch: faint at rest, warmer while Spark listens or speaks (opacity only, so it costs nothing). */
+.spk-pop.is-notched > .buddy-card.spk::before {
+  content: ""; position: absolute; z-index: -1; left: 50%; top: -120px; width: 120%; height: 300px; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--spark-color) 55%, transparent), transparent 72%);
+  opacity: .16; transition: opacity .7s ease;
+}
+.spk-pop.is-notched > .buddy-card.spk:has(.spk-avatar:is(.is-speaking, .is-hearing))::before { opacity: .34; }
+.spk-pop.is-notched > .buddy-card.spk:has(.spk-avatar.is-thinking)::before { opacity: .24; }
+/* As the island grows, what's inside arrives a beat later — the shape first, then the words (Dynamic Island). */
+.spk-pop.is-notched > .buddy-card.spk > * { animation: ob-arrive .34s cubic-bezier(.2, .8, .2, 1) .1s both; }
+@keyframes ob-arrive { from { opacity: 0; transform: translateY(-6px); } }
+
+/* ── Header: identity, status, tools — one tidy row ────────────────────────────────────────────────────────────── */
+.buddy-card.spk .spk-head {
+  display: flex !important; align-items: center; gap: 4px; padding: 12px 10px 10px 14px;
+  border-bottom: 1px solid var(--line); background: transparent;
+}
+.buddy-card.spk .spk-head > .spk-avatar { flex: 0 0 34px; width: 34px; height: 34px; margin-right: 6px; border-radius: 11px; overflow: hidden; }
+.buddy-card.spk .spk-head .spk-who { display: flex !important; flex-direction: column; justify-content: center; align-items: flex-start !important; gap: 1px; flex: 1; min-width: 0; }
+.buddy-card.spk .spk-head .spk-who > strong { align-self: auto; font-size: 14px; font-weight: 650; letter-spacing: -.01em; color: var(--text); line-height: 1.2; }
+.buddy-card.spk .spk-head .spk-who > .spk-status { width: fit-content; padding: 0; background: transparent; font-size: 11px; color: var(--text-3); }
+.buddy-card.spk .spk-head > :is(button, .spk-options) { flex: none; }
+.buddy-card.spk .spk-head > button, .buddy-card.spk .spk-head > .spk-options > summary {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: var(--text-3);
+  transition: color .15s, background .15s, transform .15s;
+}
+.buddy-card.spk .spk-head > button:hover, .buddy-card.spk .spk-head > .spk-options > summary:hover { color: var(--text); background: var(--raised); }
+.buddy-card.spk .spk-head > button:active { transform: scale(.92); }
+.buddy-card.spk .spk-head > .live-btn.is-on { color: #ff8a8e; background: rgba(255, 90, 95, .14); }
+
+/* ── Thread: prose for Spark, soft pills for you ──────────────────────────────────────────────────────────────── */
+.buddy-card.spk .spk-thread { gap: 18px; padding: 18px 18px 12px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 16%, transparent) transparent; }
+.buddy-card.spk .spk-thread::-webkit-scrollbar { width: 6px; }
+.buddy-card.spk .spk-thread::-webkit-scrollbar-thumb { border-radius: 3px; background: color-mix(in srgb, var(--text) 14%, transparent); }
 .buddy-card.spk .spk-row { gap: 0; align-items: flex-start; }
 .buddy-card.spk .spk-row > .spk-mini { display: none; }
 .buddy-card.spk .buddy-msg.is-spark {
   flex: 1; min-width: 0; max-width: 100%; padding: 0 2px; border-radius: 0;
   background: transparent !important; box-shadow: none !important;
-  color: var(--text); font-size: var(--chat-text, 14px); line-height: 1.62; letter-spacing: -.003em;
+  color: var(--text); font-size: var(--chat-text, 14px); line-height: 1.66; letter-spacing: -.004em;
 }
-.buddy-card.spk .buddy-msg.is-spark :is(p, li) { line-height: 1.62; }
-.buddy-card.spk .buddy-msg.is-spark p { margin: 0 0 .55em; }
+.buddy-card.spk .buddy-msg.is-spark :is(.prose-agent, p, li) { font-size: inherit; line-height: inherit; }
+.buddy-card.spk .buddy-msg.is-spark p { margin: 0 0 .6em; }
 .buddy-card.spk .buddy-msg.is-spark p:last-child { margin-bottom: 0; }
-.buddy-card.spk .buddy-msg.is-spark :is(h1, h2, h3) { margin: .8em 0 .35em; font-size: 1.02em; font-weight: 650; letter-spacing: -.01em; }
-.buddy-card.spk .buddy-msg.is-spark :is(ul, ol) { margin: .2em 0 .6em; padding-left: 1.25em; }
-.buddy-card.spk .buddy-msg.is-spark pre { margin: .5em 0; padding: 10px 12px; border-radius: 10px; background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line); font-size: .9em; }
-.buddy-card.spk .buddy-msg.is-spark :not(pre) > code { padding: .08em .35em; border-radius: 5px; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: .9em; }
+.buddy-card.spk .buddy-msg.is-spark :is(h1, h2, h3) { margin: .9em 0 .35em; font-size: 1.03em; font-weight: 650; letter-spacing: -.012em; }
+.buddy-card.spk .buddy-msg.is-spark :is(ul, ol) { margin: .25em 0 .65em; padding-left: 1.25em; }
+.buddy-card.spk .buddy-msg.is-spark pre { margin: .55em 0; padding: 11px 13px; border-radius: 12px; background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line); font-size: .9em; }
+.buddy-card.spk .buddy-msg.is-spark :not(pre) > code { padding: .08em .36em; border-radius: 6px; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: .9em; }
 .buddy-card.spk .buddy-msg.is-spark a { color: var(--accent-text, var(--spark-color)); text-underline-offset: 2px; }
+.buddy-card.spk .buddy-msg.is-spark img { border-radius: 14px; }
+/* Streaming: the newest line materializes instead of popping in. */
+.buddy-card.spk .buddy-msg.is-spark.is-live { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.8em), rgba(0, 0, 0, .45)); mask-image: linear-gradient(to bottom, #000 calc(100% - 1.8em), rgba(0, 0, 0, .45)); }
 
-/* You: a soft pill on the right, tinted with Spark's colour, no hard outline. */
 .buddy-card.spk .spk-row.is-you { justify-content: flex-end; }
 .buddy-card.spk .buddy-msg.is-you {
-  max-width: 82%; padding: 9px 14px; font-size: var(--chat-text, 14px); line-height: 1.5;
-  color: var(--text) !important;
-  background: color-mix(in srgb, var(--spark-color) 17%, var(--raised)) !important; box-shadow: none !important;
-  border-radius: calc(var(--chat-radius, 18px) + 2px) calc(var(--chat-radius, 18px) + 2px) 6px calc(var(--chat-radius, 18px) + 2px);
+  max-width: 80%; padding: 9px 15px; font-size: var(--chat-text, 14px); line-height: 1.5; color: var(--text) !important;
+  background: color-mix(in srgb, var(--spark-color) 20%, var(--raised)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06) !important;
+  border-radius: calc(var(--chat-radius, 18px) + 4px) calc(var(--chat-radius, 18px) + 4px) 7px calc(var(--chat-radius, 18px) + 4px);
 }
-.buddy-card.spk .buddy-msg.is-you.is-hearing { color: var(--text-2) !important; background: color-mix(in srgb, var(--spark-color) 9%, var(--raised)) !important; }
+.buddy-card.spk .buddy-msg.is-you.is-hearing { color: var(--text-2) !important; background: color-mix(in srgb, var(--spark-color) 10%, var(--raised)) !important; }
 
-/* Thinking: three dots where the answer will start, no avatar beside them. */
-.buddy-card.spk .spk-typing { margin: 2px 0 0 2px; }
-
-/* What Spark did / can do next: small, quiet pills. */
+/* What Spark did / can do next. */
 .buddy-card.spk :is(.buddy-point, .buddy-did button) {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-top: 8px; padding: 0 11px; border-radius: 999px;
-  font-size: 12px; font-weight: 550; color: var(--accent-text, var(--spark-color));
-  background: color-mix(in srgb, var(--spark-color) 11%, transparent); box-shadow: none;
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-top: 9px; padding: 0 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 560; color: var(--accent-text, var(--spark-color));
+  background: color-mix(in srgb, var(--spark-color) 13%, transparent); box-shadow: none; transition: transform .18s, background .18s;
 }
+.buddy-card.spk :is(.buddy-point, .buddy-did button):hover { transform: translateY(-1px); background: color-mix(in srgb, var(--spark-color) 20%, transparent); }
 .buddy-card.spk .buddy-did { display: flex; flex-wrap: wrap; gap: 6px; }
 .buddy-card.spk .buddy-did button.is-bad { color: #fca5a5; background: rgba(239, 68, 68, .12); }
-.buddy-card.spk .spk-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 0; padding-left: 0; }
-.buddy-card.spk .spk-quick button {
-  height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; color: var(--text-2);
-  background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong, var(--line));
-  transition: background .15s, color .15s, box-shadow .15s;
-}
-.buddy-card.spk .spk-quick button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 45%, transparent); }
-.buddy-card.spk .buddy-handoff { margin: -6px 0 0 2px; font-size: 11.5px; }
+.buddy-card.spk .spk-followups > summary { color: var(--text-3); font-size: 11.5px; transition: color .15s; }
+.buddy-card.spk .spk-followups > summary:hover { color: var(--text); }
 
-/* ── Empty state: a warm hello, what's happening now, and a few ways in ────────────────────────────────────────── */
-.buddy-card.spk .spk-hello { gap: 10px; padding: 8px 4px 4px; }
-.buddy-card.spk .spk-hello-avatar { width: 64px; height: 64px; border-radius: 20px; }
-.buddy-card.spk .spk-hello h2 { margin: 6px 0 0; font-size: 21px; letter-spacing: -.03em; }
-.buddy-card.spk .spk-starters {
-  display: flex !important; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; max-width: 520px; margin: 10px auto 2px;
+/* Chips everywhere (follow-ups, starters): glass pills that lift under your pointer and press in. */
+.buddy-card.spk :is(.spk-quick button, .spk-starters > button) {
+  display: inline-flex; align-items: center; gap: 8px; width: auto; height: 32px; padding: 0 14px; border-radius: 999px;
+  font-size: 12.5px; color: var(--text-2); text-align: left;
+  background: var(--raised); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, .04);
+  transition: transform .18s cubic-bezier(.2, .8, .2, 1), color .15s, background .15s, box-shadow .15s;
 }
-.buddy-card.spk .spk-starters > button {
-  display: inline-flex; align-items: center; gap: 8px; width: auto; height: 34px; padding: 0 14px; border-radius: 999px;
-  font-size: 12.5px; text-align: left; color: var(--text-2);
-  background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong, var(--line));
-  transition: background .15s, color .15s, box-shadow .15s, transform .15s;
+.buddy-card.spk :is(.spk-quick button, .spk-starters > button):hover {
+  transform: translateY(-1px); color: var(--text);
+  background: color-mix(in srgb, var(--spark-color) 12%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 42%, transparent);
 }
-.buddy-card.spk .spk-starters > button:hover { color: var(--text); background: color-mix(in srgb, var(--spark-color) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 45%, transparent); }
-.buddy-card.spk .spk-starters > button:active { transform: scale(.97); }
-.buddy-card.spk .spk-starters > button > svg { opacity: .55; }
+.buddy-card.spk :is(.spk-quick button, .spk-starters > button):active { transform: scale(.97); }
+.buddy-card.spk .spk-quick { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; }
+
+/* ── Empty state ───────────────────────────────────────────────────────────────────────────────────────────────── */
+.buddy-card.spk .spk-hello { gap: 10px; padding: 10px 4px 4px; }
+.buddy-card.spk .spk-hello-avatar { width: 68px; height: 68px; border-radius: 22px; box-shadow: 0 18px 40px -18px color-mix(in srgb, var(--spark-color) 70%, transparent); }
+.buddy-card.spk .spk-hello h2 { margin: 8px 0 0; font-size: 22px; letter-spacing: -.035em; }
+.buddy-card.spk .spk-starters { display: flex !important; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; max-width: 540px; margin: 12px auto 2px; }
+.buddy-card.spk .spk-starters > button { height: 34px; }
+.buddy-card.spk .spk-starters > button > svg { opacity: .5; }
 .buddy-card.spk .spk-starters > button.is-agent b { color: var(--accent-text, var(--spark-color)); font-weight: 650; }
 .buddy-card.spk .spk-hello .buddy-tip { margin-top: 6px; font-size: 11.5px; color: var(--text-3); }
+.buddy-card.spk.is-calling .spk-hello { display: none; }
 
-/* ── Composer: one calm row — eye · your words · voice · send ─────────────────────────────────────────────────── */
+/* ── Composer: eye · area · your words · voice · send — one glass row ──────────────────────────────────────────── */
 .buddy-card.spk form.spk-input.chat-composer {
-  display: flex; flex-direction: row; align-items: flex-end; gap: 4px;
-  margin: 6px 12px 12px; padding: 6px; min-height: 50px; border-radius: calc(var(--chat-radius, 18px) + 2px);
-  background: var(--composer-fill, var(--sunken)); box-shadow: inset 0 0 0 1px var(--line-strong, var(--line));
-  transition: box-shadow .2s ease;
+  display: flex !important; flex-direction: row; align-items: flex-end; gap: 4px;
+  margin: 6px 12px 12px; padding: 6px; min-height: 52px; border: 0 !important; border-radius: calc(var(--chat-radius, 18px) + 6px);
+  background: var(--composer-fill, var(--sunken)) !important;
+  box-shadow: inset 0 0 0 1px var(--line-strong, var(--line)), inset 0 1px 0 rgba(255, 255, 255, .05) !important;
+  transition: box-shadow .25s ease; animation: none !important;
 }
 .buddy-card.spk form.spk-input.chat-composer:focus-within {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 55%, transparent), 0 0 0 4px color-mix(in srgb, var(--spark-color) 12%, transparent);
-  animation: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 60%, transparent), 0 0 0 4px color-mix(in srgb, var(--spark-color) 14%, transparent), 0 14px 36px -18px color-mix(in srgb, var(--spark-color) 80%, transparent) !important;
 }
 .buddy-card.spk form.spk-input.chat-composer > textarea {
-  order: 2; flex: 1; min-width: 0; min-height: 38px; max-height: 150px; margin: 0; padding: 9px 6px;
+  order: 3; flex: 1; min-width: 0; min-height: 40px; max-height: 150px; margin: 0; padding: 10px 6px;
   font-size: var(--chat-text, 14px); line-height: 1.45; background: transparent; resize: none;
 }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-see { order: 1; }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-talk { order: 3; }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-send { order: 4; }
-.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk, .buddy-send) {
-  flex: none; display: grid; place-items: center; width: 38px; height: 38px; margin: 0; border-radius: 12px;
+.buddy-card.spk form.spk-input.chat-composer > .buddy-see:not(.buddy-area) { order: 1; }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-area { order: 2; }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-talk { order: 4; }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions { order: 5; display: inline-flex; gap: 4px; }
+.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk),
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > button {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin: 0; border-radius: 13px; transition: transform .15s, background .15s, color .15s;
 }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-send { border-radius: 50%; }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-send:not(:disabled):not(.is-stop) {
-  color: #fff; background: var(--spark-color); box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--spark-color) 70%, transparent);
+.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk):active,
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > button:active { transform: scale(.92); }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send { border-radius: 50%; }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send:not(:disabled):not(.is-stop) {
+  color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--spark-color) 85%, #fff), var(--spark-color));
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--spark-color) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25);
 }
 
-/* ── Notch: the chat grows out of the island; the top bar is its title, so the card starts right below it ─────── */
-.spk-pop.is-notched .buddy-card.spk { border-top-left-radius: 18px; border-top-right-radius: 18px; }
+/* ── Live call: glass on black, like everything else in the island ───────────────────────────────────────────── */
+.buddy-card.spk .live-panel {
+  margin: 10px 12px 4px; padding: 14px 16px 12px; border: 0; border-radius: 22px;
+  background: var(--raised); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+.buddy-card.spk .live-panel .live-btn:not(.is-compact) { height: 30px; padding: 0 13px; }
+.buddy-card.spk .live-approval { border: 0; border-radius: 16px; box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffb547 38%, transparent); }
+.buddy-card.spk .live-voice select { border-radius: 9px; padding: 3px 6px; }
 
-/* Reduced motion: no glow pulses, no entrance slides. */
+/* ── Reduce Motion: everything still, nothing lost ─────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .buddy-card.spk form.spk-input.chat-composer, .buddy-card.spk .spk-starters > button { transition: none; }
+  .spk-pop.is-notched > .buddy-card.spk > * { animation: none; }
+  .buddy-card.spk :is(.spk-quick button, .spk-starters > button, .buddy-point, .buddy-did button, form.spk-input.chat-composer) { transition: none; }
 }
-
-/* In a Live call the call is the conversation: the empty-state hello steps aside. */
-.buddy-card.spk.is-calling .spk-hello { display: none; }
+:root[data-motion="reduced"] .spk-pop.is-notched > .buddy-card.spk > * { animation: none; }

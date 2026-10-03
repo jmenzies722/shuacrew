@@ -1552,7 +1552,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   if (embedded) return <div className="buddy is-open is-embedded" style={sparkVars(prefs.color)}>{card}</div>;
   return <div className={`buddy ${open ? "is-open" : ""} ${prefs.desktopPlacement === "notch" ? "is-docked" : ""}`} data-size={prefs.size} data-notch-glow={prefs.notchGlow} data-notch-size={prefs.notchSize} data-presence={prefs.presence} data-celebration={prefs.celebration} style={sparkVars(prefs.color)}>
     <AnimatePresence>{open && <motion.div key="card" className={`spk-pop ${notched ? "is-notched" : ""}`} style={notched ? { "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px` } as CSSProperties : undefined}
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, scale: 1, scaleX: 1, scaleY: 1 }} exit={{ opacity: 0 }} transition={reduceMotion || notched ? { duration: reduceMotion ? 0 : 0.15 } : { type: "spring", stiffness: 420, damping: 34 }}>
+      // In the notch the chat grows out of the island like Dynamic Island: the black shape springs open from the notch
+      // (transform only, top-centre), and what's inside arrives a beat later (spark-design.css). Elsewhere it rises in.
+      initial={reduceMotion ? false : notched ? { opacity: 0, scaleX: 0.7, scaleY: 0.3, y: -4 } : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, scale: 1, scaleX: 1, scaleY: 1 }}
+      exit={reduceMotion ? { opacity: 0 } : notched ? { opacity: 0, scaleX: 0.82, scaleY: 0.4, y: -4, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } } : { opacity: 0 }}
+      transition={reduceMotion ? { duration: 0 } : notched ? { type: "spring", stiffness: 380, damping: 32, mass: 0.9 } : { type: "spring", stiffness: 420, damping: 34 }}>
       {notched && <div className="shua-chat-cap" aria-hidden="true"><span /><span className="shua-island-cam" /><span /></div>}
       {card}</motion.div>}</AnimatePresence>
     {!open && mini && <MiniCard name={prefs.nickname || "Spark"} prefs={prefs} mood={mood}
