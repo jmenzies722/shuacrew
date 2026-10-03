@@ -12,11 +12,15 @@ import "./live-mode.css";
  * the wake word stand aside while a call is on (Buddy reads `live.active`).
  */
 type Line = { role: "user" | "assistant"; text: string; final: boolean };
+/** The call as it happened, in order: what you said, what Shua said, each step it took, and each result. */
+type Item = ({ kind: "line" } & Line) | { kind: "step"; text: string } | { kind: "result"; text: string; corrected?: string };
 export type LiveView = {
-  active: boolean; state: LiveState | "off"; detail?: string; lines: Line[]; steps: string[]; result?: string; corrected?: string; usage?: number;
+  active: boolean; state: LiveState | "off"; detail?: string; feed: Item[]; usage?: number;
   approval?: { id: string; kind: "command" | "files" | "action"; text: string; why?: string }; mic: number; voice: number;
 };
-const OFF: LiveView = { active: false, state: "off", lines: [], steps: [], mic: 0, voice: 0 };
+const OFF: LiveView = { active: false, state: "off", feed: [], mic: 0, voice: 0 };
+const FEED_MAX = 14;
+const push = (item: Item) => emit({ feed: [...view.feed, item].slice(-FEED_MAX) });
 let view: LiveView = OFF, call: LiveCall | null = null;
 const subs = new Set<() => void>();
 const emit = (next: Partial<LiveView>) => { view = { ...view, ...next }; subs.forEach((f) => f()); };
@@ -31,26 +35,33 @@ export const setLiveVoice = (v: string) => { try { localStorage.setItem(VOICE_KE
 function onEvent(e: LiveEvent) {
   if (e.type === "levels") { if (Math.abs(e.mic - view.mic) > 0.004 || Math.abs(e.voice - view.voice) > 0.004) emit({ mic: e.mic, voice: e.voice }); return; }
   if (e.type === "state") {
-    if (e.state === "ended" || e.state === "error") { call = null; emit({ ...OFF, state: e.state, detail: e.detail, lines: view.lines }); window.dispatchEvent(new CustomEvent("shuacrew:live", { detail: { on: false } })); return; }
+    if (e.state === "ended" || e.state === "error") { call = null; emit({ ...OFF, state: e.state, detail: e.detail, feed: view.feed }); window.dispatchEvent(new CustomEvent("shuacrew:livecall", { detail: { on: false } })); return; }
     return emit({ state: e.state });
   }
   if (e.type === "caption") {
-    // One growing line per speaker turn: partials replace the open line, a final closes it.
-    const lines = [...view.lines], last = [...lines].reverse().find((l) => l.role === e.role && !l.final);
-    if (last) Object.assign(last, { text: e.text, final: e.final }); else lines.push({ role: e.role, text: e.text, final: e.final });
+    // One growing line per speaker turn: a partial updates the open line in place, a final closes it.
+    const feed = [...view.feed];
+    const open = feed.findLastIndex((it) => it.kind === "line" && it.role === e.role && !it.final);
+    if (open >= 0) feed[open] = { kind: "line", role: e.role, text: e.text, final: e.final };
+    else feed.push({ kind: "line", role: e.role, text: e.text, final: e.final });
     // "Yes" / "no" to a pending approval, said out loud.
     if (e.final && e.role === "user" && view.approval) { const said = yesOrNo(e.text); if (said !== null) answer(said); }
-    return emit({ lines: lines.slice(-8), ...(e.role === "user" && e.final ? { steps: [], result: undefined, corrected: undefined } : {}) });
+    return emit({ feed: feed.slice(-FEED_MAX) });
   }
-  if (e.type === "step") return emit({ steps: [...view.steps, e.text].slice(-4) });
+  if (e.type === "step") return push({ kind: "step", text: e.text });
   if (e.type === "result") {
     if (!e.final) return;
     const paste = pasteTarget(e.text); if (paste) copyForPaste(paste, native() ? (m) => native()!.postMessage(m) : undefined);
-    return emit({ result: e.text });
+    return push({ kind: "result", text: e.text });
+  }
+  if (e.type === "usage") return emit({ usage: e.percent });
+  if (e.type === "correction") {
+    // The truth guard caught the voice saying something the result doesn't support: mark the result it misstated.
+    const feed = [...view.feed], at = feed.findLastIndex((it) => it.kind === "result");
+    if (at >= 0) feed[at] = { kind: "result", text: e.result, corrected: e.said }; else feed.push({ kind: "result", text: e.result, corrected: e.said });
+    return emit({ feed });
   }
   if (e.type === "approval") return emit({ approval: { id: e.id, kind: e.kind, text: e.text, why: e.why } });
-  if (e.type === "usage") return emit({ usage: e.percent });
-  if (e.type === "correction") return emit({ result: e.result, corrected: e.said });
   if (e.type === "do") { const c = call; void runSparkActions(e.actions).then((text) => c?.done(e.id, text)); }
 }
 
@@ -77,7 +88,7 @@ async function runSparkActions(raw: unknown[]): Promise<string> {
   sparkHooks.confirmDelete = (what) => askHere(what);
   try {
     for (const a of actions) {
-      emit({ steps: [...view.steps, describeAction(a)].slice(-4) });
+      push({ kind: "step", text: describeAction(a) });
       const r = await perform(a);
       results.push(`${describeAction(a)}: ${r.ok ? "done" : "failed"} — ${r.message}`);
     }
@@ -89,7 +100,7 @@ const native = () => (window as unknown as { webkit?: { messageHandlers?: { shua
 export function startLive() {
   if (call) return;
   emit({ ...OFF, active: true, state: "connecting" });
-  window.dispatchEvent(new CustomEvent("shuacrew:live", { detail: { on: true } }));
+  window.dispatchEvent(new CustomEvent("shuacrew:livecall", { detail: { on: true } }));
   call = new LiveCall({ voice: liveVoice(), onEvent, vocab: doVocabulary() });
   void call.start();
 }
@@ -138,12 +149,12 @@ function Approval({ live, compact }: { live: LiveView; compact?: boolean }) {
 export function LiveIsland() {
   const live = useLive();
   if (!live.active) return null;
-  const line = [...live.lines].reverse()[0];
+  const last = live.feed.at(-1);
   return (
     <div className="live-island">
       {live.approval ? <Approval live={live} compact /> : <>
         <Orb live={live} size={18} />
-        <span className="live-island-text">{live.state === "working" && live.steps.length ? live.steps[live.steps.length - 1] : line?.text || LABEL[live.state]}</span>
+        <span className={`live-island-text${last?.kind === "step" ? " is-step" : ""}`}>{last ? last.text : LABEL[live.state]}</span>
         <LiveButton compact />
       </>}
     </div>
@@ -161,11 +172,13 @@ export function LivePanel() {
         <div><strong>{LABEL[live.state]}</strong><small>{live.state === "error" ? `${(live.detail ?? "Live isn't available right now").replace(/[.!?]?\s*$/, ".")} You can still hold fn and talk to Spark.` : live.usage !== undefined && live.usage >= 80 ? `Codex plan ${Math.round(live.usage)}% used this week. Live runs on it.` : "Talk any time; interrupt like a call"}</small></div>
         {live.active ? <LiveButton /> : <button type="button" className="live-btn" onClick={startLive}>Try again</button>}
       </header>
-      <ol className="live-lines" aria-live="polite">
-        {live.lines.slice(-5).map((l, i) => <li key={i} className={`is-${l.role}${l.final ? "" : " is-partial"}`}>{l.text}</li>)}
+      <ol className="live-feed" aria-live="polite">
+        {live.feed.map((it, i) => it.kind === "line"
+          ? <li key={i} className={`live-line is-${it.role}${it.final ? "" : " is-partial"}`}>{it.text}</li>
+          : it.kind === "step"
+          ? <li key={i} className="live-step"><i aria-hidden />{it.text}</li>
+          : <li key={i} className="live-result">{it.corrected && <small className="live-corrected">Corrected what Shua said (“{it.corrected}”). The real result:</small>}{it.text}</li>)}
       </ol>
-      {live.steps.length > 0 && <ul className="live-steps">{live.steps.map((s, i) => <li key={i}><code>{s}</code></li>)}</ul>}
-      {live.result && <p className="live-result">{live.corrected && <small className="live-corrected">Corrected what Shua said (“{live.corrected}”). The real result:</small>}{live.result}</p>}
       <Approval live={live} />
       {live.active && (
         <label className="live-voice">Voice

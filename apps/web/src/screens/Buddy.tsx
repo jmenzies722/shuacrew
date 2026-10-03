@@ -15,7 +15,8 @@ import { locate } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
 import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { draft, useDraft } from "../lib/draft";
 import { ArrowUp, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, Globe, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
@@ -33,7 +34,7 @@ import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollow
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
-import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
+import { getCompanion, parseCompanion, saveCompanion, useCompanion, type CompanionPreferences } from "../lib/companion";
 import { echoOf, HandsFree, wakeOnly, yesOrNo, type Phase } from "../lib/handsfree";
 import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
@@ -43,6 +44,7 @@ import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/stud
 import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
+import "./spark-design.css";
 
 /** Mac actions whose result Spark says out loud when it lands (you'd otherwise have to go and check). */
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
@@ -65,6 +67,41 @@ import { LiveButton, LiveIsland, LivePanel, liveActive, useLive as useLiveCall }
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
  * conversation in both places, kept in sync.
  */
+type Did = Array<{ label: string; ok: boolean; message: string; run?: string }>;
+type Msg = { who: "you" | "spark"; text: string; live?: boolean; id?: number };
+/**
+ * One message, re-rendered only when that message changes. The whole thread used to re-render — every row's
+ * Markdown, plus a layout measurement per row — on each keystroke and each streamed chunk (measured: ~11 ms a key
+ * on a busy CPU with 25 messages). Now typing touches no row and streaming touches only the live one.
+ */
+const SparkRow = memo(function SparkRow({ m, did, prefs, color, wide, setWide }: { m: Msg; did?: Did; prefs: CompanionPreferences; color: string; wide: boolean; setWide: (v: boolean) => void }) {
+  const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null;
+  const body = m.who === "spark" ? <>{splitDiagrams(speakable(m.text)).map((part, k) => part.kind === "diagram"
+    ? (m.live ? <p key={k} className="buddy-typing">Drawing the diagram…</p> : <Diagram key={k} code={part.value} color={color} expanded={wide} onExpand={(v) => setWide(v)} onSave={(name, svg) => post({ type: "saveFile", name, text: svg })} />)
+    : <Markdown key={k} text={part.value.replace(/^\s*-{3,}\s*$/m, "")} streaming={m.live} />)}
+    {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
+    {p && <button type="button" className="buddy-point" onClick={() => post({ type: "buddyPoint", ...p, color })}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
+  // Entrance only (opacity/transform, GPU): no layout projection, which measured every row on every update.
+  return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 34 }} className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
+    {m.who === "spark" && <span className="spk-mini"><SparkCharacter preferences={prefs} mood={m.live ? "speaking" : "idle"} size={26} crop="portrait" /></span>}
+    <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
+  </motion.div>;
+}, (a, b) => a.m.text === b.m.text && a.m.who === b.m.who && a.m.live === b.m.live && a.did === b.did && a.color === b.color && a.wide === b.wide && a.prefs.character === b.prefs.character && a.prefs.color === b.prefs.color);
+
+/** The text box: the only part of the notch that re-renders as you type (it grows with your text, up to 150 px). */
+function DraftField({ inputRef, placeholder, onKeyDown }: { inputRef: React.RefObject<HTMLTextAreaElement | null>; placeholder: string; onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void }) {
+  const value = useDraft();
+  useEffect(() => { const el = inputRef.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 150)}px`; }, [value, inputRef]);
+  return <textarea ref={inputRef} rows={1} value={value} placeholder={placeholder} onChange={(e) => draft.set(e.target.value)} onKeyDown={onKeyDown} aria-label="Message" />;
+}
+/** Send, or Stop while Spark is busy and the box is empty. */
+function SendOrStop({ active, onStop }: { active: boolean; onStop: () => void }) {
+  const empty = !useDraft().trim();
+  return active && empty
+    ? <motion.button type="button" className="buddy-send is-stop" aria-label="Stop" title="Stop (Esc)" onClick={onStop} whileTap={{ scale: 0.88 }}><Square size={13} fill="currentColor" /></motion.button>
+    : <motion.button className="buddy-send" disabled={empty} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>;
+}
+
 export function Buddy({ embedded = false, full = false, onClose }: { embedded?: boolean; full?: boolean; onClose?: () => void } = {}) {
   const lesson = useTeaching().document, practicing = !!lesson?.practice.active;
   const prefs = useCompanion(), voice = useBuddyVoice(), track = useNowPlaying(), { sounds } = useLook();
@@ -76,7 +113,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     void fetch("/api/speech/warm", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/json" }, body: JSON.stringify({ voiceId: voice.id, warmMinutes: 10 }), signal: abort.signal }).catch(() => {});
     return () => abort.abort();
   }, [voice.on, voice.id]);
-  const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets" | "teach">("chat"), [draft, setDraft] = useState(""), [see, setSee] = useState(readSee);
+  const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets" | "teach">("chat"), [see, setSee] = useState(readSee);
+  const setDraft = draft.set;
   const [brief, setBrief] = useState<{ q: string; a: string } | null>(null);
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [speaking, setSpeaking] = useState(false);
   const [done, setDone] = useState<Record<string, Done[]>>({});
@@ -730,7 +768,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (convo && (status === "running" || status === "planning" || status === "queued")) await cancelRun(convo.run).catch(() => {});
   };
   const interruptRef = useRef(interrupt); interruptRef.current = interrupt;
-  const ask = async (text = draft, opt: { look?: boolean } = {}) => {
+  const ask = async (text = draft.get(), opt: { look?: boolean } = {}) => {
     const q = text.trim(); if (!q) return;
     if (status === "awaiting_approval") { setError("Approve or decline the waiting step first."); return; }
     // Asking while Spark is still thinking or talking: stop that and take the new question (talk or type over it).
@@ -964,7 +1002,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const reset = () => { stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
   const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
   // The composer grows with what you type (one line when empty, up to about six).
-  useEffect(() => { const el = input.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 150)}px`; }, [draft, open, tab]);
+  useEffect(() => { const el = input.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 150)}px`; }, [open, tab]);
   const focusPct = timer ? 1 - remainingFocusMs(timer, now) / timer.durationMs : 0;
 
   const status$ = speaking ? "speaking" : phase === "hearing" ? "hearing you" : phase === "transcribing" ? "got it" : working || busy ? "thinking" : prefs.conversation && phase === "listening" ? "listening" : embedded ? "here with you" : "on your Mac";
@@ -1158,7 +1196,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const displayRuntime = working ? actualRuntime : choice?.runtime ?? actualRuntime;
   const displayProvider = displayRuntime === "local" ? "This Mac" : displayRuntime === "claude" ? "Claude" : displayRuntime === "codex" ? "Codex" : displayRuntime ?? "Connecting";
   const mood = (prefs.celebration !== "off" && (cheer || eventMood === "happy")) ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : eventMood === "concerned" ? "concerned" : sleepy ? "sleepy" : "idle";
-  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)}>
+  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""} ${call.active ? "is-calling" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)}>
       <header className="spk-head">
         <span className={`spk-avatar is-${speaking ? "speaking" : phase === "hearing" ? "hearing" : working || busy ? "thinking" : "idle"}`}><SparkCharacter preferences={prefs} mood={mood} size={38} crop="portrait" /></span>
         <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? (speaking ? <VoiceBars level={0.6} active /> : <MicBars />) : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
@@ -1211,17 +1249,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             <div className="spk-row"><span className="spk-mini"><SparkCharacter preferences={prefs} size={26} crop="portrait" /></span><div className="buddy-msg is-spark"><Markdown text={brief.a} /></div></div>
           </>}
           <AnimatePresence initial={false}>
-          {messages.map((m, i) => { const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null, did = done[`${convo?.run}:${i + 1}`];
-            const body = m.who === "spark" ? <>{splitDiagrams(speakable(m.text)).map((part, k) => part.kind === "diagram"
-              ? (m.live ? <p key={k} className="buddy-typing">Drawing the diagram…</p> : <Diagram key={k} code={part.value} color={accentOf(prefs.color)} expanded={wide} onExpand={(v) => setWide(v)} onSave={(name, svg) => post({ type: "saveFile", name, text: svg })} />)
-              : <Markdown key={k} text={part.value.replace(/^\s*-{3,}\s*$/m, "")} streaming={m.live} />)}
-              {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
-              {p && <button type="button" className="buddy-point" onClick={() => post({ type: "buddyPoint", ...p, color: accentOf(prefs.color) })}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
-            return <motion.div key={`${i}-${m.who}`} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
-              {m.who === "spark" && <span className="spk-mini"><SparkCharacter preferences={prefs} mood={m.live ? "speaking" : "idle"} size={26} crop="portrait" /></span>}
-              <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
-            </motion.div>; })}
+          {messages.map((m, i) => <SparkRow key={`${i}-${m.who}`} m={m} did={done[`${convo?.run}:${i + 1}`]} prefs={prefs} color={accentOf(prefs.color)} wide={wide} setWide={setWide} />)}
           </AnimatePresence>
           {(phase === "hearing" || phase === "transcribing") && <motion.div className="spk-row is-you" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
             <div className="buddy-msg is-you is-hearing">{heard || (phase === "hearing" ? "Listening…" : "…")}<i className="spk-live-caret" /></div>
@@ -1252,16 +1280,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         <button type="button" title={prefs.guide === "click" ? "Or just click the highlighted spot" : "Tell me when you've done it"} disabled={!!busy || working} onClick={() => void advance()}>Check result <ChevronRight size={12} /></button><button type="button" aria-label="Stop guiding" onClick={stopGuide}><X size={12} /></button></div>}
       {tab !== "teach" && <form className="buddy-input spk-input chat-composer" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
         <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => { const next = !v; try { localStorage.setItem(SEE, next ? "1" : "0"); } catch { /* ignore */ } return next; })}>{see ? <Eye size={15} /> : <EyeOff size={15} />}</button>
-        <textarea ref={input} rows={1} value={draft} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"} onChange={(e) => setDraft(e.target.value)}
+        <DraftField inputRef={input} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } if (e.key === "Escape") { e.preventDefault(); if (busy || working || speaking) void interrupt(); else if (full) setSparkFull(false); else close(); } }} aria-label="Message" />
         {prefs.listen === "hold"
           ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" ref={talkBtn}
               onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.mode = "hold"; void mic.current.press(); }}
               onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
           : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} ref={talkBtn}><AudioLines size={15} /></button>}
-        {(busy || working || speaking) && !draft.trim()
-          ? <motion.button type="button" className="buddy-send is-stop" aria-label="Stop" title="Stop (Esc)" onClick={() => void interrupt()} whileTap={{ scale: 0.88 }}><Square size={13} fill="currentColor" /></motion.button>
-          : <motion.button className="buddy-send" disabled={!draft.trim()} aria-label="Send" whileTap={{ scale: 0.88 }}><ArrowUp size={16} /></motion.button>}
+        <SendOrStop active={!!(busy || working || speaking)} onStop={() => void interrupt()} />
       </form>}
     </section>;
   if (embedded) return <div className="buddy is-open is-embedded" style={sparkVars(prefs.color)}>{card}</div>;
