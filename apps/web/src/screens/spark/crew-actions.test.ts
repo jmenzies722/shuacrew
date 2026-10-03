@@ -55,3 +55,24 @@ it("names the selected session in its confirmation", async () => {
   await perform({ type: "crew_pr", ref: ref() });
   expect(confirm.mock.calls[0]?.[0]).toContain("Dark mode");
 });
+
+it("does not execute when the user cancels during confirmation", async () => {
+ let active=true;
+ sparkHooks.confirmDelete=async()=>{active=false;return true;};
+ const result=await perform({type:"crew_review",ref:ref(),approve:true},{active:()=>active});
+ expect(result.ok).toBe(false);expect(api).not.toHaveBeenCalled();
+});
+
+it("reserves a streamed action only once while concurrent callers await its result", async () => {
+ const target=ref();
+ vi.mocked(api).mockImplementation(async (url) => url.endsWith("/claim") ? {claimed:true,conflict:false,result:null} : url.endsWith("/finish") ? {saved:true} : {});
+ const action={type:"crew_message" as const,ref:target,text:"Add tests"};
+ const results=await Promise.all([perform(action,{requestId:"same-request"}),perform(action,{requestId:"same-request"})]);
+ expect(results.every(r=>r.ok)).toBe(true);
+ expect(vi.mocked(api).mock.calls.filter(([url])=>url.endsWith("/followup"))).toHaveLength(1);
+});
+it("does not retry an action whose previous outcome is unknown", async () => {
+ const target=ref();vi.mocked(api).mockResolvedValueOnce({claimed:false,conflict:false,result:null});
+ expect((await perform({type:"crew_message",ref:target,text:"Hello"},{requestId:"unknown-request"})).ok).toBe(false);
+ expect(vi.mocked(api).mock.calls).toHaveLength(1);
+});

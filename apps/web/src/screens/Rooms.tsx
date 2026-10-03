@@ -12,6 +12,7 @@ import type { RoomQueueInput } from "@shuacrew/core/room-queue";
 import { RoomComposer } from "../components/RoomComposer";
 import { RoomResults } from "../components/RoomResults";
 import { Markdown } from "../components/Markdown";
+import { WorkspaceIllustration } from "../components/WorkspaceIllustration";
 import "./rooms.css";
 import { useFlag } from "../components/BatchSettings";
 import { shouldSend } from "../lib/composer-keys";
@@ -101,7 +102,7 @@ export function Rooms() {
           : view === "work" ? <div className="rx-scroll"><div className="rx-column"><CrewWorkspace room={room} /></div></div>
           : <div className="rx-scroll" ref={thread}><div className="rx-column">
             {!room.messages.length && <div className="rx-hello">
-              <span className="rx-orb" aria-hidden="true" />
+              <WorkspaceIllustration kind="rooms" />
               <h2>What should the crew take on?</h2>
               <p>Describe the outcome. {members[room.coordinator]?.name ?? "Your coordinator"} plans it and hands concrete tasks to the others.</p>
               <div className="rx-starters">{STARTERS.map(s => <button key={s} onClick={() => setDrafts(d => ({ ...d, [room.id]: s }))}>{s}<ChevronRight size={13} /></button>)}</div>
@@ -161,7 +162,7 @@ function RoomsHome({ eligible, allMembers, online, busy, hasRooms, onStart, onCu
   const send = () => { if (can) { onStart(text.trim()); setText(""); } };
   return <section className="rx-stage rx-home">
     <div className="rx-home-inner">
-      <span className="rx-orb is-big" aria-hidden="true" />
+      <WorkspaceIllustration kind="rooms" />
       <h1>What should the crew take on?</h1>
       <p>Say the outcome. {ready ? `${eligible[0]!.name} plans it and hands the pieces to ${eligible.length > 1 ? eligible.slice(1).map((m) => m.name).join(", ") : "the room"}.` : "First, choose who can work together in rooms."}</p>
       {ready ? <div className="rx-home-crew" aria-label="In this room">{eligible.map((m) => <span key={m.id} className="rx-avatar" style={{ "--c": m.color } as React.CSSProperties} title={`${m.name} · ${m.role}`}><Glyph name={m.emoji} label={m.name} size={13} /></span>)}<small>{eligible.length} in the room</small></div>

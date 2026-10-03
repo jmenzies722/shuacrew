@@ -78,3 +78,24 @@ export function locate(aim: Aim, screen: ScreenFacts | null): Region {
   }
   return best ? { x: best.c.x, y: best.c.y, w: best.c.w, h: best.c.h, shape: shapeOf(best.c, aspect), exact: true } : guess;
 }
+
+/** Re-identify a target after a fresh capture. Numbered IDs belong only to their original capture. */
+export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenFacts): Region | null {
+  if (before?.context?.app && current.context?.app !== before.context.app) return null;
+  if (before?.context?.window && current.context?.window !== before.context.window) return null;
+  const original = before ? picked(aim.target, before) : null;
+  if (aim.target && before && !original) return null;
+  const name = original?.name || aim.label;
+  if (!name.trim()) return null;
+  const all = candidates(current).filter(c => c.x >= 0 && c.x <= 1 && c.y >= 0 && c.y <= 1);
+  // Prefer accessibility controls; OCR duplicates the same label and must not introduce a second target.
+  const controls = all.filter(c => c.role && (!original?.role || c.role === original.role));
+  const matching = (list: Candidate[]) => {
+    const exact = list.filter(c => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+    return exact.length ? exact : list.filter(c => nameMatch(name, c.name) === 1);
+  };
+  const ax = matching(controls), matches = ax.length ? ax : matching(all.filter(c => !c.role));
+  if (matches.length !== 1) return null;
+  const c = matches[0]!;
+  return { x:c.x, y:c.y, w:c.w, h:c.h, shape:shapeOf(c,current.aspect), exact:true };
+}

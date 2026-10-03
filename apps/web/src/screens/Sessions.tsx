@@ -17,6 +17,8 @@ import {
   FileText as FileIcon,
   Folder,
   Paperclip,
+  PanelLeftClose,
+  PanelLeftOpen,
   GitBranch,
   ListChecks, Swords,
   Plus,
@@ -43,17 +45,17 @@ import { conversation } from "../lib/conversation";
 import { MessageQueue } from "../components/MessageQueue";
 import { shouldSend } from "../lib/composer-keys";
 import { canRemoveSession, removeSession } from "../lib/session-removal";
-import { pauseClock, scopeRuns } from "../lib/crew";
+import { pauseClock, scopeRuns, recentWork } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
 import { ReplayBar } from "../components/Replay";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
-import { LogoMark } from "../lib/motion";
 import { DEFAULT_WORKSPACE, getWorkspace, saveWorkspace } from "../lib/workspace-prefs";
 import { getPower, savePower, usePower, type Preset } from "../lib/power";
 import { parseChatAction } from "../lib/chat-actions";
+import { groupSessions, sessionStatus } from "../lib/session-list";
 
 interface RuntimeInfo {
   id: string;
@@ -122,6 +124,14 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  */
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
+  const [sessionsCollapsed, setSessionsCollapsed] = useState(() => {
+    const saved = localStorage.getItem("shuacrew.sessionsCollapsed");
+    return saved === null ? window.matchMedia("(max-width: 760px)").matches : saved === "true";
+  });
+  const toggleSessions = () => setSessionsCollapsed(previous => {
+    localStorage.setItem("shuacrew.sessionsCollapsed", String(!previous));
+    return !previous;
+  });
   const [changes, setChanges] = useState(false);
   useEffect(() => {
     const show = () => setChanges(true);
@@ -133,8 +143,8 @@ export function Sessions() {
   const loaded = useLive((s) => s.crew.head > 0);
   const id = params.id && (known || !loaded) ? params.id : undefined;
   return (
-    <div className={`sessions-layout ${id ? "is-thread" : "is-fresh"} ${id && changes ? "has-changes" : ""}`}>
-      {id && <SessionsPanel selected={id} />}
+    <div className={`sessions-layout ${id ? "is-thread" : "is-fresh"} ${id && changes ? "has-changes" : ""} ${sessionsCollapsed ? "sessions-collapsed" : ""}`}>
+      <SessionsPanel selected={id} collapsed={sessionsCollapsed} onToggle={toggleSessions} />
       {id ? <Chat id={id} changes={changes} onToggleChanges={() => setChanges((v) => !v)} /> : <NewSession />}
       {id && changes && <ChangesPanel id={id} />}
     </div>
@@ -143,69 +153,46 @@ export function Sessions() {
 
 // ── sessions panel ──────────────────────────────────────────────────────────────────────────
 
-function SessionsPanel({ selected }: { selected?: string }) {
+function SessionsPanel({ selected, collapsed, onToggle }: { selected?: string; collapsed: boolean; onToggle: () => void }) {
   const all = useLive((s) => s.crew.runs);
   const scope = useLive((s) => s.scope);
   const runs = useMemo(() => scopeRuns(all, scope), [all, scope]);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [showOlder, setShowOlder] = useState(false);
-  const groups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const all = Object.values(runs)
-      .filter((r) => !r.parent && !r.labels?.some((l) => l === "buddy" || l === "learning")) // Spark chats and study sessions live in Spark and Learning
-      .filter((r) => !q || `${r.title} ${r.ask} ${r.ticker} ${r.repo ?? ""}`.toLowerCase().includes(q))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-    const week = Date.now() - 7 * 86400_000;
-    return {
-      needs: all.filter((r) => r.pendingApprovals.length > 0),
-      working: all.filter((r) => !r.pendingApprovals.length && WORKING.has(r.status)),
-      recent: all.filter((r) => !r.pendingApprovals.length && !WORKING.has(r.status) && r.updatedAt >= week),
-      older: all.filter((r) => !r.pendingApprovals.length && !WORKING.has(r.status) && r.updatedAt < week),
-    };
-  }, [runs, query]);
-  const empty = !groups.needs.length && !groups.working.length && !groups.recent.length && !groups.older.length;
+  const groups = useMemo(() => groupSessions(Object.values(runs), query), [runs, query]);
 
   return (
-    <aside className="side-pane flex min-h-0 flex-col max-[760px]:hidden" aria-label="Sessions">
-      <div className="flex items-center gap-2 px-3.5 pb-2.5 pt-3.5">
-        <h2 className="text-[15px] font-semibold">Sessions</h2>
-        <button
-          onClick={() => navigate({ to: "/" })}
-          className="new-btn ml-auto"
-          title="New session (⌘N)"
-        >
-          <Plus size={14} strokeWidth={2.5} /> New
+    <aside className={`sessions-pane ${collapsed ? "is-collapsed" : ""}`} aria-label="Sessions">
+      <div className="sessions-pane-heading">
+        {!collapsed && <h2>Sessions</h2>}
+        <button className="sessions-pane-toggle" onClick={onToggle} aria-label={collapsed ? "Expand sessions" : "Collapse sessions"} aria-expanded={!collapsed} aria-controls="session-history" title={collapsed ? "Expand sessions" : "Collapse sessions"}>
+          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
         </button>
       </div>
-      <label className="pane-search mx-3.5 mb-2">
-        <Search size={13} />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sessions…" className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-3" />
-      </label>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        {empty && <div className="px-2 py-6 text-center text-[12.5px] leading-relaxed text-fg-3">{query ? "No session matches." : "No sessions yet. Press New and say what you want done."}</div>}
-        <Group title="Needs you" runs={groups.needs} selected={selected} accent />
-        <Group title="Working" runs={groups.working} selected={selected} />
-        <Group title="Recent" runs={groups.recent} selected={selected} />
-        {groups.older.length > 0 && (
-          <button onClick={() => setShowOlder((v) => !v)} className="flex w-full items-center gap-1 px-2 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-3 hover:text-fg-2">
-            <ChevronDown size={12} className={showOlder ? "" : "-rotate-90"} /> Older · {groups.older.length}
-          </button>
-        )}
-        {showOlder && <Group runs={groups.older} selected={selected} />}
+      <button onClick={() => navigate({ to: "/" })} className="sessions-new-chat" aria-label="New chat" title="New chat">
+        <Plus size={16} />{!collapsed && <span>New chat</span>}
+      </button>
+      <div id="session-history" className="sessions-history" hidden={collapsed}>
+        <label className="sessions-search">
+          <Search size={14} />
+          <input aria-label="Search sessions" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions" />
+          {query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={13} /></button>}
+        </label>
+        <div className="sessions-list">
+          {!groups.length && <p className="sessions-empty">{query ? "No matching sessions." : "Your conversations will appear here."}</p>}
+          {groups.map(group => <Group key={group.title} title={group.title} runs={group.runs} selected={selected} />)}
+        </div>
       </div>
     </aside>
   );
 }
 
-function Group({ title, runs, selected, accent }: { title?: string; runs: RunView[]; selected?: string; accent?: boolean }) {
+function Group({ title, runs, selected }: { title?: string; runs: RunView[]; selected?: string }) {
   if (!runs.length) return null;
   return (
     <div>
       {title && (
-        <div className={`px-2 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] ${accent ? "text-wait" : "text-fg-3"}`}>
-          {title} · {runs.length}
-        </div>
+        <h3 className="sessions-group-title">{title}</h3>
       )}
       {runs.map((run) => (
         <SessionCard key={run.id} run={run} selected={run.id === selected} />
@@ -225,49 +212,19 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
     finally { setRemoving(false); }
   };
   const limited = useLive((s) => s.crew.limited);
-  const working = WORKING.has(run.status) && !run.pendingApprovals.length;
   const pause = pauseClock(run, limited);
-  const member = useLive((s) => (run.member ? s.crew.members[run.member] : undefined));
+  const status = sessionStatus(run, pause);
   return (
     <Dialog.Root open={confirmRemove} onOpenChange={open => { if (!removing) { setConfirmRemove(open); setRemoveError(""); } }}><div className="session-sidebar-row"><Link
       to="/sessions/$id"
       params={{ id: run.id }}
-      className={`relative mb-0.5 block rounded-[10px] px-2.5 py-2 pr-9 transition-colors ${selected ? "bg-raised" : "hover:bg-raised/60"}`}
+      className={`session-list-link ${selected ? "is-selected" : ""}`}
       aria-current={selected ? "page" : undefined}
+      title={run.title || run.ask || "Untitled chat"}
     >
-      {selected && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-full bg-amber" />}
-      <div className="flex items-center gap-1.5 text-[11px] text-fg-3">
-        <Folder size={11} />
-        <span className="truncate">{folderOf(run)}</span>
-        {member && (
-          <span className="member-chip shrink-0" style={{ "--member": member.color } as React.CSSProperties} title={`${member.name}, ${member.role}`}>
-            <Glyph name={member.emoji} fallback={member.id} label={member.name} size={11} />
-            {member.name}
-          </span>
-        )}
-        <span className="ml-auto shrink-0 tabular-nums">{clock(run.updatedAt)}</span>
-      </div>
-      <div className="mt-0.5 truncate text-[13px] font-semibold text-fg">{run.title}</div>
-      <div className="mt-0.5 truncate text-[12px]">
-        {run.pendingApprovals.length > 0 ? (
-          <span className="text-wait">Waiting for your approval</span>
-        ) : working ? (
-          <span className="text-amber">{run.currentTool ? `Using ${run.currentTool}…` : plain(run.ticker) || "Thinking…"}</span>
-        ) : run.status === "failed" ? (
-          <span className="text-bad">{run.statusReason ?? "Failed"}</span>
-        ) : pause ? (
-          <span className="text-amber">{pause}</span>
-        ) : (
-          <span className="text-fg-3">{plain(run.ticker) || (run.status === "reviewing" ? "Ready for review" : run.status)}</span>
-        )}
-      </div>
-      <div className="mt-1.5 flex flex-wrap gap-1">
-        <Chip mono>{run.runtime}</Chip>
-        {run.turns > 0 && <Chip>{`${run.turns} turn${run.turns === 1 ? "" : "s"}`}</Chip>}
-        {run.usage.inputTokens + run.usage.outputTokens > 0 && <Chip mono>{formatTokens(run.usage.inputTokens + run.usage.outputTokens)}</Chip>}
-        {run.lessons.length > 0 && <Chip>{run.lessons.length === 1 ? "1 lesson" : `${run.lessons.length} lessons`}</Chip>}
-        {run.status === "reviewing" && <Chip>review</Chip>}
-      </div>
+      <span className="session-list-title">{run.title || run.ask || "Untitled chat"}</span>
+      <span className="session-list-meta"><span>{folderOf(run)}</span><time dateTime={new Date(run.updatedAt).toISOString()}>{clock(run.updatedAt)}</time></span>
+      <span className="session-list-status" data-tone={status.tone}><i aria-hidden="true" />{status.label}</span>
     </Link><Dialog.Trigger asChild><button className="session-remove" aria-label={`Remove chat: ${run.title}`} title={canRemoveSession(run.status) ? "Remove chat from sidebar" : "Stop this session before removing it"} disabled={removing || !canRemoveSession(run.status)}><Trash2 size={14} /></button></Dialog.Trigger></div>
       <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm" /><Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl">
         <Dialog.Title className="text-lg font-semibold text-fg">Remove chat?</Dialog.Title>
@@ -536,38 +493,50 @@ function IconButton({ title, onClick, active, children }: { title: string; onCli
 }
 
 function NewSession() {
+  const runs = useLive(s => s.crew.runs), scope = useLive(s => s.scope);
+  const recent = useMemo(() => recentWork(runs, scope), [runs, scope]);
   const [terminal, setTerminal] = useTerminal();
   const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
   const ideas = [
-    { icon: CheckCircle2, text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
-    { icon: Bug, text: "Find a failing test in one of my projects and fix it" },
-    { icon: Telescope, text: "Summarise what changed in my repos today" },
-    { icon: Sparkles, text: "Look at my most recent project and suggest the next three things to build" },
+    { icon: CheckCircle2, label: "Review changes", text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
+    { icon: Bug, label: "Fix a failing test", text: "Find a failing test in one of my projects and fix it" },
+    { icon: Telescope, label: "Catch me up", text: "Summarise what changed in my repos today" },
+    { icon: Sparkles, label: "Plan what’s next", text: "Look at my most recent project and suggest the next three things to build" },
   ];
   return (
-    <section className="sheet hero-sheet flex min-h-0 min-w-0 flex-col" aria-label="New session">
+    <section className="sheet hero-sheet home-workbench flex min-h-0 min-w-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="hero-stack">
           <div className="hero-core">
           <NeedsYou />
-          {/* Your day, right under what needs you: the first thing you see in a new session. */}
-          <TodayBriefing />
-          <div className="hero-mark">
-            <LogoMark size={60} />
+          <div className="home-heading">
+            <span className="home-eyebrow"><Sparkles size={14} aria-hidden /> YOUR WORKSPACE</span>
+            <h1 className="hero-title">What’s next?</h1>
+            <p className="hero-sub">Start something new, or pick up where you left off.</p>
           </div>
-          <h1 className="hero-title">What should the crew work on?</h1>
-          <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
           <Composer seed={seed} hero />
           <div className="hero-ideas stagger">
-            {ideas.map(({ icon: Icon, text }) => (
-              <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea">
+            {ideas.map(({ icon: Icon, text, label }) => (
+              <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
                 <i className="hero-idea-icon"><Icon size={14} /></i>
-                <span className="line-clamp-2">{text}</span>
+                <span>{label}</span>
                 <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
               </button>
             ))}
           </div>
           </div>
+          <section className="home-recent" aria-label="Recent work">
+            <div className="home-section-heading"><h2>Pick up where you left off</h2><span>{scope ? scope.split("/").filter(Boolean).pop() : "Recent work"}</span></div>
+            {recent.length ? recent.map(run => (
+              <Link key={run.id} to="/sessions/$id" params={{ id: run.id }} className="home-recent-row">
+                <History size={16} aria-hidden />
+                <span className="home-recent-copy"><strong>{run.title}</strong><small>{folderOf(run)} · {FRIENDLY[run.runtime] ?? run.runtime}</small></span>
+                <StatusPill status={run.status} />
+                <ArrowUpRight size={15} aria-hidden />
+              </Link>
+            )) : <p className="home-recent-empty">Your sessions will appear here as you work.</p>}
+          </section>
+          <TodayBriefing />
           <GettingStarted />
         </div>
       </div>
@@ -614,10 +583,13 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const [race, setRace] = useState(false);
   const [autopilot, setAutopilot] = useState(defaults.autopilot);
   const [repo, setRepo] = useState("");
-  const [runtime, setRuntime] = useState(defaults.runtime);
-  const [model, setModel] = useState(defaults.model);
-  const [effort, setEffort] = useState<string>(defaults.effort);
+  const [runtime, setRuntime] = useState(run?.runtime ?? defaults.runtime);
+  const [model, setModel] = useState(run?.model ?? defaults.model);
+  const [effort, setEffort] = useState<string>(run?.effort ?? defaults.effort);
   const [runtimes, setRuntimes] = useState<RuntimeInfo[]>([]);
+  useEffect(() => {
+    if (run) { setRuntime(run.runtime); setModel(run.model ?? ""); setEffort(run.effort ?? ""); }
+  }, [run?.id, run?.runtime, run?.model, run?.effort]);
   const [slashIndex, setSlashIndex] = useState(0);
   const [commandsDismissed, setCommandsDismissed] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -678,8 +650,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     void loadRuntimes().then((list) => {
       setRuntimes(list);
       // A saved default agent/model that isn't available any more falls back to Auto rather than failing the send.
-      setRuntime((r) => (r && !list.some((x) => x.id === r) ? "" : r));
-      setModel((m) => (m && !list.some((x) => x.models.some((mm) => mm.id === m && !mm.unavailable)) ? "" : m));
+      if (!run) setRuntime((r) => (r && !list.some((x) => x.id === r) ? "" : r));
+      if (!run) setModel((m) => (m && !list.some((x) => x.models.some((mm) => mm.id === m && !mm.unavailable)) ? "" : m));
     });
     void api<{ skills: Array<{ name: string; status: string }> }>("/api/memory").then((m) => setSkills(m.skills.filter((s) => s.status === "accepted"))).catch(() => undefined);
     void api<Array<{ name: string }>>("/api/mcp").then(setServers).catch(() => undefined);
@@ -844,7 +816,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
         return;
       }
       if (run) {
-        await followUp(run.id, message);
+        const changed = runtime !== run.runtime || model !== (run.model ?? "") || effort !== (run.effort ?? "");
+        await api(`/api/runs/${run.id}/followup`, {body:{text:message,...(changed ? {selection:{runtime:runtime || run.runtime,model:model || undefined,effort}} : {})}});
         setText("");
         setFiles([]);
         return;
@@ -1008,6 +981,17 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             </button>
             <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
+            {/* Agent · model · effort, always in reach (they used to sit behind Options, twice). For an open session they
+                apply to your next message, and wait while a turn is running. */}
+            <span className="composer-picks" title={run ? (working ? "Available when this turn finishes" : "Applies to your next message") : "For this new session"}>
+              <Select label="Agent" disabled={!!run && (working || busy)} value={runtime} onChange={(v) => { setRuntime(v); setModel(""); }}
+                options={[...(run ? [] : [{ value: "", label: "Auto agent" }]), ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]} />
+              <i aria-hidden="true">·</i>
+              <Select label="Model" disabled={!!run && (working || busy)} value={model} onChange={setModel}
+                options={[{ value: "", label: "Auto model" }, ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.unavailable ? `${m.label} · ${m.unavailable}` : m.label, disabled: Boolean(m.unavailable) }))]} />
+              <i aria-hidden="true">·</i>
+              <Select label="Effort" disabled={!!run && (working || busy)} value={effort} onChange={setEffort} options={[{ value: "", label: "Auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: `${e[0]!.toUpperCase()}${e.slice(1)} effort` }))]} />
+            </span>
             <button className="composer-options-toggle" aria-expanded={optionsOpen} aria-controls="session-options" onClick={() => setOptionsOpen(v => !v)}>Options{race || task ? " · active" : ""} <ChevronDown size={12} /></button>
             <div className="ml-auto flex items-center gap-2">
 
@@ -1064,25 +1048,6 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                 ×
               </button>
             )}
-            <span className="ml-auto flex items-center gap-3">
-              <Select
-                value={runtime}
-                onChange={(v) => {
-                  setRuntime(v);
-                  setModel("");
-                }}
-                options={[{ value: "", label: "Auto agent" }, ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]}
-              />
-              {optionsOpen && <><Select
-                value={model}
-                onChange={setModel}
-                options={[
-                  { value: "", label: "auto model" },
-                  ...(chosen?.models ?? []).map((m) => ({ value: m.id, label: m.unavailable ? `${m.label} · ${m.unavailable}` : m.label, disabled: Boolean(m.unavailable) })),
-                ]}
-              />
-              <Select value={effort} onChange={setEffort} options={[{ value: "", label: "auto effort" }, ...EFFORTS.map((e) => ({ value: e, label: e }))]} /></>}
-            </span>
           </div>
         )}
       </div>
@@ -1104,9 +1069,9 @@ function Toggle({ on, onClick, icon, label, title }: { on: boolean; onClick: () 
   );
 }
 
-function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string; disabled?: boolean }> }) {
+function Select({ value, onChange, options, label, disabled }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string; disabled?: boolean }>; label?: string; disabled?: boolean }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="cursor-pointer appearance-none bg-transparent text-[12px] text-fg-3 outline-none hover:text-fg">
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} disabled={disabled} className="cursor-pointer appearance-none bg-transparent text-[12px] text-fg-3 outline-none hover:text-fg disabled:cursor-default disabled:opacity-60">
       {options.map((o) => (
         <option key={o.value} value={o.value} disabled={o.disabled}>
           {o.label}

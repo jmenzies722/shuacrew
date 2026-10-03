@@ -7,6 +7,7 @@ import { PaneLayout } from "../components/Pane";
 import { addYoutube, clock, levels, loadRadio, next, playStation, previous, removeYoutube, revealRadio, seek, setupRadio, setVolume, toggle, useRadio, type RadioTrack, type YouTubeStation } from "../lib/radio";
 import { playScape, stopScape, useScape, type Scape } from "../lib/soundscape";
 import "./studio.css";
+import { AppleMusic } from "../components/AppleMusic";
 
 /** Studio is ShuaCrew Radio: your own lofi jazz and lofi hip-hop, as stations, with ambience you can layer on top. */
 export function Studio() {
@@ -22,6 +23,7 @@ export function Studio() {
         <span className="radio-skill" title="Crew sessions and Spark can control the radio through the shuacrew-radio skill"><Sparkles size={12} /> Ask Spark or any agent: “put on lofi jazz”</span>
       </header>
 
+      <AppleMusic />
       {!r.loaded ? <div className="radio-empty"><p>Tuning in…</p></div> : <>
         <section className="radio-deck" aria-label="Now playing">
           <Record spinning={r.playing} label={r.live?.name ?? station?.name ?? "ShuaCrew Radio"} art={r.live ? `/api/radio/youtube/${r.live.videoId}/art` : undefined} />

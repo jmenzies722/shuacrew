@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { sessionSummaryRoutes } from "./session-summary-routes.js";
 import { teachingRoutes } from "./teaching-routes.js";
 /**
  * The HTTP + WebSocket surface.
@@ -234,6 +236,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
   systemRoutes(app);
   if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
+  sessionSummaryRoutes(app, {store,supervisor,runtimes:options.runtimes,home:path.dirname(store.path)});
   teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
@@ -347,6 +350,17 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     uptimeS: Math.round(process.uptime()),
   }));
 
+  app.post<{ Body: { id?: string; fingerprint?: string; owner?: string } }>("/api/companion/actions/claim", async (request, reply) => {
+    const { id, fingerprint, owner } = request.body ?? {};
+    if (typeof id !== "string" || !id.length || id.length > 240 || typeof fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(fingerprint) || typeof owner !== "string" || !/^[a-f0-9-]{36}$/.test(owner)) return reply.code(400).send({ error: "Invalid action reservation" });
+    return store.claimAction(id, fingerprint, owner);
+  });
+  app.post<{ Body: { id?: string; owner?: string; result?: { ok: boolean; message: string; run?: string } } }>("/api/companion/actions/finish", async (request, reply) => {
+    const { id, owner, result } = request.body ?? {};
+    if (typeof id !== "string" || id.length > 240 || typeof owner !== "string" || owner.length !== 36 || !result || typeof result.ok !== "boolean" || typeof result.message !== "string" || result.message.length > 8000 || (result.run !== undefined && typeof result.run !== "string")) return reply.code(400).send({ error: "Invalid action receipt" });
+    return { saved: store.finishAction(id, owner, { ok: result.ok, message: result.message, ...(result.run ? { run: result.run } : {}) }) };
+  });
+
   app.get("/api/snapshot", async () => state);
 
   // The morning briefing: today's digest, or make one now.
@@ -437,7 +451,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     },
   );
 
-  app.post<{ Params: { id: string }; Body: { text?: string; runtime?: string; model?: string; intelligence?: IntelligenceRequest } }>("/api/runs/:id/followup", async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { text?: string; runtime?: string; model?: string; intelligence?: IntelligenceRequest; selection?: unknown } }>("/api/runs/:id/followup", async (request, reply) => {
     const text = request.body?.text?.trim();
     if (!text) return reply.code(400).send({ error: "empty message" });
     if (request.body.intelligence) {
@@ -450,7 +464,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       }
     }
     try {
-      return { ok: true, id: supervisor.followUp(request.params.id, text) };
+      const selection = request.body.selection === undefined ? undefined : z.object({runtime:z.string().min(1).max(80),model:z.string().max(160).optional(),effort:z.enum(["", "low","medium","high","max"]).optional()}).strict().parse(request.body.selection);
+      return { ok: true, id: supervisor.followUp(request.params.id, text, "you", undefined, selection) };
     } catch (error) {
       return reply.code(409).send({ error: (error as Error).message });
     }

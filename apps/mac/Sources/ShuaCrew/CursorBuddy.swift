@@ -109,6 +109,7 @@ final class CursorBuddy: NSObject {
         guard new != state else { return }
         wakeUp()
         state = new
+        if new == .listening || new == .idle { hideBubble() }
         sweep.removeAnimation(forKey: "spin")
         CATransaction.begin(); CATransaction.setAnimationDuration(reducedMotion ? 0 : 0.18)
         sweep.opacity = new == .thinking ? 1 : 0
@@ -201,12 +202,12 @@ final class CursorBuddy: NSObject {
         return true
     }
 
-    /// What Spark is saying about what it's pointing at, in a bubble beside the orb (only while pointing). The bubble
-    /// is sized for the whole sentence up front and the words appear at speaking pace, so it never jumps as it fills.
     func say(_ text: String) {
-        guard tour != nil, let panel else { return }
+        guard let panel else { return }
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { hideBubble(); return }
+        guard state == .speaking || tour != nil else { return }
+        if bubble.opacity > 0 && bubbleWords.joined(separator: " ") == clean { return }
         bubbleWords = clean.split(separator: " ").map(String.init); bubbleShown = 0; bubbleAt = CACurrentMediaTime(); wakeUp()
         let size = attributed(shown: bubbleWords.count).boundingRect(with: CGSize(width: 250, height: 400), options: [.usesLineFragmentOrigin, .usesFontLeading]).integral.size
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -356,6 +357,7 @@ final class CursorBuddy: NSObject {
         let back = awayUntil > 0 && now >= awayUntil
         CATransaction.begin(); CATransaction.setDisableActions(true)
         body.position = position
+        if bubble.opacity > 0 { placeBubble(in: panel) }
         body.setAffineTransform(CGAffineTransform(scaleX: presenceScale, y: presenceScale))
         CATransaction.commit()
         if back { // return with a short fade, without a scale bounce

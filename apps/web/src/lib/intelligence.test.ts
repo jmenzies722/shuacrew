@@ -25,9 +25,9 @@ it("starts a fresh session (with a recap) before the conversation outgrows Claud
   expect(dispose({ ...same, status: "done", contextUsed: 506_535 }, same)).toBe("new");
 });
 
-it("starts a fresh conversation when Spark's instructions change, so it learns new abilities", () => {
+it("keeps compatible history when refreshed instructions are supplied", () => {
   const done = { runtime: "claude", model: "c", status: "done" };
   expect(turnDisposition({ ...done, rules: "a" }, { runtime: "claude", model: "c", rules: "a" })).toBe("resume");
-  expect(turnDisposition({ ...done, rules: "a" }, { runtime: "claude", model: "c", rules: "b" })).toBe("new");
-  expect(turnDisposition(done, { runtime: "claude", model: "c", rules: "b" })).toBe("new"); // started before fingerprints
+  expect(turnDisposition({ ...done, rules: "a" }, { runtime: "claude", model: "c", rules: "b" })).toBe("resume");
+  expect(turnDisposition(done, { runtime: "claude", model: "c", rules: "b" })).toBe("resume"); // started before fingerprints
 });

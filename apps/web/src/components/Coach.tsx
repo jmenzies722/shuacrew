@@ -4,6 +4,7 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { Markdown } from "./Markdown";
+import { WorkspaceIllustration } from "./WorkspaceIllustration";
 
 type Mode = "analyze" | "quiz" | "explain" | "plan";
 const MODES: Array<{ id: Mode; label: string; icon: typeof Brain; starter: string; placeholder: string }> = [
@@ -59,7 +60,7 @@ export function Coach({ runs, onChange }: { runs: Partial<Record<Mode, { run: st
     <section className="coach-chat">
       <div className="coach-modes" role="tablist" aria-label="Coach mode">{MODES.map((m) => <button key={m.id} role="tab" aria-selected={mode === m.id} className={mode === m.id ? "is-on" : ""} onClick={() => pick(m.id)}><m.icon size={14} />{m.label}{runs[m.id] && <i className="coach-dot" />}</button>)}</div>
       <div className="coach-thread" ref={thread}>
-        {!run && <div className="coach-empty"><span className="coach-orb" aria-hidden="true" /><h3>{active.label}</h3>
+        {!run && <div className="coach-empty"><WorkspaceIllustration kind="learning" /><h3>{active.label}</h3>
           <p>{mode === "analyze" ? "Your coach reads your real reviews, courses and roadmap, then tells you what's working, what isn't, and where to focus." : mode === "quiz" ? "One question at a time from what you forget most. Answer in your own words — you'll get graded, corrected, and new cards for what you miss." : mode === "explain" ? "Ask about anything in software, platform, DevOps or AI engineering. Explained at your level, then checked with a question." : "A 30–45 minute plan for today from your due cards, next lesson and roadmap milestone."}</p>
           {mode === "explain" ? null : <button type="button" className="lx-go" disabled={busy} onClick={() => void send()}>{busy ? "Starting…" : `Start: ${active.label}`}</button>}</div>}
         {run && messages.length === 0 && <p className="coach-typing"><Sparkles size={13} /> Your coach is reading your data…</p>}

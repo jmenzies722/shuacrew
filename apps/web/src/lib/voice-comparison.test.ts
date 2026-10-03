@@ -1,0 +1,25 @@
+import { expect, it, vi } from "vitest";
+import { VoiceComparison, type PreviewPort } from "./voice-comparison";
+it("stops old samples, ignores stale callbacks and measures actual playback without saving", async () => {
+  const ports: PreviewPort[] = [];
+  const factory = () => { const port: PreviewPort = { say: vi.fn(), unlock: vi.fn(), dispose: vi.fn() }; ports.push(port); return port; };
+  const comparison = new VoiceComparison(["michael", "heart"], () => {}, factory);
+  await comparison.play("michael");
+  expect(comparison.snapshot().status).toBe("loading");
+  const stale = ports[0]!.onCaption;
+  await comparison.play("heart");
+  expect(ports[0]!.dispose).toHaveBeenCalledOnce();
+  stale?.({ key: 1, text: "Old", speed: 1 });
+  expect(comparison.snapshot().status).toBe("loading");
+  ports[1]!.onCaption?.({ key: 2, text: "Current", speed: 1 });
+  expect(comparison.snapshot().status).toBe("playing");
+  expect(comparison.snapshot().firstAudioMs).toBeGreaterThanOrEqual(0);
+  comparison.stop();
+  expect(comparison.snapshot().status).toBe("idle");
+  await comparison.play("missing");
+  expect(comparison.snapshot().status).toBe("error");
+  expect(ports).toHaveLength(2);
+  comparison.dispose();
+  await comparison.play("michael");
+  expect(ports).toHaveLength(2);
+});

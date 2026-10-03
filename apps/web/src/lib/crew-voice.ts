@@ -1,3 +1,4 @@
+import { approvalSummary } from "./approval-summary";
 /**
  * Spark as the voice of the crew (the "Jarvis" bridge): what the crew is doing and what's waiting on you, in a form
  * Spark can act on by voice — answer an approval, stop a session, open one — and a spoken heads-up the moment crew
@@ -12,11 +13,13 @@ const ACTIVE = new Set(["queued", "planning", "running", "awaiting_approval", "p
 /** Only currently listed targets resolve. Ref numbers are never reassigned to different work. */
 const refs = new Map<string, string>();
 const assigned = new Map<string, string>();
+try { for (const [id, ref] of JSON.parse(localStorage.getItem("shuacrew.crew-refs") ?? "[]")) if (typeof id === "string" && /^[AS]\d+$/.test(ref)) assigned.set(id, ref); } catch { /* fresh session */ }
 const nextRef = { A: 0, S: 0 };
+for (const ref of assigned.values()) { const k = ref[0] as "A" | "S"; nextRef[k] = Math.max(nextRef[k], Number(ref.slice(1))); }
 function reference(kind: "A" | "S", id: string) {
   const key = `${kind}:${id}`;
   let ref = assigned.get(key);
-  if (!ref) { ref = `${kind}${++nextRef[kind]}`; assigned.set(key, ref); }
+  if (!ref) { ref = `${kind}${++nextRef[kind]}`; assigned.set(key, ref); try { localStorage.setItem("shuacrew.crew-refs", JSON.stringify([...assigned])); } catch { /* unavailable storage */ } }
   refs.set(ref, id);
   return ref;
 }
@@ -69,10 +72,12 @@ export function crewDetail(runs: Record<string, CrewRun>, approvals: Record<stri
 
 /** The last thing Spark asked about the crew out loud, so a bare "yes" can answer it. */
 let asked: { at: number; line: string; id: string } | null = null;
+export const lastAskedApproval = () => asked && Date.now() - asked.at < 90_000 ? asked.id : undefined;
 export const noteAsked = (line: string, id: string) => { asked = { at: Date.now(), line, id }; };
 
 /** How Spark is told to run the crew by voice (part of its instructions). */
 export const CREW_CONTROL = [
+  "SPOKEN APPROVALS: summarize what the command intends to do in one short plain-language sentence. Do not read command syntax, flags, paths, code, or raw tool inputs aloud. Mention material effects such as deleting files, installing dependencies, or pushing commits. For unclear scripts, say the purpose is unclear and ask them to review the full command in the approval card. Never invent a benign purpose.",
   "RUNNING THE CREW (you're its voice, with full control): answer an approval they decide on — ```do [{\"type\":\"crew_decide\",\"ref\":\"A1\",\"allow\":true}]``` (allow false to decline);",
   "stop a session ```do [{\"type\":\"crew_stop\",\"ref\":\"S1\"}]```; show one ```do [{\"type\":\"crew_open\",\"ref\":\"S1\"}]```;",
   "tell a session something (\"tell Eli to add tests\") ```do [{\"type\":\"crew_message\",\"ref\":\"S1\",\"text\":\"Also add tests for the parser.\"}]``` — text is their whole instruction, written to the agent (\"reply with just DONE\" → \"Reply with just DONE.\"), never a fragment of it;",
@@ -114,7 +119,7 @@ export function crewAsks(before: ReadonlySet<string>, approvals: Record<string, 
   const fresh = Object.values(approvals).filter((a) => !before.has(a.id));
   if (!fresh.length) return null;
   const a = fresh[0]!, run = a.run ? runs[a.run] : undefined, who = run?.member ? names[run.member] ?? "The crew" : "The crew";
-  const what = whatItDoes(a.tool, a.input).replace(/^Bash: /, "run ");
+  const what = approvalSummary(a.tool, a.input);
   const more = fresh.length > 1 ? ` (and ${fresh.length - 1} more)` : "";
   return { id: a.id, line: `${who} wants to ${what}${run ? ` in “${run.title.slice(0, 50)}”` : ""}${more}. Approve it?` };
 }

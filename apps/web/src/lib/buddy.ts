@@ -611,9 +611,9 @@ const TONES: Record<Persona["tone"], string> = {
 
 const DESIGN = [
   "SYSTEM DESIGN — this is a design question. Answer like a principal engineer in a design review, high quality and specific:",
-  "Start with ONE or two spoken sentences summarising the design, then a line with just ---, then the written design (not read aloud).",
+  "Start with the complete CONCEPT STUDIO architecture visual block; its summary and step bodies are the spoken explanation. Then add --- and the written design, which is not read aloud twice.",
   "Cover, tersely, with headings: Requirements (functional + the non-functional numbers that drive the design) · Back-of-envelope estimates (QPS, storage, bandwidth, with the arithmetic) · Architecture (components and why each exists) · Data model & storage choices (and why not the alternatives) · APIs (the few that matter) · Scaling & bottlenecks (sharding keys, caching, queues, hot spots) · Reliability (failure modes, retries/idempotency, consistency choices) · Trade-offs & what you'd do next.",
-  "Draw it: include one Mermaid diagram in a ```mermaid block — `flowchart LR`, a first line `%% title: <name>`, subgraph per tier/boundary (client, edge, services, data, async), cylinders [(DB)] for stores, queues as [[Queue]], labelled edges for protocols/flows (e.g. -->|gRPC|), and classDef accents for critical paths using stroke only (e.g. classDef hot stroke:#f5b544,stroke-width:2.5px) — never a fill colour, the diagram renders on a dark canvas. Keep it readable: 8–18 nodes. Add a second diagram (sequenceDiagram) only when a request flow is the crux.",
+  "Draw it using the validated CONCEPT STUDIO contract: up to 12 nodes and 20 labeled edges, grouped by request path. Do not emit a competing Mermaid diagram unless the user explicitly asks for an export or sequence diagram.",
   "Use real technologies where they fit (Postgres, Redis, Kafka, S3, CDN, etc.) and say why. No filler.",
 ].join("\n");
 
@@ -640,6 +640,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
   const design = isDesign(question);
   return [
     `You are ${persona.name}, the user's desktop buddy on their Mac, part of ShuaCrew. Personality: ${TONES[persona.tone]}. ${design ? "This one needs depth" : persona.length === "brief" ? "Keep it to ~80 words" : "Up to ~200 words when it helps"}; plain spoken language (your reply is read aloud), a short list only when steps need it. Use tools only to read an attached screenshot.`,
+    "Do not repeat an answer, progress update, or action receipt already given in this request. After a tool result, say only what is newly learned or still needed. Distinguish recorded facts from inference. For current facts, use fresh evidence with its time; if no fresh evidence is available, say that instead of guessing. Never treat a proposed action as completed.",
     // Nothing is said for you while you think (canned "On it" sounded robotic), so the first sentence carries the turn.
     "YOUR FIRST SENTENCE IS SPOKEN THE MOMENT IT ARRIVES — make it the answer or exactly what you're doing, with the specifics (\"Dentist's on your calendar Thursday at 2:30.\", \"Looking up tonight's Knicks score.\"). Never open with filler: no \"On it\", \"Sure\", \"Got it\", \"Okay\", \"Let me check\", \"Great question\". Be proactive like a sharp assistant: when there's an obvious next thing they'd want (a reminder before the event, leaving time for traffic, the follow-up to a message, a clash in their calendar), offer it in one short question at the end — only when it's genuinely useful, never every turn.",
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
@@ -763,10 +764,11 @@ export function followThroughAsk(opened: string, q: string) {
  * comparing, anything long) gets the stronger model. The screen and design questions were already "balanced".
  */
 export function turnTier(q: string, o: { screen: boolean; design: boolean }): "fast" | "balanced" | "frontier" {
-  if (o.design) return "balanced";
   const t = q.toLowerCase();
   // Asked to be careful: worth a frontier model's slower start. (Not "exactly": "what exactly is…" is casual speech.)
   if (/\b(be (precise|accurate|careful|thorough)|precisely|think (hard|deeply|carefully|it through)|double[- ]check|rigorous(ly)?|step by step proof|prove that|deep dive|best possible)\b/.test(t)) return "frontier";
+  if (o.design || /\b(architecture|distributed|root cause|race condition|think deeply|deep analysis|prove|security audit|end[- ]to[- ]end)\b/.test(t) || /\b(build|implement|refactor)\b[\s\S]*\b(test|verify|complete|production)\b/.test(t)) return "frontier";
+  if (/\b(teach|explain|walk me through)\b/.test(t)) return "balanced";
   const deep = /\b(debug|fix|refactor|implement|architecture|design|plan|strategy|write (a|an|the|me)|draft|essay|analy[sz]e|compare|trade-?offs?|explain why|prove|review|optimi[sz]e|algorithm|step[- ]by[- ]step)\b/.test(t)
     || /```|\bfunction\b|=>|\bclass\b|stack trace|traceback/.test(q) || q.length > 280;
   return deep || o.screen ? "balanced" : "fast";
@@ -796,7 +798,7 @@ export function localAsk(q: string, live: { now: Date; screen?: string; extra?: 
 /** Is this question about what's on screen? (Local answers only read the screen's text when it is — it's slow to read.) */
 /** Work that can't be done blind: pointing, clicking, typing, walking through, anything on their screen or in an app. */
 export function needsScreen(q: string) {
-  return aboutScreen(q) || /\b((point|circle|highlight|underline|mark|spotlight|click|press|tap|type|fill|scroll|drag|select)(s|es|ed|ing)?|walk me|guide me|show me (where|how)|menu bar|dock|toolbar|sidebar|form|field|on my screen|in (this|the) (app|window))\b/i.test(q)
+  return aboutScreen(q) || /\b((point|circle|highlight|underline|mark|spotlight|click|press|tap|type|fill|scroll|drag|select)(s|es|ed|ing)?|walk me|guide me|show me|menu bar|dock|toolbar|sidebar|form|field|on my screen|in (this|the) (app|window))\b/i.test(q)
     || /\b(open|go to|bring up|pull up)\b.+\b(and|then)\b/i.test(q);
 }
 
@@ -882,13 +884,8 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
   return null;
 }
 
-/** A fingerprint of Spark's instructions: when it changes, Spark starts a fresh conversation so it knows the change. */
-export const SPARK_RULES = (() => {
-  // Constants the prompt uses by name must be in here too, or a change to them never reaches a running conversation.
-  const text = buddyPrompt.toString() + VISUAL_GUIDE + CREW_CONTROL + engineLine.toString();
-  let h = 5381; for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-})();
+/** Deliberate instruction version, stable across bundler renaming and unrelated UI builds. */
+export const SPARK_RULES = "spark-2026-10-02-connected-teaching-v3-live-paste-point";
 
 /**
  * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to

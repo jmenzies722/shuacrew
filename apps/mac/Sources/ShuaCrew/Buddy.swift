@@ -10,6 +10,7 @@ import WebKit
 /// macOS activation so keyboard focus cannot remain claimed in another application.
 @MainActor
 final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
+    private var actionGeneration = 0
     private let teaching = TeachingOverlay()
     static let enabledKey = "buddyEnabled"
     private static let cornerKey = "buddyCorner"
@@ -569,6 +570,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyDo":
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
+            let generation = actionGeneration
+            let current = { [weak self] in self?.actionGeneration == generation }
             let screen = lookedAt(action["screen"]) ?? NSScreen.screens[0]
             switch action["type"] as? String {
             case "click", "type", "key", "scroll":
@@ -580,7 +583,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in
                     guard let self else { return }
-                    let run = { let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
+                    guard current() else { self.did(["id": id, "ok": false, "message": "Canceled before execution"], to: sender); return }
+                    let run = { guard current() else { self.did(["id": id, "ok": false, "message": "Canceled before execution"], to: sender); return }; let r = SparkHands.act(action, screen: screen); self.did(["id": id, "ok": r.ok, "message": r.message], to: sender) }
                     // Typing in a web page goes onto the field itself (exact, never doubled); the keyboard is the fallback.
                     if action["type"] as? String == "type", let app = SparkHands.target, ShuaWeb.supports(app), let text = action["text"] as? String {
                         let submit = text.hasSuffix("\n"), value = submit ? String(text.dropLast()) : text
@@ -613,8 +617,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                         do { let did = try await ShuaWeb.click(label, in: app); self.did(["id": id, "ok": true, "message": did], to: sender); return }
                         catch ShuaWeb.Failure.javascriptOff(let name) { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": ShuaWeb.Failure.javascriptOff(name).localizedDescription], to: sender); return } }
                         catch { if SparkPress.find(label) == nil { self.did(["id": id, "ok": false, "message": error.localizedDescription], to: sender); return } }
-                        guard let found = SparkPress.find(label) else { return }
-                        _ = SparkPress.press(found); self.did(["id": id, "ok": true, "message": "Pressed “\(found.name)”"], to: sender)
+                        guard current(), let found = SparkPress.find(label) else { self.did(["id": id, "ok": false, "message": "Canceled or target disappeared"], to: sender); return }
+                        let ok = SparkPress.press(found); self.did(["id": id, "ok": ok, "message": ok ? "Pressed “\(found.name)”" : "Could not press “\(found.name)”"], to: sender)
                     }
                     break
                 }
@@ -637,6 +641,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 let lead = pointer.show(on: target, x: (found.center.x - f.minX) / f.width, y: (f.maxY - appKitY) / f.height, label: found.name, color: action["color"] as? String, from: launchPoint()) + 0.12
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + lead) { [weak self] in
+                    guard current() else { self?.did(["id": id, "ok": false, "message": "Canceled before execution"], to: sender); return }
                     let ok = SparkPress.press(found)
                     self?.did(["id": id, "ok": ok, "message": ok ? "Pressed “\(found.name)”" : "Couldn't press “\(found.name)”"], to: sender)
                 }
@@ -697,6 +702,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyHotkey":
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":
+            actionGeneration += 1
             stopWatch.map(NSEvent.removeMonitor); stopWatch = nil
         case "buddyLive":
             let on = body["on"] as? Bool ?? false
@@ -712,6 +718,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
             if let sender { teaching.handle(body, to: sender) }
+        case "buddySelectRegion":
+            let request = body["request"] as? String ?? ""
+            regionSelector.start(excluding: ownWindows) { [weak self, weak sender] result in
+                var payload = result; payload["request"] = request
+                self?.send("shuacrew:region", payload, to: sender)
+            }
+        case "buddyCancelRegion": regionSelector.cancel()
         case "buddyCapture":
             let hires = body["hires"] as? Bool ?? false
             Task { await capture(to: sender, hires: hires) }
@@ -934,6 +947,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         stopWatch = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard e.keyCode == 53 else { return }
             Task { @MainActor in
+                self?.actionGeneration += 1
                 for w in [self?.web, self?.appWeb].compactMap({ $0 }) { w.evaluateJavaScript("window.dispatchEvent(new Event('shuacrew:actStop'))") }
                 self?.stopWatch.map(NSEvent.removeMonitor); self?.stopWatch = nil
             }
@@ -964,6 +978,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// A screenshot of the display you're working on (where your pointer is), only when you ask, with Spark itself left
     /// out — and, with more than one display, a smaller look at each of the others so Spark sees your whole desk.
     /// The last full-resolution look, for zooming into part of it.
+    private let regionSelector = RegionSelector()
     private var lastFull: CGImage?
     private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
         if !ScreenAccess.granted() {
@@ -1062,13 +1077,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                       let jpg = NSBitmapImageRep(cgImage: img).representation(using: .jpeg, properties: [.compressionFactor: 0.75]) else { continue }
                 let n = numbered.count + 1
                 numbered[n] = side
-                others.append(["n": n, "data": jpg.base64EncodedString(), "width": img.width, "height": img.height])
+                others.append(["n": n, "display": d.displayID, "data": jpg.base64EncodedString(), "width": img.width, "height": img.height, "text": await ScreenText.read(img, timeout: 2)])
                 displays.append(["n": n, "name": side.localizedName, "where": DisplayLayout.relation(of: side.frame, to: screen.frame), "width": img.width, "height": img.height])
             }
             if !displays.isEmpty { context["displays"] = displays }
             stage("sides"); _ = await text; stage("ocr")
             shotScreen = screen; shotScreens = numbered
-            reply(["data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
+            reply(["display": (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, "data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
         } catch {
             reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
         }

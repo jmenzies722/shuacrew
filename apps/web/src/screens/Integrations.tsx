@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { isMac, pickFolder } from "../lib/native";
 import { BrandIcon } from "../components/ToolActivityCard";
 import { PaneHeader } from "../components/Pane";
+import { commandArguments } from "../lib/integration-setup";
 
 interface Server {
   id: string;
@@ -79,7 +80,7 @@ export function Integrations() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader eyebrow="Brain" icon={Cable} title="Tools & Skills" description="Tools connect your agents to real services through MCP. Skills teach them how to do a job well — they load one when the work calls for it. Both reach every new session." actions={
+        <PaneHeader eyebrow="Brain" icon={Cable} title="Tools & Skills" description="Configure real MCP services and install task instructions. Check each server to discover its tools. New sessions receive your configuration; your active policy still governs execution." actions={
           <div className="seg" role="tablist">
             <button role="tab" aria-selected={tab === "tools"} className={tab === "tools" ? "is-on" : ""} onClick={() => setTab("tools")}>
               <Plug size={13} /> Tools
@@ -123,7 +124,7 @@ function Tools() {
       await load();
     } catch (e) {
       setError((e as Error).message);
-      await load();
+      await load().catch(() => undefined);
     }
   };
 
@@ -132,8 +133,8 @@ function Tools() {
       {error && <div className="mb-4 rounded-[10px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12.5px] text-bad">{error}</div>}
       <section>
         <div className="mb-2.5 flex items-center gap-2">
-          <h2 className="pb-eyebrow !mb-0">Connected</h2>
-          <span className="text-[11.5px] text-fg-3">{servers.length ? `${servers.length} server${servers.length === 1 ? "" : "s"} — agents get their tools in every new session` : ""}</span>
+          <h2 className="pb-eyebrow !mb-0">Configured servers</h2>
+          <span className="text-[11.5px] text-fg-3">{servers.length ? `${servers.length} saved · connection checks run only when requested` : ""}</span>
           <span className="flex-1" />
           <Button size="s" variant="ghost" onClick={() => setCustom(true)}>
             <Plus size={12} /> Add your own
@@ -142,13 +143,15 @@ function Tools() {
         {servers.length ? (
           <div className="flex flex-col gap-2">
             {servers.map((s) => (
-              <ServerRow key={s.id} server={s} initial={known[s.id]} onChange={() => void load()} />
+              <ServerRow key={s.id} server={s} initial={known[s.id]} onChange={() => void load().catch((e: Error) => setError(e.message))} />
             ))}
           </div>
         ) : (
-          <div className="tl-empty">No tools connected yet. Pick one below — most sign in with one click, no keys to paste.</div>
+          <div className="tl-empty">No servers configured. Choose a service below or add your own, then check its connection to discover available tools.</div>
         )}
       </section>
+
+      <Registry onAdded={() => void load().catch((e: Error) => setError(e.message))} installed={new Set(servers.map((s) => s.name))} />
 
       {CATEGORIES.map((cat) => {
         const items = featured.filter((f) => f.category === cat);
@@ -165,8 +168,7 @@ function Tools() {
         );
       })}
 
-      <Registry onAdded={() => void load()} installed={new Set(servers.map((s) => s.name))} />
-      {custom && <CustomServer onClose={() => setCustom(false)} onAdded={() => (setCustom(false), void load())} />}
+      {custom && <CustomServer onClose={() => setCustom(false)} onAdded={() => void load().catch((e: Error) => setError(e.message))} />}
     </>
   );
 }
@@ -211,10 +213,23 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
   const [testing, setTesting] = useState(false);
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [sparkConfirm, setSparkConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => setConn(initial), [initial]);
+  const act = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try { await work(); onChange(); } catch (failure) { setError((failure as Error).message); }
+    finally { setBusy(false); }
+  };
   const test = async (fresh = true) => {
     setTesting(true);
+    setError("");
     try {
       setConn(await api<Connection>(`/api/mcp/${server.id}/tools${fresh ? "?fresh=1" : ""}`));
+    } catch (failure) {
+      setError((failure as Error).message);
     } finally {
       setTesting(false);
     }
@@ -244,30 +259,29 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
           </span>
         ) : conn?.ok ? (
           <button className="tl-status is-ok" onClick={() => setOpen((v) => !v)}>
-            <Wrench size={11} /> {conn.tools.length} tool{conn.tools.length === 1 ? "" : "s"}
+            <Wrench size={11} /> {conn.tools.length} tool{conn.tools.length === 1 ? "" : "s"} at last check
             <ChevronDown size={11} className={`transition ${open ? "rotate-180" : ""}`} />
           </button>
         ) : conn ? (
           <span className="tl-status is-bad" title={conn.error}>
             <X size={11} /> {conn.error?.slice(0, 48) ?? "Can't connect"}
           </span>
-        ) : null}
+        ) : <span className="tl-status">Not checked</span>}
         <button className={`tl-status ${server.spark ? "is-ok" : ""}`} aria-pressed={!!server.spark}
           title={server.spark ? "Spark can use these tools by voice, without asking. Click to stop." : "Let Spark (the notch) use these tools by voice, without asking. Each server adds a little to Spark's first word."}
-          onClick={() => void api(`/api/mcp/${server.id}/spark`, { body: { on: !server.spark } }).then(onChange)}>
+          disabled={busy || testing}
+          onClick={() => server.spark ? void act(() => api(`/api/mcp/${server.id}/spark`, { body: { on: false } })) : setSparkConfirm(true)}>
           <Sparkles size={11} /> {server.spark ? "In Spark" : "Use in Spark"}
         </button>
         {needsSignIn ? (
-          <Button size="s" variant="primary" onClick={() => void api(`/api/mcp/${server.id}/signin`, { body: {} }).then(() => (onChange(), test()))}>
-            Sign in
+          <Button size="s" variant="primary" disabled={busy || testing} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/signin`, { body: {} }); await test(); })}>
+            {busy ? "Working…" : "Sign in"}
           </Button>
         ) : (
-          <button className="member-icon" title="Test the connection" aria-label="Test the connection" onClick={() => void test()}>
-            <RefreshCw size={13} />
-          </button>
+          <Button size="s" disabled={busy || testing} onClick={() => void test()}><RefreshCw size={13} /> Check connection</Button>
         )}
         {confirm ? (
-          <Button size="s" variant="danger" onClick={() => void api(`/api/mcp/${server.id}`, { method: "DELETE" }).then(onChange)}>
+          <Button size="s" variant="danger" disabled={busy || testing} onClick={() => void act(() => api(`/api/mcp/${server.id}`, { method: "DELETE" }))}>
             Remove
           </Button>
         ) : (
@@ -276,6 +290,12 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
           </button>
         )}
       </div>
+      {error && <p role="alert" className="mt-2 text-[12px] text-bad">{error}</p>}
+      {server.spark && <p className="mt-2 text-[11px] text-fg-3">Spark voice access is enabled for this server, without asking before use.</p>}
+      {sparkConfirm && <div className="mt-3 rounded-lg border border-line p-3 text-[12px]">
+        <p>Allow Spark to use this server’s tools by voice without asking? This is separate from adding tools to crew sessions.</p>
+        <div className="mt-2 flex gap-2"><Button size="s" disabled={busy} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/spark`, { body: { on: true } }); setSparkConfirm(false); })}>Enable Spark access</Button><Button size="s" variant="ghost" disabled={busy} onClick={() => setSparkConfirm(false)}>Cancel</Button></div>
+      </div>}
       <AnimatePresence initial={false}>
         {open && conn?.ok && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
@@ -307,16 +327,21 @@ function Registry({ onAdded, installed }: { onAdded: () => void; installed: Set<
   const [cards, setCards] = useState<RegistryCard[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => void api<RegistryCard[]>(`/api/mcp/catalog?q=${encodeURIComponent(query)}`).then(setCards).catch((e: Error) => setError(e.message)), 220);
-    return () => clearTimeout(t);
+    let current = true;
+    setLoading(true);
+    setError("");
+    const timer = setTimeout(() => void api<RegistryCard[]>(`/api/mcp/catalog?q=${encodeURIComponent(query)}`).then((results) => { if (current) setCards(results); }).catch((failure: Error) => { if (current) { setCards([]); setError(failure.message); } }).finally(() => { if (current) setLoading(false); }), 220);
+    return () => { current = false; clearTimeout(timer); };
   }, [query, open]);
   const add = async (card: RegistryCard) => {
     setBusy(card.id);
     setError("");
     try {
       const server = await api<Server>("/api/mcp", { body: { name: card.title.toLowerCase().replace(/[^a-z0-9-]+/g, "-"), ...(card.kind === "command" ? { command: card.command, args: card.args } : { url: card.url, auth: "oauth" }) } });
+      onAdded();
       if (card.auth === "oauth") await api(`/api/mcp/${server.id}/signin`, { body: {} });
       onAdded();
     } catch (e) {
@@ -328,7 +353,7 @@ function Registry({ onAdded, installed }: { onAdded: () => void; installed: Set<
   return (
     <section className="mt-8">
       <button className="flex items-center gap-2 text-[12.5px] text-fg-2 hover:text-fg" onClick={() => setOpen((v) => !v)}>
-        <Globe size={13} /> Search every server in the official MCP registry
+        <Globe size={13} /> Search the MCP registry
         <ChevronDown size={12} className={`transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
@@ -338,22 +363,25 @@ function Registry({ onAdded, installed }: { onAdded: () => void; installed: Set<
             <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the registry — github, postgres, slack…" aria-label="Search the MCP registry" />
           </label>
           {error && <div className="mt-2 text-[12px] text-bad">{error}</div>}
-          <p className="mt-2 text-[11.5px] text-fg-3">Community servers aren't checked by ShuaCrew — add ones you trust. Servers that need a pasted API key are left out.</p>
+          {loading && <p className="mt-2 text-[12px] text-fg-3">Searching registry…</p>}
+          {!loading && !error && !cards.length && <p className="mt-2 text-[12px] text-fg-3">No matching setup entries returned. Try another search or add your own server.</p>}
+          <p className="mt-2 text-[11.5px] text-fg-3">Results are a limited selection from the registry, not verified connections. Some servers need extra configuration. Review the endpoint or command before adding, then check the connection.</p>
           <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
-            {cards.map((c) => {
+            {!loading && cards.map((c) => {
               const name = c.title.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
               return (
                 <div key={c.id} className="tl-card">
                   <div className="text-[13px] font-semibold text-fg">{c.title}</div>
                   <div className="mono truncate text-[10.5px] text-fg-3">{c.id}</div>
                   <div className="mt-1 line-clamp-2 text-[12px] leading-snug text-fg-3">{c.description}</div>
+                  <div className="mono mt-2 break-all text-[10.5px] text-fg-3">{c.url ?? [c.command, ...c.args].join(" ")}</div>
                   <div className="mt-2.5 flex items-center">
                     <span className="tl-tag">{c.kind === "remote" ? "Sign in" : "npx"}</span>
                     <span className="flex-1" />
                     {installed.has(name) ? (
                       <span className="text-[12px] text-ok">Added</span>
                     ) : (
-                      <Button size="s" disabled={busy === c.id} onClick={() => void add(c)}>
+                      <Button size="s" disabled={!!busy} onClick={() => void add(c)}>
                         {busy === c.id ? "Adding…" : "Add"}
                       </Button>
                     )}
@@ -372,21 +400,31 @@ function CustomServer({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   const [kind, setKind] = useState<"command" | "url">("command");
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
+  const [argumentsJson, setArgumentsJson] = useState("[]");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<Server | null>(null);
   const [oauth, setOauth] = useState(true);
   const [error, setError] = useState("");
   const save = async () => {
+    setBusy(true);
+    setError("");
     try {
-      const [command, ...args] = value.trim().split(/\s+/);
-      const server = await api<Server>("/api/mcp", { body: kind === "command" ? { name, command, args } : { name, url: value.trim(), auth: oauth ? "oauth" : "none" } });
-      if (kind === "url" && oauth) await api(`/api/mcp/${server.id}/signin`, { body: {} });
+      const server = saved ?? await api<Server>("/api/mcp", { body: kind === "command" ? { name, command: value.trim(), args: commandArguments(argumentsJson) } : { name, url: value.trim(), auth: oauth ? "oauth" : "none" } });
+      setSaved(server);
       onAdded();
+      if (server.auth === "oauth") await api(`/api/mcp/${server.id}/signin`, { body: {} });
+      onAdded();
+      onClose();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
   return (
     <Sheet onClose={onClose} label="Add a server">
       <div className="mb-4 text-[16px] font-semibold">Add your own server</div>
+      <fieldset disabled={busy || !!saved}>
       <div className="seg mb-4">
         <button className={kind === "command" ? "is-on" : ""} onClick={() => setKind("command")}>
           <Terminal size={13} /> Command
@@ -400,21 +438,24 @@ function CustomServer({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="postgres" autoFocus />
       </label>
       <label className="field mt-3">
-        <span>{kind === "command" ? "Command" : "Server URL"}</span>
-        <input className="mono" value={value} onChange={(e) => setValue(e.target.value)} placeholder={kind === "command" ? "npx -y @modelcontextprotocol/server-postgres postgres://localhost/app" : "https://mcp.example.com/mcp"} />
+        <span>{kind === "command" ? "Executable (without arguments)" : "Server URL"}</span>
+        <input className="mono" value={value} onChange={(e) => setValue(e.target.value)} placeholder={kind === "command" ? "npx" : "https://mcp.example.com/mcp"} />
       </label>
+      {kind === "command" && <label className="field mt-3"><span>Arguments (JSON array of strings)</span><textarea rows={3} className="mono" value={argumentsJson} onChange={(e) => setArgumentsJson(e.target.value)} placeholder={'["-y", "@example/server", "/Users/me/My Project"]'} /><span>Each string is one argument. Paths with spaces stay intact; shell syntax is not expanded.</span></label>}
       {kind === "url" && (
         <label className="mt-3 flex items-center gap-2 text-[12.5px] text-fg-2">
           <input type="checkbox" checked={oauth} onChange={(e) => setOauth(e.target.checked)} className="accent-[var(--amber)]" /> Signs in with OAuth
         </label>
       )}
+      </fieldset>
+      {saved && <p className="mt-3 text-[12px] text-fg-2">Server saved. Sign-in is unfinished; retry here or close and sign in from Configured servers.</p>}
       {error && <div className="mt-3 text-[12px] text-bad">{error}</div>}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="primary" disabled={!name.trim() || !value.trim()} onClick={() => void save()}>
-          Add server
+        <Button variant="primary" disabled={busy || !name.trim() || !value.trim()} onClick={() => void save()}>
+          {busy ? "Working…" : saved ? "Retry sign-in" : "Add server"}
         </Button>
       </div>
     </Sheet>
@@ -430,6 +471,8 @@ function SkillsTab() {
   const [busy, setBusy] = useState("");
   const [viewing, setViewing] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
+  const [query, setQuery] = useState("");
+  const [removing, setRemoving] = useState<string | null>(null);
   const load = () => {
     void api<SkillInfo[]>("/api/skills").then(setMine).catch((e: Error) => setError(e.message));
     void api<CatalogSkill[]>("/api/skills/catalog").then(setCatalog).catch((e: Error) => (setCatalog([]), setError(e.message)));
@@ -448,13 +491,22 @@ function SkillsTab() {
     }
   };
   const installedNames = useMemo(() => new Set(mine.map((s) => s.name)), [mine]);
+  const matches = (skill: { name: string; description: string }) => `${skill.name} ${skill.description}`.toLowerCase().includes(query.trim().toLowerCase());
+  const remove = async (name: string) => {
+    setBusy(name);
+    setError("");
+    try { await api(`/api/skills/${encodeURIComponent(name)}`, { method: "DELETE" }); setRemoving(null); load(); }
+    catch (failure) { setError((failure as Error).message); }
+    finally { setBusy(""); }
+  };
   return (
     <>
       {error && <div className="mb-4 rounded-[10px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12.5px] text-bad">{error}</div>}
+      <label className="lib-search mb-4"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search installed and catalog skills" aria-label="Search skills" /></label>
       <section>
         <div className="mb-2.5 flex items-center gap-2">
           <h2 className="pb-eyebrow !mb-0">Installed</h2>
-          <span className="text-[11.5px] text-fg-3">{mine.length ? "Claude sessions load these natively; Codex gets the relevant ones in its prompt" : ""}</span>
+          <span className="text-[11.5px] text-fg-3">{mine.length ? "Claude loads skill folders; Codex receives selected instruction excerpts" : ""}</span>
           <span className="flex-1" />
           <Button size="s" variant="ghost" onClick={() => setWriting(true)}>
             <PenLine size={12} /> Write a skill
@@ -462,7 +514,7 @@ function SkillsTab() {
         </div>
         {mine.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-2.5">
-            {mine.map((s) => (
+            {mine.filter(matches).map((s) => (
               <div key={s.name} className="tl-card">
                 <div className="flex items-start gap-3">
                   <span className="tl-mono is-skill">
@@ -471,7 +523,7 @@ function SkillsTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="mono text-[13px] font-semibold text-fg">{s.name}</span>
-                      <span className="tl-pill">{s.source === "catalog" ? "Anthropic" : s.source === "learned" ? "learned" : "yours"}</span>
+                      <span className="tl-pill">{s.source === "catalog" ? "Anthropic catalog" : s.source === "learned" ? "accepted learning" : "yours"}</span>
                     </div>
                     <div className="mt-1 line-clamp-3 text-[12px] leading-snug text-fg-3">{s.description}</div>
                   </div>
@@ -482,10 +534,11 @@ function SkillsTab() {
                   <button className="member-icon" title="View" aria-label={`View ${s.name}`} onClick={() => setViewing(s.name)}>
                     <Eye size={13} />
                   </button>
-                  <button className="member-icon" title="Remove" aria-label={`Remove ${s.name}`} onClick={() => void api(`/api/skills/${s.name}`, { method: "DELETE" }).then(load)}>
+                  <button className="member-icon" disabled={!!busy} title="Remove" aria-label={`Remove ${s.name}`} onClick={() => setRemoving(s.name)}>
                     <Trash2 size={13} />
                   </button>
                 </div>
+                {removing === s.name && <div className="mt-3 text-[12px]"><p>Remove this skill and its installed files?</p><div className="mt-2 flex gap-2"><Button size="s" variant="danger" disabled={!!busy} onClick={() => void remove(s.name)}>{busy === s.name ? "Removing…" : "Remove skill"}</Button><Button size="s" variant="ghost" disabled={!!busy} onClick={() => setRemoving(null)}>Cancel</Button></div></div>}
               </div>
             ))}
           </div>
@@ -495,13 +548,14 @@ function SkillsTab() {
       </section>
       <section className="mt-7">
         <h2 className="pb-eyebrow">From Anthropic</h2>
+        <p className="mb-3 text-[12px] text-fg-3">Downloads real skill folders from <a href="https://github.com/anthropics/skills" target="_blank" rel="noreferrer" className="underline">anthropics/skills</a>. Instructions may refer to separate tools or credentials; installing a skill does not grant that access.</p>
         {catalog === null ? (
           <div className="tl-empty">
             <Loader2 size={13} className="inline animate-spin" /> Loading the skills catalog…
           </div>
         ) : (
           <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-2.5">
-            {catalog.map((c) => (
+            {catalog.filter(matches).map((c) => (
               <div key={c.name} className={`tl-card ${installedNames.has(c.name) ? "is-added" : ""}`}>
                 <div className="mono text-[13px] font-semibold text-fg">{c.name}</div>
                 <div className="mt-1 line-clamp-3 min-h-[3.3em] text-[12px] leading-snug text-fg-3">{c.description}</div>
@@ -515,7 +569,7 @@ function SkillsTab() {
                       <Check size={13} /> Installed
                     </span>
                   ) : (
-                    <Button size="s" disabled={busy === c.name} onClick={() => void install(c.name)}>
+                    <Button size="s" disabled={!!busy} onClick={() => void install(c.name)}>
                       {busy === c.name ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {busy === c.name ? "Installing…" : "Install"}
                     </Button>
                   )}
@@ -533,14 +587,15 @@ function SkillsTab() {
 
 function SkillViewer({ name, onClose }: { name: string; onClose: () => void }) {
   const [skill, setSkill] = useState<{ body: string; files: string[] } | null>(null);
-  useEffect(() => void api<{ body: string; files: string[] }>(`/api/skills/${name}`).then(setSkill), [name]);
+  const [error, setError] = useState("");
+  useEffect(() => void api<{ body: string; files: string[] }>(`/api/skills/${encodeURIComponent(name)}`).then(setSkill).catch((failure: Error) => setError(failure.message)), [name]);
   return (
     <Sheet onClose={onClose} label={name} wide>
       <div className="mb-3 flex items-center gap-2">
         <BookOpen size={15} className="text-amber" />
         <span className="mono text-[15px] font-semibold">{name}</span>
       </div>
-      {skill ? (
+      {error ? <p role="alert" className="text-[12px] text-bad">{error}</p> : skill ? (
         <>
           <div className="flex flex-wrap gap-1.5">
             {skill.files.map((f) => (
@@ -565,12 +620,17 @@ function WriteSkill({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const save = async () => {
+    setBusy(true);
+    setError("");
     try {
       await api("/api/skills", { body: { name, description, instructions } });
       onSaved();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -594,8 +654,8 @@ function WriteSkill({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="primary" onClick={() => void save()} disabled={!name.trim()}>
-          Save skill
+        <Button variant="primary" onClick={() => void save()} disabled={busy || !name.trim() || !description.trim() || !instructions.trim()}>
+          {busy ? "Saving…" : "Save skill"}
         </Button>
       </div>
     </Sheet>

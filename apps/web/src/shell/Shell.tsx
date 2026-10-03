@@ -75,6 +75,7 @@ export function Shell() {
   const motionPreference = useLive((s) => s.appearance.motion);
   useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
   const { flow } = usePower();
+  const home = useRouterState({ select: s => s.location.pathname === "/" });
   useGlobalKeys();
   useSpotlight();
   // One section, one entrance: switching sessions inside the chat doesn't re-animate the page.
@@ -91,7 +92,7 @@ export function Shell() {
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
-        {!flow && <WorkspaceSpark section={section} />}
+        {!flow && !home && <WorkspaceSpark section={section} />}
         <motion.div key={section} className="workspace-scene min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>

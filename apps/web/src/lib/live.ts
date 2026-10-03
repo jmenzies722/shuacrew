@@ -7,6 +7,7 @@
  * one render per frame. A dropped socket reconnects and resumes from the last sequence it applied.
  */
 import { slicesFor } from "./slices";
+import { appendLoadedEvents } from "./event-batch";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { apply, emptyState, type CrewState } from "@shuacrew/core/projections";
 import { create } from "zustand";
@@ -160,17 +161,14 @@ function flush(): void {
   const acted: AnyEvent[] = [];
   const touched = new Set<string>();
   let approvalsChanged = false;
-  let loadedChanged: Record<string, AnyEvent[]> | null = null;
+  const accepted: AnyEvent[] = [];
   for (const event of batch) {
     if (event.seq <= crew.head) continue;
+    accepted.push(event);
     apply(crew, event);
     if (ACTIVITY.has(event.kind)) acted.push(event);
     if (event.run) touched.add(event.run);
     if (event.kind.startsWith("approval.")) approvalsChanged = true;
-    if (event.run && runEvents[event.run]) {
-      loadedChanged ??= { ...runEvents };
-      loadedChanged[event.run] = [...(loadedChanged[event.run] ?? []), event];
-    }
   }
   // New references only for what changed: a streamed token re-renders its own run, not every screen.
   const runs = { ...crew.runs };
@@ -195,7 +193,7 @@ function flush(): void {
       plays: fresh("plays", crew.plays, deep),
       today: fresh("today", crew.today, shallow),
     },
-    ...(loadedChanged ? { runEvents: loadedChanged } : {}),
+    runEvents: appendLoadedEvents(runEvents, accepted),
     ...(acted.length ? { activity: [...activity, ...acted].slice(-1500) } : {}),
   });
 }

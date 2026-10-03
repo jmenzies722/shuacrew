@@ -1,0 +1,66 @@
+.architecture-card { color: #eaeef8; background: radial-gradient(ellipse at 80% 0%, #263c5b66, transparent 60%), linear-gradient(145deg, #171e2c, #0c1019 75%); border: 1px solid #8eaad52b; border-radius: 20px; padding: 16px; box-shadow: inset 0 1px #ffffff0c, 0 12px 32px #0003; text-align: left; min-width: 0; }
+.architecture-card > header { display: flex; justify-content: space-between; align-items: center; }
+.architecture-card > header > span { display: flex; gap: 7px; align-items: center; font: 600 9px/1.5 system-ui; letter-spacing: .15em; color: #91b8e8; }
+.architecture-card > header > div { display: flex; }
+.architecture-card button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid transparent; padding: 6px; border-radius: 8px; background: transparent; color: #c4d3e8; cursor: pointer; font: inherit; }
+.architecture-card button:hover { background: #b6d5ff16; color: #fff; }
+.architecture-card button:focus-visible { outline: 2px solid #9acaff; outline-offset: 2px; }
+.architecture-card button:disabled { opacity: .3; cursor: default; }
+.architecture-card > h3 { margin: 8px 0 14px; font: 600 19px/1.3 system-ui; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.architecture-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding: 4px 0 10px; }
+.architecture-node { position: relative; display: grid; gap: 8px; padding: 10px; border: 1px solid #9fb7d52b; border-radius: 11px; background: linear-gradient(150deg, #2d3a4d, #17202f); box-shadow: 0 4px 0 #080e19, 0 8px 14px #0004, inset 0 1px #ffffff12; transition: border-color .25s, box-shadow .25s, transform .25s; }
+.architecture-node small { color: #8a9db6; font: 9px ui-monospace, monospace; }
+.architecture-node strong { font: 550 11px/1.4 system-ui; overflow-wrap: anywhere; }
+.architecture-node i { position: absolute; top: 10px; right: 9px; width: 4px; height: 4px; border-radius: 50%; background: #667890; }
+.architecture-node[data-focused="true"] { border-color: #89caffaa; transform: translateY(-2px); box-shadow: 0 4px 0 #132e49, 0 0 22px #69adff25, inset 0 1px #ffffff22; }
+.architecture-node[data-focused="true"] i { background: #a5dcff; box-shadow: 0 0 8px #6bbcff; }
+.architecture-connections { display: flex; flex-wrap: wrap; gap: 4px 7px; margin: 6px 0 12px; }
+.architecture-connections span { font: 10px/1.4 system-ui; color: #93a5be; padding: 3px 7px; border: 1px solid #819cc321; border-radius: 6px; overflow-wrap: anywhere; }
+.architecture-connections span[data-focused="true"] { color: #c2e3ff; border-color: #78bfff66; }
+.architecture-explanation { padding: 12px; border: 1px solid #8ca8d01c; border-radius: 12px; background: #03081155; }
+.architecture-explanation > small { color: #8cb6e8; font: 600 9px/1.4 system-ui; letter-spacing: .12em; }
+.architecture-explanation h4 { margin: 6px 0; font: 600 13px/1.4 system-ui; }
+.architecture-card p { margin: 0; font: 12px/1.65 system-ui; color: #bfcce0; overflow-wrap: anywhere; }
+.architecture-card footer { display: flex; gap: 3px; align-items: center; margin-top: 10px; font: 11px/1.4 system-ui; }
+.architecture-card footer > div { flex: 1; }
+.architecture-card footer > span { color: #7f94b0; font-variant-numeric: tabular-nums; }
+.architecture-details { padding-left: 20px; margin: 14px 0 0; font-size: 12px; }
+.architecture-details li { margin: 10px 0; }
+.architecture-quiz { display: grid; gap: 6px; margin-top: 12px; }
+.architecture-quiz button { justify-content: flex-start; padding: 9px; border-color: #9fb7d52b; font-size: 12px; text-align: left; }
+.architecture-quiz button[aria-pressed="true"] { background: #558dd32a; border-color: #88beff; }
+.teaching > .architecture-card { width: min(640px, 100%); margin: 0 auto 24px; }
+.notch-lesson-peek { display: grid; gap: 3px; width: 100%; padding: 0 10px; color: #c4d3e8; text-align: left; }
+.notch-lesson-peek strong { display: flex; gap: 6px; align-items: center; font-size: 11px; color: #e4efff; }
+.notch-lesson-peek strong > svg:last-child { margin-left: auto; }
+.notch-lesson-peek > span, .notch-lesson-peek small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; font-size: 10px; }
+.notch-lesson-peek small { color: #7d9fc9; font-size: 9px; }
+.notch-lesson-peek:focus-visible { outline: 2px solid #9acaff; outline-offset: 2px; border-radius: 8px; }
+@media (prefers-reduced-motion: reduce) { .architecture-node { transition: none; transform: none !important; } }
+:root[data-motion="reduced"] .architecture-node { transition: none; transform: none !important; }
+.architecture-diagram-scroll { max-height:320px; overflow:auto; overscroll-behavior:contain; border:1px solid #8ca8d025; border-radius:12px; background:radial-gradient(circle,#8ca8d018 1px,transparent 1px) 0 0 / 18px 18px; margin:12px 0; }
+.architecture-diagram { position:relative; }
+.architecture-diagram > svg { position:absolute; inset:0; color:#7e9ab7; }
+.architecture-diagram polyline.is-focused { color:#a2dcff; }
+.architecture-diagram .architecture-node { box-sizing:border-box; overflow:hidden; padding:13px; }
+.architecture-diagram .architecture-node strong { font-size:13px; line-height:1.4; overflow-wrap:anywhere; }
+.architecture-diagram .architecture-node small { line-height:12px; overflow-wrap:anywhere; }
+.architecture-scope { font-size:11px; color:#b2c6df; margin:6px 0; }
+.architecture-paths,.architecture-followups { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.architecture-paths button,.architecture-followups button { padding:7px 10px; border:1px solid #8ca8d040; border-radius:8px; background:#1b2c40; color:#d9e8fa; font-size:11px; }
+.architecture-paths button[aria-pressed=true] { border-color:#a2dcff; background:#28465f; }
+.architecture-card footer { flex-wrap:wrap; }
+.architecture-details a { display:block; color:#a2dcff; margin:6px 0; }
+.architecture-card.is-expanded .architecture-diagram-scroll { max-height:480px; }
+.architecture-zoom { padding:4px 0; color:#a2dcff; font-size:11px; }
+.shua-island-body > .architecture-card { margin:0; padding:10px; }
+.shua-island-body .architecture-connections { display:none; }
+.shua-island-body .architecture-card h3 { font-size:14px; margin:5px 0; }
+.shua-island-body .architecture-scope { font-size:9px; margin:4px 0; }
+.shua-island-body .architecture-paths { flex-wrap:nowrap; overflow-x:auto; margin:6px 0; padding-bottom:3px; }
+.shua-island-body .architecture-paths button { flex-shrink:0; padding:4px 7px; font-size:10px; }
+.shua-island-body .architecture-zoom { padding:2px 0; font-size:10px; }
+.shua-island-body .architecture-diagram-scroll { margin:6px 0; }
+.shua-island-body .architecture-explanation { padding:8px; }
+.shua-island-body .architecture-explanation p { font-size:11px; }
+.shua-island-body .architecture-card footer { font-size:10px; }

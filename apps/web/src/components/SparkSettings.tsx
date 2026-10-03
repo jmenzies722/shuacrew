@@ -4,6 +4,8 @@ import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
 import { useEffect, useState } from "react";
 import { AudioLines, Check } from "lucide-react";
 import { VoiceSettings, setVoiceEverywhere } from "./VoiceSettings";
+import { VoiceComparison } from "./VoiceComparison";
+import { MicrophoneSettings } from "./MicrophoneSettings";
 import { MacReach } from "./MacReach";
 import { useLive } from "../lib/live";
 import { api } from "../lib/api";
@@ -96,9 +98,15 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
   const [mood, setMood] = useState<Mood>("idle"), [desktop, setDesktop] = useState(readDesktop);
   /** What you're hovering in the workshop, worn by the preview robot until you pick it or move away. */
   const [trial, setTrial] = useState<Look | null>(null);
-  const [voices, setVoices] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const [voices, setVoices] = useState<Array<{ id: string; name: string; description?: string; engine?: string }>>([]);
+  const [speechStatus, setSpeechStatus] = useState<{ state?: string; engine?: string; error?: string }>({});
   const [screen, setScreen] = useState<boolean | null>(null);
-  useEffect(() => { void api<{ voices?: Array<{ id: string; name: string; description?: string }> }>("/api/speech/status").then((s) => setVoices(s.voices ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => void api<{ state?: string; engine?: string; error?: string; voices?: Array<{ id: string; name: string; description?: string; engine?: string }> }>("/api/speech/status").then(status => { if (active) { setVoices(status.voices ?? []); setSpeechStatus(status); } }).catch(() => { if (active) setSpeechStatus({ state: "error", error: "Could not check the local speech engine." }); });
+    refresh(); window.addEventListener("focus", refresh);
+    return () => { active = false; window.removeEventListener("focus", refresh); };
+  }, []);
   useEffect(() => {
     const on = (e: Event) => setScreen((e as CustomEvent<{ granted?: boolean }>).detail.granted === true);
     const poll = () => native()?.postMessage({ type: "buddyScreenAccess" });
@@ -199,6 +207,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
 
     {(searching || category === "voice") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Personality &amp; voice</h4>
+      <MicrophoneSettings />
       <SettingRow name="Personality" detail="How it talks to you. Your instructions to the crew are unchanged." modified={prefs.tone !== "cheerful"}>
         <Segmented label="Personality" value={prefs.tone} onChange={(tone) => set({ tone })} options={[["engineer", "Engineer"], ["cheerful", "Cheerful"], ["chill", "Chill"], ["direct", "Direct"], ["coach", "Coach"]]} />
       </SettingRow>
@@ -218,6 +227,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
 
     {(searching || category === "voice") && <details className="settings-card batch-pad spark-voice-studio">
       <summary><AudioLines size={16} /><span><strong>Hear every voice</strong><small>Audition the cast, install or repair the local voice engine, and tune conversation audio.</small></span></summary>
+      <VoiceComparison voices={voices} ready={speechStatus.state === "ready"} engine={speechStatus.engine || [...new Set(voices.map(voice => voice.engine).filter(Boolean))].join(" / ") || "Configured local speech engine"} error={speechStatus.error} />
       <VoiceSettings embedded />
     </details>}
 

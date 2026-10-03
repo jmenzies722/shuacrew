@@ -1,14 +1,13 @@
 import { ArrowUpRight } from "lucide-react";
 import { useCompanion } from "../lib/companion";
-import { suggestToSpark, toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
+import { suggestToSpark } from "../lib/spark-panel";
 import { SparkCharacter } from "./SparkCharacter";
 
 const contexts: Record<string, [string, string, string]> = {
   "/": ["Sessions", "Plan the next step", "Help me choose the next useful step in my current work. Ask for any project context you need."],
   "/activity": ["Today", "Shape my day", "Help me plan today around one meaningful priority, time to focus, and something that supports my life outside work."],
   "/crew": ["Crew", "Build my crew", "Help me design a small effective crew for my current goals, with clear responsibilities for Claude and Codex."],
-  "/rooms": ["Rooms", "Plan a collaboration", "Help me structure a crew room with a clear goal, the right members, and a definition of done."],
-  "/floor": ["Crew floor", "Find the next handoff", "Help me understand my crew's current work and identify the next useful handoff. Use available recorded status; ask me if anything is missing."],
+  "/floor": ["Crew HQ", "Find the next handoff", "Help me understand my crew's current work and identify the next useful handoff. Use available recorded status; ask me if anything is missing."],
   "/studio": ["Studio", "Set the mood", "Help me choose a focus routine and a soundscape for the work I want to do next."],
   "/ventures": ["Ventures", "Pressure-test an idea", "Help me pressure-test a venture idea: the user problem, smallest useful product, and an experiment I can run this week."],
   "/playbooks": ["Playbooks", "Make it repeatable", "Help me turn a recurring workflow into a playbook with clear steps, verification, and a stopping point."],
@@ -31,14 +30,13 @@ const contexts: Record<string, [string, string, string]> = {
 
 /** A small, consistent companion affordance across every workspace section. */
 export function WorkspaceSpark({ section }: { section: string }) {
-  const prefs = useCompanion(), open = useSparkPanel();
+  const prefs = useCompanion();
+  if (section === "/rooms") return null;
   const [name, action, prompt] = contexts[section] ?? ["Workspace", "Find my next step", "Help me find the next useful step in ShuaCrew."];
+  // Only what's particular to this page: the page title says where you are, and the sidebar already opens Spark.
   return <div className="workspace-companion" aria-label={`${name} companion`}>
-    <span className="workspace-location">{name}</span>
-    <button type="button" className="workspace-spark" aria-expanded={open} onClick={toggleSparkPanel} title="Open companion · ⌘J">
-      <SparkCharacter preferences={prefs} mood="idle" size={24} crop="portrait" />
-      <span>{prefs.nickname || "Spark"}</span>
+    <button type="button" className="workspace-suggestion" onClick={() => suggestToSpark(`I'm in ${name}. ${prompt}`)} title={`Ask ${prefs.nickname || "Spark"}: prepares the message for you to review before sending`}>
+      <SparkCharacter preferences={prefs} mood="idle" size={20} crop="portrait" />{action}<ArrowUpRight size={12} />
     </button>
-    <button type="button" className="workspace-suggestion" onClick={() => suggestToSpark(`I'm in ${name}. ${prompt}`)} title="Prepare a message in Spark; review before sending">{action}<ArrowUpRight size={12} /></button>
   </div>;
 }

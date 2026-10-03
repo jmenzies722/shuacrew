@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inScope, pauseClock, policyLine, scopeRuns } from "./crew";
+import { inScope, pauseClock, policyLine, scopeRuns, recentWork } from "./crew";
 import type { RunView } from "@shuacrew/core/projections";
 
 const run = (id: string, repo?: string, parent?: string): RunView =>
@@ -28,4 +28,19 @@ describe("pause clock", () => {
     expect(pauseClock({ status: "running", runtime: "claude" }, {})).toBeNull();
     expect(pauseClock({ status: "paused", runtime: "claude", statusReason: "follow-up" }, {})).toBe("Paused · follow-up");
   });
+});
+
+
+it("resumes only visible top-level work in the current project, newest first", () => {
+  const runs = {
+    a: { ...run("a", "/repos/app"), updatedAt: 10 },
+    b: { ...run("b", "/repos/app"), updatedAt: 20 },
+    child: run("child", "/repos/app", "a"),
+    buddy: { ...run("buddy", "/repos/app"), labels: ["buddy"] },
+    learning: { ...run("learning", "/repos/app"), labels: ["learning"] },
+    hidden: { ...run("hidden", "/repos/app"), archived: true },
+    other: run("other", "/repos/other"),
+  };
+  expect(recentWork(runs, "/repos/app").map(r => r.id)).toEqual(["b", "a"]);
+  expect(recentWork(runs, "/repos/app", 1).map(r => r.id)).toEqual(["b"]);
 });

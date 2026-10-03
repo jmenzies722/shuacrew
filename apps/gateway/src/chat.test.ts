@@ -163,6 +163,32 @@ describe("attachments", () => {
 });
 
 describe("stopping a session", () => {
+  it.each(["late completion", "quiet end"])("keeps cancellation terminal after a runtime's %s", async (ending) => {
+    const store = new EventStore(":memory:");
+    let started = false, finished = false;
+    const delayed: Runtime = Object.assign(Object.create(new MockRuntime()), {
+      async *start(_run: RunSpec, ctx: Parameters<Runtime["start"]>[1]) {
+        started = true;
+        yield { type: "text", text: "Before Stop" } as const;
+        await new Promise((ok) => ctx.signal.addEventListener("abort", ok, { once: true }));
+        try {
+          if (ending === "late completion") {
+            yield { type: "text", text: " After Stop" } as const;
+            yield { type: "done", text: "Before Stop After Stop", durationMs: 1 } as const;
+          }
+        } finally { finished = true; }
+      },
+    });
+    const supervisor = new Supervisor(store, new Map([["mock", delayed]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+    cleanups.push(() => (supervisor.shutdown(), store.close()));
+    const run = supervisor.launch({ ask: "Cancellation regression", runtime: "mock" });
+    await until(() => started);
+    supervisor.cancel(run);
+    await until(() => finished);
+    expect(status(store, run)).toBe("cancelled");
+    expect(store.forRun(run).some((e) => e.kind === "turn.completed" || e.kind === "agent.message")).toBe(false);
+    expect(store.forRun(run).filter((e) => e.kind === "agent.delta").map((e) => e.body.text).join("")).not.toContain("After Stop");
+  });
   it("answers its pending approvals so they leave the queue", async () => {
     const { store, supervisor } = await world();
     const run = supervisor.launch({ ask: "Fix it and ship it", runtime: "mock" });
@@ -179,8 +205,9 @@ describe("stopping a session", () => {
       async *start(_run: RunSpec, ctx: Parameters<Runtime["start"]>[1]) {
         started = true;
         await new Promise((ok) => ctx.signal.addEventListener("abort", ok, { once: true }));
-        yield { type: "error", message: "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null" } as const;
-        finished = true;
+        try {
+          yield { type: "error", message: "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null" } as const;
+        } finally { finished = true; }
       },
     });
     const supervisor = new Supervisor(store, new Map([["mock", grumpy]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });

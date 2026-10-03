@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { readSpeechStream } from "./speech-stream";
 import { DEFAULT_VOICE, currentVoice } from "./voices";
+import type { NarrationIdentity } from "./lesson-narration";
 
 /** Spark's voice: on/off and which local voice, shared by the app's Settings and the desktop panel. */
 export interface BuddyVoice { on: boolean; id: string; speed: number }
@@ -23,12 +24,15 @@ export function getBuddyVoice() { return current; }
 const AHEAD = 2;          // sentences generating in parallel (more lets the engine finish them out of order)
 const LEAD = 0.18;        // seconds of buffer before the first sound; absorbs network/generation jitter
 
-interface Line { key: number; text: string; voiceId: string; speed: number; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean; heard?: boolean; shown?: boolean; dur: number }
+interface Line { key: number; text: string; voiceId: string; speed: number; narration?: NarrationIdentity; buffers: AudioBuffer[]; done: boolean; failed: boolean; started: boolean; heard?: boolean; shown?: boolean; dur: number }
 /** A sentence for the captions. `durationMs` arrives once the whole sentence is generated, so words can keep time with the real audio. */
-export interface CaptionLine { key: number; text: string; speed: number; durationMs?: number }
+export interface CaptionLine { key: number; text: string; speed: number; durationMs?: number; narration?: NarrationIdentity }
 let lineKeys = 0;
 
 export class SpeechQueue {
+  constructor(private audition = false) {}
+  /** Suppress future utterances after “stop talking” without canceling the agent. */
+  silenced = false;
   private context?: AudioContext;
   private lines: Line[] = [];
   private active = 0;            // generations in flight
@@ -41,9 +45,10 @@ export class SpeechQueue {
   private speaking = false;
   private idleTimer?: ReturnType<typeof setTimeout>;
   onSpeaking?: (speaking: boolean) => void;
+  onError?: (message: string) => void;
   /** Each sentence the moment its sound starts (captions follow the voice, not the text stream); null when Spark stops. */
   onCaption?: (line: CaptionLine | null) => void;
-  private captionOf(line: Line): CaptionLine { return { key: line.key, text: line.text, speed: line.speed, ...(line.done && !line.failed ? { durationMs: Math.round(line.dur * 1000) } : {}) }; }
+  private captionOf(line: Line): CaptionLine { return { key: line.key, text: line.text, speed: line.speed, ...(line.narration ? { narration: line.narration } : {}), ...(line.done && !line.failed ? { durationMs: Math.round(line.dur * 1000) } : {}) }; }
   private captionTimers = new Set<ReturnType<typeof setTimeout>>();
   private quietTimers = new Set<ReturnType<typeof setTimeout>>();
 
@@ -71,12 +76,19 @@ export class SpeechQueue {
   /** Speak a sentence — in Spark's voice, or `as` a crew member's own voice. */
   /** What Spark said lately (for telling its own echo from you). */
   private said: Array<{ text: string; at: number }> = [];
+  private utterances = new Set<string>();
+  beginTurn() { this.utterances.clear(); }
   recent(ms: number): string[] { const since = Date.now() - ms; return this.said.filter((x) => x.at >= since).map((x) => x.text); }
-  say(text: string, as?: { voiceId: string; speed: number }) {
+  say(text: string, as?: { voiceId?: string; speed?: number; narration?: NarrationIdentity }) {
+    if (this.silenced) return;
     const v = getBuddyVoice();
-    if (!v.on || !text.trim()) return;
+    if ((!v.on && !this.audition) || !text.trim()) return;
+    const identity = as?.narration ? JSON.stringify(as.narration) : "";
+    const utterance = `${as?.voiceId ?? v.id}:${identity}:${text.trim().toLowerCase().replace(/\s+/g, " ")}`;
+    if (this.utterances.has(utterance)) return;
+    this.utterances.add(utterance);
     this.said = [...this.said.filter((x) => x.at > Date.now() - 30_000), { text, at: Date.now() }];
-    this.lines.push({ key: ++lineKeys, text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, buffers: [], done: false, failed: false, started: false, dur: 0 });
+    this.lines.push({ key: ++lineKeys, text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, narration: as?.narration, buffers: [], done: false, failed: false, started: false, dur: 0 });
     this.pump();
   }
 
@@ -108,6 +120,7 @@ export class SpeechQueue {
       if (attempt === 0 && !signal.aborted && !line.heard && !line.buffers.length) return this.generate(line, 1);
       if (signal.aborted) return;
       line.failed = true;
+      this.onError?.("Voice playback was interrupted. The full answer is in chat; you can ask me to repeat it.");
     }
     line.done = true;
     this.schedule();
@@ -180,4 +193,18 @@ export class SpeechQueue {
   }
   /** Browsers only let a page start audio after a click or key; call this from one. */
   unlock() { this.ctx(); }
+  dispose() {
+    this.silenced = true;
+    this.abort.abort();
+    this.lines = [];
+    clearTimeout(this.idleTimer);
+    for (const timer of this.captionTimers) clearTimeout(timer);
+    this.captionTimers.clear();
+    for (const timer of this.quietTimers) clearTimeout(timer);
+    this.quietTimers.clear();
+    for (const source of this.sources) { source.onended = null; try { source.stop(); } catch {} source.disconnect(); }
+    this.sources.clear();
+    this.onCaption = undefined; this.onSpeaking = undefined; this.onError = undefined;
+    if (this.context && this.context.state !== "closed") void this.context.close().catch(() => {});
+  }
 }

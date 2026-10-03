@@ -3,7 +3,7 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
 import { Button, formatTokens, since } from "@shuacrew/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldAlert, SquareTerminal, Wrench, Check, Waypoints } from "lucide-react";
+import { Bot, CircleX, FilePen, FileText, Globe, Hand, ListTree, Search, ShieldAlert, SquareTerminal, Wrench, Check, Layers3 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { decideApproval } from "../lib/api";
@@ -113,7 +113,7 @@ export function CrewFloor() {
   const onFloor = useMemo(
     () =>
       Object.values(runs)
-        .filter((r) => !r.parent && (WORKING.has(r.status) || now - r.updatedAt < LINGER))
+        .filter((r) => isTopLevelWork(r, runs) && (WORKING.has(r.status) || now - r.updatedAt < LINGER))
         .sort((a, b) => Number(WORKING.has(b.status)) - Number(WORKING.has(a.status)) || a.createdAt - b.createdAt),
     [runs, Math.floor(now / 5000)],
   );
@@ -127,18 +127,18 @@ export function CrewFloor() {
     for (const e of activity) if (e.run) (out[e.run] ??= []).push(e);
     return out;
   }, [activity]);
-  const working = onFloor.filter((r) => WORKING.has(r.status)).length;
+  const working = onFloor.filter((r) => r.status === "running" || r.status === "planning").length;
   const waiting = Object.keys(approvals).length;
   const perMinute = activity.filter((e) => e.kind === "tool.called" && now - e.at < 60_000).length;
 
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Work" icon={Waypoints} title="Crew floor" description="Every agent at work, live. Select one to open its session." actions={<div className="flex flex-wrap items-center gap-2">
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew HQ" description="Your crew in motion. Follow the work, catch a handoff, step in when needed." actions={<div className="flex flex-wrap items-center gap-2">
           <Stat value={working} label="working" live={working > 0} />
           <Stat value={waiting} label="waiting on you" tone={waiting ? "wait" : undefined} />
           <Stat value={perMinute} label="steps / min" />
-          <Stat value={formatTokens(today.tokens)} label="tokens today" />
+          <Stat value={formatTokens(today.tokens)} label="tokens today · all projects" />
         </div>} />
       </header>
 

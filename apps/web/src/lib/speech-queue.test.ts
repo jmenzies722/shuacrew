@@ -1,6 +1,24 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { SpeechQueue } from "./buddy-voice";
+
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+it("carries lesson identity only when audio playback actually starts", async () => {
+  vi.useFakeTimers();
+  audioEnvironment();
+  vi.stubGlobal("fetch", async (_url: string, options: { body: string }) => response(options.body));
+  const queue = new SpeechQueue(), caption = vi.fn();
+  queue.onCaption = caption;
+  const narration = { lessonId: "video", revision: 1, stepId: "watch" };
+  queue.say("A segment arrives.", { narration });
+  expect(caption).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(300);
+  expect(caption).toHaveBeenCalledWith(expect.objectContaining({ narration }));
+  queue.stop();
+  caption.mockClear();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(caption).not.toHaveBeenCalled();
+});
+
 function audioEnvironment(decode = async () => ({ duration: 1 })) {
   const starts: number[] = [];
   class AudioContext {
@@ -19,6 +37,42 @@ function audioEnvironment(decode = async () => ({ duration: 1 })) {
   vi.stubGlobal("AudioContext", AudioContext);
   return starts;
 }
+it("releases all preview timers across 100 create/play/dispose cycles", async () => {
+  vi.useFakeTimers();
+  audioEnvironment();
+  vi.stubGlobal("fetch", async (_url: string, options: { body: string }) => response(options.body));
+  for (let index = 0; index < 100; index++) {
+    const queue = new SpeechQueue(true);
+    queue.say("A short preview.");
+    queue.dispose();
+  }
+  await vi.advanceTimersByTimeAsync(0);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("does not recreate idle timers from ended events after disposing active playback", async () => {
+  vi.useFakeTimers();
+  audioEnvironment();
+  vi.stubGlobal("fetch", async (_url: string, options: { body: string }) => response(options.body));
+  const queue = new SpeechQueue(true);
+  queue.say("Preview already playing.");
+  await vi.advanceTimersByTimeAsync(300);
+  queue.dispose();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(vi.getTimerCount()).toBe(0);
+});
+it("does not deduplicate identical narration across different diagram steps", async () => {
+  vi.useFakeTimers();
+  const starts = audioEnvironment();
+  vi.stubGlobal("fetch", async (_url: string, options: { body: string }) => response(options.body));
+  const queue = new SpeechQueue();
+  queue.say("Check the cache.", { narration: { lessonId: "demo", revision: 1, stepId: "one" } });
+  queue.say("Check the cache.", { narration: { lessonId: "demo", revision: 1, stepId: "two" } });
+  await vi.advanceTimersByTimeAsync(300);
+  expect(starts).toHaveLength(2);
+  queue.dispose();
+});
+
 function response(body: string, done = true) {
   const request = JSON.parse(body);
   return new Response(new ReadableStream({ start(controller) {
@@ -40,7 +94,6 @@ it("does not replay a sentence after its first audio chunk has already played", 
   queue.stop();
 });
 
-
 it("ignores audio decoded after the user stops a reply", async () => {
   vi.useFakeTimers();
   let finish!: (value: { duration: number }) => void;
@@ -58,7 +111,6 @@ it("ignores audio decoded after the user stops a reply", async () => {
   queue.stop();
 });
 
-
 it("does not start a follow-up over a long spoken reply when its wait expires", async () => {
   vi.useFakeTimers();
   audioEnvironment();
@@ -72,7 +124,6 @@ it("does not start a follow-up over a long spoken reply when its wait expires", 
   queue.stop();
 });
 
-
 it("cancels a waiting follow-up when the user stops speech", async () => {
   vi.useFakeTimers();
   audioEnvironment();
@@ -84,9 +135,21 @@ it("cancels a waiting follow-up when the user stops speech", async () => {
   await vi.advanceTimersByTimeAsync(500);
   expect(follow).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
-  queue.stop();
+  queue.dispose();
 });
 
+it("disposes pending quiet callbacks without leaving polling timers", async () => {
+  vi.useFakeTimers();
+  audioEnvironment();
+  vi.stubGlobal("fetch", () => new Promise(() => {}));
+  const queue = new SpeechQueue(), follow = vi.fn();
+  queue.say("A pending preview.");
+  queue.whenQuiet(follow);
+  queue.dispose();
+  await vi.advanceTimersByTimeAsync(500);
+  expect(follow).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
 
 it("starts the replacement reply even when cancelled audio decoding is still pending", async () => {
   vi.useFakeTimers();
@@ -107,9 +170,8 @@ it("starts the replacement reply even when cancelled audio decoding is still pen
   pending.forEach(resolve => resolve({ duration: 1 }));
   await vi.advanceTimersByTimeAsync(300);
   expect(starts).toHaveLength(1);
-  queue.stop();
+  queue.dispose();
 });
-
 
 it("schedules sentences contiguously in their original order despite reversed generation", async () => {
   vi.useFakeTimers();
@@ -128,5 +190,21 @@ it("schedules sentences contiguously in their original order despite reversed ge
   await vi.advanceTimersByTimeAsync(1500);
   expect(starts).toEqual([0.18, 1.18]);
   expect(captions).toEqual(["First sentence.", "Second sentence."]);
+  queue.dispose();
+});
+
+it("speaks a repeated sentence only once per user turn and allows an explicit new turn", async () => {
+  vi.useFakeTimers();
+  const starts = audioEnvironment();
+  vi.stubGlobal("fetch", async (_url: string, options: { body: string }) => response(options.body));
+  const queue = new SpeechQueue();
+  queue.say("The task is ready.");
+  queue.say("The task is ready.");
+  await vi.advanceTimersByTimeAsync(100);
+  expect(starts).toHaveLength(1);
+  queue.beginTurn();
+  queue.say("The task is ready.");
+  await vi.advanceTimersByTimeAsync(100);
+  expect(starts).toHaveLength(2);
   queue.stop();
 });

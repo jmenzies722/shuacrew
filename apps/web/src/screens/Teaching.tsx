@@ -8,6 +8,9 @@ import { useCompanion } from "../lib/companion";
 import { Markdown } from "../components/Markdown";
 import { isMac } from "../lib/native";
 import "./teaching.css";
+import { ArchitectureCard } from "../components/ArchitectureCard";
+import { parseVisual } from "../lib/visual";
+import type { ArchitectureLesson } from "../lib/notch-lesson";
 const id = () => `source_${crypto.randomUUID()}`;
 const baseSource = (title: string, text: string): TeachingSource => ({
   id: id(),
@@ -19,6 +22,17 @@ const baseSource = (title: string, text: string): TeachingSource => ({
   capture: null,
 });
 export function Teaching({ compact = false }: { compact?: boolean }) {
+  const [pinned, setPinned] = useState<ArchitectureLesson | null>(null);
+  useEffect(() => {
+    const read = () => {
+      try { const card = parseVisual(localStorage.getItem("shuacrew.pinned-lesson") ?? "null"); setPinned(card?.type === "architecture" ? card : null); }
+      catch { setPinned(null); }
+    };
+    read();
+    window.addEventListener("storage", read);
+    window.addEventListener("shuacrew:pinned-lesson", read);
+    return () => { window.removeEventListener("storage", read); window.removeEventListener("shuacrew:pinned-lesson", read); };
+  }, []);
   const state = useTeaching(),
     doc = state.document,
     prefs = useCompanion(),
@@ -179,6 +193,7 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
   const ideas = ["Explain how HTTPS keeps a connection private", "Walk me through recursion with a diagram", "How does a database index make queries fast?", "Teach me system design for a solo founder"];
   return (
     <section className={`teaching ${compact ? "is-compact" : ""} ${home ? "is-home" : ""}`} aria-label="Visual teaching">
+      {pinned && <ArchitectureCard key={JSON.stringify(pinned)} lesson={pinned} onClose={() => { localStorage.removeItem("shuacrew.pinned-lesson"); setPinned(null); window.dispatchEvent(new Event("shuacrew:pinned-lesson")); }} />}
       {home && <div className="teach-hero"><span className="teach-hero-mark" aria-hidden="true" /><small>Visual teaching</small><h1>What do you want to understand?</h1>
         <p>Ask anything. You get a clear explanation with diagrams you can explore, then practice it until it sticks.</p></div>}
       {!home && <header className="teaching-header">

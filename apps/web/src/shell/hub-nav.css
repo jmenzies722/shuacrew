@@ -87,7 +87,7 @@
 @media (prefers-reduced-motion: reduce) { .side, .side-dot.is-live { animation: none; } }
 
 /* ── Sidebar, Kiro Crew style: a floating rounded panel, plain line icons, one violet selection. ── */
-.side { width: 244px; margin: var(--gutter-top) 0 var(--gutter) var(--gutter); padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
+.side { width: 264px; margin: var(--gutter-top) 0 var(--gutter) var(--gutter); padding: 12px 10px 10px; border: 0; border-radius: 16px; position: relative;
   background: var(--panel); box-shadow: 0 0 0 1px var(--line-strong); }
 .side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
 /* The ShuaCrew mark (same as the app icon): a lit core with three crew on an orbit, drawn in the theme's accent. */
@@ -171,3 +171,9 @@
 /* The page list scrolls (no bar): fade its bottom edge so a row half under the footer reads as "more below", not as a
    rendering glitch, and leave room so the last row can scroll fully clear of the fade. */
 .side-scroll { padding-bottom: 28px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); }
+
+/* Session rows read as titles, not stubs: up to two lines, the dot and time aligned to the first. */
+.side-recent-list .side-run { align-items: flex-start; height: auto; min-height: 30px; padding: 6px 10px; }
+.side-recent-list .side-run span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; line-height: 1.35; }
+.side-recent-list .side-dot { margin-top: 5px; }
+.side-recent-list .side-run small { margin-top: 1px; }

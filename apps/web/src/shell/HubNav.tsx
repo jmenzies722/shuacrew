@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { since } from "@shuacrew/ui";
-import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, LayoutDashboard, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
+import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
 import { isTopLevelWork } from "../lib/crew";
@@ -15,7 +15,7 @@ import { LogoMark } from "../lib/motion";
 import "./hub-nav.css";
 
 const PAGE_ICON: Record<string, typeof House> = {
-  "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": LayoutDashboard, "/studio": Clapperboard,
+  "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": Layers3, "/studio": Clapperboard,
   "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
   "/library": Library, "/memory": Brain, "/learn": GraduationCap, "/teach": Presentation, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
 };

@@ -41,7 +41,9 @@ export const sparkHooks: {
 } = { confirmRun: null, confirmDelete: null, onRanOutput: null, onMailOutput: null, onMacOutput: null };
 
 /** Every action, logged with whether it worked. */
-export function perform(a: Action | (Act & { color?: string }), opts: { confirmed?: boolean } = {}): Promise<{ ok: boolean; message: string; run?: string }> {
+export function perform(a: Action | (Act & { color?: string }), opts: { confirmed?: boolean; requestId?: string; active?: () => boolean } = {}): Promise<{ ok: boolean; message: string; run?: string }> {
+  if (opts.active && !opts.active()) return Promise.resolve({ ok: false, message: "Canceled before execution" });
+  if (opts.requestId) return performOnce(a, opts);
   const isAct = ["press", "click", "type", "key", "scroll", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
   // Deleting can't be undone: it waits for your yes, whatever the control mode — and with nobody to ask, it doesn't.
   if (!isAct && !opts.confirmed && isDestructive(a as Action)) return (async () => {
@@ -49,12 +51,36 @@ export function perform(a: Action | (Act & { color?: string }), opts: { confirme
     const label = describeAction(a as Action) + (title ? ` — “${title}”` : "");
     const yes = sparkHooks.confirmDelete ? await sparkHooks.confirmDelete(label) : false;
     if (!yes) { logAction({ label, ok: true, message: "You said no" }); return { ok: true, message: a.type.startsWith("crew_") ? "Okay, I didn’t do that." : /^Send/.test(label) ? "Okay, I didn't send it." : /^Call/.test(label) ? "Okay, no call." : "Okay, I kept it. Nothing was deleted." }; }
-    const r = await performNow(a); logAction({ label, ok: r.ok, message: r.message }); return r;
+    if (opts.active && !opts.active()) return { ok: false, message: "Canceled before execution" };
+    const r = await performNow(a, opts.active); logAction({ label, ok: r.ok, message: r.message }); return r;
   })();
-  return performNow(a).then((r) => { logAction({ label: isAct ? describeAct(a as Act) : describeAction(a as Action), ok: r.ok, message: r.message }); return r; });
+  return performNow(a, opts.active).then((r) => { logAction({ label: isAct ? describeAct(a as Act) : describeAction(a as Action), ok: r.ok, message: r.message }); return r; });
 }
+type ActionResult = { ok: boolean; message: string; run?: string };
+const inFlight = new Map<string, Promise<ActionResult>>();
+function performOnce(a: Action | (Act & { color?: string }), opts: { confirmed?: boolean; requestId?: string; active?: () => boolean }): Promise<ActionResult> {
+  const id = opts.requestId!;
+  const existing = inFlight.get(id); if (existing) return existing;
+  const work = (async () => {
+    const owner = crypto.randomUUID();
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(a)));
+    const fingerprint = Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, "0")).join("");
+    if (opts.active && !opts.active()) return { ok: false, message: "Canceled before execution" };
+    const receipt = await api<{ claimed: boolean; conflict: boolean; result: ActionResult | null }>("/api/companion/actions/claim", { body: { id, fingerprint, owner } });
+    if (receipt.conflict) return { ok: false, message: "This request changed after it was reserved; nothing was repeated." };
+    if (!receipt.claimed) return receipt.result ?? { ok: false, message: "This action was already dispatched. Its outcome is not confirmed; check the result before trying again." };
+    let result: ActionResult;
+    try { result = await perform(a, { confirmed: opts.confirmed, active: opts.active }); }
+    catch (error) { result = { ok: false, message: `Action outcome unconfirmed: ${(error as Error).message}` }; }
+    await api("/api/companion/actions/finish", { body: { id, owner, result } }).catch(() => {});
+    return result;
+  })().catch((error: Error) => ({ ok: false, message: `Action not dispatched: ${error.message}` })).finally(() => { inFlight.delete(id); });
+  inFlight.set(id, work); return work;
+}
+
 /** Mac actions go to the app (which checks them again); the rest happen right here. */
-export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok: boolean; message: string; run?: string }> {
+export function performNow(a: Action | (Act & { color?: string }), active: () => boolean = () => true): Promise<{ ok: boolean; message: string; run?: string }> {
+  if (!active()) return Promise.resolve({ ok: false, message: "Canceled before execution" });
   if (a.type.startsWith("crew_") && "ref" in a && !crewRef(a.ref, a.type === "crew_decide" ? "A" : "S"))
     return Promise.resolve({ ok: false, message: "That crew request is no longer listed. Ask about the session again." });
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
@@ -77,6 +103,7 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
       const yes = sparkHooks.confirmRun ? await sparkHooks.confirmRun(a.command, verdict.verdict === "ask" ? verdict.reason : "") : false;
       if (!yes) return { ok: false, message: "Not run" };
     }
+    if (!active()) return { ok: false, message: "Canceled before execution" };
     const r = await new Promise<{ ok: boolean; message: string; output?: string }>((resolve) => {
       if (!native()) { resolve({ ok: false, message: "Only in the Mac app" }); return; }
       const id = crypto.randomUUID();
@@ -94,7 +121,7 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
     // never opened ("stilll not launching settings").
     const pane = PANES.find((p) => p.key === a.pane);
     if (!pane) return Promise.resolve({ ok: false, message: "I don't know that Settings page" });
-    return performNow({ ...a, url: paneURL(pane) } as Action).then((r) => ({ ...r, message: r.ok ? `Opened ${pane.name}` : r.message }));
+    return performNow({ ...a, url: paneURL(pane) } as Action, active).then((r) => ({ ...r, message: r.ok ? `Opened ${pane.name}` : r.message }));
   }
   if (a.type === "mac") return new Promise((resolve) => {
     // Your files, calendar, reminders, notes, contacts and Mac status, read on this Mac; the result goes back to Spark.
@@ -123,7 +150,7 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
     post({ type: "buddyDo", id, action: a });
   });
   if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: describeAction(a) }); }
+  if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: "Requested navigation" }); }
   if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }
@@ -131,13 +158,13 @@ export function performNow(a: Action | (Act & { color?: string })): Promise<{ ok
   // Running the crew by voice: refs from CREW NOW → the real approval or session.
   if (a.type === "crew_decide") return decideApproval(crewRef(a.ref), a.allow, { comment: "by voice, through Spark" }).then(() => ({ ok: true, message: a.allow ? "Approved" : "Declined" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_stop") return cancelRun(crewRef(a.ref)).then(() => ({ ok: true, message: "Stopped" }), (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "crew_open") { post({ type: "buddyOpen", path: `/sessions/${crewRef(a.ref)}` }); return Promise.resolve({ ok: true, message: "Opened it" }); }
+  if (a.type === "crew_open") { post({ type: "buddyOpen", path: `/sessions/${crewRef(a.ref)}` }); return Promise.resolve({ ok: true, message: "Requested opening that session" }); }
   if (a.type === "crew_message") return api(`/api/runs/${crewRef(a.ref)}/followup`, { body: { text: a.text } }).then(() => ({ ok: true, message: "Told them" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_delete") return removeSession(crewRef(a.ref), crewStatus(crewRef(a.ref))).then(() => ({ ok: true, message: "Deleted it" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_review" && crewStatus(crewRef(a.ref)) !== "reviewing")
     return Promise.resolve({ ok: false, message: "That session is not waiting for review." });
   if (a.type === "crew_review") return api(`/api/runs/${crewRef(a.ref)}/review`, { body: { approve: a.approve, ...(a.lesson ? { lesson: a.lesson } : {}) } }).then(() => ({ ok: true, message: a.approve ? "Queued for merge" : a.lesson ? "Rejected it, and noted why" : "Rejected it" }), (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "crew_pr") return api<{ url?: string }>(`/api/runs/${crewRef(a.ref)}/pr`, { body: {} }).then((r) => ({ ok: true, message: r?.url ? `PR opened: ${r.url}` : "Pushed and opened a PR" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_pr") return api<{ url?: string }>(`/api/runs/${crewRef(a.ref)}/pr`, { body: {} }).then((r) => ({ ok: true, message: r?.url ? `PR opened: ${r.url}` : "The PR request returned without a URL; creation is unverified" }), (e: Error) => ({ ok: false, message: e.message }));
   // A hand-off is a mission: an end-to-end brief, and Spark stays with it until it's finished (see lib/missions).
   if (a.type === "crew") {
     const persist = getCompanion().persist;

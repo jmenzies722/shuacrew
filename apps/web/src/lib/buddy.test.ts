@@ -51,7 +51,7 @@ it("reads sketches, diagrams, OCR and design questions", () => {
   expect(isDesign("open notes")).toBe(false);
   const ocr = screenText([{ t: "Total $1,204.50", x: 0.6, y: 0.3, w: 0.1, h: 0.02 }, { t: "Revenue", x: 0.2, y: 0.3, w: 0.1, h: 0.02 }]);
   expect(ocr).toContain("T1 Revenue @0.200,0.300\nT0 Total $1,204.50 @0.600,0.300"); // reading order, ids stay the OCR index
-  expect(buddyPrompt("design a url shortener", { width: 10, height: 10 })).toContain("```mermaid");
+  expect(buddyPrompt("design a url shortener", { width: 10, height: 10 })).toContain("CONCEPT STUDIO architecture visual");
   expect(buddyPrompt("what's going on", null, undefined, "CREW NOW — live")).toContain("CREW NOW");
   expect(nextSentences("Short summary here.\n---\n## Requirements\nlots", 0, true).chunks).toEqual(["Short summary here."]);
 });
@@ -358,4 +358,10 @@ describe("what they circled, snapped to the real thing", () => {
     const text = pointingText({ gesture: { kind: "circle", x: 0, y: 0, w: 1, h: 1 }, elements: [{ name: "Save", role: "button", x: 0.5, y: 0.5, w: 0.1, h: 0.05 }] }, [], { width: 1000, height: 1000 });
     expect(text).toContain("inside it: “Save” (#1)");
   });
+});
+
+it("captures the screen for plain show-me requests, including follow-ups", () => {
+  for (const q of ["Show me Settings", "Show me the export option", "Can you show me?", "Show me again"]) {
+    expect(needsScreen(q), q).toBe(true);
+  }
 });
