@@ -145,6 +145,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         NotificationCenter.default.addObserver(self, selector: #selector(displaysChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appActivity), name: NSApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appActivity), name: NSApplication.didResignActiveNotification, object: nil)
+        // You walked away with ShuaCrew in front: after 2 min without input its decorative motion rests too, and comes
+        // back with your next move. (Measured: ~6% CPU idling with the window open and nobody there.)
+        let away = Timer(timeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.appActivity() } }
+        away.tolerance = 3
+        RunLoop.main.add(away, forMode: .common)
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .keyDown, .scrollWheel, .leftMouseDown], handler: { [weak self] _ in Task { @MainActor in self?.backFromAway() } }) { awayMonitor = m }
         // Away and back (locked, or the displays slept): Spark can catch you up when you return.
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(wentAway), name: .init("com.apple.screenIsLocked"), object: nil)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(cameBack), name: .init("com.apple.screenIsUnlocked"), object: nil)
@@ -165,9 +171,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// Tell the pages whether ShuaCrew is the app in front: decorative motion (blinks, orbits, the aurora) rests while
     /// you're elsewhere. The notch panel never takes focus, so it can't work this out on its own.
     @objc private func appActivity() {
-        let js = "window.__appActive && window.__appActive(\(NSApp.isActive))"
+        let present = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!) < 120
+        let active = NSApp.isActive && present
+        // Sent every check, not only on change: a page that reloaded (new build, relaunch) must hear the current state
+        // too. The page only touches the DOM when it differs, so a repeat costs nothing.
+        lastReportedActive = active
+        let js = "window.__appActive && window.__appActive(\(active))"
         for w in [web, appWeb].compactMap({ $0 }) { w.evaluateJavaScript(js) }
     }
+    private var lastReportedActive: Bool?
+    private var awayMonitor: Any?
+    /// The first input after resting: motion resumes at once, not on the next 10 s check.
+    private func backFromAway() { if lastReportedActive == false, NSApp.isActive { appActivity() } }
 
     // MARK: showing
 

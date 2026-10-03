@@ -18,7 +18,11 @@ applyTheme(useLive.getState().theme);
 // The Mac app says when ShuaCrew itself is active (the notch panel never takes focus, so it can't tell on its own).
 let appActive: boolean | null = null;
 (window as unknown as { __appActive: (on: boolean) => void }).__appActive = (on) => { appActive = on; idle(); };
-const idle = () => { if ((appActive ?? document.hasFocus()) && document.visibilityState === "visible") delete document.documentElement.dataset.idle; else document.documentElement.dataset.idle = ""; };
+const idle = () => {
+  const rest = !((appActive ?? document.hasFocus()) && document.visibilityState === "visible"), root = document.documentElement;
+  if (rest === (root.dataset.idle !== undefined)) return; // unchanged: no attribute write, no style recalc
+  if (rest) root.dataset.idle = ""; else delete root.dataset.idle;
+};
 window.addEventListener("focus", idle); window.addEventListener("blur", idle); document.addEventListener("visibilitychange", idle); idle();
 // Resolve the preferred landing page once. Explicit links keep their destination.
 if (location.pathname === "/" && !location.search && !location.hash) {

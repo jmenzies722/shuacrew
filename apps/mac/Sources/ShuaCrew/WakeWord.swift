@@ -38,7 +38,12 @@ final class WakeWord {
         recognizer = r
         let input = engine.inputNode, format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in self?.request?.append(buffer) }
+        // Only sound reaches the recognizer (plus the half second before it, so "Hey" isn't clipped): it used to
+        // recognise every 43 ms of silence, all day, for as long as the wake word was on.
+        let gate = WakeAudioGate()
+        input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+            for b in gate.admit(buffer) { self?.request?.append(b) }
+        }
         engine.prepare()
         do { try engine.start() } catch { input.removeTap(onBus: 0); return "Couldn't open the microphone." }
         running = true
@@ -74,5 +79,43 @@ final class WakeWord {
         cooldownUntil = Date().addingTimeInterval(4)
         begin() // forget what was said so it doesn't fire twice
         onWake?()
+    }
+}
+
+/// The audio-thread side of the gate: levels each tap buffer, keeps ~0.5 s from before the sound, and decides what
+/// the recognizer gets. Only ever touched from the tap's own thread.
+final class WakeAudioGate: @unchecked Sendable {
+    private var gate = VoiceGate()
+    private var preroll: [AVAudioPCMBuffer] = []
+    private static let prerollSeconds = 0.5
+
+    func admit(_ buffer: AVAudioPCMBuffer) -> [AVAudioPCMBuffer] {
+        let seconds = Double(buffer.frameLength) / max(1, buffer.format.sampleRate)
+        let step = gate.step(rms: Self.rms(buffer), seconds: seconds)
+        if step.pass {
+            let out = step.opened ? preroll + [buffer] : [buffer]
+            preroll.removeAll(keepingCapacity: true)
+            return out
+        }
+        // Kept as a copy: the engine may reuse a tap buffer once the callback returns.
+        if let copy = Self.copy(buffer) { preroll.append(copy) }
+        let keep = Int((Self.prerollSeconds / max(seconds, 0.001)).rounded(.up))
+        if preroll.count > keep { preroll.removeFirst(preroll.count - keep) }
+        return []
+    }
+
+    private static func rms(_ b: AVAudioPCMBuffer) -> Float {
+        guard let ch = b.floatChannelData, b.frameLength > 0 else { return 0 }
+        var sum: Float = 0
+        let n = Int(b.frameLength), p = ch[0]
+        for i in 0..<n { sum += p[i] * p[i] }
+        return (sum / Float(n)).squareRoot()
+    }
+
+    private static func copy(_ b: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let out = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: b.frameLength), let src = b.floatChannelData, let dst = out.floatChannelData else { return nil }
+        out.frameLength = b.frameLength
+        for c in 0..<Int(b.format.channelCount) { dst[c].update(from: src[c], count: Int(b.frameLength)) }
+        return out
     }
 }

@@ -36,6 +36,10 @@ final class CursorBuddy: NSObject {
     static let idleScale: CGFloat = 0.9, activeScale: CGFloat = 1.12
     private var presenceScale: CGFloat = CursorBuddy.idleScale
     private var link: CADisplayLink?
+    /// Asleep: the display link is paused because nothing would change on screen. Measured idle cost before this: ~12% CPU,
+    /// 15% of the main thread spent committing an unchanged frame up to 120 times a second. Any input wakes it.
+    private var asleep = false, quietFrames = 0, lastMouse = CGPoint(x: -1, y: -1)
+    private var mouseMonitors: [Any] = []
     private var position = CGPoint.zero, lastTick: CFTimeInterval = 0, placed = false
     private var awayUntil: CFTimeInterval = 0
     /// Live level (0–1): your mic while listening, Spark's voice while speaking. Smoothed; decays if it stops coming.
@@ -80,15 +84,30 @@ final class CursorBuddy: NSObject {
         let l = root.displayLink(target: self, selector: #selector(tick(_:)))
         l.add(to: .main, forMode: .common)
         link = l
+        asleep = false; quietFrames = 0
+        let moved: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: moved, handler: { [weak self] _ in self?.wakeUp() }) { mouseMonitors.append(g) }
+        if let m = NSEvent.addLocalMonitorForEvents(matching: moved, handler: { [weak self] e in self?.wakeUp(); return e }) { mouseMonitors.append(m) }
+    }
+
+    /// Back to 120 Hz the moment anything could change what's drawn.
+    private func wakeUp() {
+        quietFrames = 0
+        guard asleep, let link else { return }
+        asleep = false; lastTick = 0
+        link.isPaused = false
     }
 
     func stop() {
+        for m in mouseMonitors { NSEvent.removeMonitor(m) }
+        mouseMonitors = []
         link?.invalidate(); link = nil
         panel?.orderOut(nil); panel = nil
     }
 
     func set(_ new: State) {
         guard new != state else { return }
+        wakeUp()
         state = new
         sweep.removeAnimation(forKey: "spin")
         CATransaction.begin(); CATransaction.setAnimationDuration(reducedMotion ? 0 : 0.18)
@@ -105,12 +124,13 @@ final class CursorBuddy: NSObject {
     }
 
     /// The live level while listening (your mic) or speaking (Spark's voice), 0–1, ~20 times a second.
-    func level(_ v: Double) { levelTarget = min(1, max(0, v)); levelAt = CACurrentMediaTime() }
+    func level(_ v: Double) { levelTarget = min(1, max(0, v)); levelAt = CACurrentMediaTime(); if v > 0.001 { wakeUp() } }
 
     /// Start recording what you draw with your cursor (fn is down).
     /// `visible: false` records without drawing (hands-free voice: people move the mouse while talking, so only a
     /// deliberate loop counts, and it's shown after — see flash).
     func beginInk(visible: Bool = true) {
+        wakeUp()
         guard panel != nil else { return }
         inking = true; inked = []; injected = false; inkVisible = visible
         for l in [ink, halo] { l.removeAllAnimations(); l.opacity = 1; l.path = nil }
@@ -131,6 +151,7 @@ final class CursorBuddy: NSObject {
 
     /// Box exactly these (global rects): drawn on, in place of the rough ink, then fading after a while.
     func showPicks(_ rects: [CGRect], add: Bool = false, hold: CFTimeInterval = 6) {
+        wakeUp()
         guard let panel, !rects.isEmpty else { return }
         let path = add ? (picks.path.map { CGMutablePath() .appending($0) } ?? CGMutablePath()) : CGMutablePath()
         for r in rects {
@@ -151,6 +172,7 @@ final class CursorBuddy: NSObject {
 
     /// Self-test: points as if drawn with the cursor (global), without touching the real mouse.
     func injectInk(_ points: [CGPoint]) {
+        wakeUp()
         guard let panel, inking else { return }
         inked = points; injected = true
         let path = CGMutablePath()
@@ -174,7 +196,7 @@ final class CursorBuddy: NSObject {
     /// e.g. the marks are on another display — and the overlay draws its own tip instead.
     func take(_ plan: CursorMotion.PenTour, start: CFTimeInterval) -> Bool {
         guard let panel, placed, panel.frame.contains(plan.end) else { return false }
-        tour = (plan, start, NSEvent.mouseLocation); tourDone = 0; awayUntil = 0; wake = []
+        tour = (plan, start, NSEvent.mouseLocation); tourDone = 0; awayUntil = 0; wake = []; wakeUp()
         CATransaction.begin(); CATransaction.setDisableActions(true); body.opacity = 1; CATransaction.commit()
         return true
     }
@@ -185,7 +207,7 @@ final class CursorBuddy: NSObject {
         guard tour != nil, let panel else { return }
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { hideBubble(); return }
-        bubbleWords = clean.split(separator: " ").map(String.init); bubbleShown = 0; bubbleAt = CACurrentMediaTime()
+        bubbleWords = clean.split(separator: " ").map(String.init); bubbleShown = 0; bubbleAt = CACurrentMediaTime(); wakeUp()
         let size = attributed(shown: bubbleWords.count).boundingRect(with: CGSize(width: 250, height: 400), options: [.usesLineFragmentOrigin, .usesFontLeading]).integral.size
         CATransaction.begin(); CATransaction.setDisableActions(true)
         bubbleText.frame = CGRect(x: 12, y: 8, width: size.width, height: size.height)
@@ -239,7 +261,7 @@ final class CursorBuddy: NSObject {
     func launch(for seconds: CFTimeInterval = 1.2) -> NSPoint? {
         guard let panel, placed else { return nil }
         let global = NSPoint(x: panel.frame.minX + position.x, y: panel.frame.minY + position.y)
-        awayUntil = CACurrentMediaTime() + seconds
+        awayUntil = CACurrentMediaTime() + seconds; wakeUp()
         CATransaction.begin(); CATransaction.setDisableActions(true); body.opacity = 0; CATransaction.commit()
         return global
     }
@@ -340,6 +362,13 @@ final class CursorBuddy: NSObject {
             awayUntil = 0
             CATransaction.begin(); CATransaction.setAnimationDuration(reducedMotion ? 0 : 0.18); body.opacity = 1; CATransaction.commit()
         }
+        // Settled beside a still pointer with nothing live (no voice level, no ink, no bubble, no pending return):
+        // a few quiet frames in a row and the display link sleeps until the mouse or Spark gives it something to do.
+        let still = cursor == lastMouse; lastMouse = cursor
+        let quiet = still && !inking && bubble.opacity == 0 && awayUntil == 0 && state != .listening && levelTarget == 0 && levelNow < 0.002
+            && hypot(target.x - position.x, target.y - position.y) < 0.25 && abs(desiredScale - presenceScale) < 0.002
+        quietFrames = quiet ? quietFrames + 1 : 0
+        if quietFrames >= 24, !asleep { asleep = true; link.isPaused = true }
     }
 
     /// Turn the arrow toward `angle`: smoothly, the short way round (at once with Reduce Motion).

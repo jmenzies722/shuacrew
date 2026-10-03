@@ -3,6 +3,9 @@ import { createContext, useContext, useId, type CSSProperties } from "react";
 import type { CompanionPreferences, SparkCharacterId } from "../lib/companion";
 import { RobotCharacter } from "./RobotCharacter";
 import "./spark-character.css";
+import { startBlinking } from "../lib/blink";
+
+if (typeof window !== "undefined") startBlinking();
 
 export type Mood = "idle" | "thinking" | "speaking" | "happy" | "concerned" | "sleepy";
 
