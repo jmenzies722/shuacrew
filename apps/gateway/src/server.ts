@@ -37,6 +37,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { LiveVoice } from "./live.js";
 import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
+import { assistantMustAsk } from "./assistant-policy.js";
 import { ClaudeRuntime, type Runtime, type RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Heartbeats, Scheduler, TaskRunner, Webhooks } from "./autonomy.js";
@@ -1008,7 +1009,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Body: { tool?: string; input?: unknown; workspace?: string } }>("/api/policy/explain", async (request) => {
     const b = request.body ?? {};
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
-    return decide(call, defaultContext(b.workspace ?? process.cwd()), [{ name: "global", rules: defaultRules() }]);
+    const decision = decide(call, defaultContext(b.workspace ?? process.cwd()), [{ name: "global", rules: defaultRules() }]);
+    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision) };
   });
 
   app.get("/api/audit/verify", async () => store.verify());

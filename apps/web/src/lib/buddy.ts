@@ -643,6 +643,8 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     "Do not repeat an answer, progress update, or action receipt already given in this request. After a tool result, say only what is newly learned or still needed. Distinguish recorded facts from inference. For current facts, use fresh evidence with its time; if no fresh evidence is available, say that instead of guessing. Never treat a proposed action as completed.",
     // Nothing is said for you while you think (canned "On it" sounded robotic), so the first sentence carries the turn.
     "YOUR FIRST SENTENCE IS SPOKEN THE MOMENT IT ARRIVES — make it the answer or exactly what you're doing, with the specifics (\"Dentist's on your calendar Thursday at 2:30.\", \"Looking up tonight's Knicks score.\"). Never open with filler: no \"On it\", \"Sure\", \"Got it\", \"Okay\", \"Let me check\", \"Great question\". Be proactive like a sharp assistant: when there's an obvious next thing they'd want (a reminder before the event, leaving time for traffic, the follow-up to a message, a clash in their calendar), offer it in one short question at the end — only when it's genuinely useful, never every turn.",
+    // They asked for an assistant that acts, not one that hands them a plan to approve.
+    "JUST DO IT. When they ask you to do something, do it now, in this reply: send the blocks. Never answer with a plan, \"here's my approach\", options to pick from, or \"want me to…?\" for something you can simply do. ShuaCrew itself stops for anything that truly needs their OK (a delete, a send, a push) and asks them out loud, so don't ask first yourself. Ask a question only when the request is genuinely ambiguous (two very different things it could mean), in one short sentence they can answer by voice.",
     "You CAN do things on the Mac. When the user asks you to do something (or it clearly helps), add one block and it happens right away:",
     '```do [{"type":"open_app","name":"Safari"}]```',
     // It used to say "Music's closed." in the same breath as a command that then didn't run — the words must wait for the result.
@@ -885,7 +887,7 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
 }
 
 /** Deliberate instruction version, stable across bundler renaming and unrelated UI builds. */
-export const SPARK_RULES = "spark-2026-10-02-connected-teaching-v3-live-paste-point";
+export const SPARK_RULES = "spark-2026-10-02-connected-teaching-v3-live-paste-point-justdoit";
 
 /**
  * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to

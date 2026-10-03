@@ -95,11 +95,12 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   if (a.type === "playbook") return api<{ id: string }>("/api/plays", { body: { playbook: a.playbook, inputs: a.idea ? { idea: a.idea } : {}, ...(a.venture ? { venture: a.venture } : {}) } })
     .then((p) => { post({ type: "buddyOpen", path: `/plays/${p.id}` }); return { ok: true, message: `${a.playbook.replace(/-/g, " ")} started` }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "run") return (async () => {
-    // Your ShuaCrew policy decides first: denied never runs; "ask" (or Ask-each-step mode) waits for your yes.
-    const verdict = await api<{ verdict: "allow" | "deny" | "ask"; reason: string; rule: string }>("/api/policy/explain", { body: { tool: "Bash", input: { command: a.command } } }).catch(() => ({ verdict: "ask" as const, reason: "couldn't check the policy", rule: "" }));
+    // Your ShuaCrew policy decides first: denied never runs. In "Just do it" (auto) Spark only stops for what it must
+    // ask you about (a push, a send, a delete: assistantMustAsk) and asks out loud; "Ask each step" asks every time.
+    const verdict = await api<{ verdict: "allow" | "deny" | "ask"; reason: string; rule: string; assistantMustAsk?: boolean }>("/api/policy/explain", { body: { tool: "Bash", input: { command: a.command } } }).catch(() => ({ verdict: "ask" as const, reason: "couldn't check the policy", rule: "", assistantMustAsk: true }));
     if (verdict.verdict === "deny") return { ok: false, message: `Blocked by your policy: ${verdict.reason}` };
-    let mode = "ask"; try { mode = JSON.parse(localStorage.getItem("shuacrew.companion") ?? "{}").control ?? "ask"; } catch { /* ignore */ }
-    if (verdict.verdict === "ask" || mode !== "auto") {
+    let mode = "auto"; try { mode = JSON.parse(localStorage.getItem("shuacrew.companion") ?? "{}").control ?? "auto"; } catch { /* ignore */ }
+    if (mode !== "auto" || (verdict.assistantMustAsk ?? verdict.verdict === "ask")) {
       const yes = sparkHooks.confirmRun ? await sparkHooks.confirmRun(a.command, verdict.verdict === "ask" ? verdict.reason : "") : false;
       if (!yes) return { ok: false, message: "Not run" };
     }

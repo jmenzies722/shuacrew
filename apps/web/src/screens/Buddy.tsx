@@ -662,6 +662,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [news] = useState(() => new QuietAnnouncements(() => newsBlocked.current || speech.current.busy, text => { speech.current.beginTurn(); speech.current.say(text); }));
   useEffect(() => () => news.stop(), [news]);
   useEffect(() => { speech.current.onError = message => setError(message); return () => { speech.current.onError = undefined; }; }, []);
+  // Self-tests log every spoken line (and every repeat dropped) to ~/.shuacrew/spark-selftest.log, so a double shows.
+  useEffect(() => { speech.current.onSay = (text, repeat) => { if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: !repeat, message: `${repeat ? "SAY-REPEAT-DROPPED" : "SAY"} ${location.pathname}: ${text.slice(0, 160)}` }); }; return () => { speech.current.onSay = undefined; }; }, []);
   const announce = (text: string, kind: "event" | "reminder" | "welcome" | "timer") => {
     setHeads({ text, kind }); setTimeout(() => setHeads((h) => (h?.text === text ? null : h)), 15_000);
     if (prefs.desktopPlacement !== "notch") setBubble({ text, path: kind === "welcome" ? "/" : "/today" });

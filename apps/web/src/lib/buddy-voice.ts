@@ -46,6 +46,8 @@ export class SpeechQueue {
   private idleTimer?: ReturnType<typeof setTimeout>;
   onSpeaking?: (speaking: boolean) => void;
   onError?: (message: string) => void;
+  /** Every line asked to be spoken, and whether it was dropped as a repeat (self-tests log this to catch doubles). */
+  onSay?: (text: string, repeat: boolean) => void;
   /** Each sentence the moment its sound starts (captions follow the voice, not the text stream); null when Spark stops. */
   onCaption?: (line: CaptionLine | null) => void;
   private captionOf(line: Line): CaptionLine { return { key: line.key, text: line.text, speed: line.speed, ...(line.narration ? { narration: line.narration } : {}), ...(line.done && !line.failed ? { durationMs: Math.round(line.dur * 1000) } : {}) }; }
@@ -85,7 +87,8 @@ export class SpeechQueue {
     if ((!v.on && !this.audition) || !text.trim()) return;
     const identity = as?.narration ? JSON.stringify(as.narration) : "";
     const utterance = `${as?.voiceId ?? v.id}:${identity}:${text.trim().toLowerCase().replace(/\s+/g, " ")}`;
-    if (this.utterances.has(utterance)) return;
+    if (this.utterances.has(utterance)) { this.onSay?.(text, true); return; }
+    this.onSay?.(text, false);
     this.utterances.add(utterance);
     this.said = [...this.said.filter((x) => x.at > Date.now() - 30_000), { text, at: Date.now() }];
     this.lines.push({ key: ++lineKeys, text, voiceId: as?.voiceId ?? v.id, speed: as?.speed ?? v.speed, narration: as?.narration, buffers: [], done: false, failed: false, started: false, dur: 0 });

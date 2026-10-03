@@ -11,8 +11,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { agentEnv } from "@shuacrew/core";
+import { agentEnv, decide, defaultContext, defaultRules, normalise } from "@shuacrew/core";
 import { RpcPeer, findBinary } from "@shuacrew/runtimes";
+import { assistantMustAsk } from "./assistant-policy.js";
 import { TOOL_SERVER } from "./toolserver.js";
 
 interface Socket {
@@ -90,7 +91,7 @@ export function unsupportedClaims(spoken: string, sources: string): string[] {
  * speech; a miss lets an invented fact stand.
  */
 export function worthCorrecting(bad: string[], spoken: string): boolean {
-  // TODO(human): decide the policy. Today: any unsupported specific triggers a correction.
+  // Any unsupported specific (a time, a name, an amount) is worth it: an invented fact costs more than a few seconds.
   void spoken;
   return bad.length > 0;
 }
@@ -223,7 +224,7 @@ class LiveCall {
     if (process.env.SHUACREW_LIVE_DEBUG && !method.endsWith("/delta")) appendFileSync(path.join(this.dir, "debug.log"), `${new Date().toISOString()} ${method} ${JSON.stringify(p).slice(0, 600)}\n`);
     if (method === "thread/realtime/sdp") return this.onSdp?.(p.sdp);
     if (method === "thread/realtime/transcript/done" && p.text?.trim()) {
-      const role = p.role === "assistant" ? "assistant" : "user", text = String(p.text).trim();
+      const role: "assistant" | "user" = p.role === "assistant" ? "assistant" : "user", text = String(p.text).trim();
       this.said.push({ role, text, at: Date.now() });
       if (role === "user") this.heard = `${this.heard} ${text}`.slice(-1000);
       else this.checkTruth(text);
@@ -263,12 +264,16 @@ class LiveCall {
     return new Promise<boolean>((resolve) => {
       this.approvals.set(id, resolve);
       this.send({ type: "approval", id, kind, text: text.slice(0, 400), why: why.slice(0, 200) });
+      // Asked out loud too, so a yes or no by voice is enough (the page hears it in the captions).
+      const what = kind === "command" ? `run ${text.slice(0, 80)}` : kind === "files" ? "change some files" : text.slice(0, 120);
+      void this.peer?.request("thread/realtime/appendSpeech", { threadId: this.threadId, text: `Quick check before I go ahead: OK to ${what}? Just say yes or no.` }).catch(() => undefined);
       setTimeout(() => { if (this.approvals.delete(id)) resolve(false); }, 60_000).unref();
     });
   }
 
   /**
-   * Codex asks before it escalates: protected folders are a no, everything else is your call. ShuaCrew's own
+   * Codex asks before it escalates: protected folders are a no, denied commands are a no, and of the rest only what
+   * the assistant must ask about (assistantMustAsk) waits for your yes; everything else just happens. ShuaCrew's own
    * spark_do needs no second ask: Spark's executor confirms deletes in the notch itself.
    */
   private async asked(method: string, p: Json): Promise<Json> {
@@ -282,7 +287,14 @@ class LiveCall {
     const files = method === "item/fileChange/requestApproval" ? JSON.stringify(p).slice(0, 2000) : "";
     if (!command && !files) return { decision: "decline" };
     if (touchesProtected(command || files, this.options.protectedPaths())) return { decision: "decline" };
-    const allow = await this.askUser(command ? "command" : "files", (command || "Change files").replace(/^\/bin\/zsh -lc /, ""), String(p.reason ?? ""));
+    const shown = (command || "Change files").replace(/^\/bin\/zsh -lc /, "");
+    if (command) {
+      // Same rules as the rest of ShuaCrew: denied never runs, and only what the assistant must ask about waits for you.
+      const verdict = decide(normalise("Bash", { command: shown }), defaultContext(this.dir), [{ name: "global", rules: defaultRules() }]);
+      if (verdict.verdict === "deny") return { decision: "decline" };
+      if (!assistantMustAsk(verdict)) return { decision: "accept" };
+    }
+    const allow = await this.askUser(command ? "command" : "files", shown, String(p.reason ?? ""));
     return { decision: allow ? "accept" : "decline" };
   }
 

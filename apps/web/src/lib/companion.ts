@@ -13,8 +13,8 @@ export interface CompanionPreferences {
   hat: RobotHat; faceWear: RobotFaceWear; neck: RobotNeck;
   tone: "engineer" | "cheerful" | "chill" | "direct" | "coach"; length: "brief" | "detailed";
   hotkey: SparkHotkey; guide: "click" | "manual";
-  /** Mouse & keyboard: never, ask before each step, or autopilot (Esc stops). Voice: open-mic conversation. */
-  control: "off" | "ask" | "auto"; conversation: boolean; interrupt: boolean;
+  /** Mouse & keyboard: never, ask before each step, or just do it (Esc stops). Voice: open-mic conversation. */
+  control: "off" | "ask" | "auto"; /** 2 once "just do it" became the default (a saved "ask" from before moves to it once). */ autonomy?: 2; conversation: boolean; interrupt: boolean;
   /** How the mic takes a turn: "auto" (open mic, just talk) or "hold" (push-to-talk: hold the talk button or Space). */
   listen: "auto" | "hold";
   /** On the desktop: pinned above every app, or (default) a normal window that comes forward when called, talking or teaching. */
@@ -85,7 +85,8 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     personality: typeof v.personality === "string" ? v.personality.slice(0, 1000) : "",
     size: choice("size", ["s", "m", "l"], "m"), tone: choice("tone", ["engineer", "cheerful", "chill", "direct", "coach"], "engineer"), length: choice("length", ["brief", "detailed"], "brief"),
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
-    control: choice("control", ["off", "ask", "auto"], "ask"), conversation: v.conversation === true, interrupt: v.interrupt !== false,
+    // Spark just does things now. A saved "ask" from before that default moves to "auto" once; after that your choice holds.
+    control: v.autonomy === 2 ? choice("control", ["off", "ask", "auto"], "auto") : v.control === "off" ? "off" : "auto", autonomy: 2, conversation: v.conversation === true, interrupt: v.interrupt !== false,
     desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
     modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) && !v.modelChoice.startsWith("local:") ? v.modelChoice.slice(0,160) : "",
     // Spark always uses connected cloud models: the on-Mac models were slow (up to a minute a reply) and held ~16 GB of GPU.

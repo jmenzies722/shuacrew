@@ -71,3 +71,11 @@ describe("robot pieces", () => {
     expect(parseCompanion({ hat: "sombrero", trim: "red", material: "wood" })).toMatchObject({ hat: "none", trim: "auto", material: "glossy" });
   });
 });
+
+it("just does things by default: a saved Ask-each-step from before moves to auto once, then your choice holds", () => {
+  expect(parseCompanion({}).control).toBe("auto");
+  expect(parseCompanion({ control: "ask" }).control).toBe("auto");
+  expect(parseCompanion({ control: "off" }).control).toBe("off");
+  expect(parseCompanion({ control: "ask", autonomy: 2 }).control).toBe("ask");
+  expect(parseCompanion(parseCompanion({ control: "ask" })).autonomy).toBe(2);
+});
