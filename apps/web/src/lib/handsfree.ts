@@ -217,14 +217,54 @@ export class HandsFree {
   private spec: { talk: number; result: Promise<{ text: string; error?: string }> } | null = null;
 
   get active() { return !!this.stream; }
+  private captureEpoch = 0;
+  private starting?: Promise<void>;
+  private listening = false;
+  private recoveryTimer?: ReturnType<typeof setTimeout>;
+  private recover = () => {
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = setTimeout(() => {
+      if (!this.listening) return;
+      if (this.turn) { this.recover(); return; }
+      this.stop();
+      void this.start();
+    }, 400);
+  };
+  private disconnected = () => {
+    const interrupted = !!this.turn;
+    this.turn = null;
+    if (interrupted) this.onPartial?.("Microphone disconnected. Please repeat your last sentence.");
+    this.recover();
+  };
 
   async start() {
     if (this.stream) return;
+    if (this.starting) return this.starting;
+    this.listening = true;
+    navigator.mediaDevices.addEventListener?.("devicechange", this.recover);
+    if (typeof window !== "undefined") window.addEventListener("shuacrew:mic-route", this.recover);
+    const epoch = this.captureEpoch;
+    const pending = this.openMicrophone(epoch);
+    this.starting = pending;
+    try { await pending; } catch {
+      if (epoch === this.captureEpoch) {
+        this.releaseCapture();
+        this.onPhase?.("error", "Couldn't initialize microphone audio. Check your input device and try again.");
+      }
+    } finally { if (this.starting === pending) this.starting = undefined; }
+  }
+
+  private async openMicrophone(epoch: number) {
     this.onPhase?.("starting");
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }) });
-    } catch (e) { this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone."); return; }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }) });
+      if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); return; }
+      this.stream = stream;
+    } catch (e) { if (epoch !== this.captureEpoch) return; this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone. Check your selected input device and try again."); return; }
     this.ctx = new AudioContext();
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    if (epoch !== this.captureEpoch) return;
+    this.stream.getAudioTracks().forEach(track => track.addEventListener("ended", this.disconnected));
     const source = this.ctx.createMediaStreamSource(this.stream);
     this.node = this.ctx.createScriptProcessor(2048, 1, 1);
     // Push-to-talk keeps more: the mic opens the moment fn goes down, and the ~0.3 s before it counts as a hold is yours.
@@ -371,11 +411,23 @@ export class HandsFree {
   }
 
   stop() {
+    this.listening = false;
+    this.captureEpoch++; this.starting = undefined;
+    clearTimeout(this.recoveryTimer);
+    navigator.mediaDevices?.removeEventListener?.("devicechange", this.recover);
+    if (typeof window !== "undefined") window.removeEventListener("shuacrew:mic-route", this.recover);
+    this.stream?.getAudioTracks().forEach(track => track.removeEventListener("ended", this.disconnected));
     clearTimeout(this.tail); this.tail = undefined; this.holding = false; this.pressed = false;
+    this.releaseCapture();
+    this.turn = null; this.preroll = [];
+    this.onPhase?.("off");
+  }
+
+  private releaseCapture() {
+    this.stream?.getAudioTracks().forEach(track => track.removeEventListener("ended", this.disconnected));
     if (this.node) { this.node.onaudioprocess = null; this.node.disconnect(); }
     this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close().catch(() => {});
-    this.stream = undefined; this.ctx = undefined; this.node = undefined; this.turn = null; this.preroll = [];
-    this.onPhase?.("off");
+    this.stream = undefined; this.ctx = undefined; this.node = undefined;
   }
 }

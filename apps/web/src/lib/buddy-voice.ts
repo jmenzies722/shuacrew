@@ -45,6 +45,7 @@ export class SpeechQueue {
   onCaption?: (line: CaptionLine | null) => void;
   private captionOf(line: Line): CaptionLine { return { key: line.key, text: line.text, speed: line.speed, ...(line.done && !line.failed ? { durationMs: Math.round(line.dur * 1000) } : {}) }; }
   private captionTimers = new Set<ReturnType<typeof setTimeout>>();
+  private quietTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private master?: GainNode;
   /** Measures what Spark is actually playing (after ducking), so the mic can tell its echo from you. */
@@ -85,7 +86,8 @@ export class SpeechQueue {
       if (this.active >= AHEAD) break;
       if (line.started) continue;
       line.started = true; this.active++;
-      void this.generate(line).finally(() => { this.active--; this.pump(); });
+      const signal = this.abort.signal;
+      void this.generate(line).finally(() => { if (signal === this.abort.signal && !signal.aborted) { this.active--; this.pump(); } });
     }
   }
 
@@ -95,13 +97,16 @@ export class SpeechQueue {
       const response = await fetch("/api/speech/synthesize", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/json" }, body: JSON.stringify({ id, generation: 1, voiceId: line.voiceId, text: line.text, speed: line.speed }), signal });
       if (!response.ok || !response.body) throw new Error("speech unavailable");
       await readSpeechStream(response.body, { id, generation: 1 }, signal, async (data) => {
-        line.buffers.push(await context.decodeAudioData(data));
+        const buffer = await context.decodeAudioData(data);
+        if (signal.aborted) return;
+        line.buffers.push(buffer);
         this.schedule();
       });
     } catch {
       // A hiccup in the voice engine: try the sentence once more (if none of it has played) rather than skip it —
       // a skipped sentence sounds like Spark cutting out.
-      if (attempt === 0 && !signal.aborted && !line.buffers.length) return this.generate(line, 1);
+      if (attempt === 0 && !signal.aborted && !line.heard && !line.buffers.length) return this.generate(line, 1);
+      if (signal.aborted) return;
       line.failed = true;
     }
     line.done = true;
@@ -146,8 +151,10 @@ export class SpeechQueue {
 
   stop() {
     this.abort.abort(); this.abort = new AbortController();
+    this.active = 0;
     this.lines = []; clearTimeout(this.idleTimer);
     for (const t of this.captionTimers) clearTimeout(t); this.captionTimers.clear();
+    for (const timer of this.quietTimers) clearTimeout(timer); this.quietTimers.clear();
     // A quick fade (60 ms), not a hard cut mid-sound: stopping sounds deliberate, never like a glitch.
     const playing = [...this.sources]; this.sources.clear(); this.setSpeaking(false);
     const c = this.context, g = this.master?.gain;
@@ -160,8 +167,15 @@ export class SpeechQueue {
   get busy() { return this.speaking || this.lines.length > 0; }
   /** Run `then` once Spark has finished what it's saying (so a follow-up turn never cuts its own sentence off). */
   whenQuiet(then: () => void, maxMs = 30_000) {
-    const until = Date.now() + maxMs;
-    const check = () => (this.busy && Date.now() < until ? setTimeout(check, 150) : then());
+    const until = Date.now() + maxMs, signal = this.abort.signal;
+    const check = () => {
+      if (signal.aborted) return;
+      if (!this.busy) then();
+      else if (Date.now() < until) {
+        const timer = setTimeout(() => { this.quietTimers.delete(timer); check(); }, 150);
+        this.quietTimers.add(timer);
+      }
+    };
     check();
   }
   /** Browsers only let a page start audio after a click or key; call this from one. */
