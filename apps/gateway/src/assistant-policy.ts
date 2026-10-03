@@ -8,6 +8,9 @@ import type { Decision } from "@shuacrew/core";
  * Lives in the gateway, not core: it's the gateway that answers both Live (live.ts) and Spark (/api/policy/explain).
  */
 export function assistantMustAsk(decision: Pick<Decision, "verdict" | "risk" | "rule">): boolean {
-  // TODO(human): decide when an "ask" is worth interrupting you for. Today: only when a rule asked on purpose.
-  return decision.verdict === "ask" && decision.rule !== "default.ask";
+  if (decision.verdict !== "ask") return false;
+  // A rule asked on purpose (push, send, delete, infra changes): worth a spoken "yes or no".
+  if (decision.rule !== "default.ask") return true;
+  // "No rule covers this" alone isn't a reason to interrupt, unless it's still judged high-stakes.
+  return decision.risk === "high" || decision.risk === "critical";
 }

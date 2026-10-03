@@ -10,6 +10,10 @@ describe("assistantMustAsk", () => {
     expect(assistantMustAsk(judge("open -a Calendar"))).toBe(false);
     expect(assistantMustAsk(judge("ls ~/Desktop"))).toBe(false);
   });
+  it("never asks about what's allowed, and always about high-stakes unknowns", () => {
+    expect(assistantMustAsk({ verdict: "allow", risk: "low", rule: "allow.read" })).toBe(false);
+    expect(assistantMustAsk({ verdict: "ask", risk: "critical", rule: "default.ask" })).toBe(true);
+  });
   it("still stops for what a rule asks about on purpose", () => {
     expect(assistantMustAsk(judge("git push origin main"))).toBe(true);
   });
