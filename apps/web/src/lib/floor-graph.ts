@@ -2,13 +2,13 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import type { CrewMember, RunView } from "@shuacrew/core/projections";
 import type { RoomView } from "@shuacrew/core/rooms";
 
-export type NodeState = "working" | "waiting" | "recent" | "idle";
+export type NodeState = "working" | "waiting" | "queued" | "failed" | "recent" | "idle";
 export interface StageNode { id: string; kind: "you" | "member" | "agent"; label: string; sub: string; color: string; emoji?: string; state: NodeState; runId?: string; tool?: { name: string; detail: string; at: number }; subagents: number; sessions: number }
 export interface StageEdge { id: string; from: string; to: string; kind: "session" | "delegation"; live: boolean; label?: string }
 
 const WORKING = new Set(["running", "planning", "queued", "awaiting_approval"]);
 /** Work that is actually moving. Waiting on you is shown as a halo, not a pulse. */
-const FLOWING = new Set(["running", "planning", "queued"]);
+const FLOWING = new Set(["running", "planning"]);
 const AGENT_COLOR: Record<string, string> = { claude: "#e8845c", codex: "#4ade80" };
 
 /** The Crew Floor stage, from recorded state only: who is working, for whom, and who handed what to whom. */
@@ -25,11 +25,12 @@ export function buildStage(input: {
   // Delegations inside rooms: coordinator → member, for work that's live or just finished.
   const edges: StageEdge[] = [];
   for (const room of Object.values(rooms)) for (const a of Object.values(room.assignments)) {
+    const child = runs[a.runId];
+    if (!child) continue;
     const live = a.status === "queued" || a.status === "running";
     if (!live && now - a.updatedAt > linger) continue;
     if (!members[a.memberId] || !members[room.coordinator]) continue;
     edges.push({ id: `d:${a.id}`, from: room.coordinator, to: a.memberId, kind: "delegation", live, label: a.task.slice(0, 60) });
-    const child = runs[a.runId];
     if (child) (byOwner.get(a.memberId) ?? byOwner.set(a.memberId, []).get(a.memberId)!).push(child);
   }
   const lastTool = new Map<string, { name: string; detail: string; at: number }>();
@@ -38,9 +39,10 @@ export function buildStage(input: {
     const detail = String(input?.file_path ?? input?.path ?? input?.command ?? input?.url ?? input?.query ?? "").split("/").pop()!.slice(0, 40);
     lastTool.set(e.run, { name: e.body.tool, detail, at: e.at });
   }
-  const stateOf = (list: RunView[]): NodeState => list.some((r) => waitingRuns.has(r.id) || r.status === "awaiting_approval") ? "waiting" : list.some((r) => WORKING.has(r.status)) ? "working" : list.length ? "recent" : "idle";
+  const stateOf = (list: RunView[]): NodeState => list.some((r) => waitingRuns.has(r.id) || r.status === "awaiting_approval") ? "waiting" : list.some((r) => FLOWING.has(r.status)) ? "working" : list.some((r) => r.status === "queued") ? "queued" : list.some((r) => r.status === "failed") ? "failed" : list.length ? "recent" : "idle";
   const node = (id: string, base: Omit<StageNode, "state" | "runId" | "tool" | "subagents" | "sessions">): StageNode => {
-    const list = (byOwner.get(id) ?? []).sort((a, b) => b.updatedAt - a.updatedAt);
+    const priority = (run: RunView) => waitingRuns.has(run.id) || run.status === "awaiting_approval" ? 0 : WORKING.has(run.status) ? 1 : run.status === "failed" ? 2 : 3;
+    const list = (byOwner.get(id) ?? []).sort((a, b) => priority(a) - priority(b) || b.updatedAt - a.updatedAt);
     const tool = list.map((r) => lastTool.get(r.id)).filter(Boolean).sort((a, b) => b!.at - a!.at)[0];
     return { ...base, state: stateOf(list), runId: list[0]?.id, tool, subagents: list.filter((r) => WORKING.has(r.status)).reduce((n, r) => n + (r.subagents ?? []).filter((s) => !s.done).length, 0), sessions: list.length };
   };

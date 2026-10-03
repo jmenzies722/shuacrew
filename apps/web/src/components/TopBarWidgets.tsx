@@ -165,7 +165,7 @@ function FocusTile({ close }: { close?: () => void }) {
 }
 
 function CrewTile({ ctx }: { ctx: WidgetCtx }) {
-  const { runs, approvals, members, limited } = useCrew(), [busy, setBusy] = useState("");
+  const { runs, approvals, members } = useCrew(), [busy, setBusy] = useState("");
   const decide = async (id: string, allow: boolean) => { setBusy(id); try { await decideApproval(id, allow); } finally { setBusy(""); } };
   return <div className="wg-crew">
     <header className="wg-head"><strong>Crew</strong><span>{runs.length ? `${runs.length} working` : "all quiet"}{approvals.length ? ` · ${approvals.length} waiting on you` : ""}</span></header>
@@ -177,7 +177,7 @@ function CrewTile({ ctx }: { ctx: WidgetCtx }) {
     {runs.slice(0, 5).map((r) => <button type="button" key={r.id} className="wg-run" onClick={() => ctx.go(`/sessions/${r.id}`)}>
       <i data-status={r.status} /><span>{r.title}</span><small>{r.member ? members[r.member]?.name ?? "" : r.runtime}</small>
     </button>)}
-    {limited[0] && <p className="tb-foot">Reset estimate {new Date(limited[0].until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: {limited[0].message}</p>}
+    {/* Provider limits are the panel's own notice, above every tile: not repeated here as the raw provider text. */}
     {!runs.length && !approvals.length && <p className="tb-foot">Nothing running. Start a session and it shows up here, live.</p>}
     <button type="button" className="tb-btn wg-more" onClick={() => ctx.go("/activity")}>Mission control</button>
   </div>;
@@ -300,7 +300,7 @@ export function NotchWidgets({ ctx, tab = 0 }: { ctx: WidgetCtx; tab?: number })
  * The top bar's one status island: at a glance, just what's live (crew working, the weather, a running focus
  * block, tokens today, gateway health). Click it for everything else as tiles, like Control Center.
  */
-export interface IslandLimit { key: string; label: string; until: string; message: string; retrying?: boolean; retry(): void }
+export interface IslandLimit { key: string; label: string; until: string; untilMs?: number; message: string; retrying?: boolean; retry(): void }
 export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: { ctx: WidgetCtx; running: number; tokens: string; connection: "live" | "connecting" | "offline" | string; limits?: IslandLimit[] }) {
   const prefs = useWidgets(), tiles = placed(prefs, "topbar"), timer = useFocusTimer(), crew = useCrew();
   const [open, setOpen] = useState(false), root = useRef<HTMLDivElement>(null);
@@ -313,10 +313,15 @@ export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: 
   }, [open]);
   const go: WidgetCtx = { go: (p) => { setOpen(false); ctx.go(p); } };
   const health = connection === "live" ? "ok" : connection === "connecting" ? "wait" : "bad";
+  // In force = the provider's reset is still ahead. ("retrying" only means the next request may try it — a manual
+  // Try now sets it too — so it can't tell a limit that's over from one that isn't.)
+  const inForce = (l: IslandLimit) => (l.untilMs ?? 0) > Date.now(), activeLimits = limits.filter(inForce);
   return <div className="island" ref={root} data-no-drag>
     <button type="button" className={`island-pill ${open ? "is-open" : ""}`} aria-expanded={open} aria-label="Status and widgets" onClick={() => setOpen((o) => !o)}>
       <span className="island-seg"><i className={`island-dot is-${health} ${running ? "is-live" : ""}`} /><b className="tabular-nums">{running}</b><span className="island-dim">working</span></span>
-      {limits[0] && <span className="island-seg island-limit" title={limits[0].message}><Timer size={12} />{limits[0].label} {limits[0].retrying ? "retrying" : "limited"}</span>}
+      {/* A provider limit is news only while it's in force: a small timer, details on hover and in the panel. Once its
+          reset has passed ("should be back") it leaves the bar entirely — it clears itself on the next good reply. */}
+      {activeLimits[0] && <span className="island-seg island-limit" title={`${activeLimits.map((l) => l.label).join(", ")} paused by the provider · back around ${activeLimits[0].until}`} aria-label={`${activeLimits.length} model${activeLimits.length === 1 ? "" : "s"} paused by the provider`}><Timer size={12} />{activeLimits.length > 1 && <b className="tabular-nums">{activeLimits.length}</b>}</span>}
       {crew.approvals.length > 0 && <span className="island-seg island-wait"><ShieldQuestion size={12} /><b className="tabular-nums">{crew.approvals.length}</b></span>}
       {tiles.includes("weather") && <span className="island-seg"><WeatherChipBody /></span>}
       {timer && <span className="island-seg island-focus"><FocusChipBody /></span>}
@@ -324,7 +329,7 @@ export function StatusIsland({ ctx, running, tokens, connection, limits = [] }: 
     </button>
     {open && <div className="island-panel" role="dialog" aria-label="Status and widgets">
       <header><strong>Now</strong><span>{connection === "live" ? "Gateway online" : connection === "connecting" ? "Connecting…" : "Reconnecting…"} · {tokens} tokens today</span></header>
-      {limits.map((l) => <p key={l.key} className="island-notice"><Timer size={14} /><span><b>{l.label}</b> {l.retrying ? "Retry eligible; awaiting a successful response." : `Reset estimate: ${l.until}. Availability is unconfirmed.`}</span><button type="button" onClick={l.retry}>Try now</button></p>)}
+      {limits.map((l) => <p key={l.key} className={`island-notice ${inForce(l) ? "" : "is-back"}`}><Timer size={14} /><span><b>{l.label}</b> {inForce(l) ? `is paused by its provider until about ${l.until} · your other models take its work` : "should be back · clears on its next reply"}</span><button type="button" onClick={l.retry}>Try now</button></p>)}
       <div className="island-grid">{tiles.map((id) => <section key={id} className={`island-tile tile-${id}`} aria-label={WIDGET_INFO[id].name}><WidgetTile id={id} ctx={go} /></section>)}</div>
       <footer><button type="button" onClick={() => go.go("/settings#widgets")}>Customize widgets</button></footer>
     </div>}

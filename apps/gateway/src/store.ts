@@ -46,6 +46,7 @@ export class EventStore {
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
       PRAGMA busy_timeout = 5000;
+      CREATE TABLE IF NOT EXISTS action_receipts (id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, owner TEXT NOT NULL, result TEXT);
       CREATE TABLE IF NOT EXISTS events (
         seq     INTEGER PRIMARY KEY,
         at      REAL    NOT NULL,
@@ -70,6 +71,16 @@ export class EventStore {
       | undefined;
     this.lastSeq = last?.seq ?? 0;
     this.lastHash = last?.hash ?? GENESIS;
+  }
+
+  /** Durable at-most-once reservation. An interrupted/unknown action is never automatically retried. */
+  claimAction(id: string, fingerprint: string, owner: string) {
+    const inserted = this.db.prepare("INSERT OR IGNORE INTO action_receipts (id, fingerprint, owner) VALUES (?, ?, ?)").run(id, fingerprint, owner).changes;
+    const row = this.db.prepare("SELECT fingerprint, result FROM action_receipts WHERE id = ?").get(id) as { fingerprint: string; result: string | null };
+    return { claimed: Number(inserted) === 1, conflict: row.fingerprint !== fingerprint, result: row.result ? JSON.parse(row.result) as { ok: boolean; message: string; run?: string } : null };
+  }
+  finishAction(id: string, owner: string, result: { ok: boolean; message: string; run?: string }) {
+    return Number(this.db.prepare("UPDATE action_receipts SET result = ? WHERE id = ? AND owner = ? AND result IS NULL").run(JSON.stringify(redactDeep(result)), id, owner).changes) === 1;
   }
 
   get head(): number {

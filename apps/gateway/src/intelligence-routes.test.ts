@@ -72,3 +72,23 @@ it("does not bypass no-choice by launching crew work on local or a signed-out pr
   expect(() => supervisor.launch({ ask: "coding work", hold: true })).toThrow(/No eligible/);
   expect(Object.keys(fold(store.read(0)).runs)).toHaveLength(0);
 });
+
+it("applies an existing session's selected provider and model to its next turn", async () => {
+  const {app,store,supervisor,runtimes} = await world();
+  runtimes.get("codex")!.models.push({id:"codex-second",label:"Second",tier:"fast"});
+  const id=supervisor.launch({ask:"hello",runtime:"claude",model:"claude-model"});
+  const wait=async()=>{for(let i=0;i<100;i++){if(fold(store.read(0)).runs[id]?.status==="done")return;await new Promise(r=>setTimeout(r,10));}throw new Error("timeout");};
+  await wait();
+  for(const [runtime,model] of [["codex","codex-model"],["claude","claude-model"],["codex","codex-second"]]) {
+    const result=await app.inject({method:"POST",url:`/api/runs/${id}/followup`,headers,payload:{text:"continue",selection:{runtime,model,effort:"high"}}});
+    expect(result.statusCode).toBe(200);await wait();
+    const last=store.forRun(id).findLast(e=>e.kind==="turn.completed");
+    expect(last?.body).toMatchObject({route:{runtime,model,effort:"high"}});
+  }
+});
+it("rejects unavailable model selections before enqueueing a message",async()=>{
+ const {app,store,supervisor}=await world();const id=supervisor.launch({ask:"hello",runtime:"claude",hold:true});
+ const before=store.head;
+ const r=await app.inject({method:"POST",url:`/api/runs/${id}/followup`,headers,payload:{text:"continue",selection:{runtime:"codex",model:"made-up"}}});
+ expect(r.statusCode).toBe(409);expect(store.head).toBe(before);
+});

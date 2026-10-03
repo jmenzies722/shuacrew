@@ -15,6 +15,7 @@ import { isCheck, overridingKeys } from "./shared.js";
 
 const exec = promisify(execFile);
 type Json = Record<string, any>;
+const duration = (value: unknown): number | undefined => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 
 // ── the wire ─────────────────────────────────────────────────────────────────────────────
 
@@ -143,7 +144,7 @@ export class CodexTranslator {
             const command = commandText(item.command ?? started.command);
             const ok = item.status === "completed" && (item.exitCode ?? 0) === 0;
             const output = String(item.aggregatedOutput ?? "");
-            const out: RuntimeEvent[] = [{ type: "tool-result", id: item.id, ok, output: output.slice(0, 20_000), durationMs: item.durationMs }];
+            const out: RuntimeEvent[] = [{ type: "tool-result", id: item.id, ok, output: output.slice(0, 20_000), durationMs: duration(item.durationMs) }];
             if (isCheck(command)) out.push({ type: "check", command, exitCode: item.exitCode ?? (ok ? 0 : 1), output: output.slice(0, 2000) });
             return out;
           }
@@ -202,7 +203,7 @@ export class CodexTranslator {
       }
       case "turn/completed": {
         const turn = params.turn ?? {};
-        if (turn.status === "completed") return [{ type: "checkpoint", note: "turn complete" }, { type: "done", text: this.lastMessage, durationMs: turn.durationMs }];
+        if (turn.status === "completed") return [{ type: "checkpoint", note: "turn complete" }, { type: "done", text: this.lastMessage, durationMs: duration(turn.durationMs) }];
         if (turn.status === "interrupted") return [{ type: "error", message: "Codex turn was interrupted" }];
         const info = String(turn.error?.codexErrorInfo ?? "");
         const message = String(turn.error?.message ?? info ?? "Codex turn failed");

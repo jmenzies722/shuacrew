@@ -24,3 +24,11 @@ it("plans around the calendar when it's connected", () => {
   expect(morningBrief({ now: at(8), finished: [], waiting: 0, due: 0, ventures: [], running: 0, meetings: [{ title: "Standup", time: "10:00 AM" }, { title: "1:1", time: "2:00 PM" }] }))
     .toBe("Good morning. 2 meetings today; the first is Standup at 10:00 AM. What should we build today?");
 });
+
+it("names a finished task in quotes, cut at a whole word, so the sentence still reads", async () => {
+  const { morningBrief, named } = await import("./morning");
+  expect(named("Find my Sable terminal application project. Audit its architecture, UX, performa")).toBe("“Find my Sable terminal application project. Audit its…”");
+  expect(named("the landing page.")).toBe("the landing page");
+  const text = morningBrief({ now: new Date(2026, 9, 2, 9), finished: ["Find my Sable terminal application project. Audit its architecture, UX, performa"], waiting: 0, due: 0, ventures: [], running: 0 } as never);
+  expect(text).toContain("Your crew finished “Find my Sable terminal application project. Audit its…”.");
+});

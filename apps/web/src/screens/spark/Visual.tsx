@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSun, Moon, Snowflake, Sun, Wind, TrendingDown, TrendingUp, User, Monitor, Globe, Split, Webhook, Boxes, Server, Cog, Zap, Database, Layers, HardDrive, Search, ExternalLink, KeyRound, Check, X, Lightbulb } from "lucide-react";
 import { countdownParts, flowLayout, type NodeKind, type Visual, type WeatherIcon } from "../../lib/visual";
+import { ArchitectureCard } from "../../components/ArchitectureCard";
 
 const ICONS: Record<WeatherIcon, typeof Sun> = { sun: Sun, partly: CloudSun, cloud: Cloud, rain: CloudRain, storm: CloudLightning, snow: Snowflake, wind: Wind, fog: CloudFog, night: Moon };
 const NODE_ICONS: Record<NodeKind, typeof Sun> = { user: User, client: Monitor, cdn: Globe, lb: Split, api: Webhook, service: Boxes, server: Server, worker: Cog, cache: Zap, db: Database, queue: Layers, storage: HardDrive, search: Search, external: ExternalLink, auth: KeyRound };
@@ -27,6 +28,7 @@ const stagger = (i: number) => ({ "--i": i } as CSSProperties);
 /** Spark's visual card: drops from the notch (or sits in the chat), animated, in the theme's accent. */
 export function VisualCard({ v, onClose }: { v: Visual; onClose?: () => void }) {
   const grown = useGrown();
+  if (v.type === "architecture") return <ArchitectureCard key={JSON.stringify(v)} lesson={v} onClose={onClose} />;
   return (
     <figure className={`spk-visual is-${v.type}`} aria-label={v.title || "Visual"}>
       {v.title && <figcaption>{v.title}{onClose && <button type="button" aria-label="Close" onClick={onClose}>×</button>}</figcaption>}

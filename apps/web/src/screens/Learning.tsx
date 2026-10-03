@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { BookOpenCheck, Brain, Check, Dumbbell, GraduationCap, Plus, RotateCcw, Sparkles, Target, Trash2, X } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Brain, Check, Flag, Dumbbell, GraduationCap, Plus, RotateCcw, Sparkles, Target, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
+import { learningProgress } from "../lib/learning-progress";
 import { PaneHeader } from "../components/Pane";
 import { Coach } from "../components/Coach";
 import "../components/setting-controls.css";
@@ -28,6 +29,7 @@ const SUGGESTED: Array<[string, string]> = [
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
 export function Learning() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>(() => { try { return (localStorage.getItem("shuacrew.learnTab") as Tab) || "coach"; } catch { return "today"; } });
   const [s, setS] = useState<State | null>(null), [sessions, setSessions] = useState<Session[]>([]), [error, setError] = useState(""), [busy, setBusy] = useState("");
   const load = useCallback(async () => {
@@ -41,23 +43,48 @@ export function Learning() {
   const name = (id: string) => tracks.find((t) => t.id === id)?.name ?? s.courses.find((c) => c.id === id)?.title ?? s.courses.find((c) => c.id === id)?.topic ?? (id === "interview" ? "Interview prep" : id);
   const setupNeeded = !s.profile.goal || !tracks.length;
   const road = s.roadmaps.at(-1), roadDone = road?.milestones.length ? Math.round((road.milestones.filter((m) => m.done).length / road.milestones.length) * 100) : null;
-  const activeCourses = s.courses.filter((c) => c.lessons.some((l) => !l.done)).length;
+  const progress = learningProgress(s.courses);
+  const course = progress.course, lesson = course?.lessons[progress.lessonIndex];
+  const continueLesson = () => {
+    if (!course || !lesson) return;
+    void act(`l:${course.id}:${progress.lessonIndex}`, async () => {
+      const result = await api<{ run: string }>(`/api/learning/courses/${course.id}/lessons/${progress.lessonIndex}`, { body: {} });
+      void navigate({ to: "/sessions/$id", params: { id: result.run } });
+    });
+  };
   const go = (t: Tab) => { setTab(t); try { localStorage.setItem("shuacrew.learnTab", t); } catch { /* ignore */ } };
   return <div className="pane-scroll lx"><div className="pane-body pane-body-wide">
-    <section className="lx-hero">
-      <div className="lx-hero-glow" aria-hidden="true" />
-      <div className="lx-hero-text">
-        <span className="lx-kicker"><GraduationCap size={12} /> Career supercharger</span>
-        <h1>Level up, <em>on purpose.</em></h1>
-        <p>Learn any engineering topic at your level, turn your goal into a roadmap, sharpen your resume and interviews — and review it all so it sticks.</p>
-        <button type="button" className="lx-goal" onClick={() => go("profile")}><Target size={13} />{s.profile.goal || "Set your career goal"}</button>
-      </div>
-      <div className="lx-hero-stats">
-        <button type="button" onClick={() => go("review")}><strong>{s.due}</strong><span>cards due</span></button>
-        <button type="button" onClick={() => go("learn")}><strong>{activeCourses}</strong><span>courses in progress</span></button>
-        <button type="button" onClick={() => go("roadmap")}><strong>{roadDone === null ? "—" : `${roadDone}%`}</strong><span>of your roadmap</span></button>
-      </div>
-    </section>
+    <header className="lx-studio-header">
+      <div><span className="lx-kicker"><GraduationCap size={13} /> Your learning space</span><h1>Learning Studio</h1><p>Pick up a lesson. Put it into practice. Make it yours.</p></div>
+      <button type="button" className="lx-goal" onClick={() => go("profile")}><Target size={13} />{s.profile.goal || "Set your learning goal"}</button>
+    </header>
+    <div className="lx-studio-overview">
+      <section className="lx-continue" aria-label="Your next lesson">
+        <span className="lx-kicker"><BookOpenCheck size={13} />{lesson ? "Up next" : "A place to begin"}</span>
+        {course && lesson ? <>
+          <p className="lx-course-context">{course.title || course.topic} <span>· Lesson {progress.lessonIndex + 1} of {course.lessons.length}</span></p>
+          <h2>{lesson.title}</h2><p className="lx-continue-description">{lesson.summary}</p>
+          <div className="lx-continue-footer"><button type="button" className="lx-studio-primary" disabled={!!busy} onClick={continueLesson}>{busy === `l:${course.id}:${progress.lessonIndex}` ? "Opening lesson…" : "Continue lesson"}<ArrowRight size={15} /></button><button type="button" className="lx-studio-link" onClick={() => go("learn")}>View courses</button></div>
+        </> : <>
+          <h2>{s.courses.length ? "Ready for your next chapter?" : "What would you like to understand?"}</h2>
+          <p className="lx-continue-description">{s.courses.some((item) => !item.lessons.length) ? "Your course is being designed. Open your courses to follow its progress." : "Choose a topic and start a course shaped around what you already know."}</p>
+          <button type="button" className="lx-studio-primary" onClick={() => go("learn")}>{s.courses.some((item) => !item.lessons.length) ? "View courses" : "Explore a topic"}<ArrowRight size={15} /></button>
+        </>}
+      </section>
+      <section className="lx-progress-summary" aria-label="Your learning progress">
+        <h2>Your progress</h2>
+        <div className="lx-progress-total"><strong>{progress.completed}</strong><span>lessons completed{progress.total > 0 && <small>of {progress.total} across your courses</small>}</span></div>
+        <progress aria-label="Lessons completed" max={progress.total || 1} value={progress.completed} />
+        <button type="button" onClick={() => go("learn")}><span>Courses in progress</span><strong>{progress.active}</strong></button>
+        <button type="button" onClick={() => go("review")}><span>Cards ready to review</span><strong>{s.due}</strong></button>
+        <button type="button" onClick={() => go("roadmap")}><span>Roadmap completed</span><strong>{roadDone === null ? "Not started" : `${roadDone}%`}</strong></button>
+      </section>
+    </div>
+    <nav className="lx-pathways" aria-label="Learning pathways">
+      <button type="button" onClick={() => go("learn")}><BookOpenCheck size={18} /><span><strong>Explore</strong><small>Follow your curiosity with a course</small></span><ArrowRight size={15} /></button>
+      <button type="button" onClick={() => go("today")}><Dumbbell size={18} /><span><strong>Practice</strong><small>Reinforce a skill with drills and review</small></span><ArrowRight size={15} /></button>
+      <button type="button" onClick={() => go("roadmap")}><Flag size={18} /><span><strong>Build</strong><small>Turn your goal into project milestones</small></span><ArrowRight size={15} /></button>
+    </nav>
     <nav className="lx-tabs" role="tablist" aria-label="Learning">{TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
     {error && <p className="lx-error" role="alert">{error}</p>}
     {tab === "coach" && <Coach runs={s.coach ?? {}} onChange={() => void load()} />}

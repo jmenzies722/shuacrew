@@ -21,11 +21,22 @@ export function shouldRecap(lastDay: string | null, now: Date): boolean {
   return now.getHours() >= 18 && lastDay !== localDay(now);
 }
 
+/**
+ * A task named inside a spoken sentence. Short names read as they are ("the repo summary"); a long or sentence-like
+ * task title is quoted and cut at a whole word, so the brief doesn't run on through someone's whole prompt.
+ */
+export function named(title: string, max = 56): string {
+  let t = title.trim().replace(/[.\s]+$/, "");
+  if (t.length <= 32 && !/[.!?:]\s/.test(t)) return t;
+  if (t.length > max) t = t.slice(0, max).replace(/\s+\S*$/, "").replace(/[\s,;:–—-]+$/, "") + "…";
+  return `“${t}”`;
+}
+
 export interface EveningInput { finished: string[]; failed: number; reviewed: number; tomorrow: string[]; waiting: number }
 /** What happened today and what's lined up — only real things, under 30 seconds, ending on something kind. */
 export function eveningRecap(i: EveningInput): string {
   const parts = ["Here's your day."];
-  if (i.finished.length) parts.push(i.finished.length === 1 ? `The crew shipped ${i.finished[0]}.` : `The crew shipped ${i.finished.length} things, including ${i.finished[0]} and ${i.finished[1]}.`);
+  if (i.finished.length) parts.push(i.finished.length === 1 ? `The crew shipped ${named(i.finished[0]!)}.` : `The crew shipped ${i.finished.length} things, including ${named(i.finished[0]!)} and ${named(i.finished[1]!)}.`);
   if (i.failed) parts.push(`${i.failed} session${i.failed === 1 ? "" : "s"} hit a problem worth a look.`);
   if (i.reviewed) parts.push(`You reviewed ${i.reviewed} learning card${i.reviewed === 1 ? "" : "s"}.`);
   if (i.waiting) parts.push(`${i.waiting} decision${i.waiting === 1 ? " is" : "s are"} still waiting on you.`);
@@ -40,7 +51,7 @@ const greeting = (h: number) => (h < 5 ? "Up late" : h < 12 ? "Good morning" : h
 /** Short enough to hear in under 30 seconds; every clause is something real, and the last is one next step. */
 export function morningBrief(i: MorningInput): string {
   const parts: string[] = [`${greeting(i.now.getHours())}${i.name ? `, ${i.name}` : ""}.`];
-  if (i.finished.length) parts.push(`${i.finished.length === 1 ? `Your crew finished ${i.finished[0]}` : `Your crew finished ${i.finished.length} things, including ${i.finished[0]}`}.`);
+  if (i.finished.length) parts.push(`${i.finished.length === 1 ? `Your crew finished ${named(i.finished[0]!)}` : `Your crew finished ${i.finished.length} things, including ${named(i.finished[0]!)}`}.`);
   if (i.meetings?.length) parts.push(i.meetings.length === 1 ? `One meeting today: ${i.meetings[0]!.title} at ${i.meetings[0]!.time}.` : `${i.meetings.length} meetings today; the first is ${i.meetings[0]!.title} at ${i.meetings[0]!.time}.`);
   if (i.running) parts.push(`${i.running} session${i.running === 1 ? " is" : "s are"} working right now.`);
   if (i.waiting) parts.push(`${i.waiting} decision${i.waiting === 1 ? " is" : "s are"} waiting on you.`);

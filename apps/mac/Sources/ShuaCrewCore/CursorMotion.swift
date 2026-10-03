@@ -10,7 +10,20 @@ public enum CursorMotion {
         var x = cursor.x + gap.width + size.width / 2, y = cursor.y - gap.height - size.height / 2
         if x + size.width / 2 > visible.maxX { x = cursor.x - gap.width - size.width / 2 }
         if y - size.height / 2 < visible.minY { y = cursor.y + gap.height + size.height / 2 }
-        return CGPoint(x: x, y: y)
+        let halfW = min(size.width / 2, visible.width / 2), halfH = min(size.height / 2, visible.height / 2)
+        return CGPoint(x: min(visible.maxX - halfW, max(visible.minX + halfW, x)),
+                       y: min(visible.maxY - halfH, max(visible.minY + halfH, y)))
+    }
+
+    /// Fit a caption beside its target, including offset displays and targets in the menu bar or dock.
+    public static func captionFrame(near point: CGPoint, size: CGSize, visible: CGRect) -> CGRect {
+        let safe = visible.insetBy(dx: min(8, visible.width / 4), dy: min(8, visible.height / 4))
+        let width = min(max(0, size.width), safe.width), height = min(max(0, size.height), safe.height)
+        var x = point.x + 22, y = point.y + 22
+        if x + width > safe.maxX { x = point.x - 22 - width }
+        if y + height > safe.maxY { y = point.y - 22 - height }
+        return CGRect(x: min(safe.maxX - width, max(safe.minX, x)),
+                      y: min(safe.maxY - height, max(safe.minY, y)), width: width, height: height)
     }
 
     /// The waveform the buddy becomes while you talk: bar heights (points) for your live mic level (0–1) at time `t`.
@@ -33,6 +46,15 @@ public enum CursorMotion {
     public static func follow(current: CGPoint, target: CGPoint, dt: Double, response: Double = 0.07) -> CGPoint {
         let a = CGFloat(1 - exp(-max(0, dt) / max(0.001, response)))
         return CGPoint(x: current.x + (target.x - current.x) * a, y: current.y + (target.y - current.y) * a)
+    }
+
+    /// One frame of turning the arrow toward `target` (radians), independent of frame rate like `follow`: `response`
+    /// is how long it takes to close ~63% of the gap. It always turns the short way round (from 170° to −170° is a
+    /// 20° turn, not 340°), so the arrow never spins a full lap when its heading crosses ±π.
+    public static func turn(current: CGFloat, target: CGFloat, dt: Double, response: Double = 0.08) -> CGFloat {
+        let gap = target - current, short = atan2(sin(gap), cos(gap)) // the same gap, wrapped into −π…π
+        let a = CGFloat(1 - exp(-max(0, dt) / max(0.001, response)))
+        return current + short * a
     }
 
     /// A swoop to a target: longer trips take a little longer (0.45–0.95 s), and the arc bows up by a fifth of the

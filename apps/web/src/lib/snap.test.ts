@@ -51,3 +51,14 @@ it("guide, point and draw blocks carry a picked target", () => {
   expect(parseDraw('```draw [{"shape":"box","target":"#1","label":"save here"},{"shape":"arrow","from":[0.1,0.1],"target":"T0"}]```'))
     .toMatchObject([{ shape: "box", target: "#1" }, { shape: "arrow", target: "T0" }]);
 });
+
+it("reacquires a moved target by identity, never by recycled screenshot IDs", async () => {
+  const { reacquire } = await import("./snap");
+  const before = { context: { app: "Editor", window: "Project", elements: [{ name: "Save", role: "button", x:.2,y:.2,w:.1,h:.05 }] } };
+  const after = { context: { app: "Editor", window: "Project", elements: [{ name: "Delete", role: "button", x:.2,y:.2,w:.1,h:.05 },{name:"Save",role:"button",x:.8,y:.7,w:.1,h:.05}] } };
+  const aim = {x:.2,y:.2,w:.1,h:.05,label:"Save",target:"#1"};
+  expect(reacquire(aim, before, after)).toMatchObject({x:.8,y:.7,exact:true});
+  expect(reacquire(aim, before, {context:{...after.context,app:"Other"}})).toBeNull();
+  expect(reacquire(aim, before, {context:{...after.context,elements:[after.context.elements[0]!]}})).toBeNull();
+  expect(reacquire(aim, before, {context:{...after.context,elements:[after.context.elements[1]!,{...after.context.elements[1]!,x:.4}]}})).toBeNull();
+});

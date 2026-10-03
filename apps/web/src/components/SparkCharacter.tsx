@@ -2,13 +2,12 @@ import { luminance, mix, stops } from "../lib/spark-color";
 import { createContext, useContext, useId, type CSSProperties } from "react";
 import type { CompanionPreferences, SparkCharacterId } from "../lib/companion";
 import { RobotCharacter } from "./RobotCharacter";
-import { SparkArt } from "./Companion";
 import "./spark-character.css";
 
 export type Mood = "idle" | "thinking" | "speaking" | "happy" | "concerned" | "sleepy";
 
 export const CHARACTER_INFO: Record<SparkCharacterId, { name: string; blurb: string }> = {
-  spark: { name: "Spark", blurb: "The original robot. Faces and accessories." },
+  spark: { name: "Spark", blurb: "The original. Ceramic shell, big friendly screen." },
   scout: { name: "Scout", blurb: "Pocket explorer. Big curiosity, tiny boots." },
   atlas: { name: "Atlas", blurb: "Your sturdy builder. Ready for the big ideas." },
   nova: { name: "Nova", blurb: "A floating co-pilot with a cosmic streak." },
@@ -88,7 +87,7 @@ export function SparkCharacter({ preferences, mood = "idle", size, crop = "full"
   const palette: Palette = gradient ? { base, light: shade(from, 255, 0.2), deep: to, id } : { base, light: shade(base, 255, luminance(base) < 0.02 ? 0.22 : 0.45), deep: shade(base, 0, 0.35), id };
   const dark = luminance(base) < 0.06;
   const style = { "--ch": palette.base, "--ch-light": palette.light, "--ch-deep": palette.deep, "--ch-face": dark ? "#f4f4f5" : "#15151a", "--ch-glint": dark ? "#0b0b0d" : "#ffffff", width: size, height: size } as CSSProperties;
-  const robot = ["scout", "atlas", "nova"].includes(preferences.character);
-  const art = robot ? <RobotCharacter preferences={preferences} palette={palette} crop={crop} /> : preferences.character === "orb" ? <Orb /> : preferences.character === "byte" ? <Byte /> : preferences.character === "kit" ? <Kit /> : preferences.character === "blob" ? <Blob /> : <SparkArt preferences={preferences} crop={crop} />;
+  const robot = ["spark", "scout", "atlas", "nova"].includes(preferences.character);
+  const art = robot ? <RobotCharacter preferences={preferences} palette={palette} crop={crop} /> : preferences.character === "orb" ? <Orb /> : preferences.character === "byte" ? <Byte /> : preferences.character === "kit" ? <Kit /> : <Blob />;
   return <Pal.Provider value={palette}><span className={`spark-character ch-${preferences.character} mood-${mood} ${crop === "portrait" ? "is-portrait" : ""}`} style={style} aria-hidden="true">{art}</span></Pal.Provider>;
 }

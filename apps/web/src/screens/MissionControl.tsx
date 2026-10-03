@@ -36,7 +36,6 @@ export function MissionControl() {
     return [...totals.entries()].sort((a, b) => b[1] - a[1]);
   }, [runs]);
   const maxRuntime = Math.max(1, ...byRuntime.map(([, n]) => n));
-  const running = live.filter((r) => r.status === "running" || r.status === "planning").length;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -44,8 +43,7 @@ export function MissionControl() {
         <DayHero />
         <PaneHeader eyebrow="Live" icon={Radar} title="Right now" description="What needs you, what's moving, and what finished — each item opens where it came from."
           actions={<div className="flex items-center gap-6 pb-1 text-[12px] text-fg-2">
-            <Stat label="running" value={running} tone={running ? "live" : "idle"} />
-            <Stat label="awaiting you" value={approvals.length} tone={approvals.length ? "wait" : "idle"} />
+            {/* Running and waiting are the hero's In progress and Needs you cards, right above: not repeated here. */}
             <Stat label="finished today" value={finished.filter((r) => isToday(r.updatedAt)).length} tone="ok" />
             <Stat label="tokens today" value={formatTokens(crew.today.tokens)} tone="idle" />
           </div>} />
@@ -61,7 +59,7 @@ export function MissionControl() {
               )}
             </div>
             {live.length === 0 ? (
-              <EmptyCrew />
+              finished.length ? <IdleCrew /> : <EmptyCrew />
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-3">
                 <AnimatePresence initial={false}>
@@ -119,7 +117,7 @@ export function MissionControl() {
             </div>
 
             <div>
-              <Eyebrow className="mb-2.5">Usage by runtime</Eyebrow>
+              <Eyebrow className="mb-2.5">Usage by runtime · all sessions</Eyebrow>
               <Panel className="px-4 py-3.5">
                 {byRuntime.length === 0 && <div className="text-[12.5px] text-fg-3">No usage yet.</div>}
                 {byRuntime.map(([runtime, n]) => (
@@ -163,7 +161,23 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
   );
 }
 
-/** An empty screen teaches: three ways to put the crew to work. */
+/** Idle, once you've shipped work: one quiet line with the two things you'd do next, not the first-run tips again.
+ *  (What just finished is the list right below, so it isn't repeated here.) */
+function IdleCrew() {
+  const navigate = useNavigate();
+  return (
+    <div className="today-idle">
+      <span className="today-idle-dot" aria-hidden="true" />
+      <p><b>Crew is idle.</b> Nothing running right now.</p>
+      <div className="today-idle-actions">
+        <button type="button" className="is-go" onClick={() => void newSession(navigate)}>New session</button>
+        <button type="button" onClick={() => void navigate({ to: "/schedules" })}>Schedule work</button>
+      </div>
+    </div>
+  );
+}
+
+/** An empty screen teaches: three ways to put the crew to work (until the crew has finished something). */
 function EmptyCrew() {
   const navigate = useNavigate();
   const starters = [
