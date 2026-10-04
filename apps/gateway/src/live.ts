@@ -139,6 +139,79 @@ export function pendingLiveRelay(pending: Map<string, (text: string) => void>, i
   });
 }
 
+/** Where a Codex app-server's messages go; a standby's are rerouted to whichever call adopts it. */
+interface CodexRoute { notified?: (method: string, params: Json) => void; asked?: (method: string, params: Json) => Promise<Json>; exited?: () => void }
+/** Codex up and initialized, with a call's thread started: everything a call needs before your audio. */
+interface CodexSession { child: ChildProcess; peer: RpcPeer; threadId: string; run: string; route: CodexRoute; key: string; at: number }
+const newRun = () => `live:${Math.random().toString(36).slice(2, 10)}`;
+const sessionKey = (vocab: string, protectedPaths: string[]) => `${protectedPaths.join("\n")}\u0000${vocab}`;
+
+async function openCodexSession(options: LiveOptions, dir: string, vocab: string, protectedPaths: string[], route: CodexRoute = {}): Promise<CodexSession> {
+  const binary = options.binary ?? findBinary("codex");
+  if (!binary) throw new Error("Live needs Codex installed and signed in to ChatGPT.");
+  const child = spawn(binary, ["app-server", ...permissionArgs(dir, protectedPaths)], { cwd: dir, env: agentEnv(process.env, "subscription"), stdio: ["pipe", "pipe", "pipe"] });
+  if (process.env.SHUACREW_LIVE_DEBUG) child.stderr?.on("data", (d) => appendFileSync(path.join(dir, "debug.log"), `stderr ${String(d).slice(0, 800)}`)); else child.stderr?.resume();
+  child.on("exit", () => route.exited?.());
+  // Nothing is approved before a call adopts the session.
+  const peer = new RpcPeer(child, (method, params) => route.notified?.(method, params), (method, params) => route.asked ? route.asked(method, params) : Promise.resolve({ decision: "decline" }));
+  try {
+    await peer.request("initialize", { clientInfo: { name: "shuacrew-live", title: "ShuaCrew Live", version: "0.1.0" }, capabilities: { experimentalApi: true } });
+    peer.notify("initialized");
+    const run = newRun();
+    // Sandboxed by the OS (Seatbelt): reads anywhere except protected folders, writes only in ~/.shuacrew/live.
+    // Anything more (opening apps, AppleScript) is an escalation you approve in the notch.
+    const mcp = vocab && options.mcpFor ? options.mcpFor(run) : undefined;
+    // Low reasoning effort: a call is a conversation, and the voice is waiting on every turn. A fresh thread per call:
+    // a resumed one had grown to 115k input tokens and took 28 s to answer "what's on my calendar". Continuity comes
+    // from the recent lines given to the voice instead.
+    const thread = { cwd: dir, approvalPolicy: "on-request", developerInstructions: liveBackendInstructions(protectedPaths, vocab), config: { model_reasoning_effort: "low", ...(mcp ? { mcp_servers: mcp } : {}) } };
+    const threadId = String((await peer.request("thread/start", thread)).thread?.id);
+    return { child, peer, threadId, run, route, key: sessionKey(vocab, protectedPaths), at: Date.now() };
+  } catch (error) { child.kill("SIGTERM"); throw error; }
+}
+
+/**
+ * One Codex session kept ready for the next call, opened with the vocabulary the last call used: a press skips
+ * spawning Codex and starting its thread (measured 0.4–0.5 s of every call). Replaced every 20 minutes.
+ */
+const STANDBY_MAX_AGE = 20 * 60_000;
+export class Standby {
+  private ready?: CodexSession;
+  private pending?: Promise<void>;
+  private vocab: string;
+  private timer: ReturnType<typeof setInterval>;
+  private stopped = false;
+  constructor(private options: LiveOptions, private dir: string) {
+    mkdirSync(dir, { recursive: true });
+    try { this.vocab = readFileSync(path.join(dir, "vocab.txt"), "utf8"); } catch { this.vocab = ""; }
+    this.timer = setInterval(() => { if (this.ready && Date.now() - this.ready.at > STANDBY_MAX_AGE) { this.drop(); this.fill(); } }, 60_000);
+    this.timer.unref();
+  }
+  /** The ready session if it fits this call (same vocabulary and protected folders, still running); else none. */
+  take(key: string): CodexSession | undefined {
+    const s = this.ready; this.ready = undefined;
+    if (!s) return undefined;
+    if (s.key !== key || s.child.exitCode !== null || s.child.signalCode !== null || Date.now() - s.at > STANDBY_MAX_AGE) { s.child.kill("SIGTERM"); return undefined; }
+    return s;
+  }
+  /** Open the next session (after a call, and once at boot). */
+  fill(vocab = this.vocab) {
+    if (this.stopped) return;
+    if (vocab !== this.vocab) { this.vocab = vocab; try { writeFileSync(path.join(this.dir, "vocab.txt"), vocab, { mode: 0o600 }); } catch { /* next boot opens without it */ } }
+    if (this.ready && this.ready.key !== sessionKey(vocab, this.options.protectedPaths())) this.drop();
+    if (this.ready || this.pending) return;
+    const route: CodexRoute = {};
+    this.pending = openCodexSession(this.options, this.dir, vocab, this.options.protectedPaths(), route).then((session) => {
+      if (this.stopped) { session.child.kill("SIGTERM"); return; }
+      route.exited = () => { if (this.ready === session) this.ready = undefined; };
+      this.ready = session;
+    }, () => undefined).finally(() => { this.pending = undefined; });
+  }
+  whenReady() { return this.pending ?? Promise.resolve(); }
+  private drop() { this.ready?.child.kill("SIGTERM"); this.ready = undefined; }
+  stop() { this.stopped = true; clearInterval(this.timer); this.drop(); }
+}
+
 export interface LiveReadiness { usable: boolean; usedPercent?: number; resetsAt?: number }
 
 /** Whether the ChatGPT plan can take a call right now, from Codex's `account/rateLimits/read`. Unreadable = usable. */
@@ -155,7 +228,15 @@ export function liveReadyFrom(result: Json): LiveReadiness {
 export class LiveVoice {
   private current?: LiveCall;
   private ready?: { at: number; value: Promise<LiveReadiness> };
-  constructor(private options: LiveOptions) {}
+  private standby: Standby;
+  constructor(private options: LiveOptions, warmAfterMs = -1) {
+    this.standby = new Standby(options, path.join(options.home, "live"));
+    if (warmAfterMs >= 0) setTimeout(() => this.standby.fill(), warmAfterMs).unref(); // after boot settles
+  }
+  /** Stops the standby Codex process (gateway shutdown, tests). */
+  stop() { this.standby.stop(); }
+  /** For tests: the standby is ready to be taken. */
+  warmed() { return this.standby.whenReady(); }
   /** Can Live take a call? Asked of Codex (~0.6 s), remembered for 30 s so a page checking often costs nothing. */
   readiness(): Promise<LiveReadiness> {
     if (this.ready && Date.now() - this.ready.at < 30_000) return this.ready.value;
@@ -184,9 +265,9 @@ export class LiveVoice {
   }
   attach(socket: Socket) {
     this.current?.end("replaced by a new call");
-    const call = new LiveCall(socket, this.options);
+    const call = new LiveCall(socket, this.options, this.standby);
     this.current = call;
-    socket.on("close", () => { call.end("closed"); if (this.current === call) this.current = undefined; });
+    socket.on("close", () => { call.end("closed"); if (this.current === call) this.current = undefined; this.standby.fill(call.vocab); });
   }
 }
 
@@ -198,7 +279,9 @@ class LiveCall {
   private approvals = new Map<string, (allow: boolean) => void>();
   private recent: Array<{ role: "user" | "assistant"; text: string }>;
   private dir: string;
-  readonly run = `live:${Math.random().toString(36).slice(2, 10)}`;
+  run = newRun();
+  /** The vocabulary this call started with: the next standby is opened with the same. */
+  vocab = "";
   /** The last result from the hands and what the user asked: what the voice may state as fact for the next 25 s. */
   private truth?: { text: string; at: number };
   private heard = "";
@@ -206,7 +289,7 @@ class LiveCall {
   private results: string[] = [];
   private relays = new Map<string, (text: string) => void>();
 
-  constructor(private socket: Socket, private options: LiveOptions) {
+  constructor(private socket: Socket, private options: LiveOptions, private standby?: Standby) {
     this.dir = path.join(options.home, "live");
     mkdirSync(this.dir, { recursive: true });
     this.recent = readJson(path.join(this.dir, "recent.json"), []);
@@ -245,24 +328,17 @@ class LiveCall {
   }
 
   private async start(sdp: string, voice?: string, vocab = "") {
-    const binary = this.options.binary ?? findBinary("codex");
-    if (!binary) throw new Error("Live needs Codex installed and signed in to ChatGPT.");
     const t0 = Date.now();
     const protectedPaths = this.options.protectedPaths();
-    this.child = spawn(binary, ["app-server", ...permissionArgs(this.dir, protectedPaths)], { cwd: this.dir, env: agentEnv(process.env, "subscription"), stdio: ["pipe", "pipe", "pipe"] });
-    if (process.env.SHUACREW_LIVE_DEBUG) this.child.stderr?.on("data", (d) => appendFileSync(path.join(this.dir, "debug.log"), `stderr ${String(d).slice(0, 800)}`)); else this.child.stderr?.resume();
-    this.child.on("exit", () => { if (!this.ended) this.fail("The live connection closed."); });
-    this.peer = new RpcPeer(this.child, (method, params) => this.notified(method, params), (method, params) => this.asked(method, params));
-    await this.peer.request("initialize", { clientInfo: { name: "shuacrew-live", title: "ShuaCrew Live", version: "0.1.0" }, capabilities: { experimentalApi: true } });
-    this.peer.notify("initialized");
-    // Sandboxed by the OS (Seatbelt): reads anywhere except protected folders, writes only in ~/.shuacrew/live.
-    // Anything more (opening apps, AppleScript) is an escalation you approve in the notch.
-    const mcp = vocab && this.options.mcpFor ? this.options.mcpFor(this.run) : undefined;
-    // Low reasoning effort: a call is a conversation, and the voice is waiting on every turn.
-    const thread = { cwd: this.dir, approvalPolicy: "on-request", developerInstructions: liveBackendInstructions(protectedPaths, vocab), config: { model_reasoning_effort: "low", ...(mcp ? { mcp_servers: mcp } : {}) } };
-    // A fresh thread per call: a resumed one had grown to 115k input tokens and took 28 s to answer "what's on my
-    // calendar". Continuity comes from the recent lines given to the voice instead.
-    this.threadId = String((await this.peer.request("thread/start", thread)).thread?.id);
+    this.vocab = vocab;
+    const route: CodexRoute = { notified: (method, params) => this.notified(method, params), asked: (method, params) => this.asked(method, params), exited: () => { if (!this.ended) this.fail("The live connection closed."); } };
+    // A standby already has Codex up and this call's thread started (~0.4 s); otherwise open one now.
+    const warm = this.standby?.take(sessionKey(vocab, protectedPaths));
+    if (warm) Object.assign(warm.route, route);
+    const session = warm ?? await openCodexSession(this.options, this.dir, vocab, protectedPaths, route);
+    this.child = session.child; this.peer = session.peer; this.threadId = session.threadId; this.run = session.run;
+    if (this.ended) { session.child.kill("SIGTERM"); return; }
+    const tReady = Date.now();
     const answer = new Promise<string>((resolve, reject) => {
       this.onSdp = resolve;
       setTimeout(() => reject(new Error("The live voice didn't answer. Try again in a moment.")), 20_000).unref();
@@ -278,7 +354,9 @@ class LiveCall {
       codexResponseHandoffMode: "bemTags",
       codexResponseHandoffChannelPrefixes: LIVE_CHANNELS,
     });
-    this.send({ type: "answer", sdp: await answer, threadId: this.threadId, setupMs: Date.now() - t0 });
+    const sdpAnswer = await answer, tAnswer = Date.now();
+    console.log(`${new Date().toISOString()} live setup ${warm ? "warm" : "cold"} ready=${tReady - t0} answer=${tAnswer - tReady} total=${tAnswer - t0}ms`);
+    this.send({ type: "answer", sdp: sdpAnswer, threadId: this.threadId, setupMs: tAnswer - t0, warm: !!warm });
   }
   private onSdp?: (sdp: string) => void;
 

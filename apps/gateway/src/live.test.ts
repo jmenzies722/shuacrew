@@ -2,7 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LIVE_CHANNELS, liveBackendInstructions, livePrompt, permissionArgs, touchesProtected } from "./live.js";
-import { liveReadyFrom, pendingLiveRelay } from "./live.js";
+import { LiveVoice, liveReadyFrom, pendingLiveRelay } from "./live.js";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 
 afterEach(() => vi.useRealTimers());
 it("cancels timed-out relays rather than promising future completion", async () => {
@@ -100,4 +101,54 @@ it("does not correct TextEdit versus transcribed text edit or keyboard punctuati
   const result = 'Screen control is currently limited to reading screenshots, so I could not open the document or type. Open TextEdit, press Command–N, then click the document and type testing shua cursor control.';
   expect(unsupportedClaims(spoken, result)).toEqual([]);
   expect(unsupportedClaims('I will open TextEdit.', 'Open a blank text edit document')).toEqual([]);
+});
+
+describe("Live standby", () => {
+  // A stand-in `codex app-server`: counts its launches, starts threads, and answers a realtime offer with an SDP.
+  const fakeCodex = (dir: string) => {
+    const bin = path.join(dir, "codex"), count = path.join(dir, "spawns");
+    writeFileSync(bin, `#!/usr/bin/env node
+require("fs").appendFileSync(${JSON.stringify(count)}, "x");
+let buf = "", n = 0;
+const out = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+process.stdin.on("data", (d) => { buf += d; let i; while ((i = buf.indexOf("\\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+  if (m.id === undefined) continue;
+  if (m.method === "thread/start") out({ id: m.id, result: { thread: { id: "t" + ++n } } });
+  else if (m.method === "thread/realtime/start") { out({ id: m.id, result: {} }); out({ method: "thread/realtime/sdp", params: { sdp: "answer" } }); }
+  else out({ id: m.id, result: {} }); } });
+`, { mode: 0o755 });
+    return { bin, spawns: () => { try { return readFileSync(count, "utf8").length; } catch { return 0; } } };
+  };
+  const socket = () => {
+    const listeners: Record<string, (data?: unknown) => void> = {}, got: Array<Record<string, unknown>> = [];
+    return { got, send: (d: string) => got.push(JSON.parse(d)), close: () => listeners.close?.(), on: (e: string, l: (data?: unknown) => void) => { listeners[e] = l; }, say: (m: unknown) => listeners.message?.(JSON.stringify(m)) };
+  };
+  const answer = async (s: ReturnType<typeof socket>) => { await vi.waitFor(() => expect(s.got.find((m) => m.type === "answer" || m.type === "error")).toBeDefined(), { timeout: 5_000 }); return s.got.find((m) => m.type === "answer" || m.type === "error")!; };
+
+  it("starts the next call on a warm Codex: no new process, same answer", async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "live-standby-")), fake = fakeCodex(home);
+    const live = new LiveVoice({ home, protectedPaths: () => [], binary: fake.bin });
+    try {
+      const first = socket(); live.attach(first); first.say({ type: "start", sdp: "offer", vocab: "" });
+      expect(await answer(first)).toMatchObject({ type: "answer", sdp: "answer", warm: false });
+      first.close(); await live.warmed();
+      expect(fake.spawns()).toBe(2); // the call's own Codex, then the standby
+
+      const second = socket(); live.attach(second); second.say({ type: "start", sdp: "offer", vocab: "" });
+      expect(await answer(second)).toMatchObject({ type: "answer", sdp: "answer", warm: true });
+      expect(fake.spawns()).toBe(2);
+    } finally { live.stop(); }
+  });
+
+  it("opens a fresh Codex when the call's vocabulary differs from the standby's", async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "live-standby-")), fake = fakeCodex(home);
+    const live = new LiveVoice({ home, protectedPaths: () => [], binary: fake.bin });
+    try {
+      const first = socket(); live.attach(first); first.say({ type: "start", sdp: "offer", vocab: "" });
+      await answer(first); first.close(); await live.warmed();
+      const second = socket(); live.attach(second); second.say({ type: "start", sdp: "offer", vocab: "open Safari" });
+      expect(await answer(second)).toMatchObject({ type: "answer", warm: false });
+      expect(fake.spawns()).toBe(3);
+    } finally { live.stop(); }
+  });
 });

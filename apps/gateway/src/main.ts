@@ -117,7 +117,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const terminals = new Terminals(zshIntegration(home));
   // Live calls reach Spark's Mac actions through this gateway's tool server, with a token per call.
   const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => void library.save({ title, content, summary, filename: "live-call.md", by: "agent" }), protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
-    mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }); // spark_do confirms deletes itself
+    mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }, 5_000); // spark_do confirms deletes itself; a call's Codex is warmed 5 s after boot
   tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;
   const settings = new GatewaySettings(path.join(home, "settings.json"));
@@ -200,7 +200,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });
-  return { app, hub, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, skills, briefing, backups, terminals, port, host, resumed };
+  return { app, hub, liveVoice, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, skills, briefing, backups, terminals, port, host, resumed };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -224,6 +224,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     gateway.briefing?.stop();
     gateway.backups.stop();
     gateway.terminals.closeAll();
+    gateway.liveVoice.stop();
     gateway.hub.close();
     await gateway.app.close();
     gateway.store.close();
