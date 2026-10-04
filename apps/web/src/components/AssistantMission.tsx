@@ -20,5 +20,5 @@ export function AssistantMission({ onClose, onStarted }: { onClose: () => void; 
     <form onSubmit={e => { e.preventDefault(); void start(); }}><textarea autoFocus aria-label="Mission brief" value={goal} maxLength={6000} disabled={submitted.current} onChange={e => setGoal(e.target.value)} placeholder="What should be done, which resources may be used, and what would a good result look like?" rows={4} />
       <small>Approvals stay with you. No sends, purchases, deletions, commits or pushes without asking.</small>
       {error && <p role="alert">{error}</p>}<button className="assistant-mission-start" type="submit" disabled={!goal.trim() || submitted.current}>{busy ? "Starting…" : submitted.current ? "Check Sessions" : "Start approved task"}<ArrowUpRight size={13} /></button></form>
-    <footer>OpenAI only · progress in Sessions · cancellable</footer></section>;
+    <footer>Claude + Codex · progress in Sessions · cancellable</footer></section>;
 }

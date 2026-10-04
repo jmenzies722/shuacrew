@@ -4,7 +4,7 @@ import { AssistantDeck } from "./AssistantDeck";
 import { beginAssistant } from "../lib/assistant-state";
 it("shows honest connectivity, scoped permissions, and explicit task starters", () => {
   const html = renderToStaticMarkup(<AssistantDeck state={beginAssistant("t", 1)} connection="offline" screenEnabled={false} control="ask" trusted={false} background={[]} onAsk={() => {}} onStop={() => {}} onAccess={() => {}} />);
-  expect(html).toContain("Offline"); expect(html).toContain("OpenAI only");
+  expect(html).toContain("Offline"); expect(html).toContain("Claude + Codex");
   expect(html).toContain("Shortcuts &amp; tasks"); expect(html).not.toContain("Focus session"); expect(html).toContain("Screen off");
   expect(html).not.toContain("All systems online");
 });

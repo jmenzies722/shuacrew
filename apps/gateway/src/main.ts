@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
-import { CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
+import { ClaudeRuntime, CodexRuntime, MockRuntime, type AuthMode, type Runtime } from "@shuacrew/runtimes";
 import { subscriptionRuntimeIds } from "./openai-policy.js";
 import { Memory } from "./memory.js";
 import { Crew } from "./crew.js";
@@ -64,6 +64,7 @@ export async function registry(): Promise<Map<string, Runtime>> {
   const config = runtimeConfig();
   const runtimes = new Map<string, Runtime>();
   const allowed = subscriptionRuntimeIds(config, process.env.SHUACREW_DEMO === "1");
+  if (allowed.includes("claude")) runtimes.set("claude", new ClaudeRuntime({ authMode: "subscription" }));
   if (allowed.includes("codex")) runtimes.set("codex", new CodexRuntime({ authMode: "subscription" }));
   if (allowed.includes("mock")) runtimes.set("mock", new MockRuntime());
   return runtimes;
