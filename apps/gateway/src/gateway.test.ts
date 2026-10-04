@@ -35,6 +35,15 @@ async function until(check: () => boolean, ms = 5000): Promise<void> {
 const state = (store: EventStore) => fold(store.read(0));
 
 describe("runs", () => {
+  it("names new sessions from their task and preserves requested titles", () => {
+    const { store, supervisor } = setup();
+    const automatic = supervisor.launch({ ask: "Can you please fix Sable keyboard shortcuts? Add tests.", runtime: "mock", hold: true });
+    const quoted = supervisor.launch({ ask: 'Create a session called "Frame Performance" and audit rendering.', title: "Audit rendering", runtime: "mock", hold: true });
+    const explicit = supervisor.launch({ ask: "Fix login errors", title: "Fix login", runtime: "mock", hold: true });
+    expect(state(store).runs[automatic]?.title).toBe("Fix Sable keyboard shortcuts");
+    expect(state(store).runs[quoted]?.title).toBe("Frame Performance");
+    expect(state(store).runs[explicit]?.title).toBe("Fix login");
+  });
   it("runs a task to completion and records what happened", async () => {
     const { store, supervisor } = setup();
     const id = supervisor.launch({ ask: "fix the flaky upload test", runtime: "mock" });

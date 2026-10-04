@@ -1,118 +1,13 @@
-import { useSyncExternalStore } from "react";
 import { AudioLines, Check, PhoneOff, ShieldAlert, X } from "lucide-react";
-import { LiveCall, type LiveEvent, type LiveState } from "../lib/live-voice";
-import { yesOrNo } from "../lib/handsfree";
-import { copyForPaste, pasteTarget } from "../lib/paste-hint";
-import { describeAction, doVocabulary, parseActions } from "../lib/buddy";
-import { perform, sparkHooks } from "../screens/spark/actions";
+import { useEffect, useRef, useState } from "react";
+import { liveTranscript } from "../lib/live-transcript";
+import { voiceEnvelope } from "../lib/voice-envelope";
+import { useLive, useLiveLevels, startLive, endLive, stopLiveWork, stopLiveSpeech, answer, type LiveView } from "../lib/live-session";
+import { LiveVoiceSelect } from "./LiveVoiceSelect";
+export { liveActive, liveUsable, startLive, endLive, useLive, liveVoice, setLiveVoice, LIVE_VOICES } from "../lib/live-session";
 import "./live-mode.css";
 
-/**
- * Live, in the notch: one shared call that the island and the card both show. Spark's own mic, fn push-to-talk and
- * the wake word stand aside while a call is on (Buddy reads `live.active`).
- */
-type Line = { role: "user" | "assistant"; text: string; final: boolean };
-/** The call as it happened, in order: what you said, what Shua said, each step it took, and each result. */
-type Item = ({ kind: "line" } & Line) | { kind: "step"; text: string } | { kind: "result"; text: string; corrected?: string };
-export type LiveView = {
-  active: boolean; state: LiveState | "off"; detail?: string; feed: Item[]; usage?: number;
-  approval?: { id: string; kind: "command" | "files" | "action"; text: string; why?: string }; mic: number; voice: number;
-};
-const OFF: LiveView = { active: false, state: "off", feed: [], mic: 0, voice: 0 };
-const FEED_MAX = 14;
-const push = (item: Item) => emit({ feed: [...view.feed, item].slice(-FEED_MAX) });
-let view: LiveView = OFF, call: LiveCall | null = null;
-const subs = new Set<() => void>();
-const emit = (next: Partial<LiveView>) => { view = { ...view, ...next }; subs.forEach((f) => f()); };
-export const useLive = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), () => view);
-export const liveActive = () => view.active;
-
-export const LIVE_VOICES = ["cove", "juniper", "maple", "spruce", "ember", "vale", "breeze", "arbor", "sol"];
-const VOICE_KEY = "shuacrew.live.voice";
-export const liveVoice = () => { try { return localStorage.getItem(VOICE_KEY) || "cove"; } catch { return "cove"; } };
-export const setLiveVoice = (v: string) => { try { localStorage.setItem(VOICE_KEY, v); } catch { /* private mode */ } };
-
-function onEvent(e: LiveEvent) {
-  if (e.type === "levels") { if (Math.abs(e.mic - view.mic) > 0.004 || Math.abs(e.voice - view.voice) > 0.004) emit({ mic: e.mic, voice: e.voice }); return; }
-  if (e.type === "state") {
-    if (e.state === "ended" || e.state === "error") { call = null; emit({ ...OFF, state: e.state, detail: e.detail, feed: view.feed }); window.dispatchEvent(new CustomEvent("shuacrew:livecall", { detail: { on: false } })); return; }
-    return emit({ state: e.state });
-  }
-  if (e.type === "caption") {
-    // One growing line per speaker turn: a partial updates the open line in place, a final closes it.
-    const feed = [...view.feed];
-    const open = feed.findLastIndex((it) => it.kind === "line" && it.role === e.role && !it.final);
-    if (open >= 0) feed[open] = { kind: "line", role: e.role, text: e.text, final: e.final };
-    else feed.push({ kind: "line", role: e.role, text: e.text, final: e.final });
-    // "Yes" / "no" to a pending approval, said out loud.
-    if (e.final && e.role === "user" && view.approval) { const said = yesOrNo(e.text); if (said !== null) answer(said); }
-    return emit({ feed: feed.slice(-FEED_MAX) });
-  }
-  if (e.type === "step") return push({ kind: "step", text: e.text });
-  if (e.type === "result") {
-    if (!e.final) return;
-    const paste = pasteTarget(e.text); if (paste) copyForPaste(paste, native() ? (m) => native()!.postMessage(m) : undefined);
-    return push({ kind: "result", text: e.text });
-  }
-  if (e.type === "usage") return emit({ usage: e.percent });
-  if (e.type === "correction") {
-    // The truth guard caught the voice saying something the result doesn't support: mark the result it misstated.
-    const feed = [...view.feed], at = feed.findLastIndex((it) => it.kind === "result");
-    if (at >= 0) feed[at] = { kind: "result", text: e.result, corrected: e.said }; else feed.push({ kind: "result", text: e.result, corrected: e.said });
-    return emit({ feed });
-  }
-  if (e.type === "approval") return emit({ approval: { id: e.id, kind: e.kind, text: e.text, why: e.why } });
-  if (e.type === "do") { const c = call; void runSparkActions(e.actions).then((text) => c?.done(e.id, text)); }
-}
-
-/** A question only this page can answer (a delete Spark's hands want to make): same card, same "yes"/"no". */
-const local = new Map<string, (allow: boolean) => void>();
-const askHere = (text: string) => new Promise<boolean>((resolve) => {
-  const id = `local:${Math.random().toString(36).slice(2, 8)}`;
-  local.set(id, resolve);
-  emit({ approval: { id, kind: "action", text, why: "Shua wants to do this on your Mac" } });
-  setTimeout(() => { if (local.delete(id)) { resolve(false); if (view.approval?.id === id) emit({ approval: undefined }); } }, 60_000);
-});
-
-/**
- * The hands asked for Spark's native actions: run them exactly as Spark would (its executor, its checks, deletes
- * confirmed here), and hand back what happened plus anything read (calendar, mail, files).
- */
-async function runSparkActions(raw: unknown[]): Promise<string> {
-  const actions = parseActions("```do " + JSON.stringify(raw) + "```").filter((a) => a.type !== "run");
-  if (!actions.length) return "Nothing ran: no valid actions. Use the exact shapes from the list.";
-  const results: string[] = [], outputs: string[] = [];
-  const saved = { ...sparkHooks };
-  sparkHooks.onMacOutput = (what, out) => outputs.push(`${what}:\n${out}`);
-  sparkHooks.onMailOutput = (what, out) => outputs.push(`${what}:\n${out}`);
-  sparkHooks.confirmDelete = (what) => askHere(what);
-  try {
-    for (const a of actions) {
-      push({ kind: "step", text: describeAction(a) });
-      const r = await perform(a);
-      results.push(`${describeAction(a)}: ${r.ok ? "done" : "failed"} — ${r.message}`);
-    }
-  } finally { Object.assign(sparkHooks, saved); }
-  return [...results, ...outputs].join("\n\n").slice(0, 12_000);
-}
-const native = () => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew;
-
-export function startLive() {
-  if (call) return;
-  emit({ ...OFF, active: true, state: "connecting" });
-  window.dispatchEvent(new CustomEvent("shuacrew:livecall", { detail: { on: true } }));
-  call = new LiveCall({ voice: liveVoice(), onEvent, vocab: doVocabulary() });
-  void call.start();
-}
-export function endLive() { call?.end(); }
-function answer(allow: boolean) {
-  const a = view.approval; if (!a) return;
-  const mine = local.get(a.id);
-  if (mine) { local.delete(a.id); mine(allow); } else call?.approve(a.id, allow);
-  emit({ approval: undefined });
-}
-
-const LABEL: Record<LiveView["state"], string> = { off: "Live", connecting: "Connecting…", listening: "Listening", speaking: "Speaking", working: "Working on it", ended: "Call ended", error: "Couldn't connect" };
+const LABEL: Record<LiveView["state"], string> = { off: "Live", ready: "Mic off · hold Fn or enable Talk", connecting: "Connecting…", listening: "Listening", speaking: "Speaking", working: "Working on it", ended: "Call ended", error: "Couldn't connect" };
 
 export function LiveButton({ compact = false }: { compact?: boolean }) {
   const live = useLive();
@@ -126,11 +21,44 @@ export function LiveButton({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** The orb: listening follows your voice, speaking follows Shua's, working sweeps. */
-function Orb({ live, size }: { live: LiveView; size: number }) {
-  const level = live.state === "speaking" ? live.voice : live.state === "listening" ? live.mic : 0;
-  const scale = 1 + Math.min(0.35, level * 4);
-  return <i className={`live-orb is-${live.state}`} style={{ width: size, height: size, ["--live-scale" as string]: scale.toFixed(3) }} aria-hidden />;
+export function LiveWaveform({ compact = false }: { compact?: boolean }) {
+  const live = useLive(), levels = useLiveLevels();
+  return <VoiceWaveform compact={compact} state={live.state} readLevel={() => live.state === "speaking" ? levels.voice : levels.mic} />;
+}
+
+export function VoiceWaveform({ compact = false, state, readLevel }: { compact?: boolean; state: string; readLevel: () => number }) {
+  const root = useRef<HTMLSpanElement>(null), sample = useRef(readLevel);
+  const active = state === "listening" || state === "speaking";
+  sample.current = active ? readLevel : () => 0;
+  const normalize = (value: number) => Math.min(1, Math.sqrt(Math.max(0, Number.isFinite(value) ? value : 0)) * 3);
+  const energy = normalize(sample.current());
+  useEffect(() => {
+    const bars = Array.from(root.current?.children ?? []) as HTMLElement[];
+    if (!active) { bars.forEach(bar => { bar.style.height = "3px"; bar.style.transform = "none"; }); return; }
+    const weights = [0.35, 0.6, 0.85, 0.65, 1, 0.7, 0.9, 0.55, 0.3];
+    const range = compact ? 15 : 29, height = range + 3;
+    let frame = 0, previous = performance.now(), envelope = 0;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const tick = (now: number) => {
+      const target = normalize(sample.current());
+      envelope = reduced.matches || document.documentElement.dataset.motion === "reduced" ? target : voiceEnvelope(envelope, target, now - previous);
+      previous = now;
+      bars.forEach((bar, index) => { bar.style.height = `${height}px`; bar.style.transform = `scaleY(${(3 + envelope * weights[index]! * range) / height})`; });
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [compact, active]);
+  return <span ref={root} className={`live-waveform is-${state}${compact ? " is-compact" : ""}`} role="img" aria-label={`${state === "speaking" ? "Voice" : "Microphone"} waveform`}>
+    {[0.35, 0.6, 0.85, 0.65, 1, 0.7, 0.9, 0.55, 0.3].map((weight, index) => <i key={index} style={{ height: `${3 + energy * weight * (compact ? 15 : 29)}px`, animationDelay: `${index * 65}ms` }} />)}
+  </span>;
+}
+
+function CallStatus({ live }: { live: LiveView }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (!live.tasks && live.state !== "working") return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [live.tasks, live.state]);
+  const working = !!live.tasks || live.state === "working";
+  return <span className="live-status">{live.muted ? "Voice stopped · speak to resume" : live.approval ? "Needs your approval" : live.capturing && live.mode === "hold" ? "Listening · release Fn to send" : working ? `Working · ${Math.max(0, Math.floor((now - (live.workStartedAt ?? now)) / 1000))}s` : LABEL[live.state]}</span>;
 }
 
 function Approval({ live, compact }: { live: LiveView; compact?: boolean }) {
@@ -145,16 +73,32 @@ function Approval({ live, compact }: { live: LiveView; compact?: boolean }) {
   );
 }
 
+export function LiveTranscript({ live }: { live: LiveView }) {
+  const lines = liveTranscript(live.feed), list = useRef<HTMLOListElement>(null), follow = useRef(true);
+  const latest = lines.at(-1)?.text;
+  useEffect(() => { if (follow.current && list.current) list.current.scrollTop = list.current.scrollHeight; }, [latest, lines.length]);
+  return <ol ref={list} className="live-conversation" aria-label="Conversation transcript" aria-live="polite" onScroll={() => { const el = list.current; if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 36; }}>
+    {lines.map((line, index) => <li key={index} className={`is-${line.role}${line.partial ? " is-partial" : ""}`}><span>{line.role === "user" ? "You" : "Shua"}{line.partial ? " · transcribing" : line.corrected ? " · updated result" : ""}</span><p>{line.text}</p></li>)}
+  </ol>;
+}
+
 /** The island row while a call is on: orb, what's happening, and the line being said. */
-export function LiveIsland() {
+export function LiveIsland({ expanded = false }: { expanded?: boolean } = {}) {
   const live = useLive();
   if (!live.active) return null;
   const last = live.feed.at(-1);
+  if (expanded) return <section className="live-island is-expanded" aria-label="Live conversation">
+    <header><LiveWaveform compact /><CallStatus live={live} /><span className="live-spacer" />{live.state === "speaking" && <button type="button" className="live-btn" onClick={stopLiveSpeech}>Stop voice</button>}{!!live.tasks && <button type="button" className="live-btn" onClick={stopLiveWork}>Stop work</button>}<LiveButton compact /></header>
+    <LiveTranscript live={live} /><Approval live={live} compact />
+  </section>;
   return (
     <div className="live-island">
       {live.approval ? <Approval live={live} compact /> : <>
-        <Orb live={live} size={18} />
-        <span className={`live-island-text${last?.kind === "step" ? " is-step" : ""}`}>{last ? last.text : LABEL[live.state]}</span>
+        <LiveWaveform />
+        <CallStatus live={live} />
+        {live.state === "speaking" && <button type="button" className="live-btn" onClick={stopLiveSpeech}>Stop voice</button>}
+        <span className={`live-island-text${last?.kind === "step" ? " is-step" : ""}`}>{last?.kind === "line" && last.role === "assistant" ? live.spokenText ?? "" : last?.text ?? ""}</span>
+        {!!live.tasks && <button type="button" className="live-btn" onClick={stopLiveWork}>Stop work</button>}
         <LiveButton compact />
       </>}
     </div>
@@ -168,23 +112,16 @@ export function LivePanel() {
   return (
     <section className={`live-panel is-${live.state}`} aria-label="Live call">
       <header>
-        <Orb live={live} size={34} />
-        <div><strong>{LABEL[live.state]}</strong><small>{live.state === "error" ? `${(live.detail ?? "Live isn't available right now").replace(/[.!?]?\s*$/, ".")} You can still hold fn and talk to Spark.` : live.usage !== undefined && live.usage >= 80 ? `Codex plan ${Math.round(live.usage)}% used this week. Live runs on it.` : "Talk any time; interrupt like a call"}</small></div>
-        {live.active ? <LiveButton /> : <button type="button" className="live-btn" onClick={startLive}>Try again</button>}
+        <LiveWaveform />
+        <div><strong><CallStatus live={live} /></strong><small>{live.state === "error" ? `${(live.detail ?? "Live isn't available right now").replace(/[.!?]?\s*$/, ".")} You can keep typing or retry the call.` : live.detail || (live.usage !== undefined && live.usage >= 80 ? `Reported plan usage: ${Math.round(live.usage)}%.` : "One conversation · voice, screen and teaching")}</small></div>
+        {!!live.tasks && <button type="button" className="live-btn" onClick={stopLiveWork}>Stop work</button>}
+        {live.active ? <><button type="button" className="live-btn" onClick={stopLiveSpeech}>Stop voice</button><LiveButton /></> : <button type="button" className="live-btn" onClick={() => startLive()}>Try again</button>}
       </header>
-      <ol className="live-feed" aria-live="polite">
-        {live.feed.map((it, i) => it.kind === "line"
-          ? <li key={i} className={`live-line is-${it.role}${it.final ? "" : " is-partial"}`}>{it.text}</li>
-          : it.kind === "step"
-          ? <li key={i} className="live-step"><i aria-hidden />{it.text}</li>
-          : <li key={i} className="live-result">{it.corrected && <small className="live-corrected">Corrected what Shua said (“{it.corrected}”). The real result:</small>}{it.text}</li>)}
-      </ol>
+      <LiveTranscript live={live} />
       <Approval live={live} />
       {live.active && (
-        <label className="live-voice">Voice
-          <select value={liveVoice()} onChange={(e) => setLiveVoice(e.target.value)} title="Used from the next call">
-            {LIVE_VOICES.map((v) => <option key={v} value={v}>{v[0]!.toUpperCase() + v.slice(1)}</option>)}
-          </select>
+        <label className="live-voice">Shua's voice · powered by OpenAI
+          <LiveVoiceSelect />
         </label>
       )}
     </section>

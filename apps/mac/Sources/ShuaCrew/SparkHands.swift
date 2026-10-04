@@ -7,6 +7,10 @@ import ShuaCrewCore
 /// Every action is checked here; the page only proposes. Mouse and keyboard need macOS Accessibility permission.
 @MainActor
 enum SparkHands {
+    static func verifiedPress(_ element: AXUIElement, bundleId: String) -> AXError {
+        guard trusted, ["com.apple.calculator", "dev.shuacrew.mac-task-fixture"].contains(bundleId), !offLimits.contains(bundleId) else { return .cannotComplete }
+        return AXUIElementPerformAction(element, kAXPressAction as CFString)
+    }
     /// Apps Spark never types into or clicks around in, whatever the model asks.
     static let offLimits: Set<String> = ["com.agilebits.onepassword7", "com.1password.1password", "com.bitwarden.desktop", "com.apple.keychainaccess", "com.lastpass.LastPass", "com.apple.Passwords"]
 

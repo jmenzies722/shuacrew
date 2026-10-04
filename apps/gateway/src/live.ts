@@ -36,9 +36,11 @@ export function livePrompt(name: string, first?: string): string {
     `You are ${name}, the voice of ${first ? `${first}'s` : "the user's"} Mac, talking with them live like a phone call. You talk; a backend agent with access to the Mac does the work. Present everything as done by you and never mention a backend.`,
     "Truth rules, above everything else:",
     "- Facts about their files, apps, calendar, mail, screen, or the web come ONLY from backend messages. Never guess them.",
+    "- Screen access can change during a call. For every screen question, including 'can you see my screen?', delegate a fresh check. Never infer that the eye is off, request a permission change, or reuse an earlier permission failure without a current backend result.",
     "- Never say something is done or found before the backend says so. While it works, say at most a few words about what you're doing (\"Checking your calendar.\"), then wait quietly.",
     "- When the result arrives, say it in one or two natural sentences. If it failed or found nothing, say that plainly.",
     "Delegate every action, lookup, or question about their Mac, files, apps, schedule, messages, or anything current on the internet; pass their own words. Answer directly only for small talk and general knowledge you are sure of. Corrections and additions to running work: delegate them too, they steer it.",
+    "For architecture, system design, diagrams, visual teaching, and follow-ups about an active lesson, always delegate even when you know the subject. Ask the backend to use spark_screen so the existing teaching engine can build the actual notch visual. Do not substitute a spoken essay or promise a diagram before it exists.",
     "Style: warm, quick, natural; short spoken sentences. No lists or markdown, never read code or long paths aloud. No filler like \"Sure!\" or \"Great question\". If they interrupt, stop and listen.",
   ].join("\n");
 }
@@ -51,6 +53,8 @@ export function liveBackendInstructions(protectedPaths: string[], vocab = ""): s
     "Keep [COMPLETE] short and speakable: one or two plain sentences, no markdown, no code, no long paths. Put detail the user should see (a command, a link) after the first sentence; it is shown, not read.",
     "You are on the user's Mac. Use the shell (open, osascript, shortcuts, mdfind, curl) and web search to get things done. Ask before anything destructive or that sends something on their behalf.",
     "Your working directory is a private scratch folder, not theirs: \"my folder\" or \"this folder\" means the frontmost Finder window (osascript -e 'tell application \"Finder\" to get POSIX path of (target of front window as alias)'), and their files live under their home folder (find them with mdfind).",
+    "For screen interaction (look, point, draw, click, type, scroll, guide) or teaching with an architecture diagram, call spark_screen with the user's own words. Its result determines availability: never claim screen access or a completed action before the tool confirms it. Respect screen-off, denied, failed, cancelled and unavailable results; do not bypass them with shell or other tools. Describe only the reported outcomes, and distinguish a dispatched overlay from independently verified placement.",
+    "A cancelled result ends that task: do not continue, retry, or perform its remaining actions. Wait for a fresh user request. For architecture teaching, use spark_screen even with screen access off: a text-only lesson does not need a screenshot.",
     vocab ? `For their calendar, reminders, notes, mail, music, timers, volume and other Mac controls, use the spark_do tool FIRST: it reads every account on this Mac (iCloud, Google, Exchange) natively and needs no approval. Other connectors and the shell only if spark_do can't. Its actions are the JSON objects shown inside these do blocks; pass them as \`actions\`:\n${vocab}` : "",
     protectedPaths.length ? `Never read, list, search, or touch these folders or anything inside them: ${protectedPaths.join(", ")}. If asked, say they're off limits.` : "",
   ].filter(Boolean).join("\n");
@@ -71,6 +75,7 @@ export function permissionArgs(workspace: string, protectedPaths: string[]): str
 const STOP = new Set("i i'm i've i'll you you're you've your it it's that's there there's here here's okay ok yes no sure sorry so and but the a an all done got one".split(" "));
 export function unsupportedClaims(spoken: string, sources: string): string[] {
   const src = sources.toLowerCase().replace(/[’']/g, "'");
+  const compactSource = src.replace(/[^a-z0-9]/g, "");
   const words = ["noon", "midnight", "tomorrow", "yesterday", "tonight"];
   const claims = [
     ...(spoken.match(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)?/gi) ?? []).map((t) => t.replace(/\s+/g, " ").trim()),
@@ -82,7 +87,7 @@ export function unsupportedClaims(spoken: string, sources: string): string[] {
   return [...new Set(claims)].filter((c) => {
     const lc = c.toLowerCase();
     if (/\d/.test(c)) return !src.includes(digits(c)) && !src.includes(lc);
-    return !src.includes(lc);
+    return !src.includes(lc) && !compactSource.includes(lc.replace(/[^a-z0-9]/g, ""));
   });
 }
 
@@ -107,6 +112,10 @@ export const LIVE_TOOLS = [{
   name: "spark_do",
   description: "Do things on the user's Mac natively through ShuaCrew (calendar, reminders, notes, mail drafts, music, timers, volume and system controls, apps, settings pages, the user's crew). Pass `actions`: an array of action objects, exactly the shapes in your instructions. Returns what happened and anything it read.",
   inputSchema: { type: "object", properties: { actions: { type: "array", items: { type: "object" }, description: "Up to 5 action objects" } }, required: ["actions"], additionalProperties: false },
+}, {
+  name: "spark_screen",
+  description: "Anything on the user's screen, done by Spark (ShuaCrew's on-screen assistant, which sees the screen and moves the pointer): look at what's on screen, point at or show where something is (\"show me the Wi-Fi icon\"), draw, circle or highlight on the screen, click, type or press keys for them, guide them step by step through an app, or teach with a diagram. Pass `request`: the user's own words. Returns what Spark saw and did.",
+  inputSchema: { type: "object", properties: { request: { type: "string", description: "What the user asked, in their words" } }, required: ["request"], additionalProperties: false },
 }];
 
 export interface LiveOptions {
@@ -122,12 +131,55 @@ export interface LiveOptions {
 }
 
 /** One live call per socket; a new call replaces the old one. */
+export function pendingLiveRelay(pending: Map<string, (text: string) => void>, id: string, send: (message: { type: string; id: string }) => void, timeout: number): Promise<string> {
+  return new Promise(resolve => {
+    const finish = (text: string) => { clearTimeout(timer); pending.delete(id); resolve(text); };
+    const timer = setTimeout(() => { send({ type: "cancel", id }); finish("Task cancelled after timeout. Earlier actions may have taken effect; no final completion was verified."); }, timeout);
+    timer.unref(); pending.set(id, finish);
+  });
+}
+
+export interface LiveReadiness { usable: boolean; usedPercent?: number; resetsAt?: number }
+
+/** Whether the ChatGPT plan can take a call right now, from Codex's `account/rateLimits/read`. Unreadable = usable. */
+export function liveReadyFrom(result: Json): LiveReadiness {
+  const limits = result?.rateLimits ?? {};
+  const usedPercent = typeof limits.primary?.usedPercent === "number" ? limits.primary.usedPercent : undefined;
+  const resets = [limits.primary?.resetsAt, limits.secondary?.resetsAt].filter((v): v is number => typeof v === "number");
+  const resetsAt = resets.length ? Math.min(...resets) * (Math.min(...resets) < 1e12 ? 1000 : 1) : undefined;
+  const credits = limits.credits?.hasCredits === true || limits.credits?.unlimited === true;
+  const blocked = limits.spendControlReached === true || (!credits && (result?.ordinaryUsageAllowed === false || !!limits.rateLimitReachedType));
+  return { usable: !blocked, ...(usedPercent !== undefined ? { usedPercent } : {}), ...(resetsAt !== undefined ? { resetsAt } : {}) };
+}
+
 export class LiveVoice {
   private current?: LiveCall;
+  private ready?: { at: number; value: Promise<LiveReadiness> };
   constructor(private options: LiveOptions) {}
+  /** Can Live take a call? Asked of Codex (~0.6 s), remembered for 30 s so a page checking often costs nothing. */
+  readiness(): Promise<LiveReadiness> {
+    if (this.ready && Date.now() - this.ready.at < 30_000) return this.ready.value;
+    const value = this.readRateLimits().then(liveReadyFrom, () => ({ usable: true }));
+    this.ready = { at: Date.now(), value };
+    return value;
+  }
+  private async readRateLimits(): Promise<Json> {
+    const binary = this.options.binary ?? findBinary("codex");
+    if (!binary) throw new Error("no codex");
+    const child = spawn(binary, ["app-server"], { env: agentEnv(process.env, "subscription"), stdio: ["pipe", "pipe", "ignore"] });
+    const timer = setTimeout(() => child.kill("SIGTERM"), 10_000);
+    try {
+      const peer = new RpcPeer(child, () => undefined, async () => ({}));
+      await peer.request("initialize", { clientInfo: { name: "shuacrew-live-ready", version: "0.1.0" }, capabilities: { experimentalApi: true } });
+      peer.notify("initialized");
+      return await peer.request("account/rateLimits/read");
+    } finally { clearTimeout(timer); child.kill("SIGTERM"); }
+  }
   /** spark_do from the hands → the page holding the call → back. Only the current call's token reaches this. */
   async tool(run: string, name: string, args: Record<string, unknown>): Promise<string> {
-    if (name !== "spark_do" || !this.current || run !== this.current.run) throw new Error("No live call is running.");
+    if (!this.current || run !== this.current.run) throw new Error("No live call is running.");
+    if (name === "spark_screen") return this.current.task(String(args.request ?? "").slice(0, 2000));
+    if (name !== "spark_do") throw new Error(`Unknown tool ${name}.`);
     return this.current.relay(Array.isArray(args.actions) ? args.actions : []);
   }
   attach(socket: Socket) {
@@ -162,9 +214,13 @@ class LiveCall {
       let m: Json;
       try { m = JSON.parse(String(raw)); } catch { return; }
       if (m?.type === "start" && typeof m.sdp === "string") void this.start(m.sdp, m.voice, typeof m.vocab === "string" ? m.vocab.slice(0, 20_000) : "").catch((e: Error) => this.fail(e.message));
+      // The page asks the voice to say something (a yes-or-no Spark needs mid-task).
+      else if (m?.type === "say" && typeof m.text === "string") void this.peer?.request("thread/realtime/appendSpeech", { threadId: this.threadId, text: m.text.slice(0, 300) }).catch(() => undefined);
       else if (m?.type === "done" && typeof m.id === "string") { this.relays.get(m.id)?.(String(m.text ?? "")); this.relays.delete(m.id); }
       else if (m?.type === "approve" && typeof m.id === "string") { this.approvals.get(m.id)?.(m.allow === true); this.approvals.delete(m.id); }
       else if (m?.type === "text" && typeof m.text === "string" && this.threadId) void this.peer?.request("thread/realtime/appendText", { threadId: this.threadId, role: "user", text: m.text.slice(0, 4000) }).catch(() => undefined);
+      else if (m?.type === "typed" && typeof m.text === "string") { this.heard = m.text.slice(0, 4000); this.said.push({ role: "user", text: this.heard, at: Date.now() }); }
+      else if (m?.type === "typedResult" && typeof m.text === "string") { this.truth = { text: m.text.slice(0, 8000), at: Date.now() }; this.results.push(this.truth.text); }
       else if (m?.type === "stop") this.end("stopped");
     });
   }
@@ -173,13 +229,19 @@ class LiveCall {
   private fail(message: string) { this.send({ type: "error", message }); this.end(message); }
 
   /** Spark's actions run in the page (its executor and checks); the result comes back as the tool's answer. */
+  /** spark_screen: Spark does it on screen (silently; this voice does the talking) and says what it saw and did. */
+  task(request: string): Promise<string> {
+    const id = Math.random().toString(36).slice(2, 10);
+    const result = pendingLiveRelay(this.relays, id, message => this.send(message), 120_000);
+    this.send({ type: "task", id, request });
+    return result;
+  }
+
   relay(actions: unknown[]): Promise<string> {
     const id = Math.random().toString(36).slice(2, 10);
-    return new Promise((resolve) => {
-      this.relays.set(id, resolve);
-      this.send({ type: "do", id, actions: actions.slice(0, 5) });
-      setTimeout(() => { if (this.relays.delete(id)) resolve("The Mac didn't answer in time."); }, 90_000).unref();
-    });
+    const result = pendingLiveRelay(this.relays, id, message => this.send(message), 90_000);
+    this.send({ type: "do", id, actions: actions.slice(0, 5) });
+    return result;
   }
 
   private async start(sdp: string, voice?: string, vocab = "") {

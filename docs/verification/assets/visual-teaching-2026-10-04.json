@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "id": "teach_4d95735b-f934-46d1-92ed-58158a30507c",
+  "revision": 1,
+  "answer": "A queue serves items in arrival order: the first item added is the first removed (FIFO). Example: Ana, Ben, and Chen join a checkout line; Ana is served first.",
+  "objects": 7,
+  "steps": 2
+}

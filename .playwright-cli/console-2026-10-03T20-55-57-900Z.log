@@ -1,0 +1,39 @@
+[     849ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5179/node_modules/.vite/deps/react-dom_client.js?v=f9faa2d3:15804
+[     885ms] Error: Module "node:crypto" has been externalized for browser compatibility. Cannot access "node:crypto.createHash" in client code.  See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+    at Object.get (http://127.0.0.1:5179/@id/__vite-browser-external:node:crypto:3:11)
+    at http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew-live/packages/core/src/chain.ts:1:50
+[   20643ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5179/node_modules/.vite/deps/react-dom_client.js?v=f9faa2d3:15804
+[   20661ms] Error: Module "node:crypto" has been externalized for browser compatibility. Cannot access "node:crypto.createHash" in client code.  See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+    at Object.get (http://127.0.0.1:5179/@id/__vite-browser-external:node:crypto:3:11)
+    at http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew-live/packages/core/src/chain.ts:1:50
+[  110799ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5179/node_modules/.vite/deps/react-dom_client.js?v=f9faa2d3:15804
+[  110876ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew/node_modules/.pnpm/@fontsource-variable+space-grotesk@5.3.0/node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2:0
+[  110910ms] [VERBOSE] Rendering was performed in a subtree hidden by content-visibility. @ :3550
+[  111515ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew/node_modules/.pnpm/@fontsource-variable+geist@5.3.0/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2:0
+[  111643ms] [VERBOSE] Rendering was performed in a subtree hidden by content-visibility. @ :3550
+[  112894ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/api/radio/command:0
+[  196209ms] [VERBOSE] Rendering was performed in a subtree hidden by content-visibility. @ :3550
+[  196262ms] [VERBOSE] Rendering was performed in a subtree hidden by content-visibility. @ http://127.0.0.1:5179/src/screens/Buddy.tsx?t=1791061133590:3666
+[  263873ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/api/runs/r_7270a256/spoken-summary:0
+[  328289ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5179/node_modules/.vite/deps/react-dom_client.js?v=f9faa2d3:15804
+[  328355ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew/node_modules/.pnpm/@fontsource-variable+space-grotesk@5.3.0/node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2:0
+[  328378ms] [VERBOSE] Rendering was performed in a subtree hidden by content-visibility. @ :3550
+[  328538ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew/node_modules/.pnpm/@fontsource-variable+geist@5.3.0/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2:0
+[  330366ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/api/radio/command:0
+[  337175ms] [VERBOSE] Rendering was performed in a subtree hidden by content-visibility. @ :3550
+[  401395ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:5179/ws' failed: Connection closed before receiving a handshake response @ http://127.0.0.1:5179/src/lib/live.ts:232
+[  401562ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/teaching/check:0
+[  401698ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:5179/ws' failed: Connection closed before receiving a handshake response @ http://127.0.0.1:5179/src/lib/live.ts:232
+[  402302ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:5179/ws' failed: Connection closed before receiving a handshake response @ http://127.0.0.1:5179/src/lib/live.ts:232
+[  402745ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/health:0
+[  402762ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/teaching/check:0
+[  402898ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/health:0
+[  403201ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/health:0
+[  403363ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/radio/status:0
+[  403505ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:5179/ws' failed: Connection closed before receiving a handshake response @ http://127.0.0.1:5179/src/lib/live.ts:232
+[  403805ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/health:0
+[  403962ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://127.0.0.1:5179/api/teaching/check:0
+[  405252ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5179/node_modules/.vite/deps/react-dom_client.js?v=f9faa2d3:15804
+[  405321ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew/node_modules/.pnpm/@fontsource-variable+space-grotesk@5.3.0/node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2:0
+[  405623ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/@fs/Users/admin/Developer/projects/shuacrew/node_modules/.pnpm/@fontsource-variable+geist@5.3.0/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2:0
+[  407324ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:5179/api/radio/command:0

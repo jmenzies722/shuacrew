@@ -44,7 +44,7 @@ import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation } from "../lib/conversation";
 import { MessageQueue } from "../components/MessageQueue";
 import { shouldSend } from "../lib/composer-keys";
-import { canRemoveSession, removeSession } from "../lib/session-removal";
+import { canRemoveSession, removeSession, sessionRemovalCopy } from "../lib/session-removal";
 import { pauseClock, scopeRuns, recentWork } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
@@ -201,6 +201,15 @@ function Group({ title, runs, selected }: { title?: string; runs: RunView[]; sel
   );
 }
 
+function SessionRemovalConfirmation({ title, error, removing, allowed, onConfirm, returnFocus }: { title: string; error: string; removing: boolean; allowed: boolean; onConfirm: () => void; returnFocus?: () => void }) {
+  return <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm" /><Dialog.Content onCloseAutoFocus={event => { if (returnFocus) { event.preventDefault(); returnFocus(); } }} className="fixed left-1/2 top-1/2 z-[81] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl">
+    <Dialog.Title className="text-lg font-semibold text-fg">{sessionRemovalCopy.title}</Dialog.Title>
+    <Dialog.Description className="mt-3 text-sm leading-relaxed text-fg-2">“{title}” — {sessionRemovalCopy.description}</Dialog.Description>
+    {error && <p role="alert" className="mt-3 text-sm text-bad">{error}</p>}
+    <div className="mt-5 flex justify-end gap-3"><Dialog.Close asChild><Button disabled={removing}>Cancel</Button></Dialog.Close><Button disabled={removing || !allowed} onClick={onConfirm}>{removing ? "Deleting…" : "Delete session"}</Button></div>
+  </Dialog.Content></Dialog.Portal>;
+}
+
 function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
   const [removing, setRemoving] = useState(false), [removeError, setRemoveError] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -225,13 +234,8 @@ function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {
       <span className="session-list-title">{run.title || run.ask || "Untitled chat"}</span>
       <span className="session-list-meta"><span>{folderOf(run)}</span><time dateTime={new Date(run.updatedAt).toISOString()}>{clock(run.updatedAt)}</time></span>
       <span className="session-list-status" data-tone={status.tone}><i aria-hidden="true" />{status.label}</span>
-    </Link><Dialog.Trigger asChild><button className="session-remove" aria-label={`Remove chat: ${run.title}`} title={canRemoveSession(run.status) ? "Remove chat from sidebar" : "Stop this session before removing it"} disabled={removing || !canRemoveSession(run.status)}><Trash2 size={14} /></button></Dialog.Trigger></div>
-      <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm" /><Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl">
-        <Dialog.Title className="text-lg font-semibold text-fg">Remove chat?</Dialog.Title>
-        <Dialog.Description className="mt-3 text-sm leading-relaxed text-fg-2">“{run.title}” will be archived from the sidebar. Its audit history and project files are retained.</Dialog.Description>
-        {removeError && <p role="alert" className="mt-3 text-sm text-bad">{removeError}</p>}
-        <div className="mt-5 flex justify-end gap-3"><Dialog.Close asChild><Button disabled={removing}>Cancel</Button></Dialog.Close><Button disabled={removing || !canRemoveSession(run.status)} onClick={() => void remove()}>{removing ? "Removing…" : "Remove chat"}</Button></div>
-      </Dialog.Content></Dialog.Portal>
+    </Link><Dialog.Trigger asChild><button className="session-remove" aria-label={`Delete session: ${run.title}`} title={canRemoveSession(run.status) ? "Delete session from chat list" : "Stop this session before deleting it"} disabled={removing || !canRemoveSession(run.status)}><Trash2 size={14} /></button></Dialog.Trigger></div>
+      <SessionRemovalConfirmation title={run.title} error={removeError} removing={removing} allowed={canRemoveSession(run.status)} onConfirm={() => void remove()} />
     </Dialog.Root>
   );
 }
@@ -326,6 +330,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
 /** The session's "…": inspect it in depth, or put it away. */
 function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
   const [open, setOpen] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false), [removing, setRemoving] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const menu = useRef<HTMLDivElement>(null);
@@ -336,16 +341,19 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
   const archive = async () => {
+    if (removing) return;
+    setRemoving(true); setError("");
     try {
       await removeSession(run.id, run.status);
+      setConfirmRemove(false);
       setOpen(false);
       navigate({ to: "/" });
     } catch (e) {
       setError((e as Error).message);
-    }
+    } finally { setRemoving(false); }
   };
   return (
-    <div ref={menu} className="relative">
+    <Dialog.Root open={confirmRemove} onOpenChange={next => { if (!removing) { setConfirmRemove(next); setError(""); } }}><div ref={menu} className="relative">
       <IconButton title="More" onClick={() => setOpen((v) => !v)} active={open}>
         <Ellipsis size={15} />
       </IconButton>
@@ -363,13 +371,13 @@ function SessionMenu({ run, working }: { run: RunView; working: boolean }) {
             Copy session id
           </button>
           <div className="my-1 h-px bg-line" />
-          <button role="menuitem" disabled={!canRemoveSession(run.status)} onClick={() => void archive()} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={!canRemoveSession(run.status) ? "Stop it first" : undefined}>
-            Archive session
+          <button role="menuitem" disabled={!canRemoveSession(run.status)} onClick={() => { setOpen(false); setConfirmRemove(true); }} className="block w-full px-3 py-1.5 text-left text-bad hover:bg-ink disabled:text-fg-3" title={!canRemoveSession(run.status) ? "Stop it first" : undefined}>
+            Delete session…
           </button>
           {error && <div className="px-3 pb-1.5 text-[11.5px] text-bad">{error}</div>}
         </div>
       )}
-    </div>
+    </div><SessionRemovalConfirmation title={run.title} error={error} removing={removing} allowed={canRemoveSession(run.status)} onConfirm={() => void archive()} returnFocus={() => menu.current?.querySelector("button")?.focus()} /></Dialog.Root>
   );
 }
 

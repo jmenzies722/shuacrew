@@ -42,3 +42,18 @@ import Testing
     _ = g.down(at: 5)
     #expect(g.up(at: 5.1) == .tap)              // state resets between presses
 }
+
+@Test func fnFeedbackAcknowledgesPressWithoutClaimingCapture() {
+    #expect(FnFeedback.phase(for: .press) == .preparing)
+    #expect(FnFeedback.phase(for: .holdStart) == .hidden)
+    #expect(FnFeedback.phase(for: .cancel) == .hidden)
+    #expect(FnFeedback.phase(for: .tap) == .hidden)
+    #expect(FnFeedback.phase(for: .holdEnd) == .hidden)
+}
+
+@Test func captureConsistencyRejectsAppWindowAndTimeChanges() {
+    #expect(CaptureConsistency.valid(startPID: 1, currentPID: 1, startWindow: "Music", currentWindow: "Music", observedAt: 10, now: 11))
+    #expect(!CaptureConsistency.valid(startPID: 1, currentPID: 2, startWindow: "Music", currentWindow: "Music", observedAt: 10, now: 11))
+    #expect(!CaptureConsistency.valid(startPID: 1, currentPID: 1, startWindow: "Music", currentWindow: "Settings", observedAt: 10, now: 11))
+    #expect(!CaptureConsistency.valid(startPID: 1, currentPID: 1, startWindow: "Music", currentWindow: "Music", observedAt: 10, now: 19))
+}

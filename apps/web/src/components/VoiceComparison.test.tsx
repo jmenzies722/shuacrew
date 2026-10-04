@@ -1,10 +1,11 @@
 import { expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { VoiceComparison } from "./VoiceComparison";
-it("keeps unavailable voices disabled and cloud unconfigured", () => {
+it("keeps unavailable local voices disabled and distinguishes OpenAI Live", () => {
   const markup = renderToStaticMarkup(<VoiceComparison voices={[]} />);
   expect(markup).toContain("Compare narration voices");
-  expect(markup).toContain("Cloud voice is not configured");
+  expect(markup).toContain("One voice for calls and chat");
+  expect(markup).toContain("Use as Shua&#x27;s voice");
   expect(markup).toContain("disabled");
 });
 it("does not offer manifest voices when the engine is unavailable", () => {

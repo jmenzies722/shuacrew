@@ -1,3 +1,4 @@
+import { codexMcpApproval } from "./codex-approval.js";
 /**
  * Codex, through `codex app-server` — on the person's own ChatGPT plan.
  *
@@ -292,6 +293,7 @@ export class CodexRuntime implements Runtime {
       child,
       (method, params) => push(translator.translate(method, params)),
       async (method, params) => {
+        if (method === "mcpServer/elicitation/request") return codexMcpApproval(params, (tool, input) => ctx.approve(tool, input));
         if (method === "item/commandExecution/requestApproval") {
           const command = String(params.command ?? translator.command(params.itemId));
           const answer = await ctx.approve("commandExecution", { command, cwd: params.cwd ?? run.cwd });

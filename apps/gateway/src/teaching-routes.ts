@@ -1,8 +1,9 @@
+import { codexTeachingModel } from "./openai-policy.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import path from "node:path";
 import { agentEnv } from "@shuacrew/core/redact";
-import { codexTeachingCompletion, teachingCompletion, type Runtime } from "@shuacrew/runtimes";
+import { codexTeachingCompletion, type Runtime } from "@shuacrew/runtimes";
 import type { Supervisor } from "./runs.js";
 import { TeachingStore, TeachingEngine, TeachingRequestSchema } from "./teaching.js";
 const Change = z
@@ -22,13 +23,9 @@ export function teachingRoutes(
   const store = new TeachingStore(path.join(deps.home, "teaching", "lessons.json"));
   const cwd = path.join(deps.home, "teaching");
   const engine = new TeachingEngine(store, async (input) => {
-    // Codex teaches when the lesson's model is one of Codex's (you chose Codex); otherwise Claude, the default.
-    if (deps.runtimes.get("codex")?.models.some((m) => m.id === input.model))
-      return codexTeachingCompletion({ ...input, cwd, env: agentEnv(process.env, "subscription") });
-    const runtime = deps.runtimes.get("claude");
-    if (!runtime || runtime.authMode !== "subscription")
-      throw new Error("Visual teaching needs the existing Claude subscription connection");
-    return teachingCompletion({ ...input, cwd, env: agentEnv(process.env, "subscription") });
+    const runtime = deps.runtimes.get("codex");
+    if (!runtime || runtime.authMode !== "subscription") throw new Error("Connect your ChatGPT/Codex subscription to use visual teaching.");
+    return codexTeachingCompletion({ ...input, model: codexTeachingModel(input.model, runtime.models), cwd, env: agentEnv(process.env, "subscription") });
   });
   const snapshot = () => {
     const state = store.snapshot();
@@ -67,7 +64,7 @@ export function teachingRoutes(
           baseRevision: z.number().int(),
           displayId: z.number().int().optional(),
           model: z.string().max(100).optional(),
-          runtime: z.enum(["claude", "codex"]).optional(),
+          runtime: z.literal("codex").optional(),
         })
         .strict()
         .parse(q.body);
@@ -77,7 +74,7 @@ export function teachingRoutes(
         if (store.snapshot().active !== q.params.id || !current.stepId || body.displayId === undefined)
           throw new Error("Open a lesson step and choose a display first");
         if (engine.busy(q.params.id)) throw new Error("Wait for the current teaching turn");
-        const engineId = body.runtime ?? "claude";
+        const engineId = body.runtime ?? "codex";
         const runtime = deps.runtimes.get(engineId);
         if (!runtime) throw new Error(`${engineId === "codex" ? "Codex" : "Claude"} is not connected`);
         deps.supervisor.updateRuntimeStatus(runtime.id, await runtime.status());
@@ -207,7 +204,7 @@ export function teachingRoutes(
   app.post<{ Params: { id: string } }>("/api/teaching/:id/explain", async (q, r) => {
     try {
       const body = TeachingRequestSchema.parse(q.body);
-      const engineId = body.runtime ?? "claude";
+      const engineId = body.runtime ?? "codex";
       const runtime = deps.runtimes.get(engineId);
       if (!runtime) throw new Error(`${engineId === "codex" ? "Codex" : "Claude"} is not connected for visual teaching`);
       const status = await runtime.status();

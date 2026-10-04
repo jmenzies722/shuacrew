@@ -1,3 +1,4 @@
+import { workflowTeachingRoutes } from "./workflow-teaching-routes.js";
 import { z } from "zod";
 import { sessionSummaryRoutes } from "./session-summary-routes.js";
 import { teachingRoutes } from "./teaching-routes.js";
@@ -127,7 +128,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   for (const event of store.read(0)) apply(state, event);
   store.subscribe((event) => apply(state, event));
 
-  const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024 });
+  const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024, forceCloseConnections: true });
   const merges = new MergeQueue(store, supervisor.worktrees);
   // Keep the raw body: webhook signatures are computed over the exact bytes that were sent.
   app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
@@ -238,13 +239,18 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   systemRoutes(app);
   if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
   sessionSummaryRoutes(app, {store,supervisor,runtimes:options.runtimes,home:path.dirname(store.path)});
+  workflowTeachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes });
   teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
   mobileRoutes(app, options.mobile);
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
-  if (options.live) { const live = options.live; app.get("/ws/live", { websocket: true }, (socket) => live.attach(socket)); }
+  if (options.live) {
+    const live = options.live;
+    app.get("/ws/live", { websocket: true }, (socket) => live.attach(socket));
+    app.get("/api/live/ready", async () => live.readiness());
+  }
 
   if (options.uploads) {
     const uploads = options.uploads;
@@ -266,6 +272,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       reply.raw.once("close", cancel);
       const deadline = request.query.voice === "1" ? setTimeout(cancel, 45_000) : undefined;
       writeFileSync(file, request.body, { mode: 0o600 });
+      const began = Date.now(), tag = `transcribe voice=${request.query.voice ?? 0} fast=${request.query.fast ?? 0} bytes=${request.body.length}`;
       try {
         // Your crew's and ventures' names spell right when Whisper knows to expect them.
         const names = [...Object.values(state.members).map((m) => m.name), ...Object.values(state.ventures).map((v) => v.name)];
@@ -274,8 +281,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
           // A spoken turn: the big model with a window fitted to the clip — ~0.8 s, and it hears "what's due", "git
           // status" and "pizza" where base.en heard "what's do", "good status" and "piece" (measured on real turns).
           ...(request.query.voice === "1" ? { fitWindow: true } : {}) });
+        console.log(`${new Date().toISOString()} ${tag} ms=${Date.now() - began} chars=${heard.trim().length}`);
         return { text: fixNames(heard, [...names, "ShuaCrew", "Shua", "Codex", "Claude"]) };
       } catch (error) {
+        console.log(`${new Date().toISOString()} ${tag} ms=${Date.now() - began} error=${(error as Error).message.slice(0, 200)}`);
         return reply.code(422).send({ error: (error as Error).message });
       } finally {
         clearTimeout(deadline);

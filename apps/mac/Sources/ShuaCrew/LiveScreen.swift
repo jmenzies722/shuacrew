@@ -60,6 +60,7 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
            let raw = attachments.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete { return }
         let image = CIImage(cvPixelBuffer: pixels)
         Task { @MainActor in
+            guard self.stream === stream else { return }
             self.latest = image
             self.latestAt = Date()
         }
@@ -67,6 +68,7 @@ final class LiveScreen: NSObject, SCStreamOutput, SCStreamDelegate {
 
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         Task { @MainActor in
+            guard self.stream === stream else { return }
             self.stream = nil
             self.latest = nil
             self.onStop?(error.localizedDescription)
@@ -87,8 +89,19 @@ enum ScreenElements {
     /// Every control you could be told to click, positions as fractions of `screen` (from the top-left): the front
     /// window first, then that app's menu bar, the Dock and the menu-bar icons (Wi-Fi, battery, Control Center…), which
     /// live in other processes. Icons without a text name still count, named from their help text or role.
+    static var observedApplication: NSRunningApplication? {
+        let front = NSWorkspace.shared.frontmostApplication
+        return front?.bundleIdentifier == Bundle.main.bundleIdentifier ? SparkHands.target : front
+    }
+    static func identity() -> (pid: Int32, window: String) {
+        guard let app = observedApplication else { return (-1, "") }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        let title = element(root, kAXFocusedWindowAttribute).flatMap { string($0, kAXTitleAttribute) } ?? ""
+        return (app.processIdentifier, title)
+    }
+
     static func read(on screen: NSScreen) -> [String: Any] {
-        guard AXIsProcessTrusted(), let app = SparkHands.target ?? NSWorkspace.shared.frontmostApplication else { return [:] }
+        guard AXIsProcessTrusted(), let app = observedApplication else { return [:] }
         let root = AXUIElementCreateApplication(app.processIdentifier)
         var windowValue: CFTypeRef?
         AXUIElementCopyAttributeValue(root, kAXFocusedWindowAttribute as CFString, &windowValue)

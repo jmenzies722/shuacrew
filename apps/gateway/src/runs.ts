@@ -21,6 +21,7 @@ import {
   defaultContext,
   defaultRules,
   normalise,
+  nameSession,
   standingRule,
   within,
   type AnyEvent,
@@ -185,7 +186,7 @@ export class Supervisor {
     this.rec(
       "run.created",
       {
-        title: spec.title ?? titleFrom(spec.ask),
+        ...nameSession(spec.ask, spec.title),
         ask: spec.ask,
         project: spec.project,
         repo: spec.repo,
@@ -1015,11 +1016,6 @@ export class Supervisor {
 
 function isFinished(status: RunStatus): boolean {
   return ["merged", "done", "failed", "cancelled"].includes(status);
-}
-
-function titleFrom(ask: string): string {
-  const line = ask.trim().split("\n")[0] ?? "";
-  return line.length <= 70 ? line : `${line.slice(0, 67).trimEnd()}…`;
 }
 
 /** "3:50 PM" today, "Wed 8:00 PM" within a week, "Sep 30, 8:00 PM" beyond. */

@@ -1,0 +1,13 @@
+{
+  "followingForeground" : true,
+  "keyboardOnly" : true,
+  "ok" : true,
+  "recordedSteps" : [
+    "input"
+  ],
+  "replayMilliseconds" : [
+    224.85697269439697,
+    132.80999660491943
+  ],
+  "verifiedRuns" : 2
+}

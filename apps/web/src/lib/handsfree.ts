@@ -1,6 +1,7 @@
 import { orderedTranscript } from "./companion-reliability";
 import { trustLive, type LiveSpeech } from "./live-speech";
 import { micConstraints } from "./mic-route";
+import { voiceTrace } from "./voice-trace";
 /**
  * Hands-free conversation: the mic stays open, Spark hears when you start and stop talking, transcribes each
  * turn on this Mac (whisper, via the gateway), and you can talk over it to interrupt. No buttons.
@@ -262,9 +263,11 @@ export class HandsFree {
     this.onPhase?.("starting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }) });
+      const track = stream.getAudioTracks()[0];
+      voiceTrace("mic-open", { label: track?.label, state: track?.readyState, muted: track?.muted, stale: epoch !== this.captureEpoch });
       if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); return; }
       this.stream = stream;
-    } catch (e) { if (epoch !== this.captureEpoch) return; this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone. Check your selected input device and try again."); return; }
+    } catch (e) { voiceTrace("mic-failed", { name: (e as Error).name, message: (e as Error).message }); if (epoch !== this.captureEpoch) return; this.stream = undefined; this.onPhase?.("error", (e as Error).name === "NotAllowedError" ? "Microphone access is off for ShuaCrew." : "Couldn't open the microphone. Check your selected input device and try again."); return; }
     this.ctx = new AudioContext();
     if (this.ctx.state === "suspended") await this.ctx.resume();
     if (epoch !== this.captureEpoch) return;
@@ -310,6 +313,7 @@ export class HandsFree {
 
   /** Push-to-talk: open the mic only now, and start the turn the moment it's live. */
   async press() {
+    voiceTrace("press", { stream: !!this.stream, holding: this.holding, paused: this.paused, tail: !!this.tail });
     if (this.tail) { clearTimeout(this.tail); this.tail = undefined; this.pressed = true; return; } // pressed again right after letting go: same turn
     if (this.holding) return;
     this.pressed = true;
@@ -324,11 +328,12 @@ export class HandsFree {
    * fn just went down (it isn't a hold yet): open the mic now, so by the time it counts as a hold, what you've already
    * started saying is in the preroll. Opening the mic only on the hold lost the first ~0.5 s of every turn.
    */
-  async warm() { if (this.mode !== "hold" || this.holding) return; this.pressed = false; if (!this.stream) await this.start(); }
+  async warm() { voiceTrace("warm", { mode: this.mode, holding: this.holding, stream: !!this.stream }); if (this.mode !== "hold" || this.holding) return; this.pressed = false; if (!this.stream) await this.start(); }
   /** It was a tap, or fn+another key: close the mic that warm() opened (never mid-turn). */
   cool() { if (this.mode === "hold" && !this.holding && !this.pressed && !this.inflight) this.stop(); }
   /** Push-to-talk: start a turn now (keeping the last moment before you pressed, so the first word isn't clipped). */
   hold() {
+    voiceTrace("hold", { stream: !!this.stream, holding: this.holding, paused: this.paused });
     if (!this.stream || this.holding || this.paused) return;
     this.holding = true;
     if (this.speaking) this.onBargeIn?.();
@@ -337,6 +342,7 @@ export class HandsFree {
   }
   /** Push-to-talk: you let go — send what you said (a tap under ~0.3 s is ignored). */
   release() {
+    voiceTrace("release", { holding: this.holding, mode: this.mode, frames: this.turn?.length ?? 0 });
     this.pressed = false;
     if (!this.holding) { if (this.mode === "hold") this.stop(); return; }
     if (this.tail) return;
@@ -382,9 +388,16 @@ export class HandsFree {
     const liveTurn = this.liveUsing() ? this.turnId : -1;
     const turn = this.turn; this.turn = null; this.turnId++; this.lastCaption = ""; this.steadied = STEADY;
     const spec = this.spec; this.spec = null;
+    let peak = 0; for (const f of turn ?? []) for (let i = 0; i < f.length; i += 64) peak = Math.max(peak, Math.abs(f[i] ?? 0));
+    voiceTrace("finish", { keep, frames: turn?.length ?? 0, ctx: this.ctx?.state, rate, peak: Math.round(peak * 1000) / 1000 });
     if (!keep || !turn?.length || !this.ctx) { if (liveTurn >= 0) this.live!.cancel(liveTurn); this.onDropped?.(); if (!this.inflight) this.onPhase?.("listening"); return; }
     // Push-to-talk still pauses while it transcribes; open mic keeps listening, so you can carry on talking.
-    if (this.mode === "hold") this.paused = true;
+    if (this.mode === "hold") {
+      this.paused = true;
+      this.listening = false;
+      clearTimeout(this.recoveryTimer);
+      this.releaseCapture();
+    }
     this.inflight++; this.onPhase?.("transcribing");
     try {
       // The head start covered everything you said (you stayed quiet since): use it. Otherwise transcribe it all now.
@@ -401,11 +414,12 @@ export class HandsFree {
       }
       if (epoch !== this.recognitionEpoch) return;
       const { text = "", error } = result;
+      voiceTrace("result", { source: this.lastSource, chars: text.trim().length, meaningful: meaningful(text), error });
       if (error) this.onPhase?.("error", error);
       else if (meaningful(text)) this.pending.push({order,text:text.trim()});
       else this.onDropped?.();
       this.onPartial?.("");
-    } catch { if (epoch === this.recognitionEpoch) this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
+    } catch (e) { voiceTrace("transcribe-failed", { error: String(e) }); if (epoch === this.recognitionEpoch) this.onPhase?.("error", "Couldn't transcribe that. Still listening."); }
     finally { this.inflight--; this.paused = false; this.deliver(); if (this.stream && !this.turn && !this.inflight) this.onPhase?.("listening"); }
   }
   /** Send what you said once you've really finished: nothing still transcribing and you're not mid-sentence again. */
@@ -413,10 +427,12 @@ export class HandsFree {
     if (this.inflight || this.turn || !this.pending.length) return;
     // The same words twice in a row (a re-press that re-sent them) are said once.
     const text = orderedTranscript(this.pending); this.pending = [];
+    voiceTrace("deliver", { chars: text.length });
     this.onTurn?.(text);
   }
 
   stop() {
+    voiceTrace("stop", { holding: this.holding, inflight: this.inflight, by: new Error().stack?.split("\n").slice(2, 4).map(l => l.trim()).join(" < ") });
     this.listening = false;
     this.captureEpoch++; this.starting = undefined;
     clearTimeout(this.recoveryTimer);
@@ -436,5 +452,6 @@ export class HandsFree {
     this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close().catch(() => {});
     this.stream = undefined; this.ctx = undefined; this.node = undefined;
+    this.onLevel?.(0);
   }
 }

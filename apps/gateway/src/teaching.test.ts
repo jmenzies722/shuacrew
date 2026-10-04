@@ -277,3 +277,11 @@ describe("persistent practice", () => {
     expect(store.get(id).stepId).toBe("step");
   });
 });
+
+it("emits a Codex structured-output schema without unsupported oneOf", async () => {
+  const { z } = await import("zod");
+  const { TeachingPatchSchema } = await import("@shuacrew/core/teaching");
+  const schema = z.toJSONSchema(TeachingPatchSchema, { target: "draft-7" });
+  expect(JSON.stringify(schema)).not.toContain('"oneOf"');
+  expect(JSON.stringify(schema)).toContain('"anyOf"');
+});

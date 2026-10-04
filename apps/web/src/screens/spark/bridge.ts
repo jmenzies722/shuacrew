@@ -1,3 +1,4 @@
+import { matchesCapture } from "../../lib/screen-evidence";
 /**
  * Spark's bridge to the Mac app: the native message channel, which Spark surface is speaking, and the things it asks
  * the Mac for — a screenshot (remembered for snapping highlights), what's playing, personal context, and exact
@@ -13,8 +14,7 @@ export type Native = { postMessage(m: unknown): void };
 export const native = (): Native | undefined => (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: Native } } }).webkit?.messageHandlers?.shuacrew;
 export const post = (m: Record<string, unknown>) => native()?.postMessage(m);
 export const KEY = "shuacrew.buddy";
-export const SEE = "shuacrew.buddy.see";
-export const readSee = () => { try { return localStorage.getItem(SEE) !== "0"; } catch { return true; } };
+export { SEE, readSee } from "../../lib/screen-access";
 /** Which Spark surface (desktop panel or app side panel) asked last: only it speaks, points and acts on the answer. */
 const OWNER = "shuacrew.buddy.owner";
 const ME = Math.random().toString(36).slice(2);
@@ -124,19 +124,24 @@ export function capture(): Promise<Shot> {
   return capturePending ??= captureFresh().finally(() => { capturePending = null; });
 }
 function captureFresh(): Promise<Shot> {
+  const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     if (!native()) { reject(new Error("Screen questions work in the ShuaCrew Mac app.")); return; }
     const t = setTimeout(() => { window.removeEventListener("shuacrew:capture", on as EventListener); reject(new Error("Screenshot timed out.")); }, 15_000);
-    const on = (e: CustomEvent<{ display?: number; data?: string; width?: number; height?: number; text?: ScreenLine[]; context?: ScreenContext; error?: string; others?: Array<{ n: number; data: string; width: number; height: number; display?: number; text?: ScreenLine[] }> }>) => {
+    const on = (e: CustomEvent<{ requestId?: string; observedAt?: number; display?: number; data?: string; width?: number; height?: number; text?: ScreenLine[]; context?: ScreenContext; error?: string; others?: Array<{ n: number; data: string; width: number; height: number; display?: number; text?: ScreenLine[] }> }>) => {
+      if (e.detail.requestId !== requestId) return;
       clearTimeout(t); window.removeEventListener("shuacrew:capture", on as EventListener);
       const d = e.detail; if (!d.data) { reject(new Error(d.error ?? "Couldn't capture the screen.")); return; }
+      if (!matchesCapture(requestId, d)) { reject(new Error("The screen capture returned invalid geometry. Look again.")); return; }
+      if (!Number.isFinite(d.observedAt) || Date.now() - d.observedAt! > 8000 || d.observedAt! > Date.now()) { reject(new Error("The screen observation is stale. Look again.")); return; }
+      window.dispatchEvent(new CustomEvent("shuacrew:observed", { detail: { observedAt: d.observedAt, app: d.context?.app, display: d.display } }));
       logSense("saw", "Looked at your screen", d.context?.app ? `${d.context.app}${d.context.window ? ` · ${d.context.window}` : ""}` : "");
       const others = (d.others ?? []).filter((o) => o.data && o.width && o.height).map((o) => ({ n: o.n, display: o.display, text: o.text, width: o.width, height: o.height, file: jpeg(o.data, `screen-${o.n}.jpg`) }));
       lastScreen = { display: d.display, text: d.text ?? [], context: d.context, aspect: d.width && d.height ? d.width / d.height : undefined, width: d.width, height: d.height, others: others.map(({ n, width, height, display, text }) => ({ n, width, height, display, text })) };
       resolve({ display: d.display, file: jpeg(d.data, "screen.jpg"), width: d.width ?? 0, height: d.height ?? 0, text: d.text ?? [], context: d.context, others });
     };
     window.addEventListener("shuacrew:capture", on as EventListener);
-    post({ type: "buddyCapture", hires: hiRes });
+    post({ type: "buddyCapture", hires: hiRes, requestId });
   });
 }
 

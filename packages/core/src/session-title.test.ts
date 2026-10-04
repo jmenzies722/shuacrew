@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { sessionTitle } from "./projections";
+import { sessionTitle } from "./projections.js";
 
 const ask = "Find my Sable terminal application project. Audit its architecture, UX, performance and reliability.";
 it("ends a sliced title at a whole word with an ellipsis", () => {

@@ -2,6 +2,19 @@ import { afterEach, expect, it, vi } from "vitest";
 import { QuietAnnouncements } from "./quiet-announcements";
 
 afterEach(() => vi.useRealTimers());
+it("keeps separate command identities and retries when the shared voice is busy", () => {
+  vi.useFakeTimers();
+  let ready = false;
+  const speak = vi.fn(() => ready);
+  const queue = new QuietAnnouncements(() => false, speak);
+  queue.add("Run tests", () => true, undefined, "command-1");
+  queue.add("Run tests", () => true, undefined, "command-2");
+  vi.advanceTimersByTime(750);
+  ready = true;
+  vi.advanceTimersByTime(1500);
+  expect(speak).toHaveBeenCalledTimes(3);
+  queue.stop();
+});
 it("acknowledges a decision prompt only when announced, once", () => {
   vi.useFakeTimers();
   let busy = true;

@@ -135,10 +135,11 @@ export class Mcp {
   }
 
   /** Codex config.toml `mcp_servers`: command+args, or url + http_headers. */
-  forCodex(): Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> {
+  forCodex(only: "spark" | "all" = "all"): Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> {
     const tokens = this.tokens();
     const out: Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> = {};
     for (const server of this.servers().values()) {
+      if (only === "spark" && !server.spark) continue;
       const name = server.name.replace(/[^A-Za-z0-9_-]/g, "_") || "server";
       if (server.command) out[name] = { command: server.command, args: server.args };
       else if (server.url) {

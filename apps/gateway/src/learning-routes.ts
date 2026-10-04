@@ -6,8 +6,8 @@ import { randomUUID } from "node:crypto";
 import { Learning, analyze, parseBlock, parseCards, type Grade } from "./learning.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const MODEL = { runtime: "claude", model: "claude-haiku-4-5", effort: "low" } as const; // efficient on your plan
-const DEEP = { runtime: "claude", model: "claude-sonnet-5", effort: "low" } as const; // one careful call for what you use for weeks: course plans, roadmaps, interview prep, resumes
+const MODEL = { runtime: "codex", effort: "low" } as const; // Resolve a current model from the connected Codex catalogue.
+const DEEP = { runtime: "codex", effort: "medium" } as const;
 /** Separates your words from the hidden coach reminder; the chat shows only what precedes it. */
 export const COACH_MARK = "\n\n[coach] ";
 const str = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "");

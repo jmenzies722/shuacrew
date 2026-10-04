@@ -4,6 +4,7 @@ import { HandsFree } from "./handsfree";
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 function environment() {
+  const processors: Array<{ onaudioprocess?: (event: { inputBuffer: { getChannelData: () => Float32Array } }) => void }> = [];
   const mediaDevices = new EventTarget();
   const tracks: Array<EventTarget & { stop: ReturnType<typeof vi.fn> }> = [];
   const capture = async () => {
@@ -19,12 +20,35 @@ function environment() {
     state = "running";
     destination = {};
     createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
-    createScriptProcessor() { return { connect() {}, disconnect() {} }; }
+    createScriptProcessor() { const processor = { onaudioprocess: undefined as typeof processors[number]["onaudioprocess"], connect() {}, disconnect() {} }; processors.push(processor); return processor; }
     async close() {}
     async resume() {}
   });
-  return { mediaDevices, tracks, getUserMedia, capture };
+  return { mediaDevices, tracks, getUserMedia, capture, processors };
 }
+
+it("closes push-to-talk capture before transcription completes", async () => {
+  const env = environment();
+  vi.useFakeTimers();
+  let complete!: (response: Response) => void;
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { complete = resolve; })));
+  const mic = new HandsFree(), onTurn = vi.fn();
+  let level = 0;
+  mic.onLevel = value => { level = value; };
+  mic.mode = "hold"; mic.onTurn = onTurn;
+  await mic.press();
+  for (let frame = 0; frame < 24; frame++) env.processors[0]?.onaudioprocess?.({ inputBuffer: { getChannelData: () => new Float32Array(2048).fill(0.1) } });
+  expect(level).toBeGreaterThan(0);
+  mic.release();
+  await vi.advanceTimersByTimeAsync(HandsFree.TAIL_MS);
+  expect(env.tracks[0]!.stop).toHaveBeenCalledOnce();
+  expect(level).toBe(0);
+  expect(onTurn).not.toHaveBeenCalled();
+  complete(new Response(JSON.stringify({ text: "Explain the result" })));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(onTurn).toHaveBeenCalledWith("Explain the result");
+  mic.stop();
+});
 
 it("releases a microphone that opens after listening was stopped", async () => {
   const env = environment();

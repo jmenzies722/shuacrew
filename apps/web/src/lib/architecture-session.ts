@@ -2,7 +2,7 @@ import type { ArchitectureLesson } from "./notch-lesson";
 export type ArchitectureSession = { current: ArchitectureLesson | null; history: ArchitectureLesson[]; dismissed: string[]; announced: string[] };
 export const emptyArchitectureSession = (): ArchitectureSession => ({ current: null, history: [], dismissed: [], announced: [] });
 export const architectureKey = (lesson: ArchitectureLesson) => `${lesson.id}:${lesson.revision}`;
-type SessionEvent = { type: "receive"; lesson: ArchitectureLesson } | { type: "previous" | "dismiss" | "announce" | "reset" };
+type SessionEvent = { type: "receive"; lesson: ArchitectureLesson } | { type: "previous" | "dismiss" | "new-turn" | "announce" | "reset" };
 export function reduceArchitectureSession(state: ArchitectureSession, event: SessionEvent): ArchitectureSession {
   if (event.type === "reset") return emptyArchitectureSession();
   if (event.type === "receive") {
@@ -13,7 +13,7 @@ export function reduceArchitectureSession(state: ArchitectureSession, event: Ses
   if (event.type === "previous") return state.history.length ? { ...state, current: state.history.at(-1)!, history: state.history.slice(0, -1) } : state;
   if (!state.current) return state;
   const key = architectureKey(state.current);
-  if (event.type === "dismiss") return { ...state, current: null, dismissed: [...new Set([...state.dismissed, key])].slice(-20) };
+  if (event.type === "dismiss" || event.type === "new-turn") return { ...state, current: null, dismissed: [...new Set([...state.dismissed, key])].slice(-20) };
   return { ...state, announced: [...new Set([...state.announced, key])].slice(-20) };
 }
 export function architectureContext(state: ArchitectureSession): string {

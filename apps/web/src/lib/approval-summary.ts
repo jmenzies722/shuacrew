@@ -1,13 +1,20 @@
 /** Speech only: exact tool inputs remain on the approval card. Never read command arguments aloud. */
 export function approvalSummary(tool: string, input: unknown): string {
   const data = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const command = typeof data.command === "string" ? data.command.trim() : "";
+  const raw = data.command ?? data.cmd;
+  let command = typeof raw === "string" ? raw.trim() : "";
+  if (Array.isArray(raw) && raw.every(part => typeof part === "string")) {
+    command = raw.length === 3 && /(?:^|\/)(?:zsh|bash|sh)$/.test(raw[0]!) && /^-(?:lc|c)$/.test(raw[1]!) ? raw[2]! : raw.join(" ");
+  }
+  const wrapped = /^(?:(?:\/bin|\/usr\/bin)\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+(["'])([\s\S]*)\1$/.exec(command);
+  if (wrapped) command = wrapped[2]!;
   if (command) {
     // Deliberately conservative; this is a description, not a shell parser or a safety verdict.
     // Unknown syntax must not inherit a harmless description from an earlier command.
     const complex = "run a complex command; review the full details in chat";
     if (/^(?:python[\d.]*|node|ruby|perl)\s/.test(command)) return "run a custom command; review the full details in chat";
     if (/[\n\r;|<>`$(){}]/.test(command)) return complex;
+    if (/^find\s+[^\s&"']+(?:\s+-(?:maxdepth|mindepth)\s+\d+)?(?:\s+-(?:i?name|path)\s+(?:'[^']+'|"[^"]+"|[^\s&]+))?(?:\s+-print)?$/.test(command)) return "find files or folders";
     const parts = command.split("&&").map(p => p.trim());
     if (parts.some(p => !p || /[&"']/.test(p))) return parts.length > 1 ? complex : "run a custom command; review the full details in chat";
     const descriptions: string[] = [];

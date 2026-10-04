@@ -258,7 +258,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       const b = event.body;
       state.runs[event.run ?? ""] = {
         id: event.run ?? "",
-        title: sessionTitle(b.title, b.ask),
+        title: b.titleSource ? b.title : sessionTitle(b.title, b.ask),
         ask: b.ask,
         project: b.project,
         repo: b.repo,

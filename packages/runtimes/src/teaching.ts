@@ -112,7 +112,7 @@ export async function codexTeachingCompletion(input: {
         else {
           const said = String(turn.error?.message ?? turn.error?.codexErrorInfo ?? "");
           settle.reject(new Error(/usage limit|rate limit|usageLimitExceeded/i.test(said)
-            ? `Codex is at its usage limit (${said.replace(/^.*?(try again|resets?)/i, "$1").trim() || "try later"}). Switch the teaching engine to Claude to keep going.`
+            ? `Codex is at its usage limit (${said.replace(/^.*?(try again|resets?)/i, "$1").trim() || "try later"}). Choose another available Codex model or retry after the limit resets.`
             : `Codex teaching turn ${turn.status ?? "failed"}: ${said}`.trim()));
         }
       }

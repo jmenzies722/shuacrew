@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+it("preserves a generated session title in a crew handoff", () => {
+  expect(parseActions('```do [{"type":"crew","ask":"Audit Frame rendering","title":"Frame performance audit"}]```')).toEqual([{ type: "crew", ask: "Audit Frame rendering", title: "Frame performance audit" }]);
+});
 import { actFollowUp, buddyPrompt, pointingText, parseActs, parseZoom, elementsText, followThroughAsk, needsFollowThrough, needsScreen, restingReply, engineLine, looksForAnswer, turnTier, guideFollowUp, parseAct, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, spoken } from "./buddy";
 
 it("reads a valid point, rejects out-of-range or junk, and hides it from the bubble", () => {
@@ -66,7 +69,7 @@ it("reads music/system/shortcut actions and act steps safely", () => {
   expect(speakable('Clicking.\n```act {"type":"click","x":0.1,"y":0.1}```')).toBe("Clicking.");
   expect(buddyPrompt("send the email", { width: 10, height: 10 }, { name: "Spark", tone: "direct", length: "brief", control: "auto" })).toContain("COMPUTER CONTROL");
   expect(buddyPrompt("send the email", null, { name: "Spark", tone: "direct", length: "brief", control: "off" })).not.toContain("COMPUTER CONTROL");
-  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("Next step as one act block");
+  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("Next step as one act block containing exactly one action");
 });
 it("lets you customize Spark by chatting, safely", () => {
   expect(parseActions('```do {"type":"settings","changes":{"name":"Nova","character":"kit","color":"purple","speed":1.2,"tone":"direct","talks":true,"control":"auto","bogus":1}}```'))
@@ -288,6 +291,26 @@ it("screen work turns Spark's eyes on by itself", () => {
   for (const q of ["What about XRP?", "set a timer for 10 minutes", "play something chill"]) expect(needsScreen(q)).toBe(false);
 });
 
+it("does not require screen access for general explanations or explicit screen opt-outs", () => {
+  for (const question of [
+    "Reply with one short sentence: what is 15 percent of 80? Do not use tools or screen access.",
+    "Explain why the sky is blue",
+    "Explain how a screen works",
+    "What is a code review?",
+    "Without looking at my screen, explain this algorithm: binary search",
+    "Don't look at my screen. What is 15 percent of 80?",
+  ]) expect(needsScreen(question), question).toBe(false);
+  for (const question of ["Explain this error", "What is on my screen?", "Can you see my screen?", "Tell me what's on it right now", "Look at my screen", "Read my screen", "Capture the screen", "Do not click anything; highlight the export button"])
+    expect(needsScreen(question), question).toBe(true);
+});
+
+it("does not infer a disabled eye from a turn without a screenshot", () => {
+  const prompt = buddyPrompt("What do you see in Chrome?", null, { name: "Shua", tone: "direct", length: "brief", control: "auto" });
+  expect(prompt).not.toContain("ask them to turn it on");
+  expect(prompt).not.toContain("ask them to turn on the eye");
+  expect(prompt).toContain("does not mean screen access is off");
+});
+
 it("a batch of steps runs back to back, ending at done", () => {
   const acts = parseActs('```act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"},{"type":"done","summary":"searched"},{"type":"press","label":"never"}]```');
   expect(acts.map((a) => a.type)).toEqual(["press", "type", "done"]);
@@ -364,4 +387,16 @@ it("captures the screen for plain show-me requests, including follow-ups", () =>
   for (const q of ["Show me Settings", "Show me the export option", "Can you show me?", "Show me again"]) {
     expect(needsScreen(q), q).toBe(true);
   }
+});
+
+it("distinguishes native Mac actions from the model shell instead of declaring screenshot-only access", () => {
+  const prompt = buddyPrompt("Open TextEdit and type a test", { width: 100, height: 100 }, { name: "Shua", tone: "direct", length: "brief", control: "ask" });
+  expect(prompt).not.toContain("Use tools only to read an attached screenshot");
+  expect(prompt).toContain("native action bridge");
+  expect(prompt).toContain("do not invoke computer-use MCP or shell automation for the same action");
+  expect(prompt).toContain("one act block");
+});
+
+it("continues the TextEdit workflow after opening the app", () => {
+  expect(needsFollowThrough("Open a blank TextEdit document, click the document and type testing Shua cursor control", "Opening TextEdit.")).toBe(true);
 });

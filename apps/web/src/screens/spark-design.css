@@ -2,7 +2,7 @@
  * Spark — obsidian. In the notch the chat is the island grown down: one continuous black shape out of the hardware
  * notch, glass on black, a soft light from the notch that brightens while Spark listens or speaks. Off the notch it
  * follows your theme. Your chat settings (tone, glass, corner radius --chat-radius, text size --chat-text) still apply.
- * Motion is transform/opacity only (GPU), and it all rests with Reduce Motion.
+ * Surface geometry eases with the native backdrop; decorative motion uses transform/opacity. Reduce Motion rests both.
  */
 
 /* ── Obsidian tokens: inside the notch the palette is always the island's ─────────────────────────────────────── */
@@ -21,6 +21,70 @@
   position: relative; isolation: isolate; overflow: hidden;
   background: transparent !important; box-shadow: none !important; border: 0 !important; border-radius: 0 0 28px 28px !important;
 }
+.shua-island.is-calling .shua-island-body > :is(.notch-voice-status,.notch-work-status,.notch-conversation) { display: none; }
+.shua-island.is-calling .assistant-deck:not(.assistant-permissions):not(.assistant-mission)>:not(.assistant-access-strip){display:none}
+.buddy-thread.spk-thread.is-voice-thread-hidden{display:none}
+.buddy-card .live-panel:not(.is-error){display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0}
+.buddy-card .live-panel .live-conversation{flex:1;max-height:none}
+.notch-conversation{display:flex;flex-direction:column;gap:5px;min-width:0;padding:4px 0}
+.notch-conversation>small{font:10px/1.4 system-ui;color:#99999f}
+.notch-conversation .spark-nook-say{margin:0;text-align:left}
+
+.shua-island.is-calling .shua-island-ear.is-live > :not(.shua-island-voice):not(.shua-island-expand):not(.notch-activity) { display: none; }
+.shua-island.is-calling .live-island-text { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.4; }
+
+.buddy.is-docked .shua-island .shua-island-shape {
+  box-shadow: 0 18px 42px -22px #000b, inset 0 -1px 0 #ffffff18;
+  transition: width .36s cubic-bezier(.22, 1, .36, 1), height .36s cubic-bezier(.22, 1, .36, 1), border-radius .36s, box-shadow .24s;
+}
+.buddy.is-docked .shua-island.is-open .shua-island-shape { --r: 24px; }
+.buddy.is-docked .shua-island .shua-island-shape::after { display: none; }
+.buddy.is-docked .shua-island-face { box-shadow: none; border: 1px solid #ffffff24; }
+.buddy.is-docked .shua-island-dot { width: 5px; height: 5px; background: #9b9ba5; box-shadow: none; }
+.buddy.is-docked .shua-island-body { gap: 12px; padding: 10px 16px 16px; }
+.buddy.is-docked .shua-island-ear small { color: #aaaab4; }
+.buddy.is-docked .shua-island .spark-nook-ask { height: 42px; background: #161618; border: 1px solid #ffffff20; box-shadow: none; border-radius: 12px; transition: border-color .16s ease; }
+.buddy.is-docked .shua-island .spark-nook-ask:focus-within { border-color: #b8b8c0; box-shadow: 0 0 0 1px #ffffff12; }
+.buddy.is-docked .shua-island .spark-nook-ask input { font-size: 14px; color: #f2f2f4; background: transparent; box-shadow: none; }
+.buddy.is-docked .shua-island .spark-nook-ask input:focus-visible { outline: none; }
+.buddy.is-docked .shua-island .spark-nook-ask input::placeholder { color: #929298; }
+.buddy.is-docked .shua-island .spark-nook-ask button { background: #e9e9ed; color: #17171a; width: 32px; height: 32px; }
+.buddy.is-docked .shua-island .spark-nook-ask button:disabled { background: #303034; color: #929298; opacity: .6; }
+.buddy.is-docked .shua-island .spark-nook-voice,
+.buddy.is-docked .shua-island .spark-nook-toggle { border: 1px solid #ffffff18; border-radius: 12px; background: #ffffff08; color: #dfdfe6; box-shadow: none; }
+.buddy.is-docked .shua-island .spark-nook-voice.is-on { color: #ffb4b8; background: #ff65710d; border-color: #ff657126; }
+.buddy.is-docked .shua-island .spark-nook-voice.is-on .spk-bars { display: none; }
+.buddy.is-docked .shua-island .spark-nook-toggle.is-on { color: var(--accent-text, #c6beff); }
+.buddy.is-docked .shua-island .spark-nook-say.is-reply { max-height: calc(1.5em * 3); color: #c1c1cc; }
+.buddy.is-docked .shua-island :is(button, input):focus-visible { outline: 2px solid #d5d5dc; outline-offset: 3px; }
+.buddy.is-docked .shua-island .live-status { font: 550 11px/1.4 system-ui; color: #bdbdc8; letter-spacing: 0; }
+.buddy.is-docked .shua-island .live-waveform { color: #d9d4eb; }
+.buddy.is-docked .shua-island .live-waveform.is-listening { color: #c9ddf5; }
+.buddy.is-docked .shua-island .notch-ready { min-height: 48px; display: flex; align-items: center; justify-content: center; color: #d4d4da; font-size: 13px; }
+.buddy.is-docked .shua-island .notch-error { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e8b78240; border-radius: 12px; color: #ead5bd; font-size: 13px; line-height: 1.5; }
+.buddy.is-docked .shua-island .notch-error span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.buddy.is-docked .shua-island .notch-error button { flex-shrink: 0; padding: 6px; color: inherit; background: transparent; }
+.buddy.is-docked .shua-island .live-waveform > i { box-shadow: none; }
+.buddy.is-docked .shua-island .notch-work-status { min-height: 64px; padding: 12px 14px; background: #ffffff05; border-color: #ffffff14; }
+.buddy.is-docked .shua-island.is-open .shua-island-ear > .notch-thinking { visibility: hidden; }
+.buddy.is-docked .shua-island .notch-thinking { gap: 10px; color: #e3e0f0; }
+.buddy.is-docked .shua-island .notch-thinking time { min-width: 5ch; font: 500 11px/1.4 ui-monospace, monospace; color: #bdb9ce; }
+.buddy.is-docked .shua-island .notch-work-status .notch-thinking-orbit { width: 24px; height: 24px; border-color: #c9bfff50; }
+.buddy.is-docked .shua-island .notch-work-status .notch-thinking-orbit i { border-color: #c9bfff60; animation: notch-calm-pulse 1.6s ease-in-out infinite; }
+.buddy.is-docked .shua-island .notch-work-status .notch-thinking-orbit b { inset: 8px; background: #e2dcff; box-shadow: 0 0 8px #bcb0ff55; }
+.buddy.is-docked .shua-island .notch-roll { --lh: 1.55em; font-size: 14px; line-height: 1.55; letter-spacing: .005em; text-align: left; }
+.buddy.is-docked .shua-island-body > .notch-roll { min-height: 64px; }
+.buddy.is-docked .shua-island .notch-caption .is-next { color: #aaa5b9; }
+.buddy.is-docked .shua-island .notch-caption .is-past { color: #cec9d8; }
+.buddy.is-docked .shua-island .notch-caption .is-said { color: #faf8ff; }
+.buddy.is-docked .shua-island .notch-hearing > .notch-heard { mask-image: none; -webkit-mask-image: none; }
+.buddy.is-docked .shua-island .notch-roll.is-full { mask-image: none; -webkit-mask-image: none; }
+@keyframes notch-calm-pulse { 50% { transform: scale(1.18); opacity: .4; } }
+@media (prefers-reduced-motion: reduce) {
+  .buddy.is-docked .shua-island .shua-island-shape, .buddy.is-docked .shua-island .shua-island-body { transition: none; animation: none; }
+}
+:root[data-motion="reduced"] .buddy.is-docked .shua-island .shua-island-shape,
+:root[data-motion="reduced"] .buddy.is-docked .shua-island .shua-island-body { transition: none; animation: none; }
 /* Light from the notch: faint at rest, warmer while Spark listens or speaks (opacity only, so it costs nothing). */
 .spk-pop.is-notched > .buddy-card.spk::before {
   content: ""; position: absolute; z-index: -1; left: 50%; top: -120px; width: 120%; height: 300px; transform: translateX(-50%); pointer-events: none;
@@ -129,7 +193,7 @@
   transition: box-shadow .25s ease; animation: none !important;
 }
 .buddy-card.spk form.spk-input.chat-composer:focus-within {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 60%, transparent), 0 0 0 4px color-mix(in srgb, var(--spark-color) 14%, transparent), 0 14px 36px -18px color-mix(in srgb, var(--spark-color) 80%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 65%, transparent), 0 0 0 2px color-mix(in srgb, var(--text) 8%, transparent) !important;
 }
 .buddy-card.spk form.spk-input.chat-composer > textarea {
   order: 3; flex: 1; min-width: 0; min-height: 40px; max-height: 150px; margin: 0; padding: 10px 6px;
@@ -160,9 +224,104 @@
 .buddy-card.spk .live-approval { border: 0; border-radius: 16px; box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffb547 38%, transparent); }
 .buddy-card.spk .live-voice select { border-radius: 9px; padding: 3px 6px; }
 
+/* The talk button is the call when Live is the voice: accent at rest, a calm red while you're on a call. */
+.buddy-card.spk form.spk-input.chat-composer > .buddy-talk.is-live { color: var(--accent-text, var(--spark-color)); }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-talk.is-live.is-on { color: #ff8a8e; background: rgba(255, 90, 95, .14); }
+
 /* ── Reduce Motion: everything still, nothing lost ─────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .spk-pop.is-notched > .buddy-card.spk > * { animation: none; }
   .buddy-card.spk :is(.spk-quick button, .spk-starters > button, .buddy-point, .buddy-did button, form.spk-input.chat-composer) { transition: none; }
 }
 :root[data-motion="reduced"] .spk-pop.is-notched > .buddy-card.spk > * { animation: none; }
+.notch-pointer-status { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #e7e7eb; background: #19191d; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+.notch-pointer-status > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notch-pointer-status > svg, .notch-pointer-status > button { flex-shrink: 0; }
+.notch-pointer-status > button { color: inherit; background: transparent; border: 1px solid #ffffff24; border-radius: 8px; padding: 5px 8px; cursor: pointer; }
+.notch-pointer-status > button:focus-visible { outline: 2px solid #ddd; outline-offset: 2px; }
+.notch-voice-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 4px 2px; color: #ececf0; }
+.notch-voice-status > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notch-voice-status strong { font-size: 13px; font-weight: 550; }
+.notch-voice-status small { font-size: 12px; color: #b8b8c0; }
+.buddy.is-docked .shua-island-body > * { min-width: 0; }
+.buddy.is-docked .shua-island.is-open .shua-island-body { grid-auto-rows: max-content; scrollbar-width: thin; scrollbar-color: #ffffff30 transparent; }
+.buddy.is-docked .shua-island.is-open .shua-island-body::-webkit-scrollbar { display: block; width: 4px; }
+.buddy.is-docked .shua-island.is-open .shua-island-body::-webkit-scrollbar-thumb { background: #ffffff30; border-radius: 4px; }
+
+.buddy.is-docked .shua-island.is-calling .shua-island-body{max-height:420px}
+.live-island.is-expanded{--text:#eeeef2;--line:#ffffff25;color:#eeeef2}
+.live-island.is-expanded .live-approval{display:grid;grid-template-columns:14px minmax(0,1fr) auto auto;gap:7px;color:#ffcf85}
+.live-island.is-expanded .live-approval>span{color:#eeeef2}
+.live-island.is-expanded .live-approval button{align-self:center}
+.live-island.is-expanded:has(.live-approval) .live-conversation{max-height:150px}
+.live-island.is-expanded .live-approval small{color:#b9b3c4}
+
+/* Activity is independent of captions and remains visible when the panel is tucked. */
+.shua-island-ear .notch-activity{display:flex;align-items:center;gap:6px;color:#e8e8ed;background:transparent;border:0;padding:3px;font:500 10px/1.2 system-ui;cursor:pointer;white-space:nowrap}
+.notch-activity i{width:7px;height:7px;flex:none;border-radius:50%;background:#bfcfff;box-shadow:0 0 7px #bfcfff66}
+.notch-activity.is-working i{animation:shua-activity-pulse 1.2s ease-in-out infinite}
+.notch-activity:is(.is-permission,.is-attention){color:#ffd38e}
+.notch-activity:is(.is-permission,.is-attention) i{background:#ffd38e;box-shadow:0 0 7px #ffd38e66}
+.notch-activity.is-watching i{background:#d2d2d8;box-shadow:none}
+.shua-island.is-rest .notch-activity span{display:none}
+.notch-permission{display:flex;flex-direction:column;gap:7px;padding:10px 12px;border:1px solid #ffd38e55;border-radius:12px;color:#f4eadc;background:#ffd38e0a;font:12px/1.4 system-ui;flex:none}
+.notch-permission strong{color:#ffd38e;font-size:11px}
+.notch-permission p{margin:0;overflow-wrap:anywhere}
+.notch-permission details{color:#bdbdc5;font-size:10px}
+.notch-permission pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:100px;overflow:auto}
+.notch-permission>div{display:flex;gap:8px}
+.notch-permission button{border:1px solid #ffffff30;border-radius:8px;padding:6px 12px;background:#ffffff12;color:#eee;cursor:pointer}
+.notch-permission button:first-child{background:#f4d6a1;color:#201b12}
+.notch-permission button:disabled{opacity:.5;cursor:wait}
+@keyframes shua-activity-pulse{50%{opacity:.4;transform:scale(.8)}}
+@media(prefers-reduced-motion:reduce){.notch-activity.is-working i{animation:none}}
+
+/* Sculpted surface: transparent over AppKit's black continuous-corner backdrop. */
+.buddy.is-docked[data-notch-glow] .shua-island:is(.is-open,.is-live,.is-rest) .shua-island-shape::after {
+  padding: 0; -webkit-mask: none; mask: none;
+  display: block; content: ""; position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 115%, #a6b9dc12, transparent 65%), linear-gradient(180deg, transparent 28px, #ffffff04 62%, transparent);
+  box-shadow: inset 1px 0 0 #ffffff08, inset -1px 0 0 #ffffff08, inset 0 -1px 0 #dbe7ff24;
+  opacity: .45; transition: opacity .24s ease;
+  animation: none;
+}
+.buddy.is-docked .shua-island:is(.is-open,.is-live) .shua-island-shape::after { opacity: 1; }
+.buddy.is-docked .shua-island .shua-island-body {
+  transition: opacity .16s ease, transform .28s cubic-bezier(.22,1,.36,1);
+  transform: translateY(-4px);
+}
+.buddy.is-docked .shua-island.is-open .shua-island-body { transform: none; transition-delay: .025s; }
+.buddy.is-docked .shua-island .spark-nook-ask {
+  background: linear-gradient(180deg, #242427, #171719);
+  border-color: #ffffff1b; box-shadow: inset 0 1px 0 #ffffff0a, 0 3px 8px #0004;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.buddy.is-docked .shua-island .spark-nook-ask:focus-within {
+  border-color: #c4d7f080; box-shadow: inset 0 1px 0 #ffffff12, 0 0 0 3px #bed4ff0a;
+}
+.buddy.is-docked .shua-island :is(.spark-nook-voice,.spark-nook-toggle,.shua-island-expand,.spark-nook-ask button) {
+  transition: transform .22s cubic-bezier(.22,1,.36,1), background .16s, border-color .16s, box-shadow .16s;
+}
+.buddy.is-docked .shua-island :is(.spark-nook-voice,.spark-nook-toggle,.shua-island-expand):hover {
+  background: #ffffff12; border-color: #ffffff32; box-shadow: inset 0 1px 0 #ffffff0a;
+}
+.buddy.is-docked .shua-island :is(.spark-nook-voice,.spark-nook-toggle,.shua-island-expand,.spark-nook-ask button):active:not(:disabled) { transform: scale(.94); }
+.buddy.is-docked .shua-island .notch-work-status {
+  background: linear-gradient(130deg, #b9c9ed0a, #ffffff03); border-color: #d9e4ff1c;
+  box-shadow: inset 0 1px 0 #ffffff05;
+}
+/* Never move the typing surface while focus is inside it. */
+.buddy.is-docked .shua-island .shua-island-body:focus-within { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .buddy.is-docked .shua-island *, .buddy.is-docked .shua-island *::before, .buddy.is-docked .shua-island *::after { animation: none !important; transition: none !important; }
+  .buddy.is-docked .shua-island .shua-island-body, .buddy.is-docked .shua-island button:active { transform: none !important; }
+}
+:root[data-motion="reduced"] .buddy.is-docked .shua-island *,
+:root[data-motion="reduced"] .buddy.is-docked .shua-island *::before,
+:root[data-motion="reduced"] .buddy.is-docked .shua-island *::after { animation: none !important; transition: none !important; }
+:root[data-motion="reduced"] .buddy.is-docked .shua-island .shua-island-body,
+:root[data-motion="reduced"] .buddy.is-docked .shua-island button:active { transform: none !important; }
+.shua-island-ear .notch-activity.is-observing{color:#d1e1fa}
+.notch-activity.is-observing i{background:#c4dcff;box-shadow:0 0 10px #a8caff66;animation:shua-observing 1.8s ease-in-out infinite}
+@keyframes shua-observing{50%{box-shadow:0 0 0 4px #a8caff12,0 0 12px #a8caff55;opacity:.65}}

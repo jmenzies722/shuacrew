@@ -17,7 +17,8 @@
     "./mobile": "./src/mobile.ts",
     "./mobile-v2": "./src/mobile-v2.ts",
     "./policy-types": "./src/policy-types.ts",
-    "./cadence": "./src/cadence.ts"
+    "./cadence": "./src/cadence.ts",
+    "./teaching": "./src/teaching.ts"
   },
   "dependencies": {
     "zod": "^4.6.5"

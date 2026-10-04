@@ -87,7 +87,7 @@ export const TeachingPatchSchema = z
     steps: z.array(TeachingStepSchema).min(1).max(20),
     operations: z
       .array(
-        z.discriminatedUnion("op", [
+        z.union([ // Distinct op literals preserve discrimination; JSON Schema anyOf is supported by Codex.
           z.object({ op: z.literal("create"), object: VisualObjectSchema }).strict(),
           z.object({ op: z.literal("update"), object: VisualObjectSchema }).strict(),
           z.object({ op: z.literal("delete"), id: Id }).strict(),

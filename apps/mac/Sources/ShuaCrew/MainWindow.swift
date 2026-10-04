@@ -253,6 +253,8 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 let arg = path.flatMap { try? String(data: JSONSerialization.data(withJSONObject: [$0]), encoding: .utf8) }.map { String($0.dropFirst().dropLast()) } ?? "null"
                 self?.web.evaluateJavaScript("window.shuacrew && window.shuacrew.folderPicked(\(arg))")
             }
+        case "liveSubscribe", "liveCommand":
+            onBuddyMessage?(controller, message)
         default:
             // Spark's panel inside the app: its screen, pointer and Mac-control messages go to Spark, which replies here.
             if type.hasPrefix("buddy") { onBuddyMessage?(controller, message) }

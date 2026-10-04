@@ -4,12 +4,13 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); this.name = "ApiError"; }
 }
 /** Every request carries the CSRF header the gateway requires for anything that changes state. */
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const response = await fetch(path, {
     method: init.method ?? (init.body === undefined ? "GET" : "POST"),
     headers: { "X-ShuaCrew": "1", ...(init.body === undefined ? {} : { "Content-Type": "application/json" }) },
     // (DELETE with no body is fine: the header is what the gateway checks.)
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    signal: init.signal,
   });
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new ApiError(data.error ?? `HTTP ${response.status}`, response.status);

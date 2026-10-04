@@ -56,6 +56,7 @@ export const bodies = {
   // work
   "run.created": z.object({
     title: z.string(),
+    titleSource: z.enum(["explicit", "suggested", "derived"]).optional(),
     ask: z.string(),
     project: z.string().optional(),
     repo: z.string().optional(),

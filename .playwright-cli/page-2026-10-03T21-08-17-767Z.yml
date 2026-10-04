@@ -1,0 +1,61 @@
+- generic [ref=f7e4]:
+  - generic [ref=f7e5]:
+    - button "Open Spark" [ref=f7e6]:
+      - strong [ref=f7e72]: Spark
+    - generic [ref=f7e70]:
+      - generic [ref=f7e73]: Ready
+      - button "Open chat" [ref=f7e74]
+  - generic [ref=f7e80]:
+    - generic [ref=f7e81]:
+      - generic [ref=f7e82]:
+        - textbox "Ask Spark" [ref=f7e83]:
+          - /placeholder: Ask Spark anything…
+          - text: Keep this draft while I move the pointer
+        - button "Send" [ref=f7e85]
+      - button "Talk to Shua" [ref=f7e88]
+      - button "Watch my screen" [ref=f7e92]
+    - region "Assistant permissions" [ref=f7e176]:
+      - generic [ref=f7e177]:
+        - generic [ref=f7e178]: ACCESS & TOOLS
+        - button "Close access" [ref=f7e182] [cursor=pointer]
+      - paragraph [ref=f7e186]: You choose the access. Shua chooses tools within it. macOS may ask separately for each app.
+      - generic [ref=f7e187]:
+        - generic [ref=f7e188]:
+          - text: Screen
+          - generic [ref=f7e189]: Capture when you ask; watch is a separate switch
+        - button "Enable" [ref=f7e190] [cursor=pointer]
+      - generic [ref=f7e191]:
+        - generic [ref=f7e192]:
+          - text: Mouse & keyboard
+          - generic [ref=f7e193]: Accessibility permission required
+        - button "Open permission" [ref=f7e194] [cursor=pointer]
+      - generic [ref=f7e195]:
+        - generic [ref=f7e196]:
+          - text: Action approval
+          - generic [ref=f7e197]: Applies to all tasks · Esc stops actions
+        - combobox "Mac action approval" [ref=f7e198]:
+          - option "Control off"
+          - option "Ask each step" [selected]
+          - option "Automatic"
+      - generic [ref=f7e200]:
+        - text: Music & apps
+        - generic [ref=f7e201]: App-specific Automation access is requested when used
+      - generic [ref=f7e202]:
+        - text: Connected MCP tools
+        - button "Manage" [ref=f7e205] [cursor=pointer]
+      - paragraph [ref=f7e206]: Allow a connector below to let the companion choose its tools. Changes apply to new turns; stop active work before revoking access.
+      - generic [ref=f7e207]:
+        - generic [ref=f7e208]:
+          - text: notion
+          - generic [ref=f7e209]: Available to the companion
+        - button "Revoke" [pressed] [ref=f7e210] [cursor=pointer]
+      - generic [ref=f7e211]:
+        - generic [ref=f7e212]:
+          - text: memory
+          - generic [ref=f7e213]: Available to the companion
+        - button "Revoke" [pressed] [ref=f7e214] [cursor=pointer]
+      - generic [ref=f7e215]:
+        - generic [ref=f7e216]:
+          - text: playwright
+          - generic [ref=f7e217]: Available to the companion
+        - button "Revoke" [pressed] [ref=f7e218] [cursor=pointer]

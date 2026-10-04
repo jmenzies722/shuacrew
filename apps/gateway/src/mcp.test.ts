@@ -87,3 +87,13 @@ describe("servers in Spark", () => {
     expect(() => mcp.setSpark("m_nope", true)).toThrow("no such server");
   });
 });
+
+it("gives Codex companion only opted-in MCP tools and revokes them immediately", () => {
+  const store = new EventStore(":memory:"); cleanups.push(() => store.close());
+  const mcp = new Mcp(store, path.join(mkdtempSync(path.join(os.tmpdir(), "shua-mcp-scope-")), "auth.json"));
+  const server = mcp.add({ name: "Music tools", command: "true" });
+  expect(mcp.forCodex("spark")).toEqual({});
+  mcp.setSpark(server.id, true);
+  expect(mcp.forCodex("spark")).toEqual({ Music_tools: { command: "true", args: [] } });
+  mcp.setSpark(server.id, false); expect(mcp.forCodex("spark")).toEqual({});
+});

@@ -1,0 +1,51 @@
+{
+  "captured": {
+    "apps": [
+      "com.apple.TextEdit"
+    ],
+    "createdAt": 1791092461313.6968,
+    "demonstrationMs": 2285.21192073822,
+    "failures": 0,
+    "id": "8F1E28FC-70A8-46B4-A791-9CF00C7F147A",
+    "name": "New workflow",
+    "revision": 1,
+    "steps": [
+      {
+        "app": "com.apple.TextEdit",
+        "expected": {
+          "identifier": "First Text View",
+          "label": "",
+          "role": "AXTextArea"
+        },
+        "id": "4E583788-C3BD-452D-BDC0-499E9B95C3B6",
+        "newWindow": true,
+        "operation": "shortcut",
+        "shortcut": "cmd+n"
+      },
+      {
+        "app": "com.apple.TextEdit",
+        "id": "C097C003-0B92-43C3-AA8D-29DC5018FD95",
+        "operation": "input",
+        "parameter": "input_1",
+        "target": {
+          "identifier": "First Text View",
+          "label": "",
+          "role": "AXTextArea"
+        }
+      }
+    ],
+    "successes": 0,
+    "verifiedStepMs": {}
+  },
+  "ok": true,
+  "recordedSteps": [
+    "shortcut",
+    "input"
+  ],
+  "replayMilliseconds": [
+    759.0609788894653,
+    706.5680027008057
+  ],
+  "typedValueNotPersisted": true,
+  "verifiedRuns": 2
+}

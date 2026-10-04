@@ -17,6 +17,8 @@ export interface CompanionPreferences {
   control: "off" | "ask" | "auto"; /** 2 once "just do it" became the default (a saved "ask" from before moves to it once). */ autonomy?: 2; conversation: boolean; interrupt: boolean;
   /** How the mic takes a turn: "auto" (open mic, just talk) or "hold" (push-to-talk: hold the talk button or Space). */
   listen: "auto" | "hold";
+  /** Talking to Spark: "live" (a call with Shua: realtime, interrupt any time) or "classic" (one turn at a time). */
+  voiceEngine: "live" | "classic";
   /** On the desktop: pinned above every app, or (default) a normal window that comes forward when called, talking or teaching. */
   onTop: boolean;
   desktopPlacement: "free" | "notch";
@@ -39,7 +41,7 @@ export interface CompanionPreferences {
   /** Notice when I'm stuck: while live watching is on, Spark glances at the screen's text and offers help, unasked. */
   notice: boolean;
   /** Speak first: a heads-up before meetings, reminders when due, a catch-up when you come back (on by default). */
-  proactive: boolean; headsUpMinutes: 5 | 10 | 15;
+  proactive: boolean; commandNarration: boolean; headsUpMinutes: 5 | 10 | 15;
   notchCaptions: boolean; notchMedia: boolean; notchControls: boolean; notchGlow: "off" | "accent" | "spectrum"; notchSize: "compact" | "roomy";
   /** Little sounds when you start and stop talking, and when something's done: placed up at the notch, or plain, or off. */
   sounds: "spatial" | "simple" | "off";
@@ -87,14 +89,14 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     // Spark just does things now. A saved "ask" from before that default moves to "auto" once; after that your choice holds.
     control: v.autonomy === 2 ? choice("control", ["off", "ask", "auto"], "auto") : v.control === "off" ? "off" : "auto", autonomy: 2, conversation: v.conversation === true, interrupt: v.interrupt !== false,
-    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
-    modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) && !v.modelChoice.startsWith("local:") ? v.modelChoice.slice(0,160) : "",
+    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), voiceEngine: choice("voiceEngine", ["live", "classic"], "live"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
+    modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) && v.modelChoice.startsWith("codex:") ? v.modelChoice.slice(0,160) : "",
     // Spark always uses connected cloud models: the on-Mac models were slow (up to a minute a reply) and held ~16 GB of GPU.
     brain: "auto", localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
-    notice: v.notice !== false, proactive: v.proactive !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notice: v.notice !== false, proactive: v.proactive !== false, commandNarration: v.commandNarration !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
     notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";

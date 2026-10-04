@@ -6,6 +6,8 @@ import { AudioLines, Check } from "lucide-react";
 import { VoiceSettings, setVoiceEverywhere } from "./VoiceSettings";
 import { VoiceComparison } from "./VoiceComparison";
 import { MicrophoneSettings } from "./MicrophoneSettings";
+import { LiveVoiceSelect } from "./LiveVoiceSelect";
+import { useLive as useLiveCall } from "../lib/live-session";
 import { MacReach } from "./MacReach";
 import { useLive } from "../lib/live";
 import { api } from "../lib/api";
@@ -90,6 +92,7 @@ const readDesktop = () => { try { return localStorage.getItem(DESKTOP) !== "0"; 
 /** Spark, made yours: who it is, how it looks, how it sounds and talks, how you call it, how it shows you things. */
 export function SparkSettings({ searching = false }: { searching?: boolean }) {
   const prefs = useCompanion(), voice = useBuddyVoice();
+  const call = useLiveCall();
   const shua = useLive((l) => l.crew.members.shua);
   const [category, setCategory] = useState<"character" | "presence" | "voice" | "guidance">("character");
   const [nameDraft, setNameDraft] = useState(prefs.nickname);
@@ -184,7 +187,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <MacReach name={name} />
       <SettingRow name="Brain" detail={<>Each question goes to the model it needs: quick things to a fast model, real work to a stronger one, always Claude or Codex. <a className="spark-link" href="#agents">Manage connected providers →</a></>}><span className="spark-muted">Automatic</span></SettingRow>
       <SettingRow name="Language" detail={`English is fastest and shows live captions. Any language: speak whatever you like — Whisper detects it on this Mac and ${name} answers in it (captions pause).`} modified={prefs.language !== "en"}><Segmented label="Language" value={prefs.language} onChange={(language) => set({ language })} options={[["en", "English"], ["auto", "Any language"]]} /></SettingRow>
-      <WakeRow name={name} nickname={prefs.nickname} />
+      {prefs.voiceEngine === "classic" ? <WakeRow name={name} nickname={prefs.nickname} /> : <SettingRow name="Microphone privacy" detail="Wake-word listening is off in native mode. Hold Fn for one request, or explicitly enable Talk for continuous listening." />}
       <FnKeyRow name={name} />
       <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
@@ -196,6 +199,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <SettingRow name="Follow my cursor" detail={`${name} rides beside your pointer wherever you work, like a buddy at your elbow. Clicks pass through it while it follows; press your ${name} shortcut to talk. It walks off to point at things and comes back.`} modified={!prefs.follow}><Switch label="Follow my cursor" on={prefs.follow} onChange={(follow) => set({ follow })} /></SettingRow>
       <SettingRow name="Notice when I'm stuck" detail={`While live watching is on, ${name} glances at your screen's text every 15 seconds (on this Mac; no images kept). An error that won't go away, the same error coming back, or searching again and again: ${name} offers to walk you through it. Once, then it leaves you alone.`} modified={!prefs.notice}><Switch label="Notice when I'm stuck" on={prefs.notice} onChange={(notice) => set({ notice })} /></SettingRow>
       <SettingRow name="Speak first" detail={`Like a real assistant: ${name} gives you a heads-up before a meeting, says a reminder the moment it's due, and catches you up when you come back after a while. In a meeting it only shows it in the notch, never out loud.`} modified={!prefs.proactive}><Switch label="Speak first" on={prefs.proactive} onChange={(proactive) => set({ proactive })} /></SettingRow>
+      <SettingRow name="Narrate crew commands" detail="Explain each new shell command's purpose and session, without reading code or arguments aloud. Queued while you speak; unknown commands are described cautiously. Turn off for quiet work." modified={!prefs.commandNarration}><Switch label="Narrate crew commands" on={prefs.commandNarration} onChange={(commandNarration) => set({ commandNarration })} /></SettingRow>
       {prefs.proactive && <SettingRow name="Meeting heads-up" modified={prefs.headsUpMinutes !== 10}><Segmented label="Meeting heads-up" value={String(prefs.headsUpMinutes) as "5" | "10" | "15"} onChange={(m) => set({ headsUpMinutes: Number(m) as 5 | 10 | 15 })} options={[["5", "5 min before"], ["10", "10 min before"], ["15", "15 min before"]]} /></SettingRow>}
       <SparkReach name={name} />
       <ChromeRow name={name} />
@@ -207,28 +211,31 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
 
     {(searching || category === "voice") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Personality &amp; voice</h4>
+      <SettingRow name="One Shua, everywhere" detail="Native OpenAI speech through your connected Codex subscription. One voice for Fn, Talk, and spoken chat replies—no local voice layered over it. Hold Fn to speak; release to turn the microphone off. Only Talk enables continuous listening.">
+        {prefs.voiceEngine === "classic" ? <button type="button" className="setting-input" onClick={() => set({ voiceEngine: "live" })}>Use Shua calls</button> : <span className="spark-muted">OpenAI connected voice</span>}
+      </SettingRow>
       <MicrophoneSettings />
       <SettingRow name="Personality" detail="How it talks to you. Your instructions to the crew are unchanged." modified={prefs.tone !== "cheerful"}>
         <Segmented label="Personality" value={prefs.tone} onChange={(tone) => set({ tone })} options={[["engineer", "Engineer"], ["cheerful", "Cheerful"], ["chill", "Chill"], ["direct", "Direct"], ["coach", "Coach"]]} />
       </SettingRow>
       <label className="spark-personality"><strong>Make it sound like your sidekick</strong><span>Favorite phrases, a sense of humor, or how you like to be encouraged. Used for future conversations.</span><textarea rows={4} maxLength={1000} value={prefs.personality} onChange={e => set({ personality: e.target.value })} placeholder="A curious co-pilot. Dry humor, clear explanations, and a tiny celebration when a tricky bug is gone." /><small>{prefs.personality.length} / 1000</small></label>
       <SettingRow name="Answers" modified={prefs.length !== "brief"}><Segmented label="Answer length" value={prefs.length} onChange={(length) => set({ length })} options={[["brief", "Brief"], ["detailed", "Detailed"]]} /></SettingRow>
-      <SettingRow name={`${name} talks`} detail="Spoken as the answer streams in, with a local neural voice. Nothing leaves this Mac." modified={!voice.on}><Switch label="Talks" on={voice.on} onChange={(on) => saveBuddyVoice({ on })} /></SettingRow>
-      <SettingRow name="Conversation" detail={`Open mic while ${name}'s card is open: just talk, no buttons. It hears when you stop, answers out loud, and listens again. Transcribed on this Mac.`} modified={prefs.conversation}>
+      <SettingRow name="Read chat replies aloud" detail="Use Shua's voice for typed replies outside calls too. A call always speaks; use End call to stop it." modified={!voice.on}><Switch label="Read chat replies aloud" on={voice.on} onChange={(on) => saveBuddyVoice({ on })} /></SettingRow>
+      {prefs.voiceEngine === "classic" && <><SettingRow name="Classic open mic" detail={`Open mic while ${name}'s card is open: just talk, no buttons. It hears when you stop, answers out loud, and listens again. Transcribed on this Mac.`} modified={prefs.conversation}>
         <Switch label="Conversation" on={prefs.conversation} onChange={(conversation) => set({ conversation })} />
       </SettingRow>
-      {prefs.conversation && <SettingRow name="Talk over to interrupt" detail={`Start speaking while ${name} talks and it stops to listen.`} modified={!prefs.interrupt}><Switch label="Interrupt" on={prefs.interrupt} onChange={(interrupt) => set({ interrupt })} /></SettingRow>}
+      {prefs.conversation && <SettingRow name="Talk over to interrupt" detail={`Start speaking while ${name} talks and it stops to listen.`} modified={!prefs.interrupt}><Switch label="Interrupt" on={prefs.interrupt} onChange={(interrupt) => set({ interrupt })} /></SettingRow>}</>}
       <SettingRow name="Change me by asking" detail={`Say “talk faster”, “use Ryan's voice”, “be more direct”, “call yourself Nova”, “make yourself purple”, “stop clicking things”: ${name} updates these settings itself.`} />
-      {voice.on && <SettingRow name="Voice" detail={voices.length ? "The same voice everywhere: on the desktop, in the notch, and when you talk to Shua in Sessions." : "Install the local voice below."}>
-        <select className="setting-input" value={voice.id} onChange={(e) => void setVoiceEverywhere(shua, e.target.value)} aria-label="Voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
+      {prefs.voiceEngine === "live" ? <SettingRow name="Shua's native voice" detail="Changes apply to the next voice connection. Uses your connected subscription, not a separate API key."><LiveVoiceSelect /></SettingRow> : <SettingRow name="Shua's voice" detail={voices.length ? "Local voice for Classic mode." : "Set up the local voice below."}>
+        <select className="setting-input" value={voice.id} onChange={(e) => void setVoiceEverywhere(shua, e.target.value)} aria-label="Shua's voice">{(voices.length ? voices : [{ id: voice.id, name: voice.id }]).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>
         <Segmented label="Speed" value={String(voice.speed) as "0.9" | "1" | "1.15"} onChange={(v) => saveBuddyVoice({ speed: Number(v) })} options={[["0.9", "Calm"], ["1", "Normal"], ["1.15", "Quick"]]} />
       </SettingRow>}
     </section>}
 
-    {(searching || category === "voice") && <details className="settings-card batch-pad spark-voice-studio">
-      <summary><AudioLines size={16} /><span><strong>Hear every voice</strong><small>Audition the cast, install or repair the local voice engine, and tune conversation audio.</small></span></summary>
-      <VoiceComparison voices={voices} ready={speechStatus.state === "ready"} engine={speechStatus.engine || [...new Set(voices.map(voice => voice.engine).filter(Boolean))].join(" / ") || "Configured local speech engine"} error={speechStatus.error} />
-      <VoiceSettings embedded />
+    {prefs.voiceEngine === "classic" && (searching || category === "voice") && <details className="settings-card batch-pad spark-voice-studio">
+      <summary><AudioLines size={16} /><span><strong>Choose Shua's sound</strong><small>Preview voices or repair local speech. The same voice is used in calls and chat.</small></span></summary>
+      {call.active ? <p role="status">End the call before previewing voices. You can still change Shua's voice above.</p> : <><VoiceComparison voices={voices} ready={speechStatus.state === "ready"} engine={speechStatus.engine || [...new Set(voices.map(voice => voice.engine).filter(Boolean))].join(" / ") || "Configured local speech engine"} error={speechStatus.error} />
+      <VoiceSettings embedded /></>}
     </details>}
 
     {(searching || category === "guidance") && <section className="settings-card batch-pad">

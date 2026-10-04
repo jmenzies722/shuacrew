@@ -1,5 +1,23 @@
+import { demonstrationIntent } from "../lib/demonstration-intent";
+import { WorkflowLibrary } from "../components/WorkflowLibrary";
+import { useWorkflows, workflowBusy, workflowCommand, workflowContext } from "../lib/workflow-memory";
+import { AssistantMission } from "../components/AssistantMission";
+import { prepareFreshAction } from "../lib/fresh-action";
+import { AssistantDeck } from "../components/AssistantDeck";
+import { AssistantAccess } from "../components/AssistantAccess";
+import { beginAssistant, reduceAssistant, type AssistantPhase } from "../lib/assistant-state";
+import { interactionLatency } from "../lib/interaction-latency";
+import type { ScreenEvidence } from "../lib/screen-evidence";
 import { autopilotRequest, autopilotTarget, autopilotResult, readAutopilotWatch, writeAutopilotWatch } from "../lib/voice-autopilot";
 import { approvalSummary } from "../lib/approval-summary";
+import { commandAnnouncement } from "../lib/command-narration";
+import { scheduleNotchClose } from "../lib/notch-hover";
+import { CompanionApproval } from "../components/CompanionApproval";
+import { notchActivity } from "../lib/notch-activity";
+import { notchPreviewWanted, notchReplyText } from "../lib/notch-presentation";
+import { requestPointer } from "../lib/pointer-feedback";
+import { fnCapture } from "../lib/fn-capture";
+import { notchContentHeight, companionVoiceState } from "../lib/notch-layout";
 import { priorConversations, firstUserAsk, conversationMessages, type CompanionConversation } from "../lib/companion-history";
 import { benchmarkSummary, scoreTranscript } from "../lib/voice-benchmark";
 import { crewRef } from "../lib/crew-voice";
@@ -17,6 +35,7 @@ import { accentOf, sparkVars } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
 import { NotchCaption, Rolling } from "../components/NotchCaption";
 import { NotchThinking } from "../components/NotchThinking";
+import { NotchVoiceStatus } from "../components/NotchVoiceStatus";
 import { Recommendations } from "../components/Recommendations";
 import { locate, reacquire, type ScreenFacts } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
@@ -61,7 +80,7 @@ import "../alive.css"; // the desktop Spark loads without the app shell: same ac
 import { nativeLiveSpeech } from "../lib/live-speech";
 import { ctx, capture, selectRegion, type Shot, shotFiles, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
-import { chime, TimeLeft, NotchWave, MicBars, MiniCard, setMicLevel, getMicLevel, useMicLevelVar, VoiceBars } from "./spark/parts";
+import { chime, TimeLeft, MiniCard, setMicLevel, getMicLevel, useMicLevelVar, VoiceBars } from "./spark/parts";
 import { isInstant, runInstant } from "./spark/commands";
 import { LiveActivities } from "./spark/LiveActivities";
 import { VisualCard } from "./spark/Visual";
@@ -75,7 +94,13 @@ import { announcements, inMeeting, welcomeBack, type Agenda } from "../lib/proac
 import { QuietAnnouncements } from "../lib/quiet-announcements";
 import { copyForPaste, pasteTarget } from "../lib/paste-hint";
 import { PasteChip } from "../components/PasteChip";
-import { LiveButton, LiveIsland, LivePanel, liveActive, useLive as useLiveCall } from "../components/LiveMode";
+import { LiveIsland, LivePanel, VoiceWaveform, endLive, liveActive, startLive, useLive as useLiveCall } from "../components/LiveMode";
+import { announceLiveCommand, connectLiveBridge, watchLiveReady, getLiveLevels, isLiveOwner, registerExecutor, sendLiveText, queueLiveText, liveFn, startLive as startNativeLive, stopLiveSpeech } from "../lib/live-session";
+import { executeLiveTurn, type LiveTurnState } from "../lib/live-turn";
+import { saveSee, screenAllowed, useScreenAccess } from "../lib/screen-access";
+import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
+import { classicCaptureWanted } from "../lib/live-preferences";
+import { voiceTrace } from "../lib/voice-trace";
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -122,14 +147,20 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Load Spark's voice as soon as it's on screen, so the first spoken reply starts in a blink instead of after a
   // ~10s cold model load. Re-warms when you switch voices; the gateway keeps it loaded for a while after.
   useEffect(() => {
-    if (!voice.on) return;
+    if (!voice.on || prefs.voiceEngine === "live") return;
     const abort = new AbortController();
     void fetch("/api/speech/warm", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/json" }, body: JSON.stringify({ voiceId: voice.id, warmMinutes: 10 }), signal: abort.signal }).catch(() => {});
     return () => abort.abort();
-  }, [voice.on, voice.id]);
-  const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets" | "teach">("chat"), [see, setSee] = useState(readSee);
-  const [brief, setBrief] = useState<{ q: string; a: string } | null>(null);
-  const [busy, setBusy] = useState(""), [error, setError] = useState(""), [speaking, setSpeaking] = useState(false);
+  }, [voice.on, voice.id, prefs.voiceEngine]);
+  const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets" | "teach">("chat"), see = useScreenAccess();
+  const [brief, setBriefState] = useState<{ q: string; a: string } | null>(null);
+  const setBrief = (value: { q: string; a: string } | null) => {
+    if (value && liveTurn.current && value.q.trim() === liveTurn.current.request.text.trim()) { liveTurn.current.summary = value.a; queueMicrotask(notifyLiveTurn); }
+    setBriefState(value);
+  };
+  const [busy, setBusy] = useState(""), [error, setErrorState] = useState(""), [speaking, setSpeaking] = useState(false);
+  // UI errors (including delayed microphone/guide errors) cannot settle an execution.
+  const setError = setErrorState;
   const [done, setDone] = useState<Record<string, Done[]>>({});
   const corrected = useRef(new Set<string>()); // replies whose failed action Spark already owned up to
   // What's actually installed, told to Spark once per conversation (cached with its rules), so it never offers an app you don't have.
@@ -179,7 +210,26 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [phase, setPhase] = useState<Phase>("off"), talkBtn = useRef<HTMLButtonElement>(null);
   // fn held (push-to-talk): the notch shows it is ready the instant the key goes down; `fnSent` keeps the working
   // state on screen from letting go until Spark's first word.
+  const workflows = useWorkflows();
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+  useEffect(() => { if (native()) void workflowCommand("list").catch(() => {}); }, []);
+  const [fnPreparing, setFnPreparing] = useState(false), [accessOpen, setAccessOpen] = useState(false), [missionOpen, setMissionOpen] = useState(false);
+  const fnInteraction = useRef("");
+  const [observationEvidence, setObservationEvidence] = useState<ScreenEvidence>();
+  const presentation = useRef(beginAssistant("initial", 0));
+  useEffect(() => {
+    const observed = (event: Event) => setObservationEvidence((event as CustomEvent<ScreenEvidence>).detail);
+    window.addEventListener("shuacrew:observed", observed);
+    return () => window.removeEventListener("shuacrew:observed", observed);
+  }, []);
+  useEffect(() => {
+    if (!fnPreparing || !fnInteraction.current) return;
+    const id = fnInteraction.current;
+    const frame = requestAnimationFrame(() => { interactionLatency.mark(id, "web-frame", performance.now()); });
+    return () => cancelAnimationFrame(frame);
+  }, [fnPreparing]);
   const [fnHeld, setFnHeld] = useState(false), [fnSent, setFnSent] = useState(false);
+  const fnCapturing = useRef(false);
   useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Spark
   // A command waiting for your yes.
   /** Your last spoken turn: stays in the notch, shimmering, until Spark starts answering — so you can see it heard you. */
@@ -215,6 +265,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }, []);
   // Live: Spark watches your screen as a real stream (one frame a second, in memory only) while this is on.
   const [liveOn, setLiveOn] = useState(false), [liveBusy, setLiveBusy] = useState(false);
+  const liveScreen = useRef(liveOn); liveScreen.current = liveOn;
   useEffect(() => {
     const on = (e: Event) => { const d = (e as CustomEvent<{ on: boolean; error?: string }>).detail; if (!d.error) logSense("saw", d.on ? "Started watching your screen live" : "Stopped watching your screen"); setLiveOn(d.on); setLiveBusy(false); if (d.error) setError(d.error); };
     window.addEventListener("shuacrew:live", on); return () => window.removeEventListener("shuacrew:live", on);
@@ -225,7 +276,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // fn (Globe) key: a small card beside your pointer instead of the full chat — tap to show/hide, hold to talk.
   const [mini, setMini] = useState(false);
   // Notch mode: hover the pill and it opens into the nook (quick ask, now playing, crew, missions); it tucks away when you leave.
-  const [nook, setNook] = useState(false), nookTimer = useRef<ReturnType<typeof setTimeout>>(undefined), nookFocus = useRef(false);
+  const [nook, setNook] = useState(false), cancelNookClose = useRef<(() => void) | undefined>(undefined), nookFocus = useRef(false);
+  useEffect(() => { if (!nook) cancelNookClose.current?.(); return () => cancelNookClose.current?.(); }, [nook]);
+  const [notchTucked, setNotchTucked] = useState(false);
   // The notch island's geometry (from the Mac app: the camera housing's real size) and the open body's measured height.
   const [notchGeo, setNotchGeo] = useState<{ w: number; h: number; real: boolean }>({ w: 200, h: 32, real: false });
   const [islandDrop, setIslandDrop] = useState(250), islandBody = useRef<HTMLDivElement>(null);
@@ -240,6 +293,15 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
   // A live call owns the mic and the voice: Spark's open mic, fn push-to-talk and the wake word stand aside meanwhile.
   const call = useLiveCall();
+  const previousVoiceEngine = useRef(prefs.voiceEngine);
+  const modeSwitchCaptureBlock = useRef(false);
+  useEffect(() => { if (previousVoiceEngine.current !== prefs.voiceEngine) { previousVoiceEngine.current = prefs.voiceEngine; modeSwitchCaptureBlock.current = true; setVoiceLive(false); if (liveActive()) endLive(); mic.current.stop(); } }, [prefs.voiceEngine]);
+  useEffect(() => connectLiveBridge(), []);
+  useEffect(() => watchLiveReady(), []);
+  const liveTurnListeners = useRef(new Set<() => void>());
+  const notifyLiveTurn = () => { for (const listener of liveTurnListeners.current) listener(); };
+  useEffect(() => { notifyLiveTurn(); });
+  const liveTurn = useRef<{ request: LiveTaskRequest; summary: string; outcomes: LiveTaskResult["outcomes"]; pending: number; error?: string; visualId?: string } | null>(null);
   const wakeTurn = useRef(false); // "Hey Spark" opened the mic for one request
   const limited = useLive((s) => s.crew.limited);
   const [choice, setChoice] = useState<IntelligenceChoice | null>(null);
@@ -253,6 +315,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [behind, setBehind] = useState(false);
   const convoRef = useRef(convo); convoRef.current = convo;
   const speech = useRef<SpeechQueue>(null as unknown as SpeechQueue); speech.current ??= new SpeechQueue();
+  speech.current.hush = call.active || prefs.voiceEngine === "live";
+  useEffect(() => {
+    const changed = (event: Event) => { speech.current.hush = (event as CustomEvent).detail.on === true || prefsRef.current.voiceEngine === "live"; if (speech.current.hush) { speech.current.stop(); mic.current.stop(); } };
+    window.addEventListener("shuacrew:livecall", changed);
+    return () => window.removeEventListener("shuacrew:livecall", changed);
+  }, []);
   // Answers already on screen when the panel loaded were handled before; only new ones point, act and speak.
   const askGen = useRef(0), allowWork = useRef(true), quietTurn = useRef(false);
   const actionRequest = useRef({ id: crypto.randomUUID(), started: performance.now() });
@@ -278,6 +346,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }, []);
   const askArrival = useRef(0);
   const lastPoint = useRef<{ label: string; screen?: number } | null>(null);
+  const pointerRequest = useRef<AbortController | null>(null);
+  const [pointerFeedback, setPointerFeedback] = useState<{ label: string; phase: "locating" | "highlighting" | "displayed" | "blocked"; message: string } | null>(null);
+  useEffect(() => () => pointerRequest.current?.abort(), []);
+  useEffect(() => {
+    if (pointerFeedback?.phase !== "displayed") return;
+    const timer = setTimeout(() => setPointerFeedback(null), 6500);
+    return () => clearTimeout(timer);
+  }, [pointerFeedback]);
   const handled = useRef<number | null>(null), spokenUpto = useRef(0), streamId = useRef("");
   const crew = useLive((s) => s.crew), loadRun = useLive((s) => s.loadRun);
   // Live on-device transcription in the Mac app (Apple's recognizer), expecting your crew's and ventures' names.
@@ -338,7 +414,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     // A new reply, or the drawing moves to another display: start a fresh picture there.
     if (d.key !== key || d.screen !== screen) { clearTimeout(d.timer); drawing.current = { key, screen, shapes: [], queue: [] }; }
     drawing.current.queue.push(shapes);
-    if (!getBuddyVoice().on) { releaseDraw(); return; }
+    if (!getBuddyVoice().on || liveActive()) { releaseDraw(); if (liveTurn.current) liveTurn.current.outcomes.push({ description: "Drawing", ok: true, message: "Sent the drawing overlay to the Mac; visual placement is not independently verified." }); return; }
     clearTimeout(drawing.current.timer); drawing.current.timer = setTimeout(releaseDraw, 4000); // never stuck waiting
   };
   useEffect(() => { speech.current.onSpeaking = (on) => { setSpeaking(on); mic.current.speaking = on; post({ type: "buddySpeaking", on }); /* what it points at stays while it explains */ if (!on) { while (drawing.current.queue.length) releaseDraw(); releaseQuiz(); } }; speech.current.onCaption = (c) => { setCaption(c); if (c) releaseDraw(); post({ type: "buddyCaption", text: c?.text ?? "" }); }; }, []);
@@ -371,6 +447,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => {
     if (embedded) return;
     (window as unknown as { buddy: unknown }).buddy = { audioRoute: setMicRoute, perform, toggle: () => { speech.current.unlock(); setTab("chat"); setNook(false); setOpen((o) => !o); }, focus: () => { speech.current.unlock(); openChat(); },
+      prepareCall: () => { setNotchTucked(false); setOpen(false); setMini(prefsRef.current.desktopPlacement !== "notch"); setNook(prefsRef.current.desktopPlacement === "notch"); setArmed(true); },
       ask: (text: string) => { speech.current.unlock(); setOpen(true); setTab("chat"); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
       notchAsk: (text: string) => { speech.current.unlock(); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
@@ -399,13 +476,26 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // From the Mac app's fn key: "tap" shows or hides the quick card; "hold" talks until "release". "down" comes the
       // instant fn is pressed (the mic opens then, so your first words are kept); "cancel" = fn was a modifier after all.
       fn: (kind: "down" | "cancel" | "tap" | "hold" | "release") => {
-        if (liveActive() && kind !== "tap") return;
-        if (kind === "down") { const m = mic.current; if (!m.active || m.mode === "hold") { m.mode = "hold"; void m.warm(); } return; }
-        if (kind === "cancel") { mic.current.cool(); return; }
-        if (kind === "tap") { mic.current.cool(); setMini((m) => !m); return; }
+        voiceTrace("fn", { kind, live: viaLive(), inCall: liveActive() });
+        if (kind === "down") { fnInteraction.current = crypto.randomUUID(); interactionLatency.mark(fnInteraction.current, "web-key", performance.now()); setFnPreparing(true); }
+        else { setFnPreparing(false); if (kind === "release") interactionLatency.mark(fnInteraction.current, "release", performance.now()); }
+        if (viaLive()) {
+          modeSwitchCaptureBlock.current = true;
+          mic.current.stop(); speech.current.stop(); setVoiceLive(false);
+          liveFn(kind);
+          if (kind === "hold") { setFnHeld(true); setFnSent(false); setOpen(false); setNotchTucked(false); setNook(true); macContext.prefetch(); }
+          else if (kind === "release" || kind === "cancel") { setFnHeld(false); setFnSent(false); }
+          else if (kind === "tap") { setFnHeld(false); setOpen(false); setNook(shown => !shown); }
+          return;
+        }
+        const inCall = liveActive();
+        if (kind !== "tap" && inCall) return;
+        if (kind === "down") { fnCapturing.current = true; modeSwitchCaptureBlock.current = true; setVoiceLive(false); mic.current.stop(); fnCapture(kind, mic.current, inCall); return; }
+        if (kind === "cancel") { fnCapturing.current = false; fnCapture(kind, mic.current, inCall); return; }
+        if (kind === "tap") { fnCapturing.current = false; fnCapture(kind, mic.current, inCall); setOpen(false); if (prefsRef.current.desktopPlacement === "notch") { setMini(false); setNook((shown) => !shown); } else setMini((shown) => !shown); return; }
         // The start and "heard you" sounds for fn are played by the Mac app itself, the instant it sees the key.
-        if (kind === "hold") { macContext.prefetch(); setFnHeld(true); setFnSent(false); setMini(true); setArmed(true); speech.current.unlock(); speech.current.stop(); const m = mic.current; m.mode = "hold"; void m.press(); return; }
-        setFnHeld(false); setFnSent(true); mic.current.release();
+        if (kind === "hold") { macContext.prefetch(); setOpen(false); setNotchTucked(false); setFnHeld(true); setFnSent(false); setMini(prefsRef.current.desktopPlacement !== "notch"); setNook(prefsRef.current.desktopPlacement === "notch"); setArmed(true); speech.current.unlock(); speech.current.stop(); fnCapture(kind, mic.current, false); return; }
+        fnCapturing.current = false; setFnHeld(false); setFnSent(true); fnCapture(kind, mic.current, false);
       } };
     post({ type: "buddyReady" });
   }, []);
@@ -450,24 +540,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       return;
     }
     shownVisual.current = v; setVisual(v); clearTimeout(visualTimer.current);
-    if (v.type === "architecture") { if (!embedded && !open && prefs.desktopPlacement === "notch") setNook(true); return; }
+    if (v.type === "architecture") return;
     if (!open && prefs.desktopPlacement === "notch") setNook(true);
     // Teaching cards stay long enough to read the working; the rest tuck away sooner.
     const teach = ["math", "code", "table", "quiz", "flow", "sequence", "concept", "cycle", "layers"].includes(v.type);
     visualTimer.current = setTimeout(() => { shownVisual.current = null; setVisual(null); if (!nookFocus.current) setNook(false); }, teach ? 45_000 : 25_000);
   };
   const releaseQuiz = () => { const q = laterQuiz.current; if (!q) return; clearTimeout(q.timer); laterQuiz.current = null; showVisual(q.v, true); };
-  useEffect(() => {
-    const message = [...messages].reverse().find(item => item.who === "spark");
-    if (!message) return;
-    for (const block of completedBlocks(message.text)) {
-      if (block.kind !== "visual") continue;
-      const candidate = parseVisual(block.raw);
-      if (candidate?.type !== "architecture") continue;
-      architectureMessage.current = message.key;
-      showVisual(candidate);
-    }
-  }, [messages]);
   const dismissLesson = () => {
     if (visual?.type === "architecture" && lessonNarrationOwner.current === architectureKey(visual)) { speech.current.stop(); lessonNarrationOwner.current = ""; }
     architectureSession.current = reduceArchitectureSession(architectureSession.current, { type: "dismiss" });
@@ -501,22 +580,45 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // "Open X and then Y": the do block runs mid-stream, so the look-again waits here until the reply has finished.
   const finished = useRef(new Set<string>()), carryOn = useRef(new Map<string, () => void>());
   const pointFresh = async (p: { x: number; y: number; label: string; target?: string }, on?: number, guideStep?: { step: number; w: number; h: number }) => {
+    pointerRequest.current?.abort();
+    post({ type: "buddyGuideStop" });
+    const controller = new AbortController();
+    pointerRequest.current = controller;
+    const label = p.label || "that control";
+    setPointerFeedback({ label, phase: "locating", message: `Locating ${label}…` });
+    const turn = liveTurn.current;
+    if (turn && !readSee() && !liveOn) { turn.error = "Screen access is off. No pointer action ran."; setPointerFeedback({ label, phase: "blocked", message: turn.error }); return; }
+    if (turn) turn.pending++;
     const generation = askGen.current, before = screenFacts();
     try {
       const shot = await capture();
-      if (generation !== askGen.current || !allowWork.current) return;
+      if (generation !== askGen.current || !allowWork.current || controller.signal.aborted || !mine()) return;
       const display = on ? before?.others?.find(s => s.n === on)?.display : before?.display;
       const side = display && display !== shot.display ? shot.others.find(s => s.display === display) : undefined;
-      if ((on && !display) || (display && display !== shot.display && !side)) { setError("That display is no longer available. Show me the target again."); return; }
+      if ((on && !display) || (display && display !== shot.display && !side)) throw new Error("That display is no longer available. Find the target again.");
       const current = side ? { text: side.text, aspect: side.width / side.height } : { context: shot.context, text: shot.text, aspect: shot.width / shot.height };
       const original: ScreenFacts | null = on ? {text: before?.others?.find(s => s.n === on)?.text} : before;
       const r = reacquire({ ...p, w: guideStep?.w ?? .03, h: guideStep?.h ?? .03 }, side ? {...original, context: original?.context ? {...original.context,app:undefined,window:undefined} : undefined} : original, current);
       const where = side ? { screen: side.n } : {};
-      if (!r) { setError(`I can't uniquely locate “${p.label || "that control"}” on the current screen. Show it or name the control again.`); return; }
+      if (!r) throw new Error(`I can't uniquely locate “${label}” on the current screen. Show it or name the control again.`);
       lastPoint.current = { label: p.label }; focus.current.target = p.label; saveFocus(focus.current);
-      if (guideStep) { const exact = { ...guideStep, ...r, label: p.label, done: false as const }; setGuide(exact); post({ type: "buddyGuide", ...exact, color: accentOf(prefs.color), wait: prefs.guide === "click", ...where }); }
-      else post({ type: "buddyPoint", ...r, label: p.label, color: accentOf(prefs.color), ...where });
-    } catch (e) { if (generation === askGen.current) setError((e as Error).message); }
+      setPointerFeedback({ label, phase: "highlighting", message: `Highlighting ${label}…` });
+      if (!native()) throw new Error("Highlighting requires the ShuaCrew Mac app.");
+      const exact = guideStep ? { ...guideStep, ...r, label: p.label, done: false as const } : null;
+      const receipt = await requestPointer({ type: guideStep ? "buddyGuide" : "buddyPoint", ...r, ...exact, label: p.label, color: accentOf(prefs.color), wait: prefs.guide === "click", ...where }, post, window, controller.signal);
+      if (controller.signal.aborted || generation !== askGen.current || !allowWork.current || !mine()) return;
+      if (!receipt.ok) throw new Error(receipt.message);
+      if (exact) setGuide(exact);
+      setPointerFeedback({ label, phase: "displayed", message: `Highlight displayed · ${label}` });
+      turn?.outcomes.push({ description: guideStep ? "Guide overlay" : "Point overlay", ...receipt });
+    } catch (e) {
+      if (!controller.signal.aborted && generation === askGen.current) {
+        const message = (e as Error).message;
+        setError(message); setPointerFeedback({ label, phase: "blocked", message });
+        if (turn) turn.error = message;
+      }
+    }
+    finally { if (turn) turn.pending--; notifyLiveTurn(); }
   };
   const runBlocks = (text: string, key: string, final: boolean) => {
     if (!allowWork.current) return;
@@ -526,13 +628,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (final) { finished.current.add(key); const go = carryOn.current.get(key); if (go) { carryOn.current.delete(key); go(); } }
     if (ran.current.size > 40) ran.current.delete(ran.current.keys().next().value!);
     for (const b of completedBlocks(text, screenSize())) {
+      if (liveTurn.current && !readSee() && !liveOn && ["point", "draw", "guide", "act", "zoom"].includes(b.kind)) { liveTurn.current.error = "Screen access is off. No screen interaction ran."; continue; }
       if (cropOnly.current && b.kind !== "visual") continue;
       if (seen.has(b.key) || ((b.kind === "act" || b.kind === "zoom") && !final)) continue;
       seen.add(b.key);
       // On another display: its own coordinates, no snapping to the main display's text and controls.
       const on = blockScreen(b.raw), where = on ? { screen: on } : {};
       if (b.kind === "point") { const p = parsePoint(b.raw); if (p) void pointFresh(p, on); }
-      else if (b.kind === "visual") { const v = parseVisual(b.raw); if (v) { if (v.type === "architecture") architectureMessage.current = key; showVisual(v); } else setError("The diagram could not be validated. Your written answer is still available. Ask Shua to regenerate the diagram."); }
+      else if (b.kind === "visual") { const v = parseVisual(b.raw); if (v) { if (v.type === "architecture") { architectureMessage.current = key; if (liveTurn.current) liveTurn.current.visualId = v.id; } showVisual(v); } else { const message = "The diagram could not be validated. Your written answer is still available. Ask Shua to regenerate the diagram."; setError(message); if (liveTurn.current) liveTurn.current.error = message; } }
       else if (b.kind === "zoom") {
         // Spark asked to look closer: that region at full resolution goes straight back, and it carries on from there.
         const r = parseZoom(b.raw), size = screenSize();
@@ -554,8 +657,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       } else if (b.kind === "act") {
         const acts = parseActs(b.raw).map((a) => (on ? { ...a, ...where } as typeof a : a)), act = acts[0] ?? null;
         // A batch runs back to back when Spark may act on its own; asking first, it goes one step at a time.
-        const batch = acts.length > 1 && act?.type !== "done" && (prefs.control === "auto" || autoTask) ? acts : null;
-        if (act?.type === "done") { stopTask(); setCheer(true); setTimeout(() => setCheer(false), 2400); }
+        const batch: Act[] | null = null; // Re-observe after every UI mutation; do not run a stale batch.
+        if (act?.type === "done") { stopTask(); }
         else if (act && prefs.control !== "off") {
           const step = (taskRef.current?.step ?? 0) + 1, same = describeAct(act);
           // As long as it takes — but the same move three times in a row means it's stuck: stop and ask, don't loop.
@@ -565,6 +668,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         }
       } else if (b.kind === "do") {
         const actions = parseActions(b.raw);
+        const turn = liveTurn.current;
+        if (turn) turn.pending++;
         actionChain.current = actionChain.current.then(async () => {
           if (!active()) return;
           let opened = "";
@@ -577,7 +682,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             if (!active()) return;
             if (approved === false && isDestructive(a)) { results.push({ ok: true, message: "Kept it" }); continue; }
             const measured = actionRequest.current; recordActionTiming({request: measured.id, route:"model", started:measured.started, dispatched:performance.now()});
-            const r = await perform(a, { confirmed: approved === true, requestId: `${key}:${b.key}:${index}`, active }); if (!active()) return; results.push(r); recordActionTiming({request:measured.id, route:"model",started:measured.started,completed:performance.now(),ok:r.ok});
+            const r = await perform(a, { confirmed: approved === true, requestId: `${key}:${b.key}:${index}`, active }); if (!active()) return; results.push(r); turn?.outcomes.push({ description: describeAction(a), ok: r.ok, message: r.message }); recordActionTiming({request:measured.id, route:"model",started:measured.started,completed:performance.now(),ok:r.ok});
             if (r.ok && "ref" in a && a.type !== "crew_decide") { focus.current.run = crewRef(a.ref, "S"); saveFocus(focus.current); } setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app" || a.type === "open_path" || a.type === "open_settings")) opened = a.type === "open_url" ? a.url : a.type === "open_app" ? a.name : a.type === "open_path" ? a.path : `System Settings (${a.pane})`; }
           // It already said "Opening X": if that didn't happen (no such app, a blocked step), say so out loud right away,
           // so a failure never passes as done. Once per reply.
@@ -600,10 +705,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           if (opened && needsFollowThrough(q, text) && !looked.current.has(key)) {
             looked.current.add(key);
             // Give the page time to load, and let Spark finish its sentence first: a new turn stops the voice.
-            const go = () => setTimeout(() => { if (active()) speech.current.whenQuiet(() => { if (active()) void askRef.current(followThroughAsk(opened, q), { look: true }); }); }, 3200);
+            const go = () => { if (turn) turn.pending++; setTimeout(() => { if (turn) turn.pending--; if (active()) speech.current.whenQuiet(() => { if (active()) void askRef.current(followThroughAsk(opened, q), { look: true, ...(turn ? { origin: "live", signal: turn.request.signal } : {}) }); }); }, 3200); };
             if (finished.current.has(key)) go(); else carryOn.current.set(key, go);
           }
-        }).catch(e => { if (active()) setError((e as Error).message); });
+        }).catch(e => { if (active()) setError((e as Error).message); if (turn) turn.error = (e as Error).message; }).finally(() => { if (turn) turn.pending--; notifyLiveTurn(); });
       }
     }
   };
@@ -630,6 +735,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     }
     const rest = nextSentences(last.text, streamId.current === key ? spokenUpto.current : 0, true);
     runBlocksRef.current(last.text, key, true);
+    if (liveTurn.current) { liveTurn.current.summary = speakable(last.text).trim() || (liveTurn.current.visualId ? "The architecture lesson is ready in the notch." : ""); queueMicrotask(notifyLiveTurn); }
     if (!quietTurn.current && architectureMessage.current !== key) rest.chunks.filter(c => !completionClaim(c)).forEach((c) => speech.current.say(c)); streamId.current = ""; spokenUpto.current = 0;
   }, [messages, events, convo]);
   useEffect(() => {
@@ -660,6 +766,29 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const agenda = useRef<Agenda | null>(null);
   const newsBlocked = useRef(true);
   const [news] = useState(() => new QuietAnnouncements(() => newsBlocked.current || speech.current.busy, text => { speech.current.beginTurn(); speech.current.say(text); }));
+  const commandBlocked = useRef(true);
+  const [commandNews] = useState(() => new QuietAnnouncements(() => commandBlocked.current || (!liveActive() && speech.current.busy), text => {
+    if (prefsRef.current.voiceEngine === "live" && !liveActive()) { startNativeLive("silent"); return false; }
+    if (liveActive()) return announceLiveCommand(text);
+    speech.current.beginTurn(); speech.current.say(text); return true;
+  }));
+  useEffect(() => () => commandNews.stop(), [commandNews]);
+  const commandActivity = useLive(state => state.activity), commandConnection = useLive(state => state.connection);
+  const commandSequence = useRef<number | null>(null);
+  useEffect(() => {
+    if (commandConnection !== "live") return;
+    const head = useLive.getState().crew.head, previous = commandSequence.current;
+    commandSequence.current = head;
+    if (previous === null || !prefsRef.current.commandNarration || !getBuddyVoice().on || (!mine() && !(liveActive() && isLiveOwner()))) return;
+    const current = useLive.getState().crew;
+    const names = Object.fromEntries(Object.entries(current.members).map(([id, member]) => [id, member.name]));
+    for (const event of commandActivity) {
+      if (event.seq <= previous || event.kind !== "tool.called" || !event.run) continue;
+      const run = current.runs[event.run]; if (!run) continue;
+      const line = commandAnnouncement(event.body.tool, event.body.input, run, names); if (!line) continue;
+      commandNews.add(line, () => prefsRef.current.commandNarration && getBuddyVoice().on && !speech.current.silenced && !!useLive.getState().crew.runs[run.id], undefined, `${run.id}:${event.body.id}`, Infinity);
+    }
+  }, [commandActivity, commandConnection, commandNews]);
   useEffect(() => () => news.stop(), [news]);
   useEffect(() => { speech.current.onError = message => setError(message); return () => { speech.current.onError = undefined; }; }, []);
   // Self-tests log every spoken line (and every repeat dropped) to ~/.shuacrew/spark-selftest.log, so a double shows.
@@ -872,9 +1001,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     window.addEventListener("shuacrew:guideClick", on); window.addEventListener("shuacrew:guideActivity", on);
     return () => { window.removeEventListener("shuacrew:guideClick", on); window.removeEventListener("shuacrew:guideActivity", on); };
   }, []);
-  const MAX_STEPS = Infinity; // no step limit: it keeps going until done, or you press Stop / Esc
+  const MAX_STEPS = 12; // A bounded desktop window; review and explicitly continue beyond it.
   const recentActs = useRef<string[]>([]);
+  const desktopGeneration = useRef(0);
   const stopTask = (why = "") => {
+    desktopGeneration.current++;
+    setBusy("");
+    pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" });
     taskRef.current = null; setTask(null); setPending(null); setAutoTask(false); recentActs.current = []; post({ type: "buddyStopWatch" }); speech.current.stop();
     if (why) setError(why);
   };
@@ -882,7 +1015,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   /** Do one step — or a batch back to back (stopping at the first that fails) — then look again once and ask what's next. */
   const runAct = async (steps: Act | Act[], step: number) => {
     if (!convo) return;
-    const generation = askGen.current, active = () => generation === askGen.current && allowWork.current && mine(), receiptKey = actReceiptKey.current;
+    if (step > MAX_STEPS) { stopTask("Reached 12 desktop steps. Review the current app and ask to continue."); return; }
+    const desktopOwner = desktopGeneration.current;
+    const generation = askGen.current, active = () => desktopOwner === desktopGeneration.current && generation === askGen.current && allowWork.current && mine() && getCompanion().control !== "off" && screenAllowed(readSee(), liveScreen.current), receiptKey = actReceiptKey.current;
     const list = (Array.isArray(steps) ? steps : [steps]).filter((a) => a.type !== "done");
     if (step <= 1) failStreak.current = 0; // a new task starts clean
     setPending(null);
@@ -892,8 +1027,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         if (!active() || (!taskRef.current && i > 0)) return; // stopped mid-batch
         setBusy(describeAct(a) + "…");
         // Shua does every step itself — in web pages through the page's own elements (ShuaWeb), no browser extension.
-        const r = await perform({ ...a, color: accentOf(prefs.color) }, {requestId:`${receiptKey}:step:${step}:${i}`,active});
+        if (!screenAllowed(readSee(), liveScreen.current)) throw new Error("Screen access is off. Enable it before desktop actions.");
+        const before = screenFacts();
+        const checked = await prepareFreshAction(a, before, async () => {
+          const fresh = await capture();
+          return { display: fresh.display, context: fresh.context, text: fresh.text, aspect: fresh.width / fresh.height };
+        }, active);
         if (!active()) return;
+        const r = await perform({ ...checked, color: accentOf(prefs.color) }, {requestId:`${receiptKey}:step:${step}:${i}`,active});
+        if (!active()) return;
+        liveTurn.current?.outcomes.push({ description: describeAct(a), ok: r.ok, message: r.message });
         setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
         said.push(`${describeAct(a)}${r.ok ? (r.message && r.message !== describeAct(a) ? ` (${r.message})` : "") : ` — FAILED: ${r.message}`}`);
         if (!r.ok) { ok = false; break; }
@@ -909,7 +1052,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (!active()) return;
       const tack = failStreak.current === 2 ? " TWO STEPS IN A ROW FAILED: don't retry the same thing under another name. Change approach — press it by its exact name from the controls list, bring the right app or window to the front first, use a keyboard shortcut or a do-action — or say plainly what's blocking and ask." : "";
       await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS) + tack, atts));
-    } catch (e) { stopTask((e as Error).message); } finally { if (active()) setBusy(""); }
+    } catch (e) { if (active()) stopTask((e as Error).message); } finally { if (active()) setBusy(""); }
   };
   const taskRef = useRef(task); taskRef.current = task;
   const failStreak = useRef(0);
@@ -921,6 +1064,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
    * pending screenshot/upload/model pick give up), and a turn the model is working on. Like ChatGPT's stop button.
    */
   const interrupt = async () => {
+    if (workflowBusy()) await workflowCommand("stop").catch(() => {});
+    commandNews.stop();
+    if (liveActive()) stopLiveSpeech();
+    setFnSent(false);
+    clearTimeout(drawing.current.timer); drawing.current.queue = [];
+    pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" });
     askGen.current++; allowWork.current = false; quietTurn.current = true; askingRef.current?.answer(false); carryOn.current.clear(); actionChain.current = Promise.resolve(); speech.current.stop(); setBusy(""); if (taskRef.current) stopTask(); if (guide) stopGuide();
     if (convo && (status === "running" || status === "planning" || status === "queued")) await cancelRun(convo.run).catch(() => {});
   };
@@ -932,14 +1081,41 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     catch (e) { setError((e as Error).message); }
     finally { setSelectingArea(false); }
   };
-  const ask = async (text = getCompanionDraft(), opt: { look?: boolean } = {}) => {
+  const ask = async (text = getCompanionDraft(), opt: { look?: boolean; origin?: "user" | "live"; signal?: AbortSignal } = {}) => {
+    const owningTurn = opt.origin === "live" ? liveTurn.current : null;
+    const setError = (message: string) => {
+      if (owningTurn && liveTurn.current === owningTurn && !opt.signal?.aborted && message) { owningTurn.error = message; queueMicrotask(notifyLiveTurn); }
+      setErrorState(message);
+    };
+    const demonstration = opt.origin !== "live" ? demonstrationIntent(text) : null;
+    if (demonstration) {
+      if (demonstration === "start" && (prefs.control === "off" || !hands.trusted || !!busy || working || !!task || (call.tasks ?? 0) > 0)) { setError("Enable Accessibility and Mac control in Access & tools, and stop active tasks before teaching."); return; }
+      try {
+        if (demonstration === "stop" && workflows.phase !== "recording") { setError("No demonstration is being recorded."); return; }
+        await workflowCommand(demonstration === "start" ? "record" : "stop", demonstration === "start" ? { followForeground: true } : {});
+        setWorkflowsOpen(true); setOpen(false); setNook(true);
+        clearCompanionDraft(text, getCompanionDraftRevision());
+      } catch (e) { setError((e as Error).message); }
+      return;
+    }
+    if (/^(?:(?:show|open|manage)(?: my)? workflows?|record (?:a )?(?:task|workflow)|teach (?:you|shua)(?: a task)?)[.!?]*$/i.test(text.trim())) { setWorkflowsOpen(true); setOpen(false); setNook(true); clearCompanionDraft(text, getCompanionDraftRevision()); return; }
+    if (workflowBusy()) { setError("Stop the workflow before starting another assistant task."); return; }
+    const directMove = producerMove(text.trim());
+    const direct = !!directMove && isInstant(directMove);
+    if (!direct && opt.origin !== "live" && prefsRef.current.voiceEngine === "live" && getBuddyVoice().on) {
+      if (queueLiveText(text)) clearCompanionDraft(text, getCompanionDraftRevision()); else setError("Could not queue that voice request. Try a shorter message after the current request.");
+      return;
+    }
+    if (!direct && opt.origin !== "live" && liveActive()) { if (sendLiveText(text)) clearCompanionDraft(text, getCompanionDraftRevision()); else setError("The call is not ready for text yet."); return; }
     if (/^(?:let me )?(?:select|choose|box|mark) (?:an? |the )?(?:area|region)(?: to analy[sz]e)?[.!?]*$/i.test(text.trim())) { void chooseArea(); return; }
     let draftRevision = getCompanionDraftRevision();
-    const clearSubmittedDraft = () => clearCompanionDraft(text, draftRevision);
-    const area = selectedArea;
+    const clearSubmittedDraft = () => { if (opt.origin !== "live") clearCompanionDraft(text, draftRevision); };
+    const area = opt.origin === "live" ? null : selectedArea;
     if (!text.trim()) return;
     const q = text.trim() + (area ? "\n\n[Selected area] Analyze only the attached cropped selection. It is a frozen screenshot, not the full display. Do not click, point, guide, or perform actions from crop coordinates. Explain what is visible and ask if context outside this box is needed." : ""); if (!q) return;
     const arrival = ++askArrival.current;
+    architectureSession.current = reduceArchitectureSession(architectureSession.current, { type: "new-turn" });
+    dismissLesson();
     const autoRequest = autopilotRequest(q);
     if (autoRequest) {
       if (autopilotBusy.current) return;
@@ -989,9 +1165,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     // Asking while Spark is still thinking or talking: stop that and take the new question (talk or type over it).
     if (busy || working) await interrupt();
     if (arrival !== askArrival.current) return;
-    const gen = ++askGen.current, stale = () => gen !== askGen.current;
+    const gen = ++askGen.current, stale = () => gen !== askGen.current || opt.signal?.aborted === true;
+    pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" });
     cropOnly.current = !!area;
-    allowWork.current = true; quietTurn.current = false; speech.current.silenced = false;
+    allowWork.current = true; quietTurn.current = opt.origin === "live"; speech.current.silenced = false;
     actionRequest.current = { id: crypto.randomUUID(), started: performance.now() };
     const request = actionRequest.current;
     if (!/^\[(guide|act|check|zoom)\]/.test(q)) { focus.current.task = q; saveFocus(focus.current); }
@@ -1046,8 +1223,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         setBrief({ q, a }); speech.current.say(a); clearSubmittedDraft(); return;
       }
     }
-    const look = !!area || see || liveOn || !!opt.look;
-    draftRevision = acceptCompanionDraft(text);
+    const look = opt.origin === "live" ? screenAllowed(readSee(), liveScreen.current) && (needsScreen(q) || !!opt.look) : !!area || see || liveOn || !!opt.look;
+    if (opt.origin !== "live") draftRevision = acceptCompanionDraft(text);
     setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
     // Where a turn's time goes before the model starts (logged during self-tests: SHUACREW_SPARK_SELFTEST=ask:…).
     const t0 = performance.now(), marks: Record<string, number> = {}, mark = (k: string) => { marks[k] = Math.round(performance.now() - t0); };
@@ -1094,9 +1271,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const rightNow = personal ? `\nRIGHT NOW ON THEIR MAC (use it when it helps: mention a meeting that's coming up, the file they just worked on, a heads-up; asked what's playing or about the song, answer straight from this — it's live; never recite it unprompted):\n${personal}` : "";
       // Supply the pointing contract on every turn without resetting the existing conversation/history.
       const cursorGuide = screen && !area ? '\nSHOW WITH THE CURSOR: When the user asks "show me", "where is", or "point to" a visible item, emit a point block so the blue cursor companion physically points to it; words alone are insufficient. Use a current accessibility/OCR target ID when available, otherwise verified screenshot coordinates. For a walkthrough, emit a guide block for the next visible step. Showing does not mean clicking. If the item is not visible, explain that and guide to the control that reveals it; never invent its position. Example: ```point {"target":"#12","label":"Settings"}``` — substitute an actual current target. Local/text-only mode may point only to controls with supplied positions.' : '';
-      const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}${rightNow}${cursorGuide}\n${focusContext(focus.current, crew.runs)}`;
+      const identity = `CURRENT COMPANION IDENTITY: Your name is ${prefs.nickname || "Spark"}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\nSCREEN STATE: ${screenAllowed(readSee(), liveScreen.current) ? "Screen requests are enabled. Do not ask to turn on the eye." : "Screen requests are off. Do not capture or interact with the screen."} ${screen ? "Fresh screen evidence is attached to this turn." : "No screenshot attached this turn; that is not a macOS permission denial."}\nMAC CONTROL NOW: ${prefs.control === "off" ? "Mouse and keyboard are disabled by the user. Do not emit act blocks." : `Native action bridge is available with ${prefs.control === "ask" ? "approval before each step" : "automatic steps within the requested task"}. Accessibility ${hands.trusted ? "is granted" : "has not been confirmed; report a native denial if returned"}. Emit do blocks to open apps and one act block per observed desktop step; do not describe this as screenshot-only.`}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}${rightNow}${cursorGuide}\n${focusContext(focus.current, crew.runs)}`;
       const refreshedRules = convo && convo.rules !== SPARK_RULES ? buddyPrompt("Continue this conversation using these updated instructions.", screen, {name:prefs.nickname || "Spark",tone:prefs.tone,length:prefs.length,control:prefs.control}, now, appNowBase) : "";
-      const appNow = [appNowBase, identity, remembered, earlier, language, refreshedRules].filter(Boolean).join("\n\n");
+      const appNow = [appNowBase, identity, remembered, earlier, language, refreshedRules, workflowContext(q)].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
       const screenLines = screen ? [screen.text.length ? screenText(screen.text, 2500, screen) : "", elementsText(screen.context, 120, screen)].filter(Boolean).join("\n") : "";
@@ -1129,10 +1306,25 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       if (convo && disposition === "resume" && convo.rules !== SPARK_RULES) { const next = {...convo,rules:SPARK_RULES}; setConvo(next); try {localStorage.setItem(KEY,JSON.stringify(next));} catch {} }
       clearSubmittedDraft(); mark("sent");
       if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `timing ${q.slice(0, 40)}`, output: JSON.stringify(marks) });
-    } catch (e) { if (!stale()) { setError((e as Error).message.replace(/^\d+\s*/, "")); restoreCompanionDraft(text, draftRevision); } } finally { if (!stale()) setBusy(""); }
+    } catch (e) { if (!stale()) { setError((e as Error).message.replace(/^\d+\s*/, "")); if (opt.origin !== "live") restoreCompanionDraft(text, draftRevision); if (owningTurn && liveTurn.current === owningTurn) owningTurn.error = (e as Error).message; } } finally { if (!stale()) setBusy(""); }
   };
   // Open mic: every turn you speak is a message; talking over Spark stops it.
   const askRef = useRef(ask); askRef.current = ask;
+  const liveState = useRef<() => LiveTurnState>(() => ({ pending: false, summary: "", outcomes: [] }));
+  liveState.current = () => ({ pending: !!busy || working || !!taskRef.current || !!liveTurn.current?.pending || carryOn.current.size > 0,
+    summary: liveTurn.current?.summary || "", outcomes: liveTurn.current?.outcomes ?? [], error: liveTurn.current?.error || undefined, visualId: liveTurn.current?.visualId });
+  useEffect(() => {
+    if (!isLiveOwner() || embedded) return;
+    return registerExecutor(async request => {
+      if (liveTurn.current) return { status: "unavailable", summary: "Another task is still stopping. Try again in a moment.", outcomes: [] };
+      const turn = { request, summary: "", outcomes: [] as LiveTaskResult["outcomes"], pending: 0 };
+      liveTurn.current = turn;
+      setBrief(null); setError("");
+      try { return await executeLiveTurn(request, { screenAllowed: screenAllowed(readSee(), liveScreen.current), needsScreen: needsScreen(request.text),
+        dispatch: () => askRef.current(request.text, { origin: "live", signal: request.signal }), state: () => liveState.current(), subscribe: listener => { liveTurnListeners.current.add(listener); return () => { liveTurnListeners.current.delete(listener); }; }, cancel: () => { void interruptRef.current(); } }); }
+      finally { if (liveTurn.current === turn) liveTurn.current = null; }
+    });
+  }, [embedded]);
   const showAgain = useCallback((label: string) => void askRef.current(`Show me “${label || "the previously indicated control"}” again on the current screen. Point only; do not click.`, { look: true }), []);
   // You clicked one of Spark's labels or cards on the screen: it looks again and takes it from there.
   useEffect(() => {
@@ -1168,15 +1360,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     m.onBargeIn = () => { if (prefsRef.current.interrupt) speech.current.duck(true); };
     // You kept talking over Spark: it stops now, like a person would, instead of waiting for the transcript.
     m.onYield = () => { if (prefsRef.current.interrupt) { logSense("heard", "Interrupted", ""); speech.current.stop(); } };
-    m.onDropped = () => speech.current.duck(false);
+    m.onDropped = () => { setFnSent(false); speech.current.duck(false); };
     m.outputLevel = () => speech.current.level();
+    if (fnCapturing.current) return;
     m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
     if (voiceLive) m.mode = "auto";
-    const wanted = ((prefs.listen !== "hold" && prefs.conversation) || wakeTurn.current || voiceLive) && !call.active;
-    if (call.active) speech.current.stop();
+    // With Live as the voice the classic open mic stays off: a call is the conversation.
+    const wanted = classicCaptureWanted({ engine: prefs.voiceEngine, conversation: prefs.listen !== "hold" && prefs.conversation, wake: wakeTurn.current, voice: voiceLive, callActive: call.active, switchBlocked: modeSwitchCaptureBlock.current });
+    if (call.active) { speech.current.stop(); wakeTurn.current = false; if (voiceLive) setVoiceLive(false); }
     // Voice mode from the notch listens with the chat closed; otherwise the open mic lives with the open card.
     if (wanted && tab !== "teach" && (open || voiceLive) && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, prefs.listen, prefs.language, open, embedded, focused, armed, tab, voiceLive, call.active]);
+  }, [prefs.conversation, prefs.listen, prefs.voiceEngine, prefs.language, open, embedded, focused, armed, tab, voiceLive, call.active]);
   // Typing while the mic is open: key clicks never start a voice turn (Whisper made "and" of them), and the notch drops
   // the last thing you said aloud — you're writing now.
   useEffect(() => {
@@ -1188,13 +1382,15 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => {
     if (prefs.listen !== "hold" || !open || tab === "teach") return;
     const typing = (t: EventTarget | null) => { const el = t as HTMLElement | null; if (!el) return false; if (el === input.current) return !!input.current?.value; return !!el.closest?.("input,textarea,select,[contenteditable=true],.xterm"); };
-    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); setArmed(true); speech.current.unlock(); void mic.current.press(); };
-    const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; mic.current.release(); };
+    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); setArmed(true); if (viaLive()) { liveFn("down"); liveFn("hold"); } else { speech.current.unlock(); void mic.current.press(); } };
+    const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; if (viaLive()) liveFn("release"); else mic.current.release(); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); mic.current.release(); };
-  }, [prefs.listen, open, tab]);
+  }, [prefs.listen, prefs.voiceEngine, open, tab]);
   useEffect(() => () => mic.current.stop(), []);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
+  /** Talking goes to a Live call when that's your voice and Live can take it (connected lately, plan not used up). */
+  const viaLive = () => prefsRef.current.voiceEngine === "live";
   // Guidance stays visible over the app being practiced without taking keyboard
   // focus. Pausing restores the user's normal pin preference.
   useEffect(() => { if (!embedded) post({ type: "buddyOnTop", on: prefs.onTop || practicing }); }, [prefs.onTop, practicing, embedded]);
@@ -1202,11 +1398,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => { if (!embedded) post({ type: "buddyFollow", on: prefs.follow }); }, [prefs.follow, embedded]);
   useEffect(() => { if (!embedded) post({ type: "buddyScreenMemory" }); }, [embedded]); // wakes the recorder if you turned it on
   // "Hey Spark": the Mac app heard it — open, answer, and listen for one request (even with open mic off).
-  useEffect(() => { if (!embedded) post({ type: "buddyWake", names: prefs.nickname ? [prefs.nickname] : [] }); }, [embedded, prefs.nickname]);
+  useEffect(() => { if (!embedded) post({ type: "buddyWake", names: prefs.nickname ? [prefs.nickname] : [], ...(prefs.voiceEngine === "live" ? { on: false } : {}) }); }, [embedded, prefs.nickname, prefs.voiceEngine]);
   useEffect(() => {
     if (embedded) return;
     const on = () => {
       if (liveActive()) return;
+      modeSwitchCaptureBlock.current = false;
+      if (viaLive()) return;
       setOpen(true); setTab("chat"); setArmed(true); speech.current.unlock(); speech.current.stop();
       speech.current.say("Yes?");
       wakeTurn.current = true;
@@ -1227,7 +1425,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     return () => clearTimeout(t);
   }, [talking]);
   const setListen = (listen: "auto" | "hold") => { setArmed(true); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, listen }); };
-  const toggleTalk = () => { setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
+  const toggleTalk = () => {
+    modeSwitchCaptureBlock.current = false;
+    if (liveActive()) { if (call.mode !== "talk") startNativeLive("talk"); else endLive(); return; }
+    if (viaLive()) { setArmed(true); speech.current.unlock(); speech.current.stop(); startLive(); return; }
+    if (prefs.voiceEngine === "live") { setArmed(true); speech.current.unlock(); setVoiceLive(value => !value); return; }
+    setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
   const reset = () => { dismissLesson(); speech.current.stop(); architectureSession.current = reduceArchitectureSession(architectureSession.current, { type: "reset" }); architectureMessage.current = ""; lessonNarrationOwner.current = ""; stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
   const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
   // The composer grows with what you type (one line when empty, up to about six).
@@ -1257,8 +1460,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const lastSparkText = [...messages].reverse().find((m) => m.who === "spark" && !m.live)?.text ?? "";
   // The reply as it streams in (spoken words only, no machine blocks): the notch shows it live instead of "Thinking…".
   const streamText = messages.at(-1)?.who === "spark" && messages.at(-1)?.live ? speakable(messages.at(-1)!.text).replace(/```[\s\S]*$/, "").trim() : "";
+  const spokenReply = voice.on && !quietTurn.current && !speech.current.silenced && !error;
+  const visibleStream = notchReplyText(streamText, "", spokenReply, speech.current.busy);
+  const visibleReply = notchReplyText("", lastSparkText, spokenReply, !!busy || working || speech.current.busy);
   quiet.current = !!busy || working || speaking || phase === "hearing" || phase === "transcribing" || !!guide || practicing;
-  newsBlocked.current = quiet.current || fnHeld || inMeeting(agenda.current, Date.now()) || !mine();
+  newsBlocked.current = call.active || quiet.current || fnHeld || inMeeting(agenda.current, Date.now()) || !mine();
+  commandBlocked.current = quiet.current || fnHeld || (!call.active && phase === "hearing") || inMeeting(agenda.current, Date.now()) || (!mine() && !(call.active && isLiveOwner()));
   useEffect(() => {
     if (!liveOn || !prefs.notice || embedded || !native()) return;
     const got = (e: Event) => {
@@ -1294,26 +1501,32 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const workingRuns = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning"));
   const notched = prefs.desktopPlacement === "notch" && !embedded;
   // Speaking while tucked in: the island widens just enough to caption what Spark is saying, live.
-  const hearingNow = (phase === "hearing" || phase === "transcribing") && !!heard;
+  const hearingNow = phase === "hearing" && !fnSent && !!heard;
   // Show processing as a compact wave in the notch, without thinking text or animated words.
-  const processing = !speaking && phase !== "hearing" && !fnHeld && (phase === "transcribing" || ((!!busy || working) && !streamText));
+  const processing = !speaking && !fnHeld && (fnSent || phase === "transcribing" || (phase !== "hearing" && (!!busy || working || speech.current.busy) && !visibleStream));
   // The cursor buddy mirrors Spark: listening while you talk, thinking while it works, speaking while it answers.
-  const buddyState = speaking ? "speaking" : fnHeld || phase === "hearing" ? "listening" : busy || working || phase === "transcribing" ? "thinking" : "idle";
+  const buddyState = call.active ? call.state === "speaking" ? "speaking" : call.state === "listening" ? "listening" : call.state === "ready" ? "idle" : "thinking" : companionVoiceState({ held: fnHeld, released: fnSent, phase, speaking, pending: !!busy || working || speech.current.busy });
+  const readVoiceLevel = () => {
+    if (call.active) { const levels = getLiveLevels(); return buddyState === "speaking" ? levels.voice : buddyState === "listening" ? levels.mic : 0; }
+    return buddyState === "speaking" ? speech.current.level() : buddyState === "listening" ? getMicLevel() / 12 : 0;
+  };
   useEffect(() => { post({ type: "buddyState", state: buddyState, color: accentOf(prefs.color) }); }, [buddyState, prefs.color]);
   // Live level for the buddy (~20×/s, only while you talk or Spark does): its halo moves with your voice, it pulses with Spark's.
   useEffect(() => {
     if (buddyState !== "listening" && buddyState !== "speaking") return;
     const t = setInterval(() => {
-      const v = buddyState === "listening" ? getMicLevel() : Math.min(1, speech.current.level() * 6);
+      const liveLevels = getLiveLevels();
+      const raw = call.active ? buddyState === "listening" ? liveLevels.mic : liveLevels.voice : buddyState === "listening" ? getMicLevel() : speech.current.level();
+      const v = Math.min(1, Math.sqrt(Math.max(0, raw)) * 3);
       post({ type: "buddyLevel", v: Math.round(v * 100) / 100 });
     }, 50);
     return () => clearInterval(t);
-  }, [buddyState]);
+  }, [buddyState, call.active]);
   // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.
   const fnReady = notched && fnHeld && !heard;
   useEffect(() => { if (speaking || streamText) setFnSent(false); }, [speaking, streamText]);
-  useEffect(() => { if (phase === "error") { setFnHeld(false); setFnSent(false); } }, [phase]); // never stuck "listening"
-  const streamingNow = !!streamText && !speaking && !hearingNow;
+  useEffect(() => { if (phase === "error" || error) { setFnHeld(false); setFnSent(false); } }, [phase, error]); // never stuck "listening"
+  const streamingNow = !!visibleStream && !speaking && !hearingNow;
   const live$ = useRef({ speaking: false, streaming: false, active: false, listening: false }); live$.current = { speaking, streaming: !!streamText, active: !!busy || working, listening: hearingNow || fnHeld || phase === "transcribing" };
   const lastSound = useRef(0), narrated = useRef(0);
   /**
@@ -1387,41 +1600,61 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     const current = crew.runs[notchUpdate.run];
     if (!current || current.turns !== notchUpdate.turn || ["running", "planning", "queued"].includes(current.status)) setNotchUpdate(null);
   }, [crew.runs, notchUpdate]);
-  const islandWanted = !islandOpen && !open && prefs.desktopPlacement === "notch" && (call.active || prefs.notchCaptions && (speaking || hearingNow || streamingNow) || processing || visual?.type === "architecture" || !!notchUpdate || !!stuck || !!task || !!guide || asking?.kind === "delete" || !!heads || fnReady);
+  const companionApprovals = Object.values(crew.approvals).filter(a => a.run && crew.runs[a.run]?.labels.includes("buddy"));
+  const normalActivity = notchActivity({ approval: !!asking || !!pending || !!call.approval || companionApprovals.length > 0, failed: !!error, preparing: fnPreparing, acting: !!task, working: processing || working || !!busy || (call.tasks ?? 0) > 0 || call.state === "working", listening: buddyState === "listening" || (call.active && call.state === "listening"), speaking: speaking || (call.active && call.state === "speaking"), watching: liveOn });
+  const activity = workflows.phase === "recording" ? { label: `Watching · ${workflows.stepCount}`, tone: "observing" } : workflows.phase === "running" ? { label: `Workflow · ${workflows.stepIndex + 1}/${workflows.stepCount}`, tone: "working" } : workflows.phase === "needs-approval" ? { label: "Needs permission", tone: "permission" } : normalActivity;
+  const assistantPhase: AssistantPhase = asking || pending || call.approval || companionApprovals.length || status === "awaiting_approval" ? "awaiting-approval" : error ? "failed" : fnPreparing ? "preparing" : buddyState === "listening" ? "listening" : task ? "acting" : processing || working || !!busy || (call.tasks ?? 0) > 0 || call.state === "working" ? "planning" : "idle";
+  const assistantLabel = pending ? describeAct(pending) : asking?.command || error || (fnPreparing ? "Preparing your turn" : focus.current.task || busy || "Ready when you are");
+  const presentationId = `${askGen.current}:${fnPreparing ? fnInteraction.current : "task"}:${assistantPhase === "idle" ? "idle" : "active"}`;
+  if (presentation.current.taskId !== presentationId || (presentation.current.phase === "failed" && assistantPhase !== "failed")) presentation.current = beginAssistant(presentationId, askGen.current);
+  presentation.current = reduceAssistant(presentation.current, { taskId: presentationId, generation: askGen.current, sequence: presentation.current.lastSequence + 1, phase: assistantPhase, label: assistantLabel });
+  const assistantDeck = workflowsOpen ? <WorkflowLibrary onFocusChange={focused => { nookFocus.current = focused; if (focused) post({ type: "buddyNookFocus" }); }} onClose={() => { nookFocus.current = false; setWorkflowsOpen(false); }} blockedReason={prefs.control === "off" ? "Enable Mac control in Access & tools first." : !hands.trusted ? "Grant Accessibility access in Access & tools first." : undefined} disabled={prefs.control === "off" || !hands.trusted || !!busy || working || !!task || (call.tasks ?? 0) > 0} onAdapt={text => { setWorkflowsOpen(false); void ask(text); }} /> : missionOpen ? <AssistantMission onClose={() => setMissionOpen(false)} onStarted={() => setMissionOpen(false)} /> : accessOpen ? <AssistantAccess screenEnabled={see || liveOn} trusted={hands.trusted} control={prefs.control}
+    onScreen={() => { if (see || liveOn) void interrupt(); if (liveOn) post({ type: "buddyLive", on: false }); saveSee(!(see || liveOn)); }}
+    onAccessibility={() => post({ type: "buddyHands", ask: true })} onControl={control => { if (control === "off") void interrupt(); saveCompanion({ ...prefs, control, autonomy: 2 }); }}
+    onClose={() => setAccessOpen(false)} onManage={() => post({ type: "buddyOpen", path: "/integrations" })} />
+    : <AssistantDeck state={presentation.current} connection={commandConnection} screenEnabled={see || liveOn} evidence={observationEvidence} trusted={hands.trusted} control={prefs.control}
+      background={Object.values(crew.runs).filter(r => r.id !== convo?.run && isTopLevelWork(r, crew.runs) && ["queued", "planning", "running", "awaiting_approval", "paused"].includes(r.status))} onMission={() => setMissionOpen(true)} onWorkflows={() => setWorkflowsOpen(true)} onAsk={text => void ask(text)} onStop={() => void interrupt()} onAccess={() => setAccessOpen(true)} onRun={id => post({ type: "buddyOpen", path: `/sessions/${id}` })} />;
+  const pointerStatus = pointerFeedback && <div className="notch-pointer-status" role="status"><MousePointer2 size={14} /><span>{pointerFeedback.message}</span>{pointerFeedback.phase === "blocked" ? <button type="button" onClick={() => showAgain(pointerFeedback.label)}>Find again</button> : pointerFeedback.phase !== "displayed" ? <button type="button" onClick={() => void interrupt()}>Cancel</button> : null}<button type="button" aria-label="Dismiss pointer feedback" onClick={() => { pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" }); }}><X size={12} /></button></div>;
+  const islandWanted = prefs.desktopPlacement === "notch" && notchPreviewWanted({ active: workflowBusy() || fnPreparing || call.active || !!error || !!pointerFeedback || !!(prefs.notchCaptions && (speaking || hearingNow || streamingNow)) || processing || fnReady, tucked: notchTucked, expanded: islandOpen || open });
   // Fluid, never flickering (measured: it opened for 6–58 ms and snapped shut between a reply's sentences, clipping
   // the caption mid-animation): open at once, close only after 0.9 s of real quiet; within a reply the height only
   // grows; and in a gap it keeps showing what it last showed rather than going blank.
-  const islandLive = useLinger(islandWanted, 900);
-  const islandTall = useLinger(islandLive && (hearingNow || streamingNow || speaking), 1500);
+  const islandLingering = useLinger(islandWanted, 900);
+  const islandLive = islandLingering && !notchTucked && !islandOpen && !open;
   const lastRow = useRef<ReactNode>(null);
   const keepRow = (row: ReactNode) => { if (row) { lastRow.current = row; return row; } return islandLive ? lastRow.current : null; };
   // Self-test instrumentation: every time the island opens, closes or changes height (to count flicker per reply).
-  const islandDropNow = islandLive ? (islandTall ? 78 : 64) : 0;
+  const islandDropNow = islandLive ? 78 : 0;
   useEffect(() => { if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `island ${islandLive ? "live" : "rest"} drop=${islandDropNow} t=${Math.round(performance.now())} speaking=${+speaking} caption=${+!!caption} streaming=${+streamingNow} voice=${+getBuddyVoice().on} captions=${+prefs.notchCaptions} placement=${prefs.desktopPlacement} chat=${+open} nook=${+islandOpen}`, output: "" }); }, [islandLive, islandDropNow, speaking, !!caption, streamingNow, open, islandOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
     const el = islandBody.current; if (!el || !islandOpen) return;
-    const measure = () => { const d = Math.min(380, Math.ceil(el.scrollHeight) + 2); setIslandDrop(d); post({ type: "buddyIsland", flare: ISLAND_FLARE, drop: d }); };
-    measure(); const ro = new ResizeObserver(measure); ro.observe(el); return () => ro.disconnect();
-  }, [islandOpen]);
-  // Hover in/out of the notch (from the page, or the Mac app watching the pointer): open now, tuck away shortly after
-  // you leave — unless you're typing in it or Spark is mid-answer.
-  const nookHover = useRef((_: boolean) => {});
-  // Tuck in once you've moved away. If you're mid-typing or Spark is mid-reply, keep checking (not just once) and
-  // tuck in the moment that's over, so it never stays stuck open. An empty, focused ask box doesn't hold it open.
-  const pointerInside = useRef(false), holdOpen = useRef<() => boolean>(() => false), scrubbing = useRef(false);
-  const scrubHold = useCallback((on: boolean) => { scrubbing.current = on; }, []);
-  holdOpen.current = () => !!getCompanionDraft().trim() || !!busy || working || !!pending || scrubbing.current || visual?.type === "architecture";
-  nookHover.current = (inside: boolean) => {
-    clearTimeout(nookTimer.current); pointerInside.current = inside;
-    if (inside) { if (!open && prefs.desktopPlacement === "notch") setNook(true); return; }
-    const tryClose = () => {
-      if (pointerInside.current) return;
-      if (holdOpen.current()) { nookTimer.current = setTimeout(tryClose, 400); return; }
-      nookFocus.current = false; (document.activeElement as HTMLElement | null)?.blur?.(); setNook(false);
+    let previous = -1;
+    const measure = () => {
+      const style = getComputedStyle(el);
+      const rows = Array.from(el.children).filter(child => child.getClientRects().length).map(child => {
+        const margins = getComputedStyle(child);
+        return (child as HTMLElement).offsetHeight + (parseFloat(margins.marginTop) || 0) + (parseFloat(margins.marginBottom) || 0);
+      });
+      const height = notchContentHeight(rows, (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0), parseFloat(style.rowGap) || 0, accessOpen || workflowsOpen || call.active || companionApprovals.length ? 420 : 340);
+      if (height === previous) return;
+      previous = height; setIslandDrop(height); post({ type: "buddyIsland", flare: ISLAND_FLARE, drop: height });
     };
-    nookTimer.current = setTimeout(tryClose, 450);
+    const ro = new ResizeObserver(measure);
+    const observe = () => { ro.disconnect(); ro.observe(el); Array.from(el.children).forEach(child => ro.observe(child)); measure(); };
+    const mutations = new MutationObserver(observe); mutations.observe(el, { childList: true }); observe();
+    return () => { ro.disconnect(); mutations.disconnect(); };
+  }, [islandOpen, call.active, accessOpen, workflowsOpen, companionApprovals.length]);
+  const nookHover = useRef((_: boolean) => {});
+  const scrubbing = useRef(false);
+  const scrubHold = useCallback((on: boolean) => { scrubbing.current = on; }, []);
+  nookHover.current = (inside: boolean) => {
+    cancelNookClose.current?.();
+    if (inside) { setNotchTucked(false); if (!open && prefs.desktopPlacement === "notch") setNook(true); return; }
+    cancelNookClose.current = scheduleNotchClose(() => {
+      nookFocus.current = false; (document.activeElement as HTMLElement | null)?.blur?.(); setNook(false); setNotchTucked(true);
+    }, () => scrubbing.current || nookFocus.current || !!getCompanionDraft().trim());
   };
   const nextMoves = lastSpark && !working && !busy ? parseNext(messages.at(-1)!.text) : [];
   // Nothing asked yet: the first three starters (the chat's own, fitting the moment), so the open notch is never an empty box.
@@ -1437,6 +1670,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const displayRuntime = working ? actualRuntime : choice?.runtime ?? actualRuntime;
   const displayProvider = displayRuntime === "local" ? "This Mac" : displayRuntime === "claude" ? "Claude" : displayRuntime === "codex" ? "Codex" : displayRuntime ?? "Connecting";
   const mood = (prefs.celebration !== "off" && (cheer || eventMood === "happy")) ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : eventMood === "concerned" ? "concerned" : sleepy ? "sleepy" : "idle";
+  const liveVoiceOn = prefs.voiceEngine === "live";
+  const talkEnabled = call.active && call.mode === "talk" || voiceLive;
   const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""} ${call.active ? "is-calling" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${prefs.nickname || "Spark"}`} onPointerDown={() => setArmed(true)} onKeyDown={(e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
     e.preventDefault(); e.stopPropagation();
@@ -1444,7 +1679,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }}>
       <header className="spk-head">
         <span className={`spk-avatar is-${speaking ? "speaking" : phase === "hearing" ? "hearing" : working || busy ? "thinking" : "idle"}`}><SparkCharacter preferences={prefs} mood={mood} size={38} crop="portrait" /></span>
-        <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span role="status" className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? (speaking ? <VoiceBars level={0.6} active /> : <MicBars />) : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
+        <div className="spk-who"><strong>{prefs.nickname || "Spark"}</strong><span role="status" className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? <VoiceWaveform compact state={buddyState} readLevel={readVoiceLevel} /> : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
         <button type="button" aria-label="Visual teaching" title="Visual teaching" aria-pressed={tab === "teach"} onClick={() => setTab(tab === "teach" ? "chat" : "teach")}><BookOpen size={15} /></button>
         <button type="button" aria-label={tab === "chat" ? "Open widgets" : "Back to chat"} title={tab === "chat" ? "Widgets & approvals" : "Back to chat"} aria-pressed={tab === "widgets"} onClick={() => setTab(tab === "chat" ? "widgets" : "chat")} className="spk-widget-toggle">{tab === "chat" ? <LayoutGrid size={15} /> : <MessageCircle size={15} />}{approvals > 0 && <i />}</button>
         <details className="spk-options" ref={optionsPanel} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
@@ -1472,7 +1707,6 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </div>
         </details>
         {embedded && <button type="button" className="spk-full-toggle" aria-label={full ? "Exit full screen" : "Full screen"} title={full ? "Exit full screen (Esc)" : "Full screen (⌘⇧J)"} aria-pressed={full} onClick={() => setSparkFull(!full)}>{full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button>}
-        <LiveButton compact />
         <button type="button" className="spk-close" aria-label={notched ? "Tuck into the notch" : "Close"} title={notched ? "Tuck into the notch (Esc)" : "Close (Esc)"} onClick={close}>{notched ? <Minimize2 size={15} /> : <X size={15} />}</button>
       </header>
       {notched && speaking && prefs.notchCaptions && caption && <div className="shua-chat-caption" role="status" aria-label="Spoken reply"><NotchCaption line={caption} lines={3} /></div>}
@@ -1484,7 +1718,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       {choice?.runtime === "local" && prefs.brain !== "local" && <p className="spk-connection-notice is-fallback" role="status">Claude and Codex are unavailable, so {prefs.nickname || "Spark"} is on this Mac ({choice.model}): chat and quick actions only. Real work waits for them.</p>}
       {tab === "chat" && (phase === "hearing" || phase === "transcribing" || phase === "error") && <p className="spk-mic-status" role="status">{phase === "hearing" ? "Listening…" : phase === "transcribing" ? "Turning your voice into text…" : "Microphone unavailable. You can keep typing."}</p>}
       {tab === "teach" ? <Teaching compact /> : tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={embedded ? { go: (path) => { window.shuacrew?.navigate(path); } } : ctx} /></div> : <>
-        <div className="buddy-thread spk-thread" ref={thread} onScroll={(e) => { const el = e.currentTarget; followBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (followBottom.current) setBehind(false); }}>
+        <div className={`buddy-thread spk-thread${call.active ? " is-voice-thread-hidden" : ""}`} aria-hidden={call.active} ref={thread} onScroll={(e) => { const el = e.currentTarget; followBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (followBottom.current) setBehind(false); }}>
           {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
             <div className="spk-hello-avatar"><SparkCharacter preferences={prefs} mood="happy" size={64} crop="portrait" /></div>
             <h2>{greeting} I'm {prefs.nickname || "Spark"}.</h2>
@@ -1519,6 +1753,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </details>}
         </div>
         <AnimatePresence>{behind && <motion.button type="button" className="spk-latest" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} onClick={() => { followBottom.current = true; setBehind(false); thread.current?.scrollTo({ top: thread.current.scrollHeight, behavior: "smooth" }); }}><ArrowUp size={12} style={{ transform: "rotate(180deg)" }} /> Latest</motion.button>}</AnimatePresence>
+        {pointerStatus}
         {error && <div className="buddy-error" role="alert"><span>{error}</span><button type="button" onClick={() => { setError(""); setTab("chat"); input.current?.focus(); }}>Edit message</button></div>}
       </>}
       {activeMissions.length > 0 && <div className="spk-missions" aria-label="Missions I'm staying with">
@@ -1539,11 +1774,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         <button type="button" title={prefs.guide === "click" ? "Or just click the highlighted spot" : "Tell me when you've done it"} disabled={!!busy || working} onClick={() => void advance()}>Check result <ChevronRight size={12} /></button><button type="button" aria-label="Stop guiding" onClick={stopGuide}><X size={12} /></button></div>}
       {selectedArea && <div className="buddy-task"><span>Area selected · {selectedArea.width} × {selectedArea.height} · only this crop will be analyzed</span><button type="button" onClick={() => setSelectedArea(null)}>Clear</button></div>}
       {tab !== "teach" && <form className="buddy-input spk-input chat-composer" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
-        <button type="button" className={`buddy-see ${see ? "is-on" : ""}`} aria-pressed={see} title={see ? "I'll look at your screen when you ask (one screenshot, only then)" : "Screen off: I won't look"} onClick={() => setSee((v) => { const next = !v; try { localStorage.setItem(SEE, next ? "1" : "0"); } catch { /* ignore */ } return next; })}>{see ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+        <button type="button" className={`buddy-see ${see || liveOn ? "is-on" : ""}`} aria-pressed={see || liveOn} title={liveOn ? "Watching your screen live. Stop watching to turn screen access off." : see ? "Screen enabled: I'll capture it when needed. macOS permission is checked on capture." : "Screen off: I won't look"} onClick={() => { if (liveOn) { post({ type: "buddyLive", on: false }); saveSee(false); } else saveSee(!see); }}>{see || liveOn ? <Eye size={15} /> : <EyeOff size={15} />}</button>
         <button type="button" className="buddy-see buddy-area" title="Select an area to analyze" aria-label="Select an area to analyze" disabled={selectingArea || working || !!busy} onClick={() => void chooseArea()}><Maximize2 size={15} /></button>
         <DraftArea inputRef={input} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } }} />
-        {prefs.listen === "hold"
+        {liveVoiceOn
+          // Live is the voice: the talk button is the call — tap to talk to Shua, tap again to hang up.
+          ? <button type="button" className={`buddy-talk is-live ${talkEnabled ? "is-on" : ""}`} aria-pressed={talkEnabled} title={talkEnabled ? "End the call with Shua" : "Enable continuous listening"} aria-label={talkEnabled ? "End call" : "Talk to Shua"} onClick={toggleTalk} ref={talkBtn}><AudioLines size={15} /></button>
+          : prefs.listen === "hold"
           ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" ref={talkBtn}
               onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.mode = "hold"; void mic.current.press(); }}
               onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
@@ -1574,10 +1812,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${fnHeld ? " is-ready" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 110 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${fnHeld ? " is-ready" : ""}${call.active ? " is-calling" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 180 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
-        <NotchAura speaking={speaking} listening={hearingNow || fnHeld} processing={processing} level={() => speaking ? speech.current.level() : getMicLevel()} />
+        {!call.active && <NotchAura speaking={speaking} listening={hearingNow || fnHeld} processing={processing} level={() => speaking ? speech.current.level() : getMicLevel()} />}
         <div className="shua-island-ears">
           <button type="button" className="shua-island-ear is-face" aria-label={`Open ${prefs.nickname || "Spark"}`} onClick={() => { speech.current.unlock(); openChat(); }}>
             <i className={`shua-island-face ${speaking ? "is-speaking" : ""}`}><SparkCharacter preferences={prefs} mood={mood === "thinking" ? "idle" : mood} size={20} crop="portrait" /></i>
@@ -1586,18 +1824,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           </button>
           <span className="shua-island-cam" aria-hidden />
           <span className="shua-island-ear is-live">
-            {processing ? <NotchThinking understanding={phase === "transcribing"} /> : speaking ? <span className="shua-island-voice" role="status" aria-label="Speaking"><VoiceBars level={0.55} active /></span> : voiceLive || fnHeld || fnSent ? <span className="shua-island-voice" role="status" aria-label={phase === "hearing" || fnHeld ? "Listening to you" : "Ready to listen"}><MicBars /></span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className="shua-island-dot" />}
-            {islandOpen && <small>{statusLabel}</small>}
+            {activity ? <button type="button" className={`notch-activity is-${activity.tone}`} onClick={() => { if (workflowBusy()) setWorkflowsOpen(true); setNook(true); }} aria-label={activity.label}><i aria-hidden /><span>{activity.label}</span></button> : fnPreparing ? <span className="notch-fn-preparing" role="status">Ready…</span> : processing ? <NotchThinking understanding={phase === "transcribing"} /> : buddyState === "speaking" || buddyState === "listening" ? <span className="shua-island-voice" role="status" aria-label={buddyState === "speaking" ? "Speaking" : "Listening to you"}><VoiceWaveform compact state={buddyState} readLevel={readVoiceLevel} /></span> : approvals > 0 ? <em className="is-wait">{approvals}</em> : workingNow > 0 ? <em className="is-live">{workingNow}</em> : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em> : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em> : radio.playing || media?.playing ? <VoiceBars level={0.5} active /> : <i className="shua-island-dot" />}
+            {islandOpen && <small>{buddyState === "listening" ? "Listening" : buddyState === "speaking" ? "Speaking" : processing ? "Preparing reply" : statusLabel}</small>}
             {islandOpen && <button type="button" className="shua-island-expand" onClick={openChat} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
         <div className="shua-island-live" aria-hidden={!islandLive} inert={!islandLive}>{call.active ? <LiveIsland /> : keepRow(
           // While you talk: a waveform (default) — live words flicker as the recogniser revises them. The moment you
           // stop, the notch rests until there is a response or an actionable prompt.
-          fnReady && prefs.notchHearing === "words" ? <p className="notch-ready" aria-live="polite"><MicBars floor={0.2} /><span>Listening…</span></p>
-          : fnReady || (hearingNow && prefs.notchHearing === "wave") ? <NotchWave />
-          : hearingNow ? <div className="notch-hearing"><MicBars floor={0.2} /><Rolling className="notch-heard">{heard}</Rolling></div> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
-          : processing ? <NotchThinking detail understanding={phase === "transcribing"} />
+          fnPreparing ? <p className="notch-ready">Preparing your turn…</p> : fnReady || (hearingNow && prefs.notchHearing === "wave") ? <p className="notch-ready"><span>{fnHeld ? "Listening · release Fn to send" : "Listening…"}</span></p>
+          : hearingNow ? <div className="notch-hearing"><Rolling className="notch-heard">{heard}</Rolling></div> : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling> : speaking && prefs.notchCaptions ? <NotchCaption line={caption} /> : task ? <p className="shua-island-hint">{pending ? `Can I ${describeAct(pending).toLowerCase()}? Hover to answer` : `Step ${task.step} · working on it`}</p>
+          : pointerFeedback ? <p className="shua-island-hint">{pointerFeedback.message}</p>
+          : error ? <p className="shua-island-hint">Needs attention · hover for details</p>
+          : processing ? <NotchThinking understanding={phase === "transcribing"} />
           : visual?.type === "architecture" ? <button type="button" className="notch-lesson-peek" onClick={() => setNook(true)}><strong><BookOpen size={12} />{visual.title}<ChevronRight size={12} /></strong><span>{visual.summary}</span><small>{visual.nodes.map(node => node.label).join(" · ")}</small></button>
           : notchUpdate ? <button type="button" className={`notch-update-peek is-${notchUpdate.tone}`} onClick={() => setNook(true)}>{notchUpdate.tone === "wait" ? <Hand size={14} /> : <Check size={14} />}<span>{notchUpdate.title}</span><ChevronRight size={12} /></button>
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
@@ -1605,9 +1844,25 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null)}</div>
         <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
-          {processing && <div className="notch-work-status"><NotchThinking detail understanding={phase === "transcribing"} /><button type="button" onClick={() => void interrupt()} aria-label="Cancel current request"><Square size={12} /></button></div>}
+          <div className="spark-nook-row">
+            <form className="spark-nook-ask" onSubmit={(e) => { e.preventDefault(); const d = getCompanionDraft(); if (!d.trim()) return; void ask(d); }}>
+              <DraftInput tabIndex={islandOpen ? 0 : -1} onFocus={() => { nookFocus.current = true; macContext.prefetch(); post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (busy || working || speaking) void interrupt(); else { nookFocus.current = false; e.currentTarget.blur(); setNook(false); } } }} placeholder={`Ask ${prefs.nickname || "Spark"} anything…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
+              <ComposerActions compact active={!!busy || working || speaking} onStop={() => void interrupt()} tabIndex={islandOpen ? 0 : -1} />
+            </form>
+            {prefs.notchControls && <>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-voice ${talkEnabled ? "is-on" : ""}`} aria-pressed={talkEnabled} onClick={toggleTalk} title={talkEnabled ? "End the conversation" : "Enable continuous listening"} aria-label={talkEnabled ? "End call" : "Talk to Shua"}>{talkEnabled ? <><Square size={12} /><span>End</span></> : <><Mic size={14} /><span>Talk</span></>}</button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-toggle ${liveOn ? "is-on" : ""}`} aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive} title={liveOn ? "Watching your screen: tap to stop" : "Let Spark watch your screen"} aria-label="Watch my screen">{liveOn ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+            </>}
+          </div>
+          {companionApprovals.map(approval => <CompanionApproval key={approval.id} approval={approval} />)}
+          {call.active && <LiveIsland expanded />}
+          {assistantDeck}
+          {!call.active && <NotchVoiceStatus state={buddyState} held={fnHeld} readLevel={readVoiceLevel} />}
+          {pointerStatus}
+          {error && !pointerFeedback && <div className="notch-error" role="alert"><span>{error}</span><button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={14} /></button></div>}
+          {processing && <div className="notch-work-status"><NotchThinking understanding={phase === "transcribing"} /><button type="button" onClick={() => void interrupt()} aria-label="Cancel current request"><Square size={12} /></button></div>}
           {notchUpdate && <article className={`notch-update is-${notchUpdate.tone}`}><header><span>{notchUpdate.tone === "wait" ? "NEEDS YOU" : "CREW UPDATE"}</span><button type="button" aria-label="Dismiss crew update" onClick={() => setNotchUpdate(null)}><X size={13} /></button></header><strong>{notchUpdate.title}</strong><p>{notchUpdate.text}</p><button type="button" className="notch-update-open" onClick={() => { post({ type: "buddyOpen", path: notchUpdate.path }); setNotchUpdate(null); }}>Open session <ChevronRight size={12} /></button></article>}
-          {visual && (visual.type === "architecture" ? <ArchitectureCard compact key={architectureKey(visual)} lesson={visual} caption={caption?.text} narration={caption?.narration} onReplay={replayLesson} onPin={pinLesson} onClose={dismissLesson} onFollowup={text => void ask(text)} onPrevious={architectureSession.current.history.length ? previousLesson : undefined} /> : <VisualCard v={visual} onClose={dismissLesson} />)}
+          {visual && (visual.type === "architecture" ? <section className="notch-lesson-summary" aria-label="Architecture lesson"><strong>{visual.title}</strong><p>{visual.summary}</p><div><button type="button" onClick={() => { pinLesson(); setNook(false); setNotchTucked(true); }}>Expand diagram <Maximize2 size={12} /></button><button type="button" aria-label="Dismiss lesson" onClick={dismissLesson}><X size={12} /></button></div></section> : <VisualCard v={visual} onClose={dismissLesson} />)}
           {timers.length > 0 && <ul className="spark-nook-timers" aria-label="Timers">{[...timers].sort((a, b) => remaining(a, now) - remaining(b, now)).map((t) => <li key={t.id} className={t.paused !== undefined ? "is-paused" : ""}>
             <span>{t.kind === "alarm" ? <AlarmClock size={13} /> : <Timer size={13} />}{t.label || (t.kind === "alarm" ? "Alarm" : "Timer")}</span>
             <b>{t.kind === "alarm" ? new Date(t.endsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : <TimeLeft t={t} />}</b>
@@ -1616,22 +1871,14 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => asking.answer(true)}>{asking.yes ?? "Delete"}</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => asking.answer(false)}>{asking.yes === "Delete" || !asking.yes ? "Keep" : "Cancel"}</button></div>}
           {stuck && <div className="spark-nook-stuck"><div><b>{stuck.kind === "error" ? `Stuck in ${stuck.app}?` : "Still searching?"}</b><small>{stuck.detail}</small></div>
             <button type="button" tabIndex={islandOpen ? 0 : -1} className="is-go" onClick={stuckHelp}>Show me</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={stuckLater}>Not now</button></div>}
-          <div className="spark-nook-row">
-            <form className="spark-nook-ask" onSubmit={(e) => { e.preventDefault(); const d = getCompanionDraft(); if (!d.trim()) return; void ask(d); }}>
-              <DraftInput tabIndex={islandOpen ? 0 : -1} onFocus={() => { nookFocus.current = true; macContext.prefetch(); post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (busy || working || speaking) void interrupt(); else { nookFocus.current = false; e.currentTarget.blur(); setNook(false); } } }} placeholder={`Ask ${prefs.nickname || "Spark"} anything…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
-              <ComposerActions compact active={!!busy || working || speaking} onStop={() => void interrupt()} tabIndex={islandOpen ? 0 : -1} />
-            </form>
-            {prefs.notchControls && <>
-              <LiveButton compact />
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-voice ${voiceLive ? "is-on" : ""}`} aria-pressed={voiceLive} onClick={() => { setArmed(true); speech.current.unlock(); setVoiceLive((v) => !v); }} title={voiceLive ? "Voice mode on: just talk. Tap to end." : "Voice mode: talk with Spark in real time"} aria-label="Voice mode">{voiceLive ? <><MicBars floor={speaking ? 0.5 : 0.15} /><span>End</span></> : <><Mic size={14} /><span>Talk</span></>}</button>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-toggle ${liveOn ? "is-on" : ""}`} aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive} title={liveOn ? "Watching your screen: tap to stop" : "Let Spark watch your screen"} aria-label="Watch my screen">{liveOn ? <Eye size={14} /> : <EyeOff size={14} />}</button>
-            </>}
-          </div>
+          {!call.active && (caption || fnHeld || hearingNow || visibleStream || visibleReply) && <section className="notch-conversation" aria-label="Current conversation">
+            <small>{fnHeld || hearingNow ? "You · transcribing" : "Shua"}</small>
           {speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} lines={6} />
-            : hearingNow || phase === "hearing" ? <Rolling className="notch-heard is-open" lines={6}>{heard || "Listening…"}</Rolling>
-            : streamText ? <Rolling className="notch-heard is-open is-stream" lines={6}>{streamText}<i className="notch-caret" /></Rolling>
-            : !busy && !working && lastSparkText && <p key={lastSparkText.length} className="spark-nook-say is-reply">{restingReply(lastSparkText)}</p>}
-          {(nextMoves.length ? nextMoves : nookStarters).length > 0 && !hearingNow && !speaking && <div className={`spark-nook-next${nextMoves.length ? "" : " is-starter"}`}>{(nextMoves.length ? nextMoves : nookStarters).map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
+            : fnHeld || hearingNow || (phase === "hearing" && !fnSent) ? <Rolling className="notch-heard is-open" lines={3}>{heard || (fnHeld ? "Listening · release Fn to send" : "Listening…")}</Rolling>
+            : visibleStream ? <Rolling className="notch-heard is-open is-stream" lines={6}>{visibleStream}<i className="notch-caret" /></Rolling>
+            : !busy && !working && visibleReply && <p key={visibleReply.length} className="spark-nook-say is-reply">{restingReply(visibleReply)}</p>}
+          </section>}
+          {(nextMoves.length ? nextMoves : nookStarters).length > 0 && !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback && <div className={`spark-nook-next${nextMoves.length ? "" : " is-starter"}`}>{(nextMoves.length ? nextMoves : nookStarters).slice(0, 2).map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
             task={task} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}
             stopTask={stopTask} advance={() => void advance()} stopGuide={stopGuide} radio={radio} setRadio={setRadio} timer={timer} now={now} focusPct={focusPct} workingRuns={workingRuns} approvals={approvals} />        </div>

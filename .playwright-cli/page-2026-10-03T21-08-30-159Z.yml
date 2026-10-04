@@ -1,0 +1,24 @@
+- generic [ref=f7e4]:
+  - generic [ref=f7e5]:
+    - button "Open Spark" [ref=f7e6]:
+      - strong [ref=f7e72]: Spark
+    - generic [ref=f7e70]:
+      - generic [ref=f7e73]: Ready
+      - button "Open chat" [ref=f7e74]
+  - generic [ref=f7e80]:
+    - generic [ref=f7e81]:
+      - generic [ref=f7e82]:
+        - textbox "Ask Spark" [ref=f7e83]:
+          - /placeholder: Ask Spark anything…
+          - text: Keep this draft while I move the pointer
+        - button "Send" [ref=f7e85]
+      - button "Talk to Shua" [ref=f7e88]
+      - button "Watch my screen" [ref=f7e92]
+    - region "Shua assistant control center" [ref=f7e219]:
+      - generic [ref=f7e220]:
+        - generic "Inference uses the connected ChatGPT/Codex subscription" [ref=f7e221]: OpenAI only
+        - button "Access & tools" [ref=f7e225] [cursor=pointer]
+      - generic "Screen requests are disabled" [ref=f7e237]:
+        - generic [ref=f7e241]: Screen off
+        - generic [ref=f7e242]: Private
+      - button "Shortcuts & tasks" [ref=f7e243] [cursor=pointer]

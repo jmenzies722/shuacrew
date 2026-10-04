@@ -9,3 +9,4 @@ export * from "./cadence.js";
 export * from "./intelligence.js";
 
 export * from "./teaching.js";
+export * from "./session-naming.js";

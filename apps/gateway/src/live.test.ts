@@ -1,7 +1,24 @@
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LIVE_CHANNELS, liveBackendInstructions, livePrompt, permissionArgs, touchesProtected } from "./live.js";
+import { liveReadyFrom, pendingLiveRelay } from "./live.js";
+
+afterEach(() => vi.useRealTimers());
+it("cancels timed-out relays rather than promising future completion", async () => {
+  vi.useFakeTimers(); const pending = new Map<string, (text: string) => void>(), send = vi.fn();
+  const result = pendingLiveRelay(pending, "one", send, 120_000);
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect(await result).toMatch(/cancelled/i);
+  expect(send).toHaveBeenCalledWith({ type: "cancel", id: "one" });
+  expect(pending.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+});
+it("clears the relay timer after a result or call end", async () => {
+  vi.useFakeTimers(); const pending = new Map<string, (text: string) => void>();
+  const result = pendingLiveRelay(pending, "one", vi.fn(), 120_000);
+  pending.get("one")!("Verified"); expect(await result).toBe("Verified");
+  expect(pending.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+});
 
 describe("live voice", () => {
   const sealed = [path.join(os.homedir(), "Nectar-Work"), "~/Developer/work"];
@@ -23,6 +40,10 @@ describe("live voice", () => {
     expect(liveBackendInstructions(sealed)).toMatch(/\[STATUS\].*\[COMPLETE\]/s);
     expect(liveBackendInstructions(sealed)).toContain("Nectar-Work");
     expect(livePrompt("Shua")).toMatch(/Never say something is done or found before the backend says so/);
+    expect(livePrompt("Shua")).toMatch(/architecture.*delegate/i);
+    expect(livePrompt("Shua")).toContain("delegate a fresh check");
+    expect(livePrompt("Shua")).toContain("reuse an earlier permission failure without a current backend result");
+    expect(liveBackendInstructions(sealed)).not.toContain("never say you can't see");
   });
 });
 
@@ -49,4 +70,34 @@ describe("live transcript", async () => {
     expect(md).toContain("## Results");
     expect(md).toContain("- Today: 3 PM Dentist");
   });
+});
+
+describe("liveReadyFrom", () => {
+  // The shape `account/rateLimits/read` returned on 2026-10-03, right after the plan reset.
+  const fresh = { ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1791664250 }, secondary: null, credits: { hasCredits: false, unlimited: false, balance: "0" }, spendControlReached: false, rateLimitReachedType: null } };
+  it("is usable when Codex allows ordinary use", () => {
+    expect(liveReadyFrom(fresh)).toEqual({ usable: true, usedPercent: 0, resetsAt: 1791664250_000 });
+  });
+  it("is not usable once the limit is reached, and says when it resets", () => {
+    const spent = { ...fresh, ordinaryUsageAllowed: false, rateLimits: { ...fresh.rateLimits, primary: { ...fresh.rateLimits.primary, usedPercent: 100 }, rateLimitReachedType: "primary" } };
+    expect(liveReadyFrom(spent)).toEqual({ usable: false, usedPercent: 100, resetsAt: 1791664250_000 });
+  });
+  it("is usable on bought credits even with the window used up", () => {
+    const credits = { ...fresh, ordinaryUsageAllowed: false, rateLimits: { ...fresh.rateLimits, primary: { ...fresh.rateLimits.primary, usedPercent: 100 }, credits: { hasCredits: true, unlimited: false, balance: "20" } } };
+    expect(liveReadyFrom(credits).usable).toBe(true);
+  });
+  it("is not usable when spend control stops it", () => {
+    expect(liveReadyFrom({ ...fresh, rateLimits: { ...fresh.rateLimits, spendControlReached: true } }).usable).toBe(false);
+  });
+  it("trusts an answer it can't read as usable, so a format change never locks Live out", () => {
+    expect(liveReadyFrom({}).usable).toBe(true);
+  });
+});
+
+it("does not correct TextEdit versus transcribed text edit or keyboard punctuation", async () => {
+  const { unsupportedClaims } = await import("./live.js");
+  const spoken = 'Screen control is currently limited to reading screenshots, so I could not open TextEdit or type. Open TextEdit, press Command-N, then click the document and type testing shua cursor control.';
+  const result = 'Screen control is currently limited to reading screenshots, so I could not open the document or type. Open TextEdit, press Command–N, then click the document and type testing shua cursor control.';
+  expect(unsupportedClaims(spoken, result)).toEqual([]);
+  expect(unsupportedClaims('I will open TextEdit.', 'Open a blank text edit document')).toEqual([]);
 });

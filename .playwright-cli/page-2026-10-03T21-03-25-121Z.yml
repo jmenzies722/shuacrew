@@ -1,0 +1,57 @@
+- generic [ref=f6e4]:
+  - generic [ref=f6e5]:
+    - button "Open Spark" [ref=f6e6]:
+      - strong [ref=f6e72]: Spark
+    - generic [ref=f6e70]:
+      - generic [ref=f6e73]: Ready
+      - button "Open chat" [ref=f6e74]
+  - generic [ref=f6e80]:
+    - region "Shua assistant control center" [ref=f6e81]:
+      - generic [ref=f6e82]:
+        - generic [ref=f6e83]:
+          - text: SHUA
+          - generic [ref=f6e86]: PERSONAL ASSISTANT
+        - generic [ref=f6e87]: Connected
+      - status [ref=f6e89]:
+        - generic [ref=f6e90]:
+          - generic [ref=f6e91]: Ready when you are
+          - strong [ref=f6e92]: What’s next?
+        - generic [ref=f6e93]:
+          - generic [ref=f6e94]: fn
+          - text: hold to talk
+      - generic [ref=f6e95]:
+        - generic "Inference uses the connected ChatGPT/Codex subscription" [ref=f6e96]: OpenAI only
+        - button "Access & tools" [ref=f6e100] [cursor=pointer]
+      - generic "Screen requests are disabled" [ref=f6e112]:
+        - generic [ref=f6e116]: Screen off
+        - generic [ref=f6e117]: Private
+      - generic "Start a task" [ref=f6e118]:
+        - button "Focus session 25 minutes, one thing" [ref=f6e119] [cursor=pointer]:
+          - generic [ref=f6e123]:
+            - text: Focus session
+            - generic [ref=f6e124]: 25 minutes, one thing
+        - button "Music & mood Your connected music" [ref=f6e128] [cursor=pointer]:
+          - generic [ref=f6e131]:
+            - text: Music & mood
+            - generic [ref=f6e132]: Your connected music
+        - button "Plan my day Priorities, then a plan" [ref=f6e136] [cursor=pointer]:
+          - generic [ref=f6e141]:
+            - text: Plan my day
+            - generic [ref=f6e142]: Priorities, then a plan
+        - button "Look with me Fresh view, clear next step" [disabled] [ref=f6e146]:
+          - generic [ref=f6e150]:
+            - text: Look with me
+            - generic [ref=f6e151]: Fresh view, clear next step
+      - button "Delegate a longer task" [ref=f6e155] [cursor=pointer]
+      - generic [ref=f6e164]: Mac control needs Accessibility access
+    - generic [ref=f6e167]:
+      - generic [ref=f6e168]:
+        - textbox "Ask Spark" [ref=f6e169]:
+          - /placeholder: Ask Spark anything…
+        - button "Send" [disabled] [ref=f6e171]
+      - button "Talk to Shua" [ref=f6e174]:
+        - generic [ref=f6e178]: Talk
+      - button "Watch my screen" [ref=f6e179]
+    - generic [ref=f6e185]:
+      - button "Wrap up my day" [ref=f6e186]
+      - button "Anything important in my unread email?" [ref=f6e187]

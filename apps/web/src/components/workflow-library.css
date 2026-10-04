@@ -1,0 +1,26 @@
+.workflow-library{display:flex;flex-direction:column;gap:10px;min-width:0;color:#e9e9ee;font:12px/1.45 system-ui}
+.workflow-library header{display:flex;align-items:center;justify-content:space-between}.workflow-library header strong{font-size:14px}
+.workflow-library p{margin:0;color:#b6b6bf}.workflow-library button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #ffffff22;border-radius:9px;background:#ffffff0c;padding:7px 10px;color:#eee;cursor:pointer}
+.workflow-library button:disabled{opacity:.4;cursor:default}.workflow-library label{display:flex;flex-direction:column;gap:4px;color:#c5c5cc;font-size:11px}
+.workflow-library :is(input,textarea){box-sizing:border-box;width:100%;background:#171719;border:1px solid #ffffff25;border-radius:8px;padding:8px;color:#f0f0f5;font:12px system-ui;resize:vertical}
+.workflow-library small{color:#a9a9b3;font-size:10px;line-height:1.4}.workflow-library :is(.workflow-record,.workflow-run,.workflow-review,.workflow-running){display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid #ffffff1b;border-radius:12px}
+.workflow-running{background:#adbdff0b}.workflow-running b{color:#cfdaff}.workflow-running span{overflow-wrap:anywhere}.workflow-actions{display:flex;gap:6px}
+.workflow-actions>button:first-child,.workflow-record>button{background:#e3e6f1;color:#17181c}.workflow-list{display:grid;gap:6px;max-height:180px;overflow:auto}.workflow-list>button{align-items:flex-start;flex-direction:column;gap:2px;text-align:left}.workflow-list>button.is-selected{border-color:#b9c9ff77;background:#bacaff10}
+.workflow-library ol{margin:0;padding-left:21px;max-height:180px;overflow:auto}.workflow-review li{padding:5px 0;display:flex;gap:8px;align-items:center}.workflow-review li>span{flex:1;min-width:0}.workflow-review li small{display:block}.workflow-review li button{padding:4px}.workflow-library .workflow-remove{font-size:10px;color:#b3b3bc;background:none;border:0;align-self:flex-start;padding:0}.workflow-library .workflow-error{color:#ffd38e}.workflow-library :focus-visible{outline:2px solid #c7d3ff;outline-offset:2px}
+
+.workflow-apps{margin:0;padding:8px;border:1px solid #ffffff22;border-radius:8px;max-height:120px;overflow:auto}.workflow-apps legend{color:#c5c5cc;font-size:11px}.workflow-apps label{flex-direction:row;align-items:center;padding:4px;gap:8px}.workflow-apps input[type=checkbox]{width:14px;height:14px;accent-color:#c7d3ff;flex-shrink:0}
+
+.workflow-teaching{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid #b9c9ff44;border-radius:10px;background:#bacaff08}.workflow-teaching ul{margin:0;padding-left:18px}.workflow-library details ul{padding-left:18px}
+/* Live evidence, not simulated progress. Only the scan light loops; rows arrive on capture. */
+.demonstration-live{display:grid;grid-template-columns:44px 1fr;gap:8px 12px;align-items:center;padding:8px 0}
+.demonstration-scan{position:relative;display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:linear-gradient(145deg,#aacbff20,#9d9bff08);border:1px solid #b2cbff33;color:#d5e4ff;overflow:hidden}
+.demonstration-scan i{position:absolute;inset:4px;border:1px solid #bad1ff44;border-radius:11px;animation:demonstration-breathe 2.4s ease-out infinite}
+.demonstration-scan i:nth-of-type(2){animation-delay:.8s}.demonstration-scan i:nth-of-type(3){animation-delay:1.6s}
+.demonstration-live>strong{font-size:12px;font-weight:500;color:#dce6fa}
+.workflow-library .demonstration-live ol{grid-column:1/-1;list-style:none;padding:0;display:grid;gap:6px;max-height:128px}
+.demonstration-live li{display:flex;gap:8px;padding:7px 9px;border-left:2px solid #abc5fa66;background:linear-gradient(90deg,#b5caff0b,transparent);border-radius:0 7px 7px 0;overflow-wrap:anywhere;animation:demonstration-arrive .22s ease-out}
+.demonstration-live li>span{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:#b4c7eb;flex-shrink:0}
+@keyframes demonstration-breathe{0%{transform:scale(.65);opacity:.75}100%{transform:scale(1.15);opacity:0}}
+@keyframes demonstration-arrive{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.demonstration-live *{animation:none!important}.demonstration-scan i{display:none}}
+:root[data-motion="reduced"] .demonstration-live *{animation:none!important}:root[data-motion="reduced"] .demonstration-scan i{display:none}

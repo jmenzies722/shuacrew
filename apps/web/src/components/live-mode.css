@@ -5,6 +5,7 @@
   transition: background .2s, border-color .2s, transform .15s;
 }
 .live-btn:hover { background: var(--active-bg, rgba(255, 255, 255, .06)); }
+.live-status { font: 600 10px/1.3 var(--font-mono, ui-monospace, monospace); letter-spacing: .02em; color: var(--text-2, #b9b3c4); white-space: nowrap; }
 .live-btn:active { transform: scale(.96); }
 .live-btn.is-on { border-color: color-mix(in srgb, #ff5a5f 55%, transparent); color: #ff8a8e; }
 .live-btn.is-compact { width: 24px; height: 24px; padding: 0; justify-content: center; border: 0; color: inherit; }
@@ -40,6 +41,16 @@
 .live-result { padding: 10px 12px; border-radius: 12px; background: var(--sunken, rgba(0, 0, 0, .2)); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
 .live-corrected { display: block; margin-bottom: 4px; font-size: 10.5px; color: #ffcf85; }
 .live-island-text.is-step { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; color: #c9c3d3; }
+.live-waveform { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 3px; width: 66px; height: 34px; color: var(--spark-color, #b7a5ff); }
+.live-waveform > i { display: block; width: 4px; border-radius: 3px; background: currentColor; transform-origin: center; box-shadow: 0 0 8px currentColor; }
+.live-waveform.is-compact { width: 43px; height: 20px; gap: 2px; }
+.live-waveform.is-compact > i { width: 3px; }
+.live-waveform:is(.is-connecting, .is-working) > i { animation: live-wave-wait 1.2s ease-in-out infinite; }
+@keyframes live-wave-wait { 50% { opacity: .3; } }
+.live-panel { flex: 0 1 auto; min-height: 0; }
+.live-feed { max-height: 160px; overflow-y: auto; overscroll-behavior: contain; }
+@media (prefers-reduced-motion: reduce) { .live-waveform > i { transition: none; animation: none !important; } }
+:root[data-motion="reduced"] .live-waveform > i { transition: none; animation: none !important; }
 .live-voice { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; font-size: 11px; color: var(--text-2); }
 .live-voice select { font-size: 11px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
 
@@ -52,3 +63,21 @@
 .live-approval button.is-yes { background: rgba(255, 181, 71, .18); }
 @keyframes live-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { .live-orb, .live-panel { animation: none !important; transition: none; } }
+
+/* A stable conversation column: status, transcript, approval. */
+.live-island.is-expanded{display:flex;flex-direction:column;align-items:stretch;gap:10px;min-width:0;width:100%;padding:0;text-align:left}
+.live-island.is-expanded>header{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.live-island.is-expanded .live-spacer{flex:1}
+.live-island.is-expanded .live-status{font:11px/1.4 system-ui;min-width:0;overflow-wrap:anywhere}
+.live-conversation{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-height:0;max-height:210px;overflow-y:auto;overscroll-behavior:contain;text-align:left;scrollbar-width:thin;scrollbar-color:#ffffff25 transparent}
+.live-conversation:empty{display:none}
+.live-conversation li{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%;margin:0;padding:0}
+.live-conversation li>span{font:10px/1.4 system-ui;color:#96969f}
+.live-conversation p{font:13px/1.55 system-ui;color:#eeeef2;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.live-conversation .is-user{align-items:flex-end;margin-left:20px}
+.live-conversation .is-user p{background:#ffffff0a;border:1px solid #ffffff10;border-radius:12px 12px 4px 12px;padding:8px 11px}
+.live-conversation .is-assistant{margin-right:12px}
+.live-conversation .is-partial p{color:#b8b8c0}
+.live-island.is-expanded .live-approval{flex-wrap:wrap;align-items:flex-start}
+.live-island.is-expanded .live-approval>span{flex-basis:70%}
+.live-island.is-expanded .live-approval code{white-space:normal;overflow-wrap:anywhere}

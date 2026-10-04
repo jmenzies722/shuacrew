@@ -11,6 +11,11 @@ import WebKit
 @MainActor
 final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
     private var actionGeneration = 0
+    private let macTaskRuntime = MacTaskRuntime()
+    private let workflowRuntime = WorkflowRuntime()
+    private let liveClients = NSHashTable<WKWebView>.weakObjects()
+    private var liveSnapshot: [String: Any]?
+    private var liveRevision = 0
     private let teaching = TeachingOverlay()
     static let enabledKey = "buddyEnabled"
     private static let cornerKey = "buddyCorner"
@@ -30,9 +35,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// Notch island (after Knurl): the camera housing it grows from, and how far the page's shape currently reaches.
     private var notchHousing: CGRect?
     private var islandFlare: CGFloat = 130, islandDrop: CGFloat = 250
-    private static let open = NSSize(width: 420, height: 620)
+    private static let open = NSSize(width: 720, height: 500)
     /// A canvas for diagrams: system designs need room.
-    private static let wide = NSSize(width: 940, height: 720)
+    private static let wide = NSSize(width: 940, height: 560)
     /// Room for a speech bubble beside Spark ("Aria finished…") without the whole card.
     private static let peek = NSSize(width: 360, height: 240)
     /// The fn quick card: small, beside your pointer.
@@ -57,13 +62,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let panel: BuddyPanel
     private let web: WKWebView
     private let grip = BuddyGrip()
+    private let fnFeedback = NSView()
+    private let notchSurface = NSView()
     private let pointer = PointerOverlay()
     /// Live mode: a real screen stream while you choose, so every question sees what's there right now.
     private let live = LiveScreen()
     /// The display the last screenshot came from — where pointing lands.
     private var shotScreen: NSScreen?
     /// The last read of a browser page's controls (by browser process), for a look that couldn't wait for a fresh one.
-    private var webCache: (pid: pid_t, at: CFTimeInterval, value: (page: [String: String], elements: [[String: Any]]))?
     /// A task's result if it arrives within `seconds`, else nil (the task itself keeps going).
     private static func settle<T>(_ task: Task<T?, Never>, within seconds: Double) async -> T? {
         await withCheckedContinuation { (done: CheckedContinuation<T?, Never>) in
@@ -119,6 +125,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
         let root = NSView()
         panel.contentView = root
+        notchSurface.wantsLayer = true
+        notchSurface.layer?.backgroundColor = NSColor.black.cgColor
+        notchSurface.layer?.cornerRadius = 24
+        notchSurface.layer?.cornerCurve = .continuous
+        notchSurface.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        notchSurface.isHidden = true
+        root.addSubview(notchSurface)
         for view in [web, grip] as [NSView] { view.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(view) }
         NSLayoutConstraint.activate([
             web.leadingAnchor.constraint(equalTo: root.leadingAnchor), web.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -160,7 +173,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     private var awaySince: Date?
-    @objc private func wentAway() { if awaySince == nil { awaySince = Date() } }
+    @objc private func wentAway() { if workflowRuntime.busy { workflowRuntime.stop("Stopped while the Mac is locked or asleep.") }; if awaySince == nil { awaySince = Date() } }
     /// Once per return: waking the displays and unlocking are the same homecoming.
     @objc private func cameBack() {
         guard let since = awaySince else { return }
@@ -364,6 +377,22 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         }
     }
     private func fnSignal(_ signal: FnGesture.Signal) {
+        // Native acknowledgment precedes sound warmup, WebKit and network work.
+        // The small light means key received, not microphone access granted.
+        if signal != .none {
+            let preparing = Self.enabled && FnFeedback.phase(for: signal) == .preparing
+            if preparing, let root = panel.contentView {
+                if fnFeedback.superview == nil { root.addSubview(fnFeedback, positioned: .above, relativeTo: web) }
+                fnFeedback.wantsLayer = true
+                fnFeedback.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.8).cgColor
+                fnFeedback.layer?.cornerRadius = 2
+                if docked, let housing = notchHousing {
+                    fnFeedback.frame = NSRect(x: housing.minX - panel.frame.minX - 8, y: housing.minY - panel.frame.minY - 4, width: housing.width + 16, height: 3)
+                } else { fnFeedback.frame = NSRect(x: root.bounds.midX - 22, y: 4, width: 44, height: 3) }
+            }
+            fnFeedback.isHidden = !preparing
+            if preparing { fnFeedback.displayIfNeeded() }
+        }
         // Show, don't just tell: while fn is down, what you draw with the cursor is ink, and a gesture Spark reads.
         switch signal {
         case .press: voiceInking = false; lastPicks = []; cursorBuddy.clearPicks(); cursorBuddy.beginInk()
@@ -416,7 +445,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Teaching: Spark walks over to stand beside the step it's showing you, then goes home when the lesson ends.
     private func walk(beside x: Double, _ y: Double, _ w: Double, _ h: Double, on screen: NSScreen) {
-        guard !isOpen else { return }
+        guard CompanionPlacement.allowsGuideMovement(docked: docked, open: isOpen) else { return }
         let f = screen.frame, v = screen.visibleFrame, size = panel.frame.size
         let target = NSRect(x: f.minX + (x - w / 2) * f.width, y: f.maxY - (y + h / 2) * f.height, width: w * f.width, height: h * f.height)
         var origin = NSPoint(x: target.maxX + 28, y: target.midY - size.height / 2)
@@ -463,8 +492,24 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     /// Grow or shrink around the bottom-right corner, so Spark stays put and the empty, clear area never blocks your clicks.
+    /// AppKit owns the continuous rounded backdrop; WebKit contains the existing chat.
+    private func updateNotchSurface() {
+        guard docked, isNook, !isOpen, let housing = notchHousing, let root = panel.contentView else { notchSurface.isHidden = true; return }
+        let width = min(root.bounds.width, housing.width + 2 * islandFlare)
+        let height = min(root.bounds.height, housing.height + islandDrop)
+        let frame = CGRect(x: (root.bounds.width - width) / 2, y: root.bounds.height - height, width: width, height: height)
+        let wasHidden = notchSurface.isHidden
+        notchSurface.isHidden = false
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = wasHidden || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.36
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+            notchSurface.animator().frame = frame
+        }
+    }
+
     private func place(size: NSSize) {
         requestedSize = size
+        if !(docked && isNook && !isOpen) { notchSurface.isHidden = true }
         guard let primary = NSScreen.main ?? NSScreen.screens.first else { return }
         let corner = savedCorner() ?? defaultCorner()
         let screen = docked
@@ -484,6 +529,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             panel.ignoresMouseEvents = !isNook
             let canvas = NotchIsland.canvas(housing: housing, screen: screen.frame)
             if panel.frame != canvas { panel.setFrame(canvas, display: true, animate: false) }
+            updateNotchSurface()
             web.evaluateJavaScript("window.buddy && window.buddy.notch && window.buddy.notch({ w: \(Int(housing.width)), h: \(Int(housing.height)), real: \(screen.safeAreaInsets.top > 10) })")
             return
         }
@@ -526,6 +572,39 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // Replies go back to whoever asked: the desktop panel or the app window's Spark panel.
         let sender = message.webView
         switch type {
+        case "livePrepare":
+            guard sender === web else { return }
+            raise()
+            panel.acceptsKeyboardInput = true
+            panel.makeKeyAndOrderFront(nil)
+            web.evaluateJavaScript("window.buddy && window.buddy.prepareCall && window.buddy.prepareCall()")
+        case "liveSubscribe":
+            if let sender { liveClients.add(sender) }
+            send("shuacrew:live", ["on": live.running], to: sender)
+            if let snapshot = liveSnapshot { send("shuacrew:liveSnapshot", snapshot, to: sender) }
+            send("shuacrew:liveSnapshotRequest", [:])
+        case "liveCommand":
+            guard let action = body["action"] as? String,
+                  ["start", "end", "text", "cancel", "approve", "deny"].contains(action),
+                  let command = body["commandId"] as? String, command.count <= 100,
+                  (body["text"] as? String ?? "").count <= 4000 else { return }
+            if let sender { liveClients.add(sender) }
+            guard ready else {
+                send("shuacrew:liveSnapshot", ["revision": liveRevision + 1, "snapshot": ["active": false, "state": "error", "detail": "The notch is unavailable. Open Shua and retry.", "feed": [], "mic": 0, "voice": 0]], to: sender)
+                liveRevision += 1
+                return
+            }
+            send("shuacrew:liveCommand", body)
+        case "liveSnapshot":
+            guard sender === web, let snapshot = body["snapshot"] as? [String: Any],
+                  snapshot["active"] is Bool, let state = snapshot["state"] as? String,
+                  ["off", "connecting", "listening", "speaking", "working", "ended", "error"].contains(state) else { return }
+            liveRevision += 1
+            liveSnapshot = ["revision": liveRevision, "snapshot": snapshot]
+            for client in liveClients.allObjects where client !== web { send("shuacrew:liveSnapshot", liveSnapshot!, to: client) }
+        case "liveLevels":
+            guard sender === web, let mic = body["mic"] as? Double, let voice = body["voice"] as? Double, mic.isFinite, voice.isFinite else { return }
+            for client in liveClients.allObjects where client !== web { send("shuacrew:liveLevels", body, to: client) }
         case "buddyReady":
             if sender === web {
                 ready = true
@@ -568,7 +647,31 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     NSApp.deactivate()
                 }
             }
+        case "buddyWorkflow":
+            let sender = message.webView ?? web
+            workflowRuntime.onChange = { [weak self] state in
+                guard let self else { return }; self.send("shuacrew:workflowState", state, to: self.web)
+                if let appWeb = self.appWeb { self.send("shuacrew:workflowState", state, to: appWeb) }
+            }
+            if ["record", "run"].contains(body["operation"] as? String ?? "") { actionGeneration += 1; macTaskRuntime.cancel() }
+            var result = workflowRuntime.handle(body); result["id"] = body["id"]
+            send("shuacrew:workflow", result, to: sender)
+        case "buddyMacTask":
+            if workflowRuntime.busy { send("shuacrew:macTask", ["id": body["id"] ?? "", "ok": false, "message": "Stop the active workflow first."], to: sender); break }
+            guard let id = body["id"] as? String else { return }
+            macTaskRuntime.onProgress = { [weak self, weak sender] progress in self?.send("shuacrew:macTaskProgress", progress, to: sender) }
+            macTaskRuntime.onClear = { [weak self] in self?.pointer.hide() }
+            macTaskRuntime.onTarget = { [weak self] rect, label in
+                guard let self, let main = NSScreen.screens.first else { return }
+                let point = CGPoint(x: rect.midX, y: main.frame.maxY - rect.midY)
+                guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return }
+                self.pointer.show(on: screen, x: (point.x - screen.frame.minX) / screen.frame.width, y: (screen.frame.maxY - point.y) / screen.frame.height, label: label)
+            }
+            macTaskRuntime.handle(body) { [weak self, weak sender] result in
+                self?.send("shuacrew:macTask", result.merging(["id": id]) { _, new in new }, to: sender)
+            }
         case "buddyDo":
+            if workflowRuntime.busy { did(["id": body["id"] ?? "", "ok": false, "message": "A workflow owns the desktop. Stop it before another action."], to: message.webView); break }
             guard let id = body["id"] as? String, let action = body["action"] as? [String: Any] else { return }
             let generation = actionGeneration
             let current = { [weak self] in self?.actionGeneration == generation }
@@ -702,18 +805,21 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyHotkey":
             if let combo = body["combo"] as? String { onHotkey?(combo) }
         case "buddyStopWatch":
+            macTaskRuntime.cancel()
+            if workflowRuntime.busy { workflowRuntime.stop() }
             actionGeneration += 1
             stopWatch.map(NSEvent.removeMonitor); stopWatch = nil
         case "buddyLive":
             let on = body["on"] as? Bool ?? false
-            if !on { live.stop(); send("shuacrew:live", ["on": false], to: sender); break }
+            if let sender { liveClients.add(sender) }
+            if !on { live.stop(); publishScreenWatching(["on": false]); break }
             guard ScreenAccess.granted() || ScreenAccess.request() else {
                 send("shuacrew:live", ["on": false, "error": "Turn on ShuaCrew in System Settings → Privacy & Security → Screen & System Audio Recording, then try Live again."], to: sender); break
             }
             let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
-            live.onStop = { [weak self] error in self?.send("shuacrew:live", ["on": false, "error": error ?? ""], to: sender) }
+            live.onStop = { [weak self] error in self?.publishScreenWatching(["on": false, "error": error ?? ""]) }
             Task {
-                do { try await live.start(on: screen, excluding: ownWindows); send("shuacrew:live", ["on": true], to: sender) }
+                do { try await live.start(on: screen, excluding: ownWindows); publishScreenWatching(["on": true]) }
                 catch { send("shuacrew:live", ["on": false, "error": "Couldn't start watching: \(error.localizedDescription)"], to: sender) }
             }
         case "buddyTeachPracticeStart", "buddyTeachPracticePause", "buddyTeachPracticeStatus", "buddyTeachPracticeCheck", "buddyTeachExport", "buddyTeachDisplays", "buddyTeachSelection", "buddyTeachDocument", "buddyTeachClear", "buddyTeachCapture", "buddyTeachOverlay":
@@ -727,7 +833,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddyCancelRegion": regionSelector.cancel()
         case "buddyCapture":
             let hires = body["hires"] as? Bool ?? false
-            Task { await capture(to: sender, hires: hires) }
+            Task { await capture(to: sender, hires: hires, requestID: body["requestId"] as? String) }
         case "buddyZoom":
             // A region of the last look at full resolution: tiny labels, icons and squares read exactly before a click.
             guard let full = lastFull, let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double, w > 0, h > 0 else { send("shuacrew:zoom", ["error": "Take a look at the screen first."], to: sender); break }
@@ -751,18 +857,27 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)], to: sender)
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
-                  let screen = lookedAt(body["screen"]) else { return }
-            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint())
+                  let screen = lookedAt(body["screen"]) else {
+                send("shuacrew:pointer", ["id": body["id"] as? String ?? "", "ok": false, "message": "The target coordinates or display are no longer available."], to: sender)
+                return
+            }
+            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint(), onPresented: { [weak self, weak sender] in
+                self?.send("shuacrew:pointer", ["id": body["id"] as? String ?? "", "ok": true], to: sender)
+            })
         case "buddyGuide":
             guideTarget = sender
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, let w = body["w"] as? Double, let h = body["h"] as? Double,
-                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = lookedAt(body["screen"]) else { return }
+                  [x, y, w, h].allSatisfy({ (0...1).contains($0) }), let screen = lookedAt(body["screen"]) else {
+                send("shuacrew:pointer", ["id": body["id"] as? String ?? "", "ok": false, "message": "The guide coordinates or display are no longer available."], to: sender)
+                return
+            }
             watchGuideActivity(true)
             pointer.guide(on: screen, x: x, y: y, w: w, h: h, label: String((body["label"] as? String ?? "").prefix(60)), step: body["step"] as? Int ?? 1,
                           color: body["color"] as? String, from: launchPoint(), waitForClick: body["wait"] as? Bool ?? true,
-                          shape: body["shape"] as? String, exact: body["exact"] as? Bool ?? false)
-            // The cursor flies first; then Spark walks over to stand beside the step.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.walk(beside: x, y, w, h, on: screen) }
+                          shape: body["shape"] as? String, exact: body["exact"] as? Bool ?? false, onPresented: { [weak self, weak sender] in
+                self?.send("shuacrew:pointer", ["id": body["id"] as? String ?? "", "ok": true], to: sender)
+                self?.walk(beside: x, y, w, h, on: screen)
+            })
         case "saveFile":
             // Diagrams you export: always through your own Save panel; the page never picks the path.
             guard let text = body["text"] as? String, text.utf8.count <= 5_000_000 else { return }
@@ -830,8 +945,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             send("shuacrew:fnKey", ["on": fnEnabled, "globe": globeKeyUse(), "trusted": SparkHands.trusted], to: sender)
         case "buddyIsland":
             // The page measured its open island: keep the hover area matched to what you actually see.
-            if let f = body["flare"] as? Double { islandFlare = CGFloat(f) }
-            if let d = body["drop"] as? Double { islandDrop = CGFloat(d) }
+            if let f = body["flare"] as? Double, f.isFinite { islandFlare = min(260, max(0, CGFloat(f))) }
+            if let d = body["drop"] as? Double, d.isFinite { islandDrop = min(500, max(0, CGFloat(d))) }
+            updateNotchSurface()
+            web.evaluateJavaScript("document.documentElement.dataset.nativeNotchSurface = 'true'")
         case "buddyNowPlaying":
             // The notch asks what Music or Spotify is playing (only while it shows media).
             SparkHands.musicQueue.async {
@@ -975,15 +1092,25 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         (target ?? web).evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(name)', { detail: \(json) }))")
     }
 
+    private func publishScreenWatching(_ detail: [String: Any]) {
+        send("shuacrew:live", detail)
+        for client in liveClients.allObjects where client !== web { send("shuacrew:live", detail, to: client) }
+    }
+
     /// A screenshot of the display you're working on (where your pointer is), only when you ask, with Spark itself left
     /// out — and, with more than one display, a smaller look at each of the others so Spark sees your whole desk.
     /// The last full-resolution look, for zooming into part of it.
     private let regionSelector = RegionSelector()
     private var lastFull: CGImage?
-    private func capture(to target: WKWebView? = nil, hires: Bool = false) async {
+    private func capture(to target: WKWebView? = nil, hires: Bool = false, requestID: String? = nil) async {
+        let respond: ([String: Any]) -> Void = { [weak self] detail in
+            var result = detail
+            if let requestID { result["requestId"] = requestID }
+            self?.reply(result, to: target)
+        }
         if !ScreenAccess.granted() {
             guard ScreenAccess.request() else {
-                reply(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true], to: target)
+                respond(["error": "Let ShuaCrew see your screen: System Settings → Privacy & Security → Screen & System Audio Recording, turn on ShuaCrew, then quit ShuaCrew once and ask again. (Or tap the eye to ask without the screen.)", "needsScreen": true])
                 return
             }
         }
@@ -991,13 +1118,20 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let stage = { (k: String) in stages.append("\(k)=\(Int((CACurrentMediaTime() - c0) * 1000))") }
         defer { if ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] != nil { Self.appendSelfTest("CAPTURE " + stages.joined(separator: " ") + "\n") } }
         do {
+            guard let app = ScreenElements.observedApplication else {
+                respond(["error": "No target app is selected. Open the app you want Shua to control."]); return
+            }
+            guard !SparkHands.offLimits.contains(app.bundleIdentifier ?? ""), !(app.bundleIdentifier ?? "").lowercased().contains("kiro") else {
+                respond(["error": "This app is protected from screen observation. Switch to the app you want Shua to control."]); return
+            }
+            let startIdentity = ScreenElements.identity()
             let all = NSScreen.screens, home = panel.screen ?? NSScreen.main ?? all[0]
             let order = DisplayLayout.order(frames: all.map(\.frame), pointer: NSEvent.mouseLocation, fallback: all.firstIndex(of: home) ?? 0).map { all[$0] }
             let screen = order.first ?? home
             let number = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let display = content.displays.first(where: { $0.displayID == number }) ?? content.displays.first else {
-                reply(["error": "No display to look at."], to: target); return
+                respond(["error": "No display to look at."]); return
             }
             stage("content")
             let own = Set(ownWindows.map { CGWindowID($0) }), mine = content.windows.filter { own.contains($0.windowID) }
@@ -1007,9 +1141,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             config.width = Int(Double(display.width) * screen.backingScaleFactor)
             config.height = Int(Double(display.height) * screen.backingScaleFactor)
             config.showsCursor = true
-            // Live: the stream's newest frame is already here — no capture wait.
-            let full: CGImage
-            if let frame = live.frame(), live.screen == screen { full = frame } else { full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) }
+            // Explicit observations always receive a newly captured frame.
+            let full = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            let observedAt = Date().timeIntervalSince1970
             stage("frame")
             // Three reads that don't depend on each other now run at once: the page's controls (Apple Events to the
             // browser — up to ~1.5 s measured), the screen's text (OCR ~0.3 s) and the app's controls (accessibility).
@@ -1046,13 +1180,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // A browser in front: the page's own controls, exact, ahead of the rest (macOS can't see inside the page).
             // Never held up more than 0.7 s: a slow read finishes in the background and serves the next look (15 s).
             if let app = webApp, let webRead {
-                let fresh = await Self.settle(webRead, within: 0.7)
-                if let fresh { webCache = (app.processIdentifier, CACurrentMediaTime(), fresh) }
-                else { Task { @MainActor [weak self] in if let late = await webRead.value { self?.webCache = (app.processIdentifier, CACurrentMediaTime(), late) } } }
-                let cached = webCache.flatMap { $0.pid == app.processIdentifier && CACurrentMediaTime() - $0.at < 15 ? $0.value : nil }
-                if let web = fresh ?? cached {
-                    context["elements"] = web.elements + (context["elements"] as? [[String: Any]] ?? [])
-                    context["page"] = web.page
+                // Never merge a cached DOM into a new screenshot. A slow browser read
+                // falls back to this capture's AX/OCR evidence, not a prior page.
+                if let fresh = await Self.settle(webRead, within: 0.7) {
+                    context["elements"] = fresh.elements + (context["elements"] as? [[String: Any]] ?? [])
+                    context["page"] = fresh.page
                 }
             }
             stage("web")
@@ -1064,7 +1196,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let fit = hires ? min(2576 / long, sqrt(4600 * 784 / Double(full.width * full.height))) : min(1568 / long, sqrt(1_150_000 / Double(full.width * full.height)))
             guard let small = ScreenText.scaled(full, longest: Int((long * min(1, fit)).rounded(.down))),
                   let jpeg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
-                reply(["error": "Couldn't encode the screenshot."], to: target); return
+                respond(["error": "Couldn't encode the screenshot."]); return
             }
             // The other displays: small (they're context), numbered from 2, with where each sits — Spark can point there too.
             var others: [[String: Any]] = [], displays: [[String: Any]] = [], numbered: [Int: NSScreen] = [1: screen]
@@ -1082,10 +1214,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             if !displays.isEmpty { context["displays"] = displays }
             stage("sides"); _ = await text; stage("ocr")
+            let endIdentity = ScreenElements.identity()
+            guard CaptureConsistency.valid(startPID: startIdentity.pid, currentPID: endIdentity.pid, startWindow: startIdentity.window, currentWindow: endIdentity.window, observedAt: observedAt, now: Date().timeIntervalSince1970) else {
+                lastFull = nil
+                respond(["error": "The app or window changed while observing, or the capture took too long. Look again before acting."]); return
+            }
             shotScreen = screen; shotScreens = numbered
-            reply(["display": (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, "data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others], to: target)
+            respond(["observedAt": observedAt * 1000, "display": (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, "data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others])
         } catch {
-            reply(["error": "Couldn't capture the screen: \(error.localizedDescription)"], to: target)
+            respond(["error": "Couldn't capture the screen: \(error.localizedDescription)"])
         }
     }
 
@@ -1112,6 +1249,27 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // Once per launch, in the notch's page: every page that finished loading used to start it, so asks ran twice.
         guard webView === web, !selfTestStarted, let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] else { return }
         selfTestStarted = true
+        if spec == "workflowterminalprobe" {
+            let probe = WorkflowRuntime(directory: FileManager.default.temporaryDirectory.appendingPathComponent("shua-terminal-probe-" + UUID().uuidString))
+            Task { @MainActor in await probe.runTerminalInputProbe(output: URL(fileURLWithPath: "/private/tmp/shua-terminal-workflow-probe.json")) }
+            return
+        }
+        if spec == "workflowkeyboardprobe" {
+            let probe = WorkflowRuntime(directory: FileManager.default.temporaryDirectory.appendingPathComponent("shua-keyboard-probe-" + UUID().uuidString))
+            Task { @MainActor in await probe.runTextEditProbe(output: URL(fileURLWithPath: "/private/tmp/shua-keyboard-workflow-probe.json"), multiline: true) }
+            return
+        }
+        if spec == "workflowtexteditprobe" {
+            let probe = WorkflowRuntime(directory: FileManager.default.temporaryDirectory.appendingPathComponent("shua-textedit-probe-" + UUID().uuidString))
+            Task { @MainActor in await probe.runTextEditProbe(output: URL(fileURLWithPath: "/private/tmp/shua-textedit-workflow-probe.json")) }
+            return
+        }
+        if spec == "workflowprobe" {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("shua-workflow-probe-" + UUID().uuidString)
+            let probe = WorkflowRuntime(directory: directory)
+            Task { @MainActor in await probe.runFixtureProbe(output: URL(fileURLWithPath: "/private/tmp/shua-workflow-probe.json")) }
+            return
+        }
         if spec.hasPrefix("{") { // any action as JSON, through the real page → app → page path
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.web.evaluateJavaScript("window.buddy.perform(\(spec)).then(r => window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySelfTest', ok: r.ok, message: r.message }))")
@@ -1359,7 +1517,14 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { retryLoad() }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { retryLoad() }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard webView === web else { return }
+        ready = false
+        liveRevision += 1
+        liveSnapshot = ["revision": liveRevision, "snapshot": ["active": false, "state": "error", "detail": "The notch reloaded. Start a new call to continue.", "feed": [], "mic": 0, "voice": 0]]
+        for client in liveClients.allObjects where client !== web { send("shuacrew:liveSnapshot", liveSnapshot!, to: client) }
+        retryLoad()
+    }
     /// The gateway may still be starting (or restarting); try again shortly.
     private func retryLoad() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
@@ -1726,20 +1891,25 @@ final class PointerOverlay {
         view.frame.origin = origin
     }
 
-    private func present(_ panel: NSPanel, root: NSView, delay: CFTimeInterval, pieces: [NSView], layers: [CALayer]) {
+    private func present(_ panel: NSPanel, root: NSView, delay: CFTimeInterval, pieces: [NSView], layers: [CALayer], onPresented: (() -> Void)? = nil) {
         for p in pieces { p.alphaValue = 0; root.addSubview(p) }
         for l in layers { l.opacity = 0; root.layer?.addSublayer(l) }
         panel.orderFrontRegardless()
         self.panel = panel
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard self?.panel === panel, panel.isVisible else { return }
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.25; for p in pieces { p.animator().alphaValue = 1 } }
             CATransaction.begin(); CATransaction.setAnimationDuration(0.25); for l in layers { l.opacity = 1 }; CATransaction.commit()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                guard self?.panel === panel, panel.isVisible else { return }
+                onPresented?()
+            }
         }
     }
 
     /// `from` is where Spark is, in global coordinates.
     @discardableResult
-    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil) -> CFTimeInterval {
+    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil, onPresented: (() -> Void)? = nil) -> CFTimeInterval {
         hide()
         let frame = screen.frame, color = Self.color(hex)
         let (panel, root) = makePanel(frame)
@@ -1753,7 +1923,7 @@ final class PointerOverlay {
             place(p, near: CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44), in: frame.size)
             pieces.append(p)
         }
-        present(panel, root: root, delay: delay, pieces: pieces, layers: layers)
+        present(panel, root: root, delay: delay, pieces: pieces, layers: layers, onPresented: onPresented)
         hideWhenDone(after: delay + 6.5)
         return delay
     }
@@ -1774,7 +1944,7 @@ final class PointerOverlay {
         }
     }
 
-    func guide(on screen: NSScreen, x: Double, y: Double, w: Double, h: Double, label: String, step: Int, color hex: String? = nil, from: NSPoint? = nil, waitForClick: Bool, shape: String? = nil, exact: Bool = false) {
+    func guide(on screen: NSScreen, x: Double, y: Double, w: Double, h: Double, label: String, step: Int, color hex: String? = nil, from: NSPoint? = nil, waitForClick: Bool, shape: String? = nil, exact: Bool = false, onPresented: (() -> Void)? = nil) {
         hide()
         let frame = screen.frame, color = Self.color(hex)
         let (panel, root) = makePanel(frame)
@@ -1802,7 +1972,7 @@ final class PointerOverlay {
         outline.add(pulse, forKey: "pulse")
         let p = pill(label.isEmpty ? "Here" : label, color: color, badge: step)
         place(p, near: box, in: frame.size)
-        present(panel, root: root, delay: delay, pieces: [p], layers: [dim, outline])
+        present(panel, root: root, delay: delay, pieces: [p], layers: [dim, outline], onPresented: onPresented)
 
         // Your click on the box moves the guide on. Clicks pass straight through to the app underneath.
         target = NSRect(x: frame.minX + box.minX, y: frame.minY + box.minY, width: box.width, height: box.height).insetBy(dx: -10, dy: -10)

@@ -25,8 +25,8 @@ export function VoiceComparison({ voices, ready = false, engine = "Local speech"
     <blockquote>{NARRATION_SAMPLE}</blockquote>
     <div className="architecture-followups">{available.map(voice => <button key={voice.id} type="button" aria-pressed={snapshot.voiceId === voice.id && snapshot.status !== "idle"} onClick={() => { setSaved(""); voiceChannel.current?.postMessage("preview"); void controller.current?.play(voice.id); }}>Hear {voice.name}</button>)}<button type="button" disabled={!available.length || snapshot.status === "idle"} onClick={() => controller.current?.stop()}>Stop sample</button></div>
     <p role="status">{snapshot.error || (snapshot.status === "loading" ? "Preparing the selected voice…" : snapshot.status === "playing" ? "Playing the selected voice" : "Ready to compare")}{snapshot.firstAudioMs !== null && ` · First audio: ${snapshot.firstAudioMs} ms`}</p>
-    <button type="button" className="setting-input" disabled={!snapshot.voiceId || snapshot.firstAudioMs === null || !!snapshot.error || !available.some(voice => voice.id === snapshot.voiceId)} onClick={() => { if (snapshot.voiceId) { saveBuddyVoice({ id: snapshot.voiceId, speed: 1 }); setSaved("Selected for Shua's notch and companion voice."); } }}>Use this voice</button>
+    <button type="button" className="setting-input" disabled={!snapshot.voiceId || snapshot.firstAudioMs === null || !!snapshot.error || !available.some(voice => voice.id === snapshot.voiceId)} onClick={() => { if (snapshot.voiceId) { saveBuddyVoice({ id: snapshot.voiceId, speed: 1 }); setSaved("Selected for Shua's calls, chat, and teaching."); } }}>Use as Shua's voice</button>
     {saved && <p role="status">{saved}</p>}
-    <p>Cloud voice is not configured. Enabling a provider would send spoken text to that provider and may incur charges; it requires separate setup and consent.</p>
+    <p>One voice for calls and chat, generated on this Mac. OpenAI handles the live conversation and receives call audio.</p>
   </section>;
 }

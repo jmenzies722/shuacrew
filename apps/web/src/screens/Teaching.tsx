@@ -37,8 +37,7 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
     doc = state.document,
     prefs = useCompanion(),
     [question, setQuestion] = useState(""),
-    // Which engine teaches: Claude by default; Codex when you choose it here. Remembered on this Mac.
-    [engine, setEngineState] = useState<"claude" | "codex">(() => { try { return localStorage.getItem("shuacrew.teaching.engine") === "codex" ? "codex" : "claude"; } catch { return "claude"; } }),
+    engine = "codex" as const,
     [reference, setReference] = useState(""),
     [sources, setSources] = useState<TeachingSource[]>([]),
     [error, setError] = useState(""),
@@ -74,7 +73,6 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
   const change = (value: Record<string, unknown>) => {
     if (doc) void act(() => teachingChange(doc, value));
   };
-  const setEngine = (next: "claude" | "codex") => { setEngineState(next); try { localStorage.setItem("shuacrew.teaching.engine", next); } catch { /* this visit only */ } };
   /** The model to ask for: your companion's pick when it's the same engine, otherwise the engine's own best. */
   const teachingModel = () => { const choice = modelPreference(prefs.modelChoice); return choice.preferredRuntime === engine ? choice.preferredModel : undefined; };
   const explain = async (ask = question) => {
@@ -351,7 +349,7 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
             <strong>Stay with me</strong>
             <span>{doc.practice.status === "retry" ? "Try again · I’m here" : doc.practice.status}</span>
           </div>
-          {doc.practice.active && <small>Checking with {doc.practice.model ?? "Claude"}</small>}
+          {doc.practice.active && <small>Checking with {doc.practice.model ?? "Codex"}</small>}
           <p>
             {doc.practice.feedback || "Practice this step at your own pace. Mistakes keep the lesson open."}
           </p>
@@ -507,13 +505,8 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
           </div>
         ))}
         <footer>
-          <div className="teach-engine" role="radiogroup" aria-label="Teaching engine">
-            <span>Teaching with</span>
-            {(["claude", "codex"] as const).map((id) => <button key={id} type="button" role="radio" aria-checked={engine === id} className={engine === id ? "is-on" : ""} onClick={() => setEngine(id)}>{id === "claude" ? "Claude" : "Codex"}</button>)}
-          </div>
-          <small>
-            Sources stay on this Mac and are sent to {engine === "codex" ? "Codex (your ChatGPT plan)" : "Claude (your subscription)"} when you ask.
-          </small>
+          <div className="teach-engine"><span>Teaching with Codex · ChatGPT subscription</span></div>
+          <small>Sources are stored on this Mac and sent to Codex when you ask.</small>
           {busy ? (
             <button
               type="button"

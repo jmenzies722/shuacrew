@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "status": 200,
+  "summary": "The recording proves a TextEdit workflow that opens a new document with Cmd+N, then enters a runtime-provided note body into that new document’s “First Text View.” It does not demonstrate any formatting control, so teach a new example that includes clicking the specific formatting button after the input step.",
+  "lessons": [
+    "Preserve the Cmd+N new-window step so each run starts a new TextEdit document.",
+    "Treat the note body as a runtime input parameter, not fixed text.",
+    "Use the newly created document’s “First Text View” as the input target.",
+    "To add formatting, demonstrate the exact formatting button click after text entry, including its semantic target details."
+  ],
+  "removeStepIds": [],
+  "needsDemonstration": true,
+  "steps": [
+    {
+      "id": "4E583788-C3BD-452D-BDC0-499E9B95C3B6",
+      "app": "com.apple.TextEdit",
+      "operation": "shortcut",
+      "shortcut": "cmd+n",
+      "expected": {
+        "role": "AXTextArea",
+        "identifier": "First Text View",
+        "label": ""
+      },
+      "newWindow": true
+    },
+    {
+      "id": "C097C003-0B92-43C3-AA8D-29DC5018FD95",
+      "app": "com.apple.TextEdit",
+      "operation": "input",
+      "target": {
+        "role": "AXTextArea",
+        "identifier": "First Text View",
+        "label": ""
+      },
+      "parameter": "input_1"
+    }
+  ],
+  "model": "gpt-5.6-terra",
+  "at": 1791093208786
+}

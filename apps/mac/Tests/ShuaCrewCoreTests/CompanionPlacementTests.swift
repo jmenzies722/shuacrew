@@ -2,6 +2,12 @@ import Foundation
 import CoreGraphics
 import ShuaCrewCore
 import Testing
+@Test func guideNeverMovesDockedOrOpenCompanion() {
+    #expect(!CompanionPlacement.allowsGuideMovement(docked: true, open: false))
+    #expect(!CompanionPlacement.allowsGuideMovement(docked: true, open: true))
+    #expect(!CompanionPlacement.allowsGuideMovement(docked: false, open: true))
+    #expect(CompanionPlacement.allowsGuideMovement(docked: false, open: false))
+}
 @Test func dockCentersBelowNotchAndExpandsDownward() {
     let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
     let visible = CGRect(x: 0, y: 38, width: 1512, height: 907)

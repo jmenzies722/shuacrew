@@ -16,6 +16,33 @@ import { saveNote } from "../../lib/widgets";
 import { timerOp } from "../../lib/timers";
 import { getCompanion, parseCompanion, saveCompanion } from "../../lib/companion";
 import { native, post } from "./bridge";
+import { classifyMacStep, type MacReceipt, type MacStep, type MacTaskScope } from "../../lib/mac-task-contract";
+import { requestMacTask } from "../../lib/mac-task-bridge";
+
+const macReceiptOwners = new Map<string, string>();
+export async function performMacStep(scope: MacTaskScope, step: MacStep, signal: AbortSignal): Promise<MacReceipt> {
+  if (!native() || signal.aborted || classifyMacStep(scope, step, Date.now()) !== "allow") throw new Error("Native verified step is not authorized.");
+  const id = `${scope.taskId}:${step.actionId}`, owner = crypto.randomUUID();
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify({ scope, step })));
+  const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  const claim = await api<{ claimed: boolean; conflict: boolean }>("/api/companion/actions/claim", { body: { id, fingerprint, owner }, signal });
+  if (!claim.claimed || claim.conflict) throw new Error("This action is already reserved; no mutation was repeated.");
+  macReceiptOwners.set(id, owner);
+  if (signal.aborted) throw new Error("Stopped before dispatch.");
+  const result = await requestMacTask({ operation: "step", scope, step }, post, window, signal);
+  return result.receipt as MacReceipt;
+}
+export async function recordMacReceipt(receipt: MacReceipt) {
+  const id = `${receipt.taskId}:${receipt.actionId}`, owner = macReceiptOwners.get(id);
+  if (!owner) return;
+  const evidence = receipt.evidence;
+  const result = await api<{ saved: boolean }>("/api/companion/actions/finish", { signal: AbortSignal.timeout(5000), body: { id, owner, result: {
+    ok: receipt.status === "verified", message: JSON.stringify({ status: receipt.status, dispatch: receipt.dispatch, message: receipt.message,
+      ...(evidence ? { observationId: evidence.observationId, observedAt: evidence.observedAt, predicateMatched: evidence.predicateMatched } : {}) }),
+  } } });
+  if (!result.saved) throw new Error("Could not save the verified action receipt.");
+  macReceiptOwners.delete(id);
+}
 
 /** "Talk faster", "be the fox", "call yourself Nova": Spark changes itself, and Settings shows it at once. */
 export function applyChanges(c: SparkChanges) {
@@ -161,7 +188,7 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   if (a.type === "crew_stop") return cancelRun(crewRef(a.ref)).then(() => ({ ok: true, message: "Stopped" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_open") { post({ type: "buddyOpen", path: `/sessions/${crewRef(a.ref)}` }); return Promise.resolve({ ok: true, message: "Requested opening that session" }); }
   if (a.type === "crew_message") return api(`/api/runs/${crewRef(a.ref)}/followup`, { body: { text: a.text } }).then(() => ({ ok: true, message: "Told them" }), (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "crew_delete") return removeSession(crewRef(a.ref), crewStatus(crewRef(a.ref))).then(() => ({ ok: true, message: "Deleted it" }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_delete") return removeSession(crewRef(a.ref), crewStatus(crewRef(a.ref))).then(() => ({ ok: true, message: "Removed the session from your chat list. Project files and audit history were kept." }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_review" && crewStatus(crewRef(a.ref)) !== "reviewing")
     return Promise.resolve({ ok: false, message: "That session is not waiting for review." });
   if (a.type === "crew_review") return api(`/api/runs/${crewRef(a.ref)}/review`, { body: { approve: a.approve, ...(a.lesson ? { lesson: a.lesson } : {}) } }).then(() => ({ ok: true, message: a.approve ? "Queued for merge" : a.lesson ? "Rejected it, and noted why" : "Rejected it" }), (e: Error) => ({ ok: false, message: e.message }));
@@ -169,7 +196,7 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   // A hand-off is a mission: an end-to-end brief, and Spark stays with it until it's finished (see lib/missions).
   if (a.type === "crew") {
     const persist = getCompanion().persist;
-    return launchRun({ ask: persist ? missionBrief(a.ask) : a.ask, title: a.ask.split("\n")[0]!.slice(0, 80), ...(persist ? { labels: ["mission"] } : {}) })
+    return launchRun({ ask: persist ? missionBrief(a.ask) : a.ask, ...(a.title ? { title: a.title } : {}), ...(persist ? { labels: ["mission"] } : {}) })
       .then((r) => { if (persist) addMission(r.id, a.ask); return { ok: true, message: persist ? "The crew is on it. I'll stay with it" : "The crew is on it", run: r.id }; }, (e: Error) => ({ ok: false, message: e.message }));
   }
   return new Promise((resolve) => {
@@ -188,4 +215,3 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
 export type Done = { label: string; ok: boolean; message: string; run?: string };
 /** How far the open notch island widens past the camera housing, each side. */
 export const ISLAND_FLARE = 130;
-

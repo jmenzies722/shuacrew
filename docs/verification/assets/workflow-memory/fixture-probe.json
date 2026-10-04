@@ -1,0 +1,74 @@
+{
+  "captured" : {
+    "apps" : [
+      "dev.shua.workflowfixture"
+    ],
+    "createdAt" : 1791065989386.5771,
+    "demonstrationMs" : 2592.0660495758057,
+    "failures" : 0,
+    "id" : "2B09D107-29D6-47E7-A6CF-847C326C27EA",
+    "name" : "New workflow",
+    "revision" : 1,
+    "steps" : [
+      {
+        "app" : "dev.shua.workflowfixture",
+        "expected" : {
+          "identifier" : "workflow.input",
+          "label" : "Workflow input",
+          "role" : "AXTextField"
+        },
+        "id" : "952CB1F5-A80D-4068-9103-5DECF261AC98",
+        "operation" : "press",
+        "target" : {
+          "identifier" : "workflow.prepare",
+          "label" : "Prepare",
+          "role" : "AXButton"
+        }
+      },
+      {
+        "app" : "dev.shua.workflowfixture",
+        "id" : "C5F833B4-9B01-4F7E-A8EE-D1B0DBBAD006",
+        "operation" : "input",
+        "parameter" : "input_1",
+        "target" : {
+          "identifier" : "workflow.input",
+          "label" : "Workflow input",
+          "role" : "AXTextField"
+        }
+      },
+      {
+        "app" : "dev.shua.workflowfixture",
+        "expected" : {
+          "identifier" : "workflow.verified",
+          "label" : "Verified",
+          "role" : "AXButton"
+        },
+        "id" : "1D12CE9E-27FB-41BA-8392-7634D3F4C776",
+        "operation" : "press",
+        "target" : {
+          "identifier" : "workflow.finish",
+          "label" : "Finish",
+          "role" : "AXButton"
+        }
+      }
+    ],
+    "successes" : 0,
+    "verifiedStepMs" : {
+
+    }
+  },
+  "changedTargetReason" : "Target missing or ambiguous. Ask Shua to adapt this workflow.",
+  "changedTargetStopped" : true,
+  "ok" : true,
+  "persistedSuccesses" : 2,
+  "recordedSteps" : [
+    "press",
+    "input",
+    "press"
+  ],
+  "replayMilliseconds" : [
+    875.01704692840576,
+    599.20001029968262
+  ],
+  "typedValueNotPersisted" : true
+}

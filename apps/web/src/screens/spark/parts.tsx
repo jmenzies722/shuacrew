@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { waveBars } from "../../lib/wave";
+import { getMicLevel, setMicLevel, subscribeMicLevel } from "../../lib/mic-level";
+export { getMicLevel, setMicLevel };
 import { motion } from "motion/react";
 import { formatLeft, remaining } from "../../lib/timers";
 import { SparkCharacter } from "../../components/SparkCharacter";
@@ -34,21 +36,12 @@ export function VoiceBars({ level, active }: { level: number; active: boolean })
  * The mic level lives outside React state: it changes ~23 times a second while the mic is open, and as state it
  * re-rendered all of Spark (chat, notch, activities) every time. Now only the meters that show it update.
  */
-const levelSubs = new Set<() => void>();
-let micLevelNow = 0;
-export function setMicLevel(v: number) {
-  const q = Math.round(Math.min(1, Math.max(0, v)) * 12) / 12; // steps you can see; silence stays still
-  if (q === micLevelNow) return;
-  micLevelNow = q; levelSubs.forEach((f) => f());
-}
-export const getMicLevel = () => micLevelNow;
-const subscribeLevel = (f: () => void) => { levelSubs.add(f); return () => { levelSubs.delete(f); }; };
-export function useMicLevel() { return useSyncExternalStore(subscribeLevel, getMicLevel, getMicLevel); }
+export function useMicLevel() { return useSyncExternalStore(subscribeMicLevel, getMicLevel, getMicLevel); }
 /** Bars fed straight from the mic; `floor` keeps them moving gently while Spark talks. */
 export function MicBars({ floor = 0 }: { floor?: number }) { const level = useMicLevel(); return <VoiceBars level={Math.max(level, floor)} active />; }
 /** Keeps a `--lvl` CSS variable on an element in step with the mic, without re-rendering anything. */
 export function useMicLevelVar(ref: RefObject<HTMLElement | null>) {
-  useEffect(() => { const on = () => ref.current?.style.setProperty("--lvl", String(micLevelNow)); on(); return subscribeLevel(on); }, [ref]);
+  useEffect(() => { const on = () => ref.current?.style.setProperty("--lvl", String(getMicLevel())); on(); return subscribeMicLevel(on); }, [ref]);
 }
 
 
@@ -64,7 +57,7 @@ export function NotchWave({ bars = 17 }: { bars?: number }) {
     let raf = 0, level = 0, last = performance.now();
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      level += (micLevelNow - level) * (1 - Math.exp(-dt / 0.07)); // glide, don't jump
+      level += (getMicLevel() - level) * (1 - Math.exp(-dt / 0.07));
       const h = waveBars(level, still ? 0 : now / 1000, bars);
       for (let i = 0; i < el.children.length; i++) (el.children[i] as HTMLElement).style.transform = `scaleY(${h[i]!.toFixed(3)})`;
       raf = requestAnimationFrame(frame);

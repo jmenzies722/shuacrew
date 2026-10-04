@@ -1,0 +1,69 @@
+- generic [ref=f2e4]:
+  - generic [ref=f2e5]:
+    - button "Open Spark" [ref=f2e6]:
+      - strong [ref=f2e73]: Spark
+    - generic [ref=f2e70]:
+      - emphasis [ref=f2e72]: "1"
+      - generic [ref=f2e74]: Ready
+      - button "Open chat" [ref=f2e75]
+  - generic [ref=f2e81]:
+    - region "Shua assistant control center" [ref=f2e82]:
+      - generic [ref=f2e83]:
+        - generic [ref=f2e84]:
+          - text: SHUA
+          - generic [ref=f2e87]: PERSONAL ASSISTANT
+        - generic [ref=f2e88]: Connected
+      - status [ref=f2e90]:
+        - generic [ref=f2e91]:
+          - generic [ref=f2e92]: Ready when you are
+          - strong [ref=f2e93]: What’s next?
+        - generic [ref=f2e94]:
+          - generic [ref=f2e95]: fn
+          - text: hold to talk
+      - generic [ref=f2e96]:
+        - generic "Inference uses the connected ChatGPT/Codex subscription" [ref=f2e97]: OpenAI only
+        - button "Access & tools" [ref=f2e101] [cursor=pointer]
+      - generic "Screen requests are disabled" [ref=f2e113]:
+        - generic [ref=f2e117]: Screen off
+        - generic [ref=f2e118]: Private
+      - generic "Start a task" [ref=f2e119]:
+        - button "Focus session 25 minutes, one thing" [ref=f2e120] [cursor=pointer]:
+          - generic [ref=f2e124]:
+            - text: Focus session
+            - generic [ref=f2e125]: 25 minutes, one thing
+        - button "Music & mood Your connected music" [ref=f2e129] [cursor=pointer]:
+          - generic [ref=f2e132]:
+            - text: Music & mood
+            - generic [ref=f2e133]: Your connected music
+        - button "Plan my day Priorities, then a plan" [ref=f2e137] [cursor=pointer]:
+          - generic [ref=f2e142]:
+            - text: Plan my day
+            - generic [ref=f2e143]: Priorities, then a plan
+        - button "Look with me Fresh view, clear next step" [disabled] [ref=f2e147]:
+          - generic [ref=f2e151]:
+            - text: Look with me
+            - generic [ref=f2e152]: Fresh view, clear next step
+      - button "Delegate a longer task" [ref=f2e156] [cursor=pointer]
+      - generic [ref=f2e165]:
+        - generic [ref=f2e166]: IN THE BACKGROUND · 1
+        - button "Customer pains · Validate an idea — A macOS app that turns the MacBook notch… running" [ref=f2e167] [cursor=pointer]:
+          - generic [ref=f2e169]: Customer pains · Validate an idea — A macOS app that turns the MacBook notch…
+          - generic [ref=f2e170]: running
+      - generic [ref=f2e173]: Mac control needs Accessibility access
+    - generic [ref=f2e176]:
+      - generic [ref=f2e177]:
+        - textbox "Ask Spark" [ref=f2e178]:
+          - /placeholder: Ask Spark anything…
+        - button "Send" [disabled] [ref=f2e180]
+      - button "Talk to Shua" [ref=f2e183]:
+        - generic [ref=f2e187]: Talk
+      - button "Watch my screen" [ref=f2e188]
+    - generic [ref=f2e194]:
+      - button "What should I focus on next?" [ref=f2e195]
+      - button "Anything important in my unread email?" [ref=f2e196]
+    - generic [ref=f2e197]:
+      - generic [ref=f2e198]: "1"
+      - generic [ref=f2e199]:
+        - generic [ref=f2e200]: Crew working
+        - generic [ref=f2e201]: Customer pains · Validate an idea — A macOS app that turns the MacBook notch…
+      - button "Open" [ref=f2e203]

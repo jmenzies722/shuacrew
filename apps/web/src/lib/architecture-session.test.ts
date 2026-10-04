@@ -1,6 +1,15 @@
 import { expect, it } from "vitest";
 import { emptyArchitectureSession, reduceArchitectureSession, architectureContext } from "./architecture-session";
 import { normalizeArchitecture } from "./notch-lesson";
+it("retires the previous lesson on a new request without replaying it from history", () => {
+  const lesson = normalizeArchitecture({ id: "netflix", title: "Netflix MVP", summary: "Video pipeline", example: "Film", nodes: [{ id: "api", label: "API" }, { id: "cdn", label: "CDN" }], edges: [{ from: "api", to: "cdn" }], steps: [{ title: "Watch", body: "Fetch", focus: ["cdn"] }] })!;
+  const active = reduceArchitectureSession(emptyArchitectureSession(), { type: "receive", lesson });
+  const next = reduceArchitectureSession(active, { type: "new-turn" });
+  expect(next.current).toBeNull();
+  expect(architectureContext(next)).toBe("");
+  expect(reduceArchitectureSession(next, { type: "receive", lesson }).current).toBeNull();
+  expect(reduceArchitectureSession(next, { type: "receive", lesson: { ...lesson, revision: 2 } }).current?.revision).toBe(2);
+});
 it("bounds revisions and announcement history and rejects stale replacements", () => {
   let state = emptyArchitectureSession();
   const base = { title: "Video", summary: "Proposed", example: "Film", nodes: [{ id: "api", label: "API" }, { id: "cdn", label: "CDN" }], edges: [{ from: "api", to: "cdn" }], steps: [{ title: "Watch", body: "Fetch", focus: ["cdn"] }] };

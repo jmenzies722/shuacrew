@@ -33,6 +33,8 @@ export class SpeechQueue {
   constructor(private audition = false) {}
   /** Suppress future utterances after “stop talking” without canceling the agent. */
   silenced = false;
+  /** Held for a whole Live call: Shua does the talking, so Spark stays quiet even for turns it runs on Shua's behalf. */
+  hush = false;
   private context?: AudioContext;
   private lines: Line[] = [];
   private active = 0;            // generations in flight
@@ -82,7 +84,7 @@ export class SpeechQueue {
   beginTurn() { this.utterances.clear(); }
   recent(ms: number): string[] { const since = Date.now() - ms; return this.said.filter((x) => x.at >= since).map((x) => x.text); }
   say(text: string, as?: { voiceId?: string; speed?: number; narration?: NarrationIdentity }) {
-    if (this.silenced) return;
+    if (this.silenced || this.hush) return;
     const v = getBuddyVoice();
     if ((!v.on && !this.audition) || !text.trim()) return;
     const identity = as?.narration ? JSON.stringify(as.narration) : "";

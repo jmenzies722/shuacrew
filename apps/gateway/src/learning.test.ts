@@ -132,3 +132,16 @@ it("new cards are not stale, and untracked cards read as General", async () => {
   expect(analyze(l.get(), now + DAY).tracks[0]).toMatchObject({ name: "General", stale: false });
   expect(analyze(l.get(), now + 8 * DAY).tracks[0]!.stale).toBe(true);
 });
+
+it("launches learning courses and coaching through Codex without legacy model IDs", async () => {
+  const Fastify = (await import("fastify")).default, { EventStore } = await import("./store.js"), { learningRoutes } = await import("./learning-routes.js");
+  const store = new EventStore(":memory:"), app = Fastify(), learning = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
+  const launches: Array<{ runtime: string; model?: string }> = [];
+  learningRoutes(app, { learning, store, supervisor: { status: () => "done", launch: (spec: { runtime: string; model?: string }) => { launches.push(spec); return `r_${launches.length}`; } } as never });
+  try {
+    expect((await app.inject({ method: "POST", url: "/api/learning/courses", payload: { topic: "Swift" } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "POST", url: "/api/learning/coach", payload: { mode: "explain", message: "Explain a queue" } })).statusCode).toBe(200);
+    expect(launches).toHaveLength(2);
+    for (const spec of launches) { expect(spec.runtime).toBe("codex"); expect(spec.model).toBeUndefined(); }
+  } finally { await app.close(); store.close(); }
+});

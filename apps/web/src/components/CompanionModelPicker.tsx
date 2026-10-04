@@ -59,9 +59,9 @@ export function CompanionModelPicker({ teaching = false }: { teaching?: boolean 
           })
         }
       >
-        <option value="">{teaching ? "Auto · Claude visual teaching" : "Auto · best model per question"}</option>
+        <option value="">{teaching ? "Auto · Codex visual teaching" : "Auto · best Codex model per question"}</option>
         {providers
-          .filter((p) => p.id !== "mock" && p.id !== "local")
+          .filter((p) => p.id === "codex")
           .map((p) => (
             <optgroup key={p.id} label={p.label}>
               {p.models.map((m) => (
@@ -88,8 +88,7 @@ export function CompanionModelPicker({ teaching = false }: { teaching?: boolean 
       {error && <small>{error}</small>}
       {teaching && (
         <small>
-          Visual teaching currently uses Claude’s tool-free structured output. Codex and local remain
-          available for companion chat.
+          Visual teaching and companion chat use your connected ChatGPT/Codex subscription.
         </small>
       )}
     </label>

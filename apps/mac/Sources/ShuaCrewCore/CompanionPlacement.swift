@@ -3,6 +3,7 @@ import CoreGraphics
 
 /// Screen-coordinate placement shared by the native companion and geometry tests.
 public enum CompanionPlacement {
+    public static func allowsGuideMovement(docked: Bool, open: Bool) -> Bool { !docked && !open }
     public static func clamp(_ frame: CGRect, to visible: CGRect) -> CGRect {
         let width = min(frame.width, visible.width), height = min(frame.height, visible.height)
         return CGRect(x: min(max(frame.minX, visible.minX), visible.maxX - width),
@@ -31,8 +32,8 @@ public enum CompanionPlacement {
 /// so nothing inside it is ever clipped mid-animation.
 public enum NotchIsland {
     /// The widest the island grows past the housing, each side; the deepest it drops below it.
-    public static let maxFlare: CGFloat = 150
-    public static let maxDrop: CGFloat = 380
+    public static let maxFlare: CGFloat = 240
+    public static let maxDrop: CGFloat = 300
 
     /// The camera housing, from the menu-bar strips either side of it and the safe-area inset (the cutout's real
     /// height, which can differ from the menu bar's by a point). Nil on a display without a notch.

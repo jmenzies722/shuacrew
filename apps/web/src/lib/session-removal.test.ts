@@ -1,5 +1,10 @@
 import { expect, it, vi } from "vitest";
-import { removeSession, canRemoveSession } from "./session-removal";
+import { removeSession, canRemoveSession, sessionRemovalCopy } from "./session-removal";
+it("explains that deleting from the list retains project files and audit history", () => {
+  expect(sessionRemovalCopy.title).toBe("Delete session?");
+  expect(sessionRemovalCopy.description).toContain("project files");
+  expect(sessionRemovalCopy.description).toContain("audit history");
+});
 it("rejects active and usage-paused sessions before sending a request", async () => {
   const send = vi.fn();
   for (const status of ["queued", "planning", "running", "awaiting_approval", "paused"]) {

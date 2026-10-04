@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { TeachingObservationSchema, type TeachingDocument } from "@shuacrew/core";
+import { TeachingObservationSchema, type TeachingDocument } from "@shuacrew/core/teaching";
 import { api } from "./api";
 import { teachingNative } from "./teaching-native";
 import { isMac } from "./native";
@@ -74,7 +74,7 @@ export async function pausePractice(native = true) {
   if (current?.practice.active)
     await teachingApi(`/${current.sessionId}/practice`, { active: false, baseRevision: current.revision });
 }
-export async function startPractice(doc: TeachingDocument, displayId: number, model?: string, runtime: "claude" | "codex" = "claude") {
+export async function startPractice(doc: TeachingDocument, displayId: number, model?: string, runtime: "codex" = "codex") {
   starting = true;
   try {
     await teachingApi(`/${doc.sessionId}/practice`, {

@@ -23,14 +23,14 @@ async function gateway() {
 const ask = (app: Awaited<ReturnType<typeof gateway>>["app"], lesson: string, extra: Record<string, unknown>) =>
   app.inject({ method: "POST", url: `/api/teaching/${lesson}/explain`, headers: { "x-shuacrew": "1" }, payload: { baseRevision: 0, question: "How does DNS work?", sources: [], ...extra } });
 
-it("teaches with Claude unless you choose otherwise", async () => {
+it("defaults visual teaching to Codex", async () => {
   const { app, lesson } = await gateway();
   const r = await ask(app, lesson, {});
   expect(r.statusCode).toBe(400);
-  expect(r.json().error).toMatch(/Claude is not connected/);
+  expect(r.json().error).toMatch(/Codex is not connected/);
 });
 
-it("uses Codex only when you choose it, and never falls back silently", async () => {
+it("uses the explicitly chosen Codex runtime without provider fallback", async () => {
   const { app, lesson } = await gateway();
   const r = await ask(app, lesson, { runtime: "codex" });
   expect(r.statusCode).toBe(400);
@@ -41,4 +41,11 @@ it("uses Codex only when you choose it, and never falls back silently", async ()
 it("refuses an engine it doesn't know", async () => {
   const { app, lesson } = await gateway();
   expect((await ask(app, lesson, { runtime: "gemini" })).statusCode).toBe(400);
+});
+
+it("rejects the retired Claude engine", async () => {
+  const { app, lesson } = await gateway();
+  const r = await ask(app, lesson, { runtime: "claude" });
+  expect(r.statusCode).toBe(400);
+  expect(r.json().error).not.toMatch(/Claude is not connected/);
 });
