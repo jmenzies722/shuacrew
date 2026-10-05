@@ -29,6 +29,7 @@ import { Supervisor } from "./runs.js";
 import { LatencyBook } from "./latency.js";
 import { LIVE_TOOLS, LiveVoice } from "./live.js";
 import { RoomCoordinator } from "./rooms.js";
+import { PhoneDoor, phonePairingRoutes } from "./phone-door.js";
 import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
 import { nativeBridgeSource } from "./mobile/native-config.js";
@@ -188,6 +189,11 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     learning: new Learning(path.join(home, "learning.json")),
   });
   live = state;
+  // Spark on the iPhone: a second, Tailscale-only door that opens once a phone is paired.
+  const phone = new PhoneDoor({ app, hub, home, port: Number(process.env.SHUACREW_PHONE_PORT ?? 7430), token: process.env.SHUACREW_TOKEN,
+    host: process.env.SHUACREW_PHONE_HOST ? () => process.env.SHUACREW_PHONE_HOST : undefined });
+  phonePairingRoutes(app, phone, home);
+  app.addHook("onClose", async () => phone.close());
   store.append("gateway.started", { pid: process.pid, version: VERSION });
   const resumed = supervisor.recover();
   rooms.recover();
@@ -201,6 +207,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });
+  phone.start();
   return { app, hub, liveVoice, store, supervisor, autonomy, memory, crew, library, tools, plays, ventures, skills, briefing, backups, terminals, port, host, resumed };
 }
 
