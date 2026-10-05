@@ -1,3 +1,4 @@
+import { Earnings } from "../components/Earnings";
 import { metricLabel, totalsByCurrency } from "../lib/venture-metrics";
 import { LearningProjects } from "../components/LearningProjects";
 import "./ventures-pipe.css";
@@ -43,7 +44,7 @@ const stageIndex = (s: VentureStage) => STAGES.findIndex((x) => x.id === s);
 
 /** Every startup you're working on, where each one is, and what it earns. */
 export function Ventures() {
-  const ventures = useLive((s) => s.crew.ventures);
+  const ventures = useLive((s) => s.crew.ventures), income = useLive((s) => s.crew.income);
   const [editing, setEditing] = useState<Partial<VentureView> | null>(null);
   const list = useMemo(() => Object.values(ventures).sort((a, b) => b.updatedAt - a.updatedAt), [ventures]);
   const totals = totalsByCurrency(list);
@@ -52,11 +53,11 @@ export function Ventures() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: list.length, label: list.length === 1 ? "venture" : "ventures" }, { value: list.filter((v) => ["building", "launching", "earning"].includes(v.stage)).length, label: "past the idea stage", tone: "amber" }, { value: list.filter((v) => v.stage === "earning").length, label: "earning", tone: "ok" }]} />} eyebrow="Work" icon={Rocket} title="Projects"
-          description="Your ideas, learning projects, and products in one place. Give the crew context, follow the work, and keep the evidence."
+          description="What you're building and what it earns. The crew does the work; every dollar is tracked here."
           actions={<>
-            {list.length > 1 && totals.map(t => <div className="vn-total" key={t.currency}><span>Live MRR · {t.currency}</span><strong>{money(t.mrr,t.currency)}</strong></div>)}
             <Button variant="quiet" onClick={() => setEditing({})}><Plus size={14} /> New project</Button>
           </>} />
+        <Earnings ventures={list} income={income} />
         {/* A handful of ventures: each gets the room to say where it is and what's next. More than that: the pipeline. */}
         {focus ? <div className="vn-focus-list">
           {open.map((v) => <FocusVenture key={v.id} venture={v} />)}

@@ -247,6 +247,17 @@ export const bodies = {
   "venture.automation": z.object({id:z.string(),playbook:z.string(),state:z.enum(["starting","started","failed"]),attemptId:z.string(),error:z.string().optional()}),
   "venture.stage": z.object({ id: z.string(), stage: z.enum(["idea", "validating", "building", "launching", "earning", "paused", "stopped"]), note: z.string().optional() }),
   "venture.removed": z.object({ id: z.string() }),
+  /** Money in that isn't a subscription: a consulting invoice, a sponsorship, a content payout, a one-off sale. */
+  "income.logged": z.object({
+    id: z.string(),
+    amount: z.number().positive().max(100_000_000), // major units (dollars)
+    currency: z.string().regex(/^[a-z]{3}$/).default("usd"),
+    kind: z.enum(["consulting", "content", "product", "sponsorship", "other"]),
+    venture: z.string().optional(),
+    note: z.string().max(300).optional(),
+    on: z.number().optional(), // when it was earned; defaults to when it was logged
+  }),
+  "income.removed": z.object({ id: z.string() }),
   "venture.stripe": z.object({ id: z.string(), connected: z.boolean(), account: z.string().optional(), mode: z.enum(["live", "test"]).optional() }),
   "venture.metrics": z.object({
     id: z.string(),

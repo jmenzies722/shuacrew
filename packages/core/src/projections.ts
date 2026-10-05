@@ -123,6 +123,10 @@ export interface PhaseView extends PhaseDef {
 
 export type VentureStage = "idea" | "validating" | "building" | "launching" | "earning" | "paused" | "stopped";
 
+export type IncomeKind = "consulting" | "content" | "product" | "sponsorship" | "other";
+/** One payment you logged: everything that isn't recurring revenue a venture's Stripe already reports. */
+export interface IncomeEntry { id: string; amount: number; currency: string; kind: IncomeKind; venture?: string; note?: string; on: number; at: number }
+
 export interface VentureMetrics {
   at: number;
   source: "stripe" | "manual";
@@ -203,6 +207,7 @@ export interface CrewState {
   playbooks: Record<string, PlaybookDef>; // yours; the built-in library is added by the gateway
   plays: Record<string, PlayView>;
   ventures: Record<string, VentureView>;
+  income: Record<string, IncomeEntry>;
   briefing?: BriefingView;
   sites: Record<string, SiteView>;
   backup?: { file: string; bytes: number; at: number; error?: string };
@@ -213,7 +218,7 @@ export interface CrewState {
 }
 
 export function emptyState(): CrewState {
-  return { rooms: {}, head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, sites: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: null, records: 0, runs: 0 } };
+  return { rooms: {}, head: 0, members: {}, artifacts: {}, knowledge: {}, playbooks: {}, plays: {}, ventures: {}, income: {}, sites: {}, runs: {}, approvals: {}, limited: {}, today: { day: dayOf(Date.now()), tokens: 0, costUsd: null, records: 0, runs: 0 } };
 }
 
 /** Titles read as text: pictographic emoji (from older data) are dropped, symbols like ✓ kept. */
@@ -379,6 +384,14 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     }
     case "venture.removed":
       delete state.ventures[event.body.id];
+      break;
+    case "income.logged": {
+      const { on, ...entry } = event.body;
+      state.income[entry.id] = { ...entry, on: on ?? event.at, at: event.at };
+      break;
+    }
+    case "income.removed":
+      delete state.income[event.body.id];
       break;
     case "venture.stripe": {
       const v = state.ventures[event.body.id];

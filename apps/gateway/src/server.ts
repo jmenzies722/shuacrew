@@ -16,6 +16,7 @@ import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
 import { devRoutes } from "./dev-routes.js";
 import { weatherRoutes } from "./weather-routes.js";
 import { extRoutes } from "./ext-routes.js";
+import { incomeRoutes } from "./income-routes.js";
 import { radioRoutes } from "./radio.js";
 import { ideaRoutes } from "./ideas.js";
 import { standupRoutes } from "./standup.js";
@@ -247,6 +248,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
+  incomeRoutes(app, store);
   mobileRoutes(app, options.mobile);
 
   app.get("/ws", { websocket: true }, (socket) => hub.attach(socket));
