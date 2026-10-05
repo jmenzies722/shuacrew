@@ -57,9 +57,9 @@ enum SparkHands {
     }
 
     static func act(_ a: [String: Any], screen: NSScreen) -> (ok: Bool, message: String) {
-        guard trusted else { askForAccess(); return (false, "Spark needs Accessibility access: System Settings → Privacy & Security → Accessibility → turn on ShuaCrew, then ask again.") }
+        guard trusted else { askForAccess(); return (false, "Shua needs Accessibility access: System Settings → Privacy & Security → Accessibility → turn on ShuaCrew, then ask again.") }
         if let front = target?.bundleIdentifier, offLimits.contains(front) {
-            return (false, "Spark doesn't touch password managers.")
+            return (false, "Shua doesn't touch password managers.")
         }
         let num = { (k: String) -> Double? in (a[k] as? Double).flatMap { (0...1).contains($0) ? $0 : nil } }
         switch a["type"] as? String {
@@ -80,7 +80,7 @@ enum SparkHands {
             return (true, "\(count == 2 ? "Double-clicked" : right ? "Right-clicked" : "Clicked") \((a["label"] as? String).map { "“\($0)”" } ?? "")\(note)")
         case "type":
             guard let text = a["text"] as? String, !text.isEmpty, text.count <= 2000 else { return (false, "Nothing to type.") }
-            if focusedIsSecure() { return (false, "That's a password field. Spark won't type there.") }
+            if focusedIsSecure() { return (false, "That's a password field. Shua won't type there.") }
             guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return (false, "Couldn't give the keyboard back to \(target?.localizedName ?? "your app") — click into it, then ask again.") }
             let before = focusedValue()
             // A line break is the Return key and a tab is Tab (typed as text, most fields ignore them or go wrong).
@@ -112,11 +112,11 @@ enum SparkHands {
             CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(amount), wheel2: 0, wheel3: 0)?.post(tap: .cghidEventTap)
             return (true, "Scrolled \(amount < 0 ? "down" : "up")")
         default:
-            return (false, "Spark can't do that.")
+            return (false, "Shua can't do that.")
         }
     }
 
-    private static func click(at p: CGPoint, right: Bool, count: Int) {
+    static func click(at p: CGPoint, right: Bool, count: Int) {
         let (down, up, button): (CGEventType, CGEventType, CGMouseButton) = right ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
         CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: button)?.post(tap: .cghidEventTap)
         usleep(40_000)
@@ -501,7 +501,7 @@ enum SparkHands {
         case "empty_trash":
             return run("tell application \"Finder\" to empty the trash") ? (true, "Emptied the Trash") : (false, "Couldn't empty the Trash. Allow ShuaCrew to control Finder in Privacy & Security → Automation.")
         default:
-            return (false, "Spark can't change that.")
+            return (false, "Shua can't change that.")
         }
     }
 

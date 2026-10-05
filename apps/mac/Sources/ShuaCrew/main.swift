@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import ScreenCaptureKit
 
 /// ShuaCrew for Mac. Closing the window doesn't stop anything: agents keep working in the
 /// gateway, and the menu-bar icon and notifications keep you in the loop.
@@ -10,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var tray: Tray?
     private var hotKey: HotKey?
     private var buddyKey: HotKey?
+    private var hintsKey: HotKey?
     private var buddy: Buddy!
     private var mobile: MobileBridge!
     private var mobileWindow: MobileSettingsWindow?
@@ -45,6 +47,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hotKey = HotKey { [weak self] in Task { @MainActor in self?.summon() } }
             // ⌃⌥Space, anywhere: Spark, your desktop buddy, ready for a question about whatever you're looking at.
             bindBuddyKey(UserDefaults.standard.string(forKey: "buddyHotkey") ?? "ctrl-opt-space")
+            // ⌃⌥H, anywhere: click hints — a letter on every button, link and field; type it and Shua clicks.
+            hintsKey = HotKey(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(controlKey | optionKey)) { Task { @MainActor in ClickHints.shared.toggle() } }
+            // SHUACREW_HINTS_SNAPSHOT=/path.png (+ SHUACREW_HINTS_APP=bundle id): show the hints over that app for a moment,
+            // save the real screen, put them away. For checking without a keystroke; only the launcher can set it.
+            if let path = ProcessInfo.processInfo.environment["SHUACREW_HINTS_SNAPSHOT"], let id = ProcessInfo.processInfo.environment["SHUACREW_HINTS_APP"],
+               let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    ClickHints.shared.show(in: app)
+                    let count = ClickHints.shared.count
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(500))
+                        if let content = try? await SCShareableContent.current, let display = content.displays.first {
+                            let config = SCStreamConfiguration(); config.width = display.width * 2; config.height = display.height * 2
+                            if let shot = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: config) {
+                                try? NSBitmapImageRep(cgImage: shot).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                            }
+                        }
+                        ClickHints.shared.hide()
+                        try? "hints: \(count)\n".write(toFile: path + ".txt", atomically: true, encoding: .utf8)
+                    }
+                }
+            }
         }
         window.start()
         tray?.start()
