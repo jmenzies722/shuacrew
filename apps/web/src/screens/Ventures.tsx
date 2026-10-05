@@ -1,6 +1,5 @@
 import { Earnings } from "../components/Earnings";
 import { metricLabel, totalsByCurrency } from "../lib/venture-metrics";
-import { LearningProjects } from "../components/LearningProjects";
 import "./ventures-pipe.css";
 import type { PlayView, RunView, VentureStage, VentureView } from "@shuacrew/core/projections";
 import { Button, StatusGlyph, toneOf } from "@shuacrew/ui";
@@ -76,7 +75,6 @@ export function Ventures() {
             </section>;
           })}
         </div>}
-        <LearningProjects onChoose={project=>setEditing(project)} />
         {list.some((v) => v.stage === "paused" || v.stage === "stopped") && <section className="vn-shelf" aria-label="On the shelf">
           <h2>On the shelf</h2>
           <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">{list.filter((v) => v.stage === "paused" || v.stage === "stopped").map((v) => <VentureCard key={v.id} venture={v} />)}</div>

@@ -142,3 +142,14 @@
 .settings-section-heading[data-section="notifications"] { --sec: #fb923c; }
 .settings-section-heading[data-section="mobile"] { --sec: #38bdf8; }
 .settings-section-heading[data-section="system"] { --sec: #a3a3a3; }
+
+/* Type picker: each card set in its own face, so you choose by eye. */
+.type-pick { display: grid; grid-template-columns: 90px repeat(4, minmax(0, 1fr)); gap: 10px; align-items: stretch; margin: 6px 0 14px; }
+@media (max-width: 900px) { .type-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); } .type-pick-label { grid-column: 1 / -1; } }
+.type-pick-label { align-self: center; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+.type-pick button { display: grid; gap: 4px; padding: 14px 14px 12px; text-align: left; border-radius: 14px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow .2s, transform .25s cubic-bezier(.34, 1.45, .55, 1); }
+.type-pick button:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.type-pick button.is-on { box-shadow: inset 0 0 0 1.5px var(--amber), 0 10px 30px -18px var(--amber); background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--amber) 12%, transparent), transparent 60%), var(--raised); }
+.type-pick b { font-size: 26px; line-height: 1.15; font-weight: 600; color: var(--text); letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.type-pick span { font-size: 13px; font-weight: 600; color: var(--text); }
+.type-pick small { font-size: 11.5px; color: var(--text-3); }

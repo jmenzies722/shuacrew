@@ -103,6 +103,7 @@ export function useSidebarWide() { const [, force] = useState(0); useEffect(() =
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
 /** How many sessions show before "Show more", and whether the Sessions / Tools sections are folded (remembered). */
 const SESSIONS_SHORT = 8, SESSIONS_LONG = 40;
+const ORDER = "shuacrew.side.order";
 const FOLD = "shuacrew.side.folded";
 const readFolded = (): Record<string, boolean> => { try { return JSON.parse(localStorage.getItem(FOLD) ?? "{}"); } catch { return {}; } };
 /** The sidebar's width: drag its edge (Notion-style), double-click the edge to reset. */
@@ -141,13 +142,23 @@ export function HubSidebar() {
       const t = e.target as HTMLElement | null; if (t?.closest("input,textarea,[contenteditable=true],.xterm")) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       const n = Number(e.key); if (!(n >= 1 && n <= PRIMARY_HUBS.length)) return;
-      e.preventDefault(); go(PRIMARY_HUBS[n - 1]!);
+      e.preventDefault(); go(ordered[n - 1]!);
     };
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
   });
   const working = Object.values(runs).filter((r) => r.status === "running" || r.status === "planning").length;
   const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
   const [folded, setFolded] = useState(readFolded), [more, setMore] = useState(false);
+  // Your order: drag a section to move it. ⌘1…⌘6 follow what you see.
+  const [order, setOrder] = useState<string[]>(() => { try { const v = JSON.parse(localStorage.getItem(ORDER) ?? "[]"); return Array.isArray(v) ? v : []; } catch { return []; } });
+  const ordered = useMemo(() => [...PRIMARY_HUBS].sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99)), [order]);
+  const [dragging, setDragging] = useState<string | null>(null), [over, setOver] = useState<string | null>(null);
+  const drop = (target: string) => {
+    if (!dragging || dragging === target) return;
+    const ids = ordered.map((h) => h.id as string).filter((id) => id !== dragging);
+    ids.splice(ids.indexOf(target), 0, dragging);
+    setOrder(ids); try { localStorage.setItem(ORDER, JSON.stringify(ids)); } catch { /* ignore */ }
+  };
   const fold = (key: string) => setFolded((f) => { const next = { ...f, [key]: !f[key] }; try { localStorage.setItem(FOLD, JSON.stringify(next)); } catch { /* ignore */ } return next; });
   const visible = useMemo(() => Object.values(scopeRuns(runs, scope)).filter((r) => isTopLevelWork(r, runs) && !r.labels?.some((l) => l === "buddy" || l === "learning")), [runs, scope]);
   const groups = useMemo(() => {
@@ -180,7 +191,10 @@ export function HubSidebar() {
     </div>
     <div className="side-scroll">
       <div className="side-group">
-        {PRIMARY_HUBS.map((hub) => { const Icon = ICON[hub.id], selected = here === hub.id; return <div key={hub.id} className="side-page">
+        {ordered.map((hub) => { const Icon = ICON[hub.id], selected = here === hub.id; return <div key={hub.id} className={`side-page${dragging === hub.id ? " is-dragging" : ""}${over === hub.id && dragging !== hub.id ? " is-over" : ""}`} data-hub={hub.id}
+          draggable onDragStart={(e) => { setDragging(hub.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", hub.id); }}
+          onDragOver={(e) => { if (dragging) { e.preventDefault(); setOver(hub.id); } }} onDragLeave={() => setOver((o) => (o === hub.id ? null : o))}
+          onDrop={(e) => { e.preventDefault(); drop(hub.id); setOver(null); }} onDragEnd={() => { setDragging(null); setOver(null); }}>
           <Link to={hub.tabs[0]!.to} className={`side-row ${selected && hub.tabs.length <= 1 ? "is-on" : selected ? "is-open" : ""}`} aria-current={selected ? "page" : undefined} title={hub.hint}><i className="side-ico"><Icon size={16} strokeWidth={1.7} /></i><span>{hub.label}</span>{count(hub.id) > 0 && <em className={hub.id === "home" ? "is-wait" : "is-live"}>{count(hub.id)}</em>}</Link>
           {selected && hub.tabs.length > 1 && <div className="side-children">{hub.tabs.map((tab) => <Link key={tab.to} to={tab.to} className={`side-row side-child ${at?.tab === tab && !path.startsWith("/sessions/") ? "is-on" : ""}`} aria-current={at?.tab === tab ? "page" : undefined}><span>{tab.label}</span></Link>)}</div>}
         </div>; })}

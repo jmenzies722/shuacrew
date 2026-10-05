@@ -461,3 +461,13 @@
     radial-gradient(40% 80% at 92% -20%, color-mix(in srgb, var(--hub, transparent) 7%, transparent), transparent 70%);
   transition: background .6s ease; }
 :root[data-theme="light"] .hub-glow { opacity: .6; }
+
+/* ── Type: titles get their own voice (Settings → Appearance → Titles) ─────────────────────────────── */
+:root :is(.pane-header h1, .hero-title, .learn-head h1, .day-hero h1, .settings-section-heading h2, .settings-hero h1,
+  .lx-studio-header h1, .access-hero-text h2, .teach-hero h1, .vn-focus h2, .empty-hero h2) { font-family: var(--font-display, var(--font-ui)); }
+/* New York reads best a touch lighter and less tightly tracked than a sans at display size. */
+:root[data-display="serif"] :is(.pane-header h1, .hero-title, .learn-head h1, .day-hero h1, .settings-section-heading h2, .settings-hero h1,
+  .lx-studio-header h1, .access-hero-text h2, .teach-hero h1, .empty-hero h2) { font-weight: 560 !important; letter-spacing: -.012em !important; }
+:root[data-display="rounded"] :is(.pane-header h1, .hero-title, .learn-head h1, .day-hero h1, .settings-section-heading h2) { font-weight: 640 !important; }
+/* Titles in SF Pro: semibold, tight, crisp — the Mac's own display voice. */
+:root[data-display="same"] :is(.pane-header h1, .hero-title, .learn-head h1, .day-hero h1, .settings-section-heading h2, .settings-hero h1, .lx-studio-header h1) { font-weight: 640 !important; letter-spacing: -.028em !important; }

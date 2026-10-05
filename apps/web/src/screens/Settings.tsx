@@ -19,7 +19,7 @@ import { ShortcutSettings } from "../components/ShortcutSettings";
 import { WidgetSettings } from "../components/WidgetSettings";
 import { SparkSettings } from "../components/SparkSettings";
 import { ScheduleSettings, ThemeShareSettings, TopBarSettings } from "../components/MoreSettings";
-import { CapsSettings, HooksSettings, PromptInspector, RouterSettings, SoundscapeSettings } from "../components/BatchSettings2";
+import { CapsSettings, HooksSettings, PromptInspector, RouterSettings } from "../components/BatchSettings2";
 import { FlowAndWins, PresetSettings, SnippetSettings } from "../components/PowerSettings";
 import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../components/DevTools";
 import "./settings.css";
@@ -40,7 +40,7 @@ const SECTIONS = [
 ] as const;
 type Section = typeof SECTIONS[number]["id"];
 /** `#developer` opens a section; `#budget` opens the section holding that group. */
-const GROUP_SECTION: Record<string, Section> = { voice: "shua", "shua-voice": "shua", topbar: "shua", "widget-board": "shua", shortcuts: "workspace", schedule: "automation", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", soundscape: "automation", prompts: "system", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "shua", flags: "system", "diagnostics-report": "system", snippets: "automation", presets: "automation", flow: "automation", "session-defaults": "agents", budget: "workspace", transfer: "system", events: "system", hud: "system", "gateway-log": "system", storage: "system", companion: "shua", "desktop-buddy": "shua", spark: "shua", "tool-cards": "workspace", play: "shua", widgets: "shua", chat: "workspace", health: "access", power: "automation", data: "system", developer: "system" };
+const GROUP_SECTION: Record<string, Section> = { voice: "shua", "shua-voice": "shua", topbar: "shua", "widget-board": "shua", shortcuts: "workspace", schedule: "automation", "share-look": "appearance", router: "agents", caps: "agents", hooks: "automation", prompts: "system", failover: "agents", instructions: "agents", protected: "safety", git: "safety", quiet: "automation", menubar: "notifications", sounds: "notifications", look: "appearance", "speech-storage": "shua", flags: "system", "diagnostics-report": "system", snippets: "automation", presets: "automation", flow: "automation", "session-defaults": "agents", budget: "workspace", transfer: "system", events: "system", hud: "system", "gateway-log": "system", storage: "system", companion: "shua", "desktop-buddy": "shua", spark: "shua", "tool-cards": "workspace", play: "shua", widgets: "shua", chat: "workspace", health: "access", power: "automation", data: "system", developer: "system" };
 function sectionFromHash(hash: string): Section {
   const id = hash.replace(/^#/, "");
   return (SECTIONS.find((s) => s.id === id)?.id ?? GROUP_SECTION[id] ?? "appearance") as Section;
@@ -80,7 +80,6 @@ export function Settings() {
     { id: "router", section: "agents", title: "Model router rules", terms: "router routing rules keywords model effort auto choose which model cheap haiku opus", body: <RouterSettings /> },
     { id: "caps", section: "agents", title: "Session caps", terms: "cap limit max minutes tokens stop runaway session budget", body: <CapsSettings /> },
     { id: "hooks", section: "automation", title: "Hooks", terms: "hooks script shell command on done on failed notify automation webhook", body: <HooksSettings /> },
-    { id: "soundscape", section: "automation", title: "Focus soundscape", terms: "focus sound ambient noise rain brown cafe music concentrate fun", body: <SoundscapeSettings /> },
     { id: "prompts", section: "system", title: "Prompt inspector", terms: "prompt inspector system instructions what was sent debug context", body: <PromptInspector /> },
     { id: "quiet", section: "automation", title: "Quiet hours for automation", terms: "quiet hours night schedule cron webhook heartbeat pause wait", body: <QuietHoursSettings /> },
     { id: "menubar", section: "notifications", title: "Menu bar", terms: "menu bar status icon badge tokens running", body: <MenuBarSettings /> },

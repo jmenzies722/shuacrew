@@ -80,10 +80,6 @@ export function LiveActivities(p: LiveActivitiesProps) {
           {guide && !task && <div className="spark-nook-live is-task"><i className="is-focus">{guide.step}</i><span><small>Step {guide.step}</small><b>{guide.label}</b></span>
             <div className="spark-nook-ctl"><button type="button" tabIndex={tab} disabled={busy || working} onClick={() => advance()}>Next</button><button type="button" tabIndex={tab} onClick={stopGuide}>Stop</button></div></div>}
           {/* Live activities: only what's happening right now; each one leaves when it ends. */}
-          {radio.playing && !(showMedia && media?.playing) && <div className="spark-nook-live">
-            <i className="is-radio"><AudioLines size={14} /></i><span><small>Radio</small><b>{radio.title ?? radio.station ?? "ShuaCrew Radio"}</b></span>
-            <div className="spark-nook-ctl is-media"><button type="button" tabIndex={tab} className="is-main" onClick={() => void radioCommand({ cmd: "pause" }).then(() => radioNow().then(setRadio))} aria-label="Pause radio"><Pause size={13} /></button>
-              <button type="button" tabIndex={tab} onClick={() => void radioCommand({ cmd: "next" })} aria-label="Next station track"><SkipForward size={12} /></button></div></div>}
           {timer && <div className="spark-nook-live">
             <i className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}</i><span><small>Focus</small><b>{Math.ceil(remainingFocusMs(timer, now) / 60000)} min left</b><span className="spark-nook-bar"><i style={{ width: `${focusPct * 100}%` }} /></span></span>
             <div className="spark-nook-ctl"><button type="button" tabIndex={tab} onClick={() => setFocus(null)}>End</button></div></div>}

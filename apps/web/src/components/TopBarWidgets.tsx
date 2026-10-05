@@ -276,8 +276,8 @@ function CountdownTile() {
 // ── placements ───────────────────────────────────────────────────────────────────────────────
 /** The top bar's widgets, in your order. */
 export function TopBarWidgets({ ctx }: { ctx: WidgetCtx }) {
-  const prefs = useWidgets(), crew = useCrew(), timer = useFocusTimer(), radio = useRadio();
-  return <>{placed(prefs, "topbar").map((id) => <Pop key={id} label={WIDGET_INFO[id].name} active={id === "playing" && radio.playing || id === "focus" && !!timer || id === "crew" && crew.approvals.length > 0} chip={<Chip id={id} />}>
+  const prefs = useWidgets(), crew = useCrew(), timer = useFocusTimer();
+  return <>{placed(prefs, "topbar").filter((id) => id !== "playing").map((id) => <Pop key={id} label={WIDGET_INFO[id].name} active={id === "focus" && !!timer || id === "crew" && crew.approvals.length > 0} chip={<Chip id={id} />}>
     {(close) => <WidgetTile id={id} ctx={ctx} close={close} />}
   </Pop>)}</>;
 }

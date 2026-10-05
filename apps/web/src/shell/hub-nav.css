@@ -145,3 +145,29 @@
 @keyframes side-pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--amber) 8%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .side, .side-dot.is-live { animation: none; } .side-chev { transition: none; } }
 :root[data-idle] .side-dot.is-live { animation-play-state: paused; }
+
+/* ── The sidebar, refined (2026-10) ─────────────────────────────────────────────────────────────
+   Each section keeps its own colour (the same hues as its pages): a tinted icon at rest, a soft wash when you're
+   there. No rules or bars — nothing crosses the text. Sub-pages sit indented under their section's label. */
+.side-page[data-hub="home"] { --hub: #60a5fa; }
+.side-page[data-hub="build"] { --hub: #34d399; }
+.side-page[data-hub="crew"] { --hub: #818cf8; }
+.side-page[data-hub="know"] { --hub: #f59e0b; }
+.side-page[data-hub="automations"] { --hub: #facc15; }
+.side-page[data-hub="library"] { --hub: #38bdf8; }
+.side .side-row { height: 30px; border-radius: 8px; font-size: 13.5px; letter-spacing: -.005em; transition: background-color .15s, color .15s; }
+.side .side-page .side-ico { color: color-mix(in srgb, var(--hub, var(--text-3)) 75%, var(--text-3)); }
+.side .side-page .side-row:hover .side-ico { color: var(--hub, var(--text-2)); }
+.side .side-page > .side-row:is(.is-on, .is-open) { color: var(--text); font-weight: 560; background: color-mix(in srgb, var(--hub, var(--text)) 13%, transparent); }
+.side .side-page > .side-row:is(.is-on, .is-open) .side-ico { color: var(--hub, var(--text)); }
+.side .side-children { margin: 2px 0 4px; }
+.side .side-children .side-row.side-child { height: 28px; padding-left: 34px !important; font-size: 13px; color: var(--text-3); }
+.side .side-children .side-row.side-child:hover { color: var(--text); background: var(--side-hover); }
+.side .side-children .side-row.side-child.is-on { color: var(--text); font-weight: 560; background: color-mix(in srgb, var(--hub, var(--text)) 8%, transparent); }
+.side .side-section-label { font-size: 11px !important; font-weight: 600 !important; letter-spacing: .07em !important; text-transform: uppercase; }
+.side .side-run a { height: 29px; border-radius: 8px; }
+.side .side-new { font-weight: 560; }
+/* Moving sections: the one you're carrying fades, the place it will land glows softly (no lines). */
+.side .side-page[draggable="true"] { cursor: default; }
+.side .side-page.is-dragging { opacity: .4; }
+.side .side-page.is-over > .side-row { background: color-mix(in srgb, var(--hub, var(--amber)) 18%, transparent); transform: translateY(2px); transition: transform .15s, background-color .15s; }

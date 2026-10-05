@@ -3,7 +3,9 @@ import { useSyncExternalStore } from "react";
 /** Fonts, chat layout and sounds. Presentation only — never changes what agents may do. */
 export interface LookPrefs {
   version: 1;
-  uiFont: "geist" | "system";
+  uiFont: "geist" | "system" | "rounded" | "grotesk";
+  /** Page titles: the interface font, or a voice of their own (New York, Apple's editorial serif, by default). */
+  displayFont: "same" | "serif" | "rounded" | "grotesk";
   readingFont: "sans" | "serif";
   monoFont: "jetbrains" | "sf-mono" | "menlo";
   ligatures: boolean;
@@ -18,10 +20,12 @@ export interface LookPrefs {
   motionStyle: "calm" | "responsive" | "expressive";
 }
 const KEY = "shuacrew.look";
-export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "geist", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false, motionStyle: "responsive" };
+export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "system", displayFont: "same", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false, motionStyle: "responsive" };
 
 export const FONT_STACK = {
-  ui: { geist: `"Geist Variable", system-ui, sans-serif`, system: `-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif` },
+  ui: { geist: `"Geist Variable", system-ui, sans-serif`, system: `-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif`,
+    rounded: `ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif`, grotesk: `"Space Grotesk Variable", system-ui, sans-serif` },
+  display: { serif: `"New York", ui-serif, Georgia, serif`, rounded: `ui-rounded, "SF Pro Rounded", -apple-system, sans-serif`, grotesk: `"Space Grotesk Variable", system-ui, sans-serif` },
   reading: { sans: "inherit", serif: `"New York", ui-serif, Georgia, serif` },
   mono: { jetbrains: `"JetBrains Mono Variable", ui-monospace, monospace`, "sf-mono": `ui-monospace, "SF Mono", Menlo, monospace`, menlo: `Menlo, ui-monospace, monospace` },
 } as const;
@@ -33,7 +37,7 @@ export function parseLook(value: unknown): LookPrefs {
   const s = v.sounds && typeof v.sounds === "object" ? v.sounds as Record<string, unknown> : {};
   const vol = typeof s.volume === "number" && s.volume >= 0 && s.volume <= 1 ? s.volume : DEFAULT_LOOK.sounds.volume;
   return {
-    version: 1, uiFont: pick("uiFont", ["geist", "system"], "geist"), readingFont: pick("readingFont", ["sans", "serif"], "sans"),
+    version: 1, uiFont: pick("uiFont", ["geist", "system", "rounded", "grotesk"], "system"), displayFont: pick("displayFont", ["same", "serif", "rounded", "grotesk"], "same"), readingFont: pick("readingFont", ["sans", "serif"], "sans"),
     monoFont: pick("monoFont", ["jetbrains", "sf-mono", "menlo"], "jetbrains"), ligatures: v.ligatures !== false,
     chatStyle: pick("chatStyle", ["document", "bubbles"], "bubbles"), chatWidth: pick("chatWidth", ["narrow", "default", "wide"], "default"),
     timestamps: pick("timestamps", ["hover", "always"], "hover"),
@@ -48,7 +52,10 @@ export function parseLook(value: unknown): LookPrefs {
 export function applyLook(p: LookPrefs, root: HTMLElement = document.documentElement) {
   // At a default, write nothing: the app's own tokens stay exactly as they were.
   const set = (name: string, value: string | null) => (value === null ? root.style.removeProperty(name) : root.style.setProperty(name, value));
-  set("--font-ui", p.uiFont === DEFAULT_LOOK.uiFont ? null : FONT_STACK.ui[p.uiFont]);
+  // The interface font is always written: the design's own token is Geist, and the default is now SF Pro.
+  set("--font-ui", FONT_STACK.ui[p.uiFont]);
+  set("--font-display", p.displayFont === "same" ? null : FONT_STACK.display[p.displayFont]);
+  root.dataset.display = p.displayFont;
   set("--font-mono", p.monoFont === DEFAULT_LOOK.monoFont ? null : FONT_STACK.mono[p.monoFont]);
   set("--font-reading", p.readingFont === DEFAULT_LOOK.readingFont ? null : FONT_STACK.reading[p.readingFont]);
   set("--chat-width", p.chatWidth === DEFAULT_LOOK.chatWidth ? null : WIDTH[p.chatWidth]);
@@ -61,7 +68,21 @@ export function applyLook(p: LookPrefs, root: HTMLElement = document.documentEle
   root.dataset.timestamps = p.timestamps;
 }
 
-function load() { try { return parseLook(JSON.parse(localStorage.getItem(KEY) ?? "null")); } catch { return parseLook(null); } }
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as Record<string, unknown> | null;
+    const look = parseLook(raw);
+    // The type pass, once (2026-10): SF Pro everywhere, titles included (the serif titles were a step too far; they
+    // stay one click away in Appearance). A font you pick after this stays.
+    if (raw && localStorage.getItem("shuacrew.look.type") !== "2") {
+      if (raw.uiFont === "geist" || raw.uiFont === undefined) look.uiFont = "system";
+      if (raw.displayFont === undefined || raw.displayFont === "serif") look.displayFont = "same";
+      localStorage.setItem("shuacrew.look.type", "2");
+      localStorage.setItem(KEY, JSON.stringify(look));
+    }
+    return look;
+  } catch { return parseLook(null); }
+}
 let current = load();
 if (typeof document !== "undefined") applyLook(current);
 const listeners = new Set<() => void>();

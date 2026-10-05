@@ -4,7 +4,7 @@ import { DEFAULT_LOOK, applyLook, parseLook } from "./look";
 it("keeps valid choices and falls back on junk", () => {
   expect(parseLook(null)).toEqual(DEFAULT_LOOK);
   const p = parseLook({ uiFont: "comic-sans", monoFont: "menlo", chatStyle: "bubbles", sounds: { done: true, volume: 9 } });
-  expect(p).toMatchObject({ uiFont: "geist", monoFont: "menlo", chatStyle: "bubbles", sounds: { done: true, approval: false, volume: 0.4 } });
+  expect(p).toMatchObject({ uiFont: "system", displayFont: "same", monoFont: "menlo", chatStyle: "bubbles", sounds: { done: true, approval: false, volume: 0.4 } });
 });
 it("writes fonts and layout onto the root element", () => {
   const vars = new Map<string, string>();
@@ -15,11 +15,13 @@ it("writes fonts and layout onto the root element", () => {
   expect(vars.get("--chat-width")).toBe("960px");
   expect(root.dataset.ligatures).toBe("off");
 });
-it("writes nothing at defaults, so the app looks exactly as before", () => {
+it("at defaults writes only the interface type (SF Pro); everything else stays the app's own", () => {
   const vars = new Map<string, string>([["--chat-width", "960px"]]);
   const root = { style: { setProperty: (k: string, v: string) => void vars.set(k, v), removeProperty: (k: string) => void vars.delete(k) }, dataset: {} as Record<string, string> };
   applyLook(DEFAULT_LOOK, root as unknown as HTMLElement);
-  expect(vars.size).toBe(0);
+  expect([...vars.keys()]).toEqual(["--font-ui"]);
+  expect(vars.get("--font-ui")).toContain("SF Pro");
+  expect(root.dataset.display).toBe("same");
 });
 it("the theme owns the accent: a custom accent saved by an older version is cleared, never applied", async () => {
   const { contrast } = await import("./look");

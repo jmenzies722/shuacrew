@@ -10,6 +10,7 @@ import { learningProgress } from "../lib/learning-progress";
 import { companionName, useCompanion } from "../lib/companion";
 import { Learning, type Tab as LibraryTab } from "./Learning";
 import { Teaching } from "./Teaching";
+import { LearningProjects } from "../components/LearningProjects";
 import "./learn.css";
 
 type Mode = "today" | "explain" | "library";
@@ -102,6 +103,7 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
           <Sparkles size={13} />{busy === "analyze" ? "Thinking…" : `Ask ${name} what to focus on`}</button>
       </aside>
     </div>}
+    {mode === "today" && <LearningProjects />}
     {mode === "explain" && <Teaching bare />}
     {mode === "library" && <Learning embedded initialTab={libraryTab} />}
   </div></div>;

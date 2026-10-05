@@ -11,14 +11,13 @@ import { localDay, morningBrief } from "../lib/morning";
 import { describe } from "../lib/weather";
 import { SpeechQueue } from "../lib/buddy-voice";
 import { savePower } from "../lib/power";
-import { getRadio, loadRadio, playStation } from "../lib/radio";
 import { useCompanion } from "../lib/companion";
 import { WEATHER_ICONS, useLearningNow, useWeatherNow } from "./TopBarWidgets";
 
 
 /**
  * The top of Today: a greeting, the day in one paragraph (built only from what's really in the workspace), and one
- * button that starts the day — Flow mode on, the radio on, and straight to the first thing that needs you.
+ * button that starts the day — Flow mode on and straight to the first thing that needs you.
  */
 export function DayHero() {
   const crew = useLive((s) => s.crew);
@@ -68,13 +67,6 @@ export function DayHero() {
     setStarting(true);
     try {
       savePower({ flow: true });
-      const r = getRadio(); if (!r.loaded) await loadRadio();
-      const radio = getRadio();
-      if (!radio.playing) {
-        const pick = radio.stations.find((s) => s.id === radio.station && s.tracks.length)?.id ?? radio.youtube.find((s) => s.id === radio.station)?.id
-          ?? radio.stations.find((s) => s.tracks.length)?.id ?? radio.youtube[0]?.id;
-        if (pick) await playStation(pick);
-      }
       try { localStorage.setItem("shuacrew.morning", localDay(now)); } catch { /* ignore */ }
       if (approvals[0]?.run) void navigate({ to: "/sessions/$id", params: { id: approvals[0].run } });
       else if (running[0]) void navigate({ to: "/sessions/$id", params: { id: running[0].id } });
@@ -118,7 +110,7 @@ export function DayHero() {
         </div>
       </div>
       <div className="day-hero-actions">
-        <button type="button" className="day-hero-start" onClick={() => void startDay()} disabled={starting} title="Turns on Flow mode, puts your radio on, and opens the first thing that needs you">
+        <button type="button" className="day-hero-start" onClick={() => void startDay()} disabled={starting} title="Turns on Flow mode and opens the first thing that needs you">
           <Play size={16} /> {starting ? "Starting…" : "Start my day"}
         </button>
         <button type="button" className={`day-hero-hear ${speaking ? "is-on" : ""}`} onClick={speak} aria-pressed={speaking}>
