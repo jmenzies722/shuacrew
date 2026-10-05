@@ -3,7 +3,7 @@ export interface HubTab { to: string; label: string; also?: string[] }
 export interface Hub { id: "home" | "crew" | "build" | "know" | "automations" | "library" | "system"; label: string; hint: string; tabs: HubTab[] }
 
 export const HUBS: Hub[] = [
-  { id: "home", label: "Today", hint: "Your next move", tabs: [{ to: "/activity", label: "Overview" }, { to: "/", label: "Sessions", also: ["/sessions"] }] },
+  { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions"] }, { to: "/activity", label: "Today" }] },
   { id: "build", label: "Projects", hint: "From idea to shipped", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }] },
   { id: "crew", label: "Crew", hint: "Your studio, live", tabs: [{ to: "/floor", label: "Studio floor" }, { to: "/crew", label: "Agents" }, { to: "/rooms", label: "Rooms" }] },
   { id: "know", label: "Learn", hint: "Get measurably better, with Shua", tabs: [{ to: "/learn", label: "Learn", also: ["/teach"] }] },

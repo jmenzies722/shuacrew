@@ -15,7 +15,6 @@ import { getRadio, loadRadio, playStation } from "../lib/radio";
 import { useCompanion } from "../lib/companion";
 import { WEATHER_ICONS, useLearningNow, useWeatherNow } from "./TopBarWidgets";
 
-const greeting = (h: number) => (h < 5 ? "Up late" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
 
 /**
  * The top of Today: a greeting, the day in one paragraph (built only from what's really in the workspace), and one
@@ -92,6 +91,10 @@ export function DayHero() {
   const earned = badges.filter((b) => b.earned), nextUp = badges.filter((b) => !b.earned).slice(0, 2);
   const learnStreak = streak(learnDays, now), shipStreak = streak(shippedDays, now);
 
+  const headline = approvals.length ? `${approvals.length} decision${approvals.length === 1 ? " needs" : "s need"} you.`
+    : running.length ? `The crew is on ${running.length} thing${running.length === 1 ? "" : "s"}.`
+    : due ? `${due} card${due === 1 ? "" : "s"} to review today.`
+    : "A clear day. Make something.";
   startRef.current = () => void startDay();
   const plan: Array<{ icon: typeof Play; label: string; value: string; go: () => void; tone: "wait" | "live" | "ok" | "idle" }> = [
     { icon: CheckCircle2, label: "Needs you", value: approvals.length ? `${approvals.length} decision${approvals.length === 1 ? "" : "s"}` : "Nothing waiting", tone: approvals.length ? "wait" : "ok", go: () => void navigate({ to: "/board" }) },
@@ -105,7 +108,8 @@ export function DayHero() {
     <div className="day-hero-top">
       <div className="day-hero-hello">
         <span className="day-hero-date"><Sunrise size={13} /> {now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
-        <h1>{greeting(now.getHours())}.</h1>
+        {/* Home already says hello; Today leads with what matters about the day. */}
+        <h1>{headline}</h1>
         <div className="day-hero-facts">
           {cal.available && (cal.state?.authorized
             ? <span className="day-fact"><CalendarDays size={13} /> {meetings.length ? `Next: ${meetings[0]!.title} at ${hhmm(meetings[0]!.start)}${meetings.length > 1 ? ` · ${meetings.length} meetings left` : ""}` : "No more meetings today"}</span>

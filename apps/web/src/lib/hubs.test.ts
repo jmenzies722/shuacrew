@@ -4,7 +4,7 @@ import { HUBS, hubEntry, locate } from "./hubs";
 it("puts every screen in exactly one hub", () => {
   expect(locate("/")?.hub.id).toBe("home");
   expect(locate("/sessions/r_1")?.tab.label).toBe("Sessions");
-  expect(locate("/activity")?.tab.label).toBe("Overview");
+  expect(locate("/activity")?.tab.label).toBe("Today");
   expect(locate("/usage")?.tab.label).toBe("Insights");
   expect(locate("/developer")?.hub.id).toBe("system");
   expect(locate("/plays/p1")?.tab.label).toBe("Playbooks");
@@ -22,7 +22,7 @@ it("reopens a hub where you left it", () => {
 });
 
 it("has six primary destinations and preserves every deep link", () => {
-  expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Today", "Projects", "Crew", "Learn", "Automations", "Library"]);
+  expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Home", "Projects", "Crew", "Learn", "Automations", "Library"]);
   expect(locate("/floor")?.hub.id).toBe("crew");
   expect(locate("/teach")?.hub.id).toBe("know");
   expect(locate("/plays/saved")?.hub.id).toBe("automations");
