@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
 import { notchPreviewWanted, notchReplyText } from "./notch-presentation";
 
-it("does not show generated answer text ahead of enabled speech", () => {
-  expect(notchReplyText("An answer is streaming", "Old answer", true, true)).toBe("");
-  expect(notchReplyText("", "Complete answer awaiting audio", true, true)).toBe("");
+it("shows complete streaming text even while voice is enabled", () => {
+  expect(notchReplyText("An answer is streaming", "Old answer", true, true)).toBe("An answer is streaming");
+  expect(notchReplyText("", "Complete answer awaiting audio", true, true)).toBe("Complete answer awaiting audio");
 });
 
 it("preserves text-only replies and completed playback history", () => {

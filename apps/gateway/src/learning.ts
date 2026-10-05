@@ -21,7 +21,7 @@ const roadmap = z.object({ id: z.string(), goal: z.string().max(200), months: z.
 const doc = z.object({ id: z.string(), kind: z.enum(["resume", "interview"]), title: z.string().max(200), run: z.string(), created: z.number() });
 export const LearningSchema = z.object({
   version: z.literal(1).default(1),
-  profile: z.object({ goal: z.string().max(200).default(""), about: z.string().max(1000).default(""), tracks: z.array(track).max(24).default([]) }).default({ goal: "", about: "", tracks: [] }),
+  profile: z.object({ goal: z.string().max(500).default(""), about: z.string().max(1000).default(""), tracks: z.array(track).max(24).default([]) }).default({ goal: "", about: "", tracks: [] }),
   cards: z.array(card).max(5000).default([]),
   drills: z.array(drill).max(400).default([]),
   studied: z.array(z.object({ run: z.string(), at: z.number(), study: z.string() })).max(400).default([]),

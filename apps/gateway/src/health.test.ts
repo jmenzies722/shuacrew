@@ -10,7 +10,7 @@ const by = (f: HealthFacts, id: string) => healthChecks(f).find((c) => c.id === 
 
 it("all green when everything works", () => {
   expect(healthChecks(good).every((c) => c.status === "ok")).toBe(true);
-  expect(by(good, "voice").detail).toBe("Speaks in 0.3 s.");
+  expect(by(good, "voice").detail).toBe("Audio generated in 0.3 s. Playback not verified.");
 });
 it("one brain out is amber (Spark uses the other); both out is red", () => {
   const one = { ...good, runtimes: [{ ...good.runtimes[0]!, limitedUntil: now + 30 * 60_000 }, good.runtimes[1]!] };
@@ -32,4 +32,13 @@ it("Chrome not connected is only amber; low disk is amber then red", () => {
   expect(by({ ...good, chrome: { connected: false } }, "chrome").status).toBe("warn");
   expect(by({ ...good, diskFreeGb: 10 }, "disk").status).toBe("warn");
   expect(by({ ...good, diskFreeGb: 2 }, "disk").status).toBe("fail");
+});
+it('does not mark unknown authentication or an empty runtime registry ready',()=>{
+ expect(by({...good,runtimes:[]},'runtime').status).toBe('fail');
+ expect(by({...good,runtimes:[{...good.runtimes[1]!,signedIn:null}]},'runtime-codex').status).toBe('warn');
+});
+it('describes synthesis and local transcription scope without claiming device playback',()=>{
+ expect(by(good,'voice').detail).toContain('Audio generated');
+ expect(by(good,'voice').detail).toContain('Playback not verified');
+ expect(by({...good,transcription:{ffmpeg:false,whisper:false,model:false}},'hearing').detail).toContain('Local transcription');
 });

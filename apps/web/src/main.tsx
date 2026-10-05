@@ -1,59 +1,13 @@
-import "@fontsource-variable/geist";
-import "@fontsource-variable/space-grotesk";
-import "@fontsource-variable/jetbrains-mono";
-import "./styles.css";
-import "./workspace.css";
-import "./pristine.css";
-import "./craft.css";
-import { RouterProvider } from "@tanstack/react-router";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { applyTheme, connect, useLive } from "./lib/live";
-import { folderPicked } from "./lib/native";
-import { router } from "./routes";
-import { Buddy } from "./screens/Buddy";
-import { protectKeyboardDelivery } from "./lib/keyboard-delivery";
-
-if (document.documentElement.dataset.shell === "mac") protectKeyboardDelivery(window);
-
-applyTheme(useLive.getState().theme);
-// While ShuaCrew isn't the app in front, its purely decorative motion rests (see alive.css); it resumes on return.
-// The Mac app says when ShuaCrew itself is active (the notch panel never takes focus, so it can't tell on its own).
-let appActive: boolean | null = null;
-(window as unknown as { __appActive: (on: boolean) => void }).__appActive = (on) => { appActive = on; idle(); };
-const idle = () => {
-  const rest = !((appActive ?? document.hasFocus()) && document.visibilityState === "visible"), root = document.documentElement;
-  if (rest === (root.dataset.idle !== undefined)) return; // unchanged: no attribute write, no style recalc
-  if (rest) root.dataset.idle = ""; else delete root.dataset.idle;
-};
-window.addEventListener("focus", idle); window.addEventListener("blur", idle); document.addEventListener("visibilitychange", idle); idle();
-// Resolve the preferred landing page once. Explicit links keep their destination.
-if (location.pathname === "/" && !location.search && !location.hash) {
-  const start = useLive.getState().appearance.startPage;
-  if (start !== "/") window.history.replaceState(window.history.state, "", start);
+import {clearContentForEpoch,contentToArchive} from './lib/fresh-content';
+async function boot(){
+ const response=await fetch('/api/content-epoch');if(!response.ok)throw Error('Could not check workspace identity. Retry when the engine is connected.');
+ const {epoch}=await response.json() as {epoch:string|null};
+ if(epoch&&localStorage.getItem('shuacrew.content-epoch')!==epoch){
+  const saved=await fetch('/api/content-epoch/archive',{method:'POST',headers:{'X-ShuaCrew':'1','Content-Type':'application/json'},body:JSON.stringify({epoch,content:contentToArchive(localStorage)})});
+  if(!saved.ok)throw Error('Old browser content could not be backed up. Nothing was cleared. Retry when the engine is ready.');
+  clearContentForEpoch(localStorage,epoch);
+  for(const key of Object.keys(contentToArchive(sessionStorage)))sessionStorage.removeItem(key);
+ }
+ await import('./app');
 }
-
-// The Mac app drives the page from its menus (⌘N, ⌘K, ⌘1…) through this bridge.
-declare global {
-  interface Window {
-    shuacrew?: { navigate(to: string): void; launch(): void; compose(): void; shortcuts(): void; fullscreen(active: boolean): void; palette(): void; terminal(): void; folderPicked(path: string | null): void };
-  }
-}
-window.shuacrew = {
-  compose: () => window.dispatchEvent(new Event("shuacrew:compose")),
-  shortcuts: () => useLive.getState().setKeymap(true),
-  fullscreen: (active) => { if (active) document.documentElement.dataset.fullscreen = "1"; else delete document.documentElement.dataset.fullscreen; },
-  navigate: (to) => void router.navigate({ to }),
-  launch: () => void router.navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose"))),
-  folderPicked,
-  terminal: () => window.dispatchEvent(new Event("shuacrew:terminal")),
-  palette: () => useLive.getState().setPalette(true),
-};
-void connect();
-
-// The Mac app's desktop buddy panel loads /buddy: just Spark, no workspace chrome.
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    {location.pathname === "/buddy" ? <Buddy /> : <RouterProvider router={router} />}
-  </StrictMode>,
-);
+void boot().catch(e=>{const root=document.getElementById('root');if(root){root.textContent=(e as Error).message;const button=document.createElement('button');button.textContent='Retry';button.onclick=()=>location.reload();root.appendChild(button);}});

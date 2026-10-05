@@ -122,19 +122,19 @@ describe("runs", () => {
     expect(state(store).runs[id]!.runtime).toBe("claudeish");
   });
 
-  it("a capped Spark conversation goes to the other provider, never through every sibling into a pause", async () => {
+  it("a capped personal assistant hands the turn to Claude instead of pausing", async () => {
     const asks: string[] = [];
     const base = { authMode: "subscription" as const, capabilities: { subagents: false, checkpoints: false, cost: false, images: false, resume: true }, status: async () => ({ installed: true, signedIn: true, detail: "", overridingKeys: [] }) };
-    // Every model on this account is capped for the week (Sonnet, Fable, Opus, Haiku on 2 Oct).
-    const capped: Runtime = { ...base, id: "claudeish", label: "capped", models: ["s", "f", "o", "h"].map((id) => ({ id, label: id, tier: "balanced" as const })),
-      async *start(run) { asks.push(`claudeish:${run.model}`); yield { type: "limited", model: run.model, until: Date.now() + 3_600_000, message: "weekly limit" }; } };
-    const free: Runtime = { ...base, id: "codexish", label: "free", models: [{ id: "t", label: "t", tier: "balanced" as const }], async *start() { asks.push("codexish"); yield { type: "done", text: "4" }; } };
+    const capped: Runtime = { ...base, id: "codex", label: "capped", models: [{ id: "s", label: "s", tier: "balanced" as const }],
+      async *start(run) { asks.push(`codex:${run.model}`); yield { type: "limited", model: run.model, until: Date.now() + 3_600_000, message: "weekly limit" }; } };
+    const free: Runtime = { ...base, id: "claude", label: "free", models: [{ id: "t", label: "t", tier: "balanced" as const }], async *start() { asks.push("claude"); yield { type: "done", text: "4" }; } };
     const store = new EventStore();
     cleanups.push(() => store.close());
-    const supervisor = new Supervisor(store, new Map([["claudeish", capped], ["codexish", free]]), { workspace: os.tmpdir(), failover: true });
-    const id = supervisor.launch({ ask: "what is 2 plus 2", runtime: "claudeish", model: "s", labels: ["buddy"] });
+    const supervisor = new Supervisor(store, new Map([["codex", capped], ["claude", free]]), { workspace: os.tmpdir(), failover: true });
+    cleanups.push(() => supervisor.shutdown());
+    const id = supervisor.launch({ ask: "what is 2 plus 2", runtime: "codex", model: "s", labels: ["buddy"] });
     await until(() => state(store).runs[id]?.status === "done");
-    expect(asks).toEqual(["claudeish:s", "codexish"]); // straight across: no Fable → Opus → Haiku → paused until Sunday
+    expect(asks).toEqual(["codex:s", "claude"]);
   });
 
   it("crew work tries a sibling model first, and still reaches the other provider after it", async () => {

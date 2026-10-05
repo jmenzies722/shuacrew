@@ -28,3 +28,13 @@ it("cancels immediately and never accepts a late successful reply", async () => 
   abort.abort();
   expect((await pending).status).toBe("cancelled"); expect(cancel).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
 });
+
+it("counts changed task evidence as progress, not repeated UI renders", async () => {
+  const abort = new AbortController(), progress = vi.fn(); let changed = () => {};
+  let state: LiveTurnState = {...idle,pending:true,progress:1};
+  const pending = executeLiveTurn({callId:"call",taskId:"task",text:"task",signal:abort.signal,progress}, {screenAllowed:true,needsScreen:false,dispatch:async()=>{},state:()=>state,subscribe:listener=>{changed=listener;return()=>{};},cancel:vi.fn()});
+  await Promise.resolve(); changed();changed();
+  expect(progress).toHaveBeenCalledTimes(1);
+  state={...state,progress:2};changed();expect(progress).toHaveBeenCalledTimes(2);
+  abort.abort();await pending;
+});

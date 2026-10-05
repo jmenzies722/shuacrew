@@ -63,7 +63,6 @@ export class LiveCall {
   private micSource?: MediaStreamAudioSourceNode;
   private micAnalyser?: AnalyserNode;
   private input?: NativeInputBuffer;
-  private captureVersion = 0;
   private wantsMic: boolean;
   private accepted: boolean;
   private mode: "hold" | "talk" | "silent";
@@ -87,20 +86,29 @@ export class LiveCall {
     this.accepted = this.mode !== "hold";
   }
 
+  private micAcquisition?: Promise<void>;
   private async acquireMic() {
     if (!this.ctx || !this.processor || !this.wantsMic || this.over || this.micSource) return;
-    const version = ++this.captureVersion;
-    const stream = this.o.mic ?? await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true }) });
-    if (this.over || !this.wantsMic || version !== this.captureVersion) { if (!this.o.mic) stream.getTracks().forEach(track => track.stop()); return; }
-    this.mic = stream;
-    this.micSource = this.ctx.createMediaStreamSource(stream);
-    this.micSource.connect(this.processor);
-    this.micSource.connect(this.micAnalyser!);
-    this.o.onEvent({ type: "capture", on: true, mode: this.mode });
+    if (this.micAcquisition) return this.micAcquisition;
+    // Device startup can outlive a hold. Reuse that startup for a new hold instead of
+    // opening a second stream and stopping the first underneath the audio device.
+    this.micAcquisition = (async () => {
+      try {
+        const stream = this.o.mic ?? await navigator.mediaDevices.getUserMedia({ audio: await micConstraints({ echoCancellation: true, noiseSuppression: true, autoGainControl: true }) });
+        if (this.over || !this.wantsMic) { if (!this.o.mic) stream.getTracks().forEach(track => track.stop()); return; }
+        this.mic = stream;
+        this.micSource = this.ctx!.createMediaStreamSource(stream);
+        this.micSource.connect(this.processor!);
+        this.micSource.connect(this.micAnalyser!);
+        this.o.onEvent({ type: "capture", on: true, mode: this.mode });
+      } catch (error) {
+        if (!this.over && this.wantsMic) throw error;
+      }
+    })();
+    try { await this.micAcquisition; } finally { this.micAcquisition = undefined; }
   }
 
   private closeMic() {
-    this.captureVersion++;
     this.micSource?.disconnect(); this.micSource = undefined;
     if (!this.o.mic) this.mic?.getTracks().forEach(track => track.stop());
     this.mic = undefined;

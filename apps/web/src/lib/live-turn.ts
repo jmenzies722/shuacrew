@@ -6,11 +6,11 @@ export function requestsDesktopAction(text: string) {
   return /\b(?:click|double-click|right-click|type|paste|scroll|press|open)\b/i.test(ask);
 }
 
-export type LiveTurnState = { pending: boolean; summary: string; outcomes: LiveTaskResult["outcomes"]; error?: string; visualId?: string };
+export type LiveTurnState = { pending: boolean; summary: string; outcomes: LiveTaskResult["outcomes"]; error?: string; progress?: number | string; visualId?: string };
 export function executeLiveTurn(request: LiveTaskRequest, adapter: { screenAllowed: boolean; needsScreen: boolean; dispatch: () => Promise<void>; state: () => LiveTurnState; cancel: () => void; subscribe: (listener: () => void) => () => void }): Promise<LiveTaskResult> {
   if (adapter.needsScreen && !adapter.screenAllowed) return Promise.resolve({ status: "unavailable", summary: "Screen access is off. Enable the eye control before asking me to look or act on screen.", outcomes: [] });
   return new Promise(resolve => {
-    let settled = false, dispatched = false;
+    let settled = false, dispatched = false, lastProgress = "";
     let unsubscribe: (() => void) | undefined;
     const finish = (result: LiveTaskResult) => {
       if (settled) return;
@@ -20,6 +20,8 @@ export function executeLiveTurn(request: LiveTaskRequest, adapter: { screenAllow
     const check = () => {
       if (settled) return;
       const state = adapter.state();
+      const evidence = JSON.stringify([state.progress, state.summary, state.outcomes]);
+      if(evidence !== lastProgress) {lastProgress=evidence;request.progress?.();}
       if (dispatched && state.error) { finish({ status: "failed", summary: state.error, outcomes: state.outcomes }); return; }
       if (dispatched && !state.pending && state.summary.trim()) {
         finish({ status: state.outcomes.some(outcome => !outcome.ok) ? "failed" : requestsDesktopAction(request.text) && !state.outcomes.length ? "unavailable" : "completed", summary: state.summary, outcomes: state.outcomes, visualId: state.visualId }); return;

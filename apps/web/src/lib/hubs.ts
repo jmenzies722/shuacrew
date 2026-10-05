@@ -1,14 +1,17 @@
-/** The app's map: five hubs, each a small set of tabs. Every screen lives in exactly one hub. */
+/** The app's map: six sections and secondary tools, each a small set of tabs. Every screen lives in exactly one hub. */
 export interface HubTab { to: string; label: string; also?: string[] }
-export interface Hub { id: "home" | "crew" | "build" | "know" | "system"; label: string; hint: string; tabs: HubTab[] }
+export interface Hub { id: "home" | "crew" | "build" | "know" | "automations" | "library" | "system"; label: string; hint: string; tabs: HubTab[] }
 
 export const HUBS: Hub[] = [
-  { id: "home", label: "Home", hint: "Talk to the crew, see your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions"] }, { to: "/activity", label: "Today" }] },
-  { id: "crew", label: "Crew", hint: "Your team, live", tabs: [{ to: "/crew", label: "Team" }, { to: "/rooms", label: "Rooms" }, { to: "/floor", label: "Crew HQ" }, { to: "/studio", label: "Studio" }] },
-  { id: "build", label: "Build", hint: "Ventures, plans and the board", tabs: [{ to: "/ventures", label: "Ventures" }, { to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/specs", label: "Specs" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/schedules", label: "Schedules" }] },
-  { id: "know", label: "Know", hint: "Library, memory, learning", tabs: [{ to: "/library", label: "Library" }, { to: "/memory", label: "Memory" }, { to: "/learn", label: "Learning" }, { to: "/teach", label: "Visual teaching" }] },
-  { id: "system", label: "System", hint: "Tools, policy, insights", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/usage", "/developer", "/insights"] }, { to: "/terminal", label: "Terminal" }] },
+  { id: "home", label: "Today", hint: "Your next move", tabs: [{ to: "/activity", label: "Overview" }, { to: "/", label: "Sessions", also: ["/sessions"] }] },
+  { id: "build", label: "Projects", hint: "From idea to shipped", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }] },
+  { id: "crew", label: "Crew", hint: "Your studio, live", tabs: [{ to: "/floor", label: "Studio floor" }, { to: "/crew", label: "Agents" }, { to: "/rooms", label: "Rooms" }] },
+  { id: "know", label: "Learning", hint: "Understand, practice, retain", tabs: [{ to: "/learn", label: "Learning path" }, { to: "/teach", label: "Visual workspace" }] },
+  { id: "automations", label: "Automations", hint: "Teach once, reuse carefully", tabs: [{ to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/schedules", label: "Schedules" }] },
+  { id: "library", label: "Library", hint: "Everything worth keeping", tabs: [{ to: "/library", label: "Artifacts & knowledge" }, { to: "/memory", label: "Memory" }] },
+  { id: "system", label: "All tools", hint: "Connections and controls", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/usage", "/developer", "/insights"] }, { to: "/terminal", label: "Terminal" }] },
 ];
+export const PRIMARY_HUBS = HUBS.filter(hub => hub.id !== "system");
 
 const matches = (path: string, prefix: string) => (prefix === "/" ? path === "/" : path === prefix || path.startsWith(`${prefix}/`));
 

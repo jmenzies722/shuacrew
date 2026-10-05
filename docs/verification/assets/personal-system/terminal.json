@@ -1,0 +1,16 @@
+{
+  "capturedInputs" : {
+    "input_1" : "demo"
+  },
+  "followingForeground" : true,
+  "keyboardOnly" : true,
+  "ok" : true,
+  "recordedSteps" : [
+    "input"
+  ],
+  "replayMilliseconds" : [
+    231.78291320800781,
+    142.2579288482666
+  ],
+  "verifiedRuns" : 2
+}

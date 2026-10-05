@@ -67,7 +67,7 @@ describe("english to command", () => {
     const cmd = await suggest({ prompt: "# biggest folders here", cwd: os.tmpdir(), branch: "main", last: { command: "npm test", exit: 1 } }, async (a) => ((args = a), "du -sh */ | sort -h | tail\n"));
     expect(cmd).toBe("du -sh */ | sort -h | tail");
     expect(args[1]).toMatch(/Folder: .*\nGit branch: main\n.*Last command: npm test \(exit 1\)\nRequest: biggest folders here$/s);
-    expect(args).toEqual(expect.arrayContaining(["--model", "claude-haiku-4-5", "--tools", ""]));
+    expect(args).toEqual(expect.arrayContaining(["--model", "codex-auto", "--tools", ""]));
   });
 
   it("explains a failed claude call without dumping the command line", () => {

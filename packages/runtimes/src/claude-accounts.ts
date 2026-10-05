@@ -33,6 +33,8 @@ export type ReadStatus = (dir: string) => Promise<{ loggedIn?: boolean; email?: 
 
 export interface AccountsOptions {
   executable?: string;
+  /** Use one existing login (default or an extra folder id), without changing global auth. */
+  accountId?: string;
   home?: string;
   /** Where extra accounts live; each subfolder is one account. */
   root?: string;
@@ -47,12 +49,14 @@ export class ClaudeAccounts {
   private checkedAt = 0;
   private checking?: Promise<ClaudeAccount[]>;
   private readonly home: string;
+  private readonly accountId?: string;
   readonly root: string;
   private readonly ttl: number;
   private readonly readStatus: ReadStatus;
   private readonly now: () => number;
 
   constructor(options: AccountsOptions = {}) {
+    this.accountId = options.accountId;
     this.home = options.home ?? os.homedir();
     this.root = options.root ?? path.join(this.home, ".shuacrew", "claude-accounts");
     this.ttl = options.ttlMs ?? 60_000;
@@ -71,6 +75,12 @@ export class ClaudeAccounts {
     const extras = existsSync(this.root)
       ? readdirSync(this.root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(this.root, d.name)).sort()
       : [];
+    if (this.accountId !== undefined) {
+      if (this.accountId === "default") return [""];
+      const selected = extras.find(dir => path.basename(dir) === this.accountId);
+      if (!selected) throw new Error("Selected Claude account is unavailable. Choose an existing saved account before running work.");
+      return [selected];
+    }
     return ["", ...extras];
   }
 
@@ -93,6 +103,8 @@ export class ClaudeAccounts {
     })().finally(() => { this.checking = undefined; });
     return this.checking;
   }
+
+  get selectedAccount(): string | undefined { return this.accountId; }
 
   get accounts(): readonly ClaudeAccount[] { return this.list; }
 

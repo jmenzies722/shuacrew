@@ -3,9 +3,10 @@ type Microphone = { mode: "auto" | "hold"; warm(): unknown; press(): unknown; re
 
 export function fnCapture(signal: Signal, mic: Microphone, callActive: boolean) {
   if (callActive) return;
-  if (signal === "down" || signal === "hold") mic.mode = "hold";
-  if (signal === "down") void mic.warm();
-  else if (signal === "hold") void mic.press();
+  if (signal === "hold") mic.mode = "hold";
+  // A tap or modifier chord must not open the microphone.
+  if (signal === "down") return;
+  if (signal === "hold") void mic.press();
   else if (signal === "release") mic.release();
   else mic.cool();
 }

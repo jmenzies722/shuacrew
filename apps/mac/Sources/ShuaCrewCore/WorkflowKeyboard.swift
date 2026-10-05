@@ -1,6 +1,6 @@
 import Foundation
 public enum WorkflowKeyboardIntent: Equatable { case ignore, input, shortcut(String), checkpoint(String) }
-/// Separate text editing from navigation/commands. No literal keystrokes are retained.
+/// Separate text editing from navigation/commands. Reviewable text is captured separately; secure targets are excluded.
 public func workflowKeyboardIntent(code: UInt16, command: Bool = false, control: Bool = false, option: Bool = false, shift: Bool = false, editable: Bool = false, multiline: Bool = false, writable: Bool = false, producesText: Bool = true) -> WorkflowKeyboardIntent {
     if command && !control && !option {
         if code == 0 && editable && writable && !shift { return .ignore }
@@ -27,4 +27,11 @@ public func workflowKeyboardTextAllowed(_ value: String) -> Bool {
 }
 public func workflowKeyboardTextVerified(before: String, after: String, inserted: String) -> Bool {
     workflowKeyboardTextAllowed(inserted) && after == before + inserted
+}
+
+/// A reviewable local input default. Keyboard-only targets cannot include command characters.
+public func workflowRecordedText(_ current: String, inserted: String, writableValue: String?) -> String? {
+    let value = writableValue ?? (current + inserted)
+    guard value.count <= 2000, !WorkflowPolicy.protectedText(value), writableValue != nil || value.rangeOfCharacter(from: .controlCharacters) == nil else { return nil }
+    return value
 }

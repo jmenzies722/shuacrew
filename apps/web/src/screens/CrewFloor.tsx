@@ -134,7 +134,7 @@ export function CrewFloor() {
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew HQ" description="Your crew in motion. Follow the work, catch a handoff, step in when needed." actions={<div className="flex flex-wrap items-center gap-2">
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew Studio" description="Direct the work. Inspect the evidence. Keep your crew connected." actions={<div className="flex flex-wrap items-center gap-2">
           <Stat value={working} label="working" live={working > 0} />
           <Stat value={waiting} label="waiting on you" tone={waiting ? "wait" : undefined} />
           <Stat value={perMinute} label="steps / min" />
@@ -219,7 +219,7 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
             {run.worktree ? ` · ${run.worktree.branch}` : ""}
           </div>
         </div>
-        <span className="mono text-[11.5px] tabular-nums text-fg-3">{clock(now - started, active)}</span>
+        <span className="mono text-[11.5px] tabular-nums text-fg-3">{clock((active ? now : run.updatedAt) - started, active)}</span>
       </div>
 
       <div className={`pod-now kind-${kind}`}>
@@ -233,7 +233,7 @@ const Pod = memo(function Pod({ run, events, kids, approvals, now }: { run: RunV
           </span>
         ) : (
           <span className={`min-w-0 flex-1 truncate ${run.status === "failed" ? "text-bad" : "text-fg-2"}`}>
-            {run.status === "reviewing" ? "Ready for review" : run.status === "failed" ? (run.statusReason ?? "Failed") : run.status === "merged" ? "Merged" : "Done"} — {run.ticker}
+            {run.status === "reviewing" ? "Ready for review" : run.status === "failed" ? (run.statusReason ?? "Failed") : run.status === "merged" ? "Merged" : run.status === "cancelled" ? "Cancelled" : run.status === "paused" ? "Paused" : "Done"} — {run.ticker}
           </span>
         )}
       </div>

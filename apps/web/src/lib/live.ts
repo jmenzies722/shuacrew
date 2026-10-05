@@ -265,3 +265,12 @@ function open(): void {
 export function selectLiveRuns(crew: CrewState) {
   return Object.values(crew.runs).filter((r) => ["running", "planning", "awaiting_approval", "paused"].includes(r.status));
 }
+
+// The notch lives in another WebView. Follow Crew appearance changes without a reload
+// or writing the preference back (which would echo between windows).
+if (typeof window !== "undefined") window.addEventListener("storage", event => {
+  if (event.key !== "shuacrew.appearance" && event.key !== null) return;
+  const appearance = loadAppearance();
+  applyAppearance(appearance);
+  useLive.setState({ appearance, theme: themeOf(appearance) });
+});

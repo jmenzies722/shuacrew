@@ -1,5 +1,7 @@
 # Obsidian Foundation Implementation Plan
 
+> Superseded scope: see `docs/design/shua-obsidian/rebuild-brief.md`. User now requests Crew as a primary interactive-world destination. Revise the five-section registry before executing this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (recommended for this tightly coupled foundation) or superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the approved black-gradient visual foundation and five-destination navigation while preserving every existing feature and saved record.

@@ -4,7 +4,7 @@ import { useCompanion, saveCompanion } from "../lib/companion";
 import { selectIntelligence } from "../lib/intelligence";
 export const modelPreference = (choice: string) => {
   const i = choice.indexOf(":");
-  return i > 0 ? { preferredRuntime: choice.slice(0, i), preferredModel: choice.slice(i + 1) } : {};
+  return i > 0 && choice.slice(0,i) === "codex" ? { preferredRuntime: "codex", preferredModel: choice.slice(i + 1) } : { preferredRuntime: "codex" };
 };
 type Provider = {
   id: string;
@@ -32,7 +32,7 @@ export function CompanionModelPicker({ teaching = false }: { teaching?: boolean 
         });
     // What Auto would pick right now, so "Auto" never hides which model actually answers.
     const picks = () =>
-      void Promise.all((["fast", "frontier"] as const).map((tier) => selectIntelligence({ ask: tier === "fast" ? "quick question" : "be precise", mode: "auto", purpose: "conversation", images: false, tier })))
+      void Promise.all((["fast", "frontier"] as const).map((tier) => selectIntelligence({ ask: tier === "fast" ? "quick question" : "be precise", mode: "auto", purpose: "conversation", preferredRuntime: "codex", images: false, tier })))
         .then((choices) => alive && setAutoPicks(choices.map((c) => (c.runtime ? { model: c.model, wait: /~[\d.]+ s/.exec(c.reason)?.[0] } : {}))))
         .catch(() => alive && setAutoPicks([]));
     refresh();

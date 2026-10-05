@@ -32,6 +32,13 @@ export function asksToContinue(text: string): boolean {
   return /\?\s*$/.test(tail) || /\b(would you like|do you want|should i|shall i|let me know if|want me to|if you'd like|let me know whether)\b/.test(tail);
 }
 
+/** Only optional implementation continuation is inferred; actual decisions remain explicit. */
+export function routineContinuation(text: string): boolean {
+  const tail = text.trim().slice(-400).toLowerCase();
+  if (/\b(send|publish|deploy|push|merge|delete|remove|purchase|buy|pay|credential|password|api key|which|choose|permission|approve|authorize)\b/.test(tail)) return false;
+  return /\b(should i|shall i|want me to|would you like me to|do you want me to)\s+(?:also\s+)?(continue|proceed|finish|implement|add|write|test|fix|verify|refine)\b/.test(tail);
+}
+
 export type MissionMove =
   | { kind: "wait" }
   | { kind: "needs-you"; say: string }
@@ -50,8 +57,11 @@ export function nextMove(input: { status: string; lastText: string; rounds: numb
       ? { kind: "continue", message: "That failed. Find the actual cause, fix it, and keep going until the task is done end to end. Verify it works, then summarise.", say: `“${title}” hit a problem. I've asked the crew to fix it and keep going.` }
       : { kind: "report", ok: false, say: `“${title}” still failed after ${rounds} tries. It needs you.` };
   if (status === "done" || status === "merged") {
-    if (room && asksToContinue(lastText))
-      return { kind: "continue", message: "Yes, go ahead with the most sensible option and finish it end to end. Don't stop to ask again; verify it works, then give me a short summary.", say: `The crew asked a question on “${title}”. I told it to go ahead and finish.` };
+    if (asksToContinue(lastText)) {
+      if (!routineContinuation(lastText)) return {kind:"needs-you",say:`“${title}” needs a decision. ${summary(lastText)}`};
+      if (!room) return {kind:"report",ok:false,say:`“${title}” still has unfinished work after ${rounds} continuations.`};
+      return { kind: "continue", message: "Continue the originally requested task and its verification. Make routine implementation choices within that scope. This is not permission for new features, publishing, sending, spending, deleting, or changing access. Report any real blocker instead of treating this as consent. Finish with the result and verification evidence.", say: `The crew is continuing the requested work on “${title}”.` };
+    }
     return { kind: "report", ok: true, say: `Done: ${title}. ${summary(lastText)}`.trim() };
   }
   return { kind: "wait" };

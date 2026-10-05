@@ -30,7 +30,7 @@ it("times out and never treats empty output as success", async () => {
   vi.useFakeTimers(); const queue = new LiveTaskQueue("call");
   const pending = queue.run("one", "first", () => new Promise(() => {}));
   await vi.advanceTimersByTimeAsync(120_000);
-  expect((await pending).status).toBe("cancelled"); expect(vi.getTimerCount()).toBe(0);
+  expect((await pending).status).toBe("failed"); expect(vi.getTimerCount()).toBe(0);
   expect((await new LiveTaskQueue("fresh").run("two", "empty", async () => ({ ...completed, summary: "" }))).status).toBe("failed");
 });
 
@@ -51,4 +51,36 @@ it("releases timers through 100 teardown cycles", async () => {
     await Promise.resolve(); queue.end(); await pending;
     expect(queue.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
   }
+});
+
+it("continues while real progress arrives beyond two minutes", async () => {
+  vi.useFakeTimers(); const queue = new LiveTaskQueue("call"); let progress!: () => void, finish!: (result: LiveTaskResult) => void;
+  const pending = queue.run("one", "complex task", request => { progress = request.progress!; return new Promise(resolve => { finish = resolve; }); });
+  await vi.advanceTimersByTimeAsync(90_000); progress();
+  await vi.advanceTimersByTimeAsync(90_000); progress();
+  expect(queue.size).toBe(1);
+  finish(completed); expect(await pending).toEqual(completed);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("reports a stalled task instead of calling a timeout user cancellation", async () => {
+  vi.useFakeTimers(); const queue = new LiveTaskQueue("call");
+  const pending = queue.run("one", "stuck task", () => new Promise(() => {}));
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect(await pending).toMatchObject({status:"failed",summary:expect.stringContaining("No progress")});
+});
+
+it("keeps an absolute limit even when progress keeps arriving", async () => {
+  vi.useFakeTimers(); const queue = new LiveTaskQueue("call"); let progress!: () => void;
+  const pending = queue.run("one", "task", request => { progress = request.progress!; return new Promise(() => {}); });
+  await vi.advanceTimersByTimeAsync(0);
+  for(let i=0;i<20;i++){await vi.advanceTimersByTimeAsync(60_000);progress();}
+  expect(await pending).toMatchObject({status:"failed",summary:expect.stringContaining("20-minute")});
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("does not restart timers after completion from a late progress callback", async () => {
+  vi.useFakeTimers();let progress!:()=>void;
+  await new LiveTaskQueue("call").run("task","request",async request=>{progress=request.progress!;return completed;});
+  progress();expect(vi.getTimerCount()).toBe(0);
 });

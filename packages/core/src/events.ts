@@ -244,12 +244,14 @@ export const bodies = {
     website: z.string().optional(),
     autopilot: z.boolean().default(false), // start each stage's playbook by itself; weekly growth review
   }),
+  "venture.automation": z.object({id:z.string(),playbook:z.string(),state:z.enum(["starting","started","failed"]),attemptId:z.string(),error:z.string().optional()}),
   "venture.stage": z.object({ id: z.string(), stage: z.enum(["idea", "validating", "building", "launching", "earning", "paused", "stopped"]), note: z.string().optional() }),
   "venture.removed": z.object({ id: z.string() }),
   "venture.stripe": z.object({ id: z.string(), connected: z.boolean(), account: z.string().optional(), mode: z.enum(["live", "test"]).optional() }),
   "venture.metrics": z.object({
     id: z.string(),
     source: z.enum(["stripe", "manual"]),
+    mode: z.enum(["live", "test"]).optional(),
     currency: z.string().default("usd"),
     mrr: z.number().optional(), // major units (dollars), normalised to a month
     revenue30d: z.number().optional(),

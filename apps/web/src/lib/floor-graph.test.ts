@@ -43,3 +43,9 @@ it("draws only real work: sessions from you, room delegations, waiting and idle 
   expect(n["agent:codex"]).toMatchObject({ state: "waiting", label: "Codex" });
   expect(g.edges.map((e) => `${e.from}>${e.to}:${e.kind}:${e.live}`).sort()).toEqual(["rhea>eli:delegation:true", "you>agent:codex:session:false", "you>rhea:session:true"].sort());
 });
+
+it("keeps old queued room assignments visible without animating a handoff", () => {
+  const g = buildStage({now,members:{a:member("a"),b:member("b")} as never,runs:{child:run("child",{status:"queued",parent:"root",member:"b"})} as never,rooms:{room:{coordinator:"a",assignments:{x:{id:"x",memberId:"b",runId:"child",status:"queued",updatedAt:0,task:"Pending"}}}} as never,approvals:{},activity:[]});
+  expect(g.edges.find(e=>e.kind==="delegation")?.live).toBe(false);
+  expect(g.nodes.find(n=>n.id==="b")?.state).toBe("queued");
+});

@@ -126,6 +126,7 @@ export type VentureStage = "idea" | "validating" | "building" | "launching" | "e
 export interface VentureMetrics {
   at: number;
   source: "stripe" | "manual";
+  mode?: "live" | "test";
   currency: string;
   mrr?: number;
   revenue30d?: number;
@@ -134,6 +135,7 @@ export interface VentureMetrics {
 }
 
 export interface VentureView {
+  automation?: {playbook:string;state:"starting"|"started"|"failed";attemptId:string;error?:string;at:number};
   id: string;
   name: string;
   emoji: string;
@@ -358,10 +360,14 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         metrics: was?.metrics,
         history: was?.history ?? [],
         syncError: was?.syncError,
+        automation: was?.automation,
         createdAt: was?.createdAt ?? event.at,
         updatedAt: event.at,
       };
       break;
+    }
+    case "venture.automation": {
+      const v=state.ventures[event.body.id];if(v){const {id:_id,...automation}=event.body;v.automation={...automation,at:event.at};v.updatedAt=event.at;}break;
     }
     case "venture.stage": {
       const v = state.ventures[event.body.id];

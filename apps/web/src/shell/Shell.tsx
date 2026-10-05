@@ -1,3 +1,4 @@
+import "../obsidian.css";
 import { listenForCommands } from "../lib/radio";
 import { startDj } from "../lib/radio-dj";
 import { Kbd, StatusGlyph, formatTokens } from "@shuacrew/ui";
@@ -72,6 +73,12 @@ export function newSession(navigate: ReturnType<typeof useNavigate>) {
 }
 
 export function Shell() {
+  const workspacePath = useRouterState({ select: s => s.location.pathname });
+  useEffect(() => {
+    const report = () => { try { localStorage.setItem("shuacrew.workspacePage", JSON.stringify({path:workspacePath,at:Date.now()})); } catch {} };
+    report(); window.addEventListener("focus", report);
+    return () => window.removeEventListener("focus", report);
+  }, [workspacePath]);
   const motionPreference = useLive((s) => s.appearance.motion);
   useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
   const { flow } = usePower();
@@ -305,7 +312,8 @@ function SparkButton() {
 
 /** The welcome tour, once (and again after a big release, or from Settings → Spark). */
 function FirstRun() {
-  const [show, setShow] = useState(() => !welcomed());
+  const [show, setShow] = useState(false);
+  useEffect(() => { let alive=true; void api<{completedAt:number|null}>("/api/personal-setup").then(p=>{if(alive)setShow(!p.completedAt);}).catch(()=>{if(alive)setShow(!welcomed());}); return()=>{alive=false;}; }, []);
   useEffect(() => { const on = () => setShow(true); window.addEventListener("shuacrew:welcome", on); return () => window.removeEventListener("shuacrew:welcome", on); }, []);
   return show ? <Welcome onDone={() => setShow(false)} /> : null;
 }

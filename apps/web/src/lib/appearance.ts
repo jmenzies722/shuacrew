@@ -2,7 +2,7 @@
  * How ShuaCrew looks: a palette (surfaces and text) and an accent. "Follow system" pairs a dark
  * palette with a light one. Applied as attributes on <html>; themes.css does the rest.
  */
-export type PaletteId = "pristine" | "frost" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
+export type PaletteId = "obsidian" | "pristine" | "frost" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
 /** Palettes folded into a near-identical one: a saved choice moves to its twin instead of snapping back to the default. */
 const RETIRED: Record<string, PaletteId> = { night: "midnight", cursor: "frost" };
 export type AccentId = "iris" | "amber" | "mono" | "blue" | "green" | "coral";
@@ -17,6 +17,7 @@ export interface Palette {
 }
 
 export const PALETTES: Palette[] = [
+  { id: "obsidian", name: "Obsidian", mode: "dark", blurb: "Black glass, blue-violet light", swatch: ["#07080b", "#0e1017", "#181c27", "#f1f3fa"] },
   { id: "pristine", name: "Pristine", mode: "dark", blurb: "Graphite layers, hairline edges", swatch: ["#0c0c0e", "#131316", "#19191d", "#ededf0"] },
   { id: "frost", name: "Frost Black", mode: "dark", blurb: "Frosted glass on true black", swatch: ["#050506", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "#f2f2f4"] },
   { id: "graphite", name: "Graphite", mode: "dark", blurb: "Soft neutral grey", swatch: ["#161618", "#1c1c1f", "#242428", "#e8e8ea"] },

@@ -77,7 +77,7 @@ export function perform(a: Action | (Act & { color?: string }), opts: { confirme
     const title = "ref" in a ? crewTitle(a.ref) : "";
     const label = describeAction(a as Action) + (title ? ` — “${title}”` : "");
     const yes = sparkHooks.confirmDelete ? await sparkHooks.confirmDelete(label) : false;
-    if (!yes) { logAction({ label, ok: true, message: "You said no" }); return { ok: true, message: a.type.startsWith("crew_") ? "Okay, I didn’t do that." : /^Send/.test(label) ? "Okay, I didn't send it." : /^Call/.test(label) ? "Okay, no call." : "Okay, I kept it. Nothing was deleted." }; }
+    if (!yes) { logAction({ label, ok: false, message: "You said no" }); return { ok: false, message: a.type.startsWith("crew_") ? "Okay, I didn’t do that." : /^Send/.test(label) ? "Okay, I didn't send it." : /^Call/.test(label) ? "Okay, no call." : "Okay, I kept it. Nothing was deleted." }; }
     if (opts.active && !opts.active()) return { ok: false, message: "Canceled before execution" };
     const r = await performNow(a, opts.active); logAction({ label, ok: r.ok, message: r.message }); return r;
   })();
@@ -112,6 +112,20 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
     return Promise.resolve({ ok: false, message: "That crew request is no longer listed. Ask about the session again." });
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
   if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
+  if (a.type === "learn" && a.course !== undefined) return (async () => {
+    const courseId = a.course!;
+    const learning = await api<{courses:Array<{id:string;lessons:Array<{run?:string;title:string}>}>}>("/api/learning");
+    const lesson = learning.courses.find(c=>c.id===courseId)?.lessons[a.lesson ?? -1];
+    if (!lesson || !Number.isInteger(a.lesson) || !/^[A-Za-z0-9_-]+$/.test(courseId)) return {ok:false,message:"That lesson is no longer available. Refresh the learning context."};
+    if (!active()) return {ok:false,message:"Canceled before execution"};
+    const run = lesson.run ?? (await api<{run:string}>(`/api/learning/courses/${encodeURIComponent(courseId)}/lessons/${a.lesson}`,{body:{}})).run;
+    if (!active()) return {ok:false,message:"Lesson prepared; navigation canceled"};
+    localStorage.setItem("shuacrew.activeLesson",JSON.stringify({course:a.course,index:a.lesson,run}));
+    window.dispatchEvent(new Event("shuacrew:lesson"));
+    if (window.shuacrew && location.pathname !== "/buddy") window.shuacrew.navigate("/learn");
+    else post({type:"buddyOpen",path:"/learn"});
+    return {ok:true,message:`Selected ${lesson.title}; requested opening Learning`};
+  })().catch((e:Error)=>({ok:false,message:e.message}));
   if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
     .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {

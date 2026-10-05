@@ -1,3 +1,4 @@
+import { LessonWorkspace } from "../components/LessonWorkspace";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, BookOpenCheck, Brain, Check, Flag, Dumbbell, GraduationCap, Plus, RotateCcw, Sparkles, Target, Trash2, X } from "lucide-react";
@@ -17,8 +18,8 @@ interface Milestone { title: string; why: string; skills: string[]; project: str
 interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
 interface Doc { id: string; kind: "resume" | "interview"; title: string; run: string; created: number }
 interface State { profile: { goal: string; about: string; tracks: Track[] }; cards: Card[]; due: number; days: Array<{ day: string; reviews: number }>; totalReviews: number; drill: { day: string; track: string; run: string; done: boolean } | null; studied: Array<{ run: string; study: string }>; coach: Partial<Record<"analyze" | "quiz" | "explain" | "plan", { run: string }>>; courses: Course[]; roadmaps: Roadmap[]; docs: Doc[] }
-type Tab = "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
-const TABS: Array<[Tab, string]> = [["coach", "Coach"], ["today", "Today"], ["learn", "Learn anything"], ["roadmap", "Roadmap"], ["career", "Career kit"], ["work", "From my work"], ["review", "Review"], ["profile", "Profile"]];
+type Tab = "overview" | "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
+const TABS: Array<[Tab, string]> = [["overview", "My path"], ["learn", "Courses"], ["today", "Practice"], ["review", "Review"]];
 interface Session { id: string; title: string; at: number; studied: boolean }
 
 /** Suggestions only — nothing is added until you pick it. */
@@ -30,7 +31,16 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 export function Learning() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>(() => { try { return (localStorage.getItem("shuacrew.learnTab") as Tab) || "coach"; } catch { return "today"; } });
+  const [tab, setTab] = useState<Tab>("overview");
+  const [selectedLesson, setSelectedLesson] = useState<{course:string;index:number;run:string}|null>(()=>{try{const v=JSON.parse(localStorage.getItem("shuacrew.activeLesson")??"null");return v&&typeof v.course==="string"&&Number.isInteger(v.index)&&typeof v.run==="string"?v:null;}catch{return null;}});
+  useEffect(() => {
+    const sync = () => { try { const v=JSON.parse(localStorage.getItem("shuacrew.activeLesson")??"null"); setSelectedLesson(v && typeof v.course === "string" && Number.isInteger(v.index) && typeof v.run === "string" ? v : null); } catch { setSelectedLesson(null); } };
+    const storage = (e:StorageEvent) => {if(e.key === "shuacrew.activeLesson") sync();};
+    window.addEventListener("storage",storage); window.addEventListener("shuacrew:lesson",sync);
+    return () => {window.removeEventListener("storage",storage);window.removeEventListener("shuacrew:lesson",sync);};
+  }, []);
+  const openLesson = (course: Course,index:number,run:string) => { const value={course:course.id,index,run};setSelectedLesson(value);try{localStorage.setItem("shuacrew.activeLesson",JSON.stringify(value));}catch{} };
+
   const [s, setS] = useState<State | null>(null), [sessions, setSessions] = useState<Session[]>([]), [error, setError] = useState(""), [busy, setBusy] = useState("");
   const load = useCallback(async () => {
     try { const [st, se] = await Promise.all([api<State>("/api/learning"), api<Session[]>("/api/learning/sessions")]); setS(st); setSessions(se); setError(""); } catch (e) { setError((e as Error).message); }
@@ -49,16 +59,18 @@ export function Learning() {
     if (!course || !lesson) return;
     void act(`l:${course.id}:${progress.lessonIndex}`, async () => {
       const result = await api<{ run: string }>(`/api/learning/courses/${course.id}/lessons/${progress.lessonIndex}`, { body: {} });
-      void navigate({ to: "/sessions/$id", params: { id: result.run } });
+      openLesson(course, progress.lessonIndex, result.run);
     });
   };
   const go = (t: Tab) => { setTab(t); try { localStorage.setItem("shuacrew.learnTab", t); } catch { /* ignore */ } };
+  const selectedCourse = s.courses.find(c=>c.id===selectedLesson?.course), selected = selectedCourse?.lessons[selectedLesson?.index??-1];
+  if(selectedLesson && selectedCourse && selected) return <div className="pane-scroll"><LessonWorkspace key={selectedLesson.run} course={selectedCourse.title||selectedCourse.topic} title={selected.title} summary={selected.summary} run={selectedLesson.run} done={selected.done} onClose={()=>{setSelectedLesson(null);localStorage.removeItem("shuacrew.activeLesson");}} onDone={async()=>{await api(`/api/learning/courses/${selectedCourse.id}/lessons/${selectedLesson.index}/done`,{body:{done:!selected.done}});await load();}}/></div>;
   return <div className="pane-scroll lx"><div className="pane-body pane-body-wide">
     <header className="lx-studio-header">
       <div><span className="lx-kicker"><GraduationCap size={13} /> Your learning space</span><h1>Learning Studio</h1><p>Pick up a lesson. Put it into practice. Make it yours.</p></div>
       <button type="button" className="lx-goal" onClick={() => go("profile")}><Target size={13} />{s.profile.goal || "Set your learning goal"}</button>
     </header>
-    <div className="lx-studio-overview">
+    {tab === "overview" && <div className="lx-studio-overview">
       <section className="lx-continue" aria-label="Your next lesson">
         <span className="lx-kicker"><BookOpenCheck size={13} />{lesson ? "Up next" : "A place to begin"}</span>
         {course && lesson ? <>
@@ -80,12 +92,10 @@ export function Learning() {
         <button type="button" onClick={() => go("roadmap")}><span>Roadmap completed</span><strong>{roadDone === null ? "Not started" : `${roadDone}%`}</strong></button>
       </section>
     </div>
-    <nav className="lx-pathways" aria-label="Learning pathways">
-      <button type="button" onClick={() => go("learn")}><BookOpenCheck size={18} /><span><strong>Explore</strong><small>Follow your curiosity with a course</small></span><ArrowRight size={15} /></button>
-      <button type="button" onClick={() => go("today")}><Dumbbell size={18} /><span><strong>Practice</strong><small>Reinforce a skill with drills and review</small></span><ArrowRight size={15} /></button>
-      <button type="button" onClick={() => go("roadmap")}><Flag size={18} /><span><strong>Build</strong><small>Turn your goal into project milestones</small></span><ArrowRight size={15} /></button>
-    </nav>
+    }
     <nav className="lx-tabs" role="tablist" aria-label="Learning">{TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
+    <div className="lx-secondary"><Link to="/teach">Visual workspace ↗</Link>{([['roadmap','Roadmap'],['coach','Tutor'],['work','From my work'],['career','Career kit'],['profile','Goal & skills']] as const).map(([id,label])=><button key={id} className={tab===id?'is-on':''} onClick={()=>go(id)}>{label}</button>)}</div>
+    {tab === "overview" && <section className="lx-panel"><h2>Your path, one step at a time.</h2><p className="lx-muted">Learn a concept, try the exercise, get feedback, then revisit it in Review. Building ideas live separately in Projects.</p><div className="lx-secondary"><button onClick={()=>go("learn")}>Explore courses</button><button onClick={()=>go("today")}>Practice a skill</button><Link to="/ventures">Recommended projects ↗</Link></div></section>}
     {error && <p className="lx-error" role="alert">{error}</p>}
     {tab === "coach" && <Coach runs={s.coach ?? {}} onChange={() => void load()} />}
     {tab === "today" && <div className="lx-top">
@@ -94,7 +104,7 @@ export function Learning() {
     </div>}
     {tab === "review" && <div className="lx-top lx-top-single"><ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} /></div>}
     {tab === "review" && <CardLibrary cards={s.cards} tracks={tracks} onAdd={(c) => act("add", () => api("/api/learning/cards", { body: c }))} onRemove={(id) => act(`d:${id}`, () => api(`/api/learning/cards/${id}`, { method: "DELETE" }))} />}
-    {tab === "learn" && <LearnAnything courses={s.courses} busy={busy} act={act} />}
+    {tab === "learn" && <LearnAnything courses={s.courses} busy={busy} act={act} onOpen={openLesson} />}
     {tab === "roadmap" && <RoadmapTab roadmaps={s.roadmaps} goal={s.profile.goal} busy={busy} act={act} onSetGoal={() => go("profile")} />}
     {tab === "career" && <CareerKit docs={s.docs} goal={s.profile.goal} busy={busy} act={act} />}
     {tab === "work" && <section className="lx-panel">
@@ -129,11 +139,11 @@ export function Learning() {
 type Act = (key: string, fn: () => Promise<unknown>) => Promise<void>;
 const TOPICS = ["Kubernetes for app developers", "RAG & retrieval evals", "Building MCP servers", "Terraform & infrastructure as code", "Distributed systems fundamentals", "Observability with OpenTelemetry", "Rust for TypeScript devs", "CI/CD with GitHub Actions"];
 
-function LearnAnything({ courses, busy, act }: { courses: Course[]; busy: string; act: Act }) {
+function LearnAnything({ courses, busy, act, onOpen }: { courses: Course[]; busy: string; act: Act; onOpen: (course:Course,index:number,run:string)=>void }) {
   const [topic, setTopic] = useState(""), [level, setLevel] = useState(2);
   const navigate = useNavigate();
   const start = (t: string) => act("course", () => api("/api/learning/courses", { body: { topic: t, level } }).then(() => setTopic("")));
-  const open = (c: Course, i: number) => act(`l:${c.id}:${i}`, async () => { const r = await api<{ run: string }>(`/api/learning/courses/${c.id}/lessons/${i}`, { body: {} }); void navigate({ to: "/sessions/$id", params: { id: r.run } }); });
+  const open = (c: Course, i: number) => act(`l:${c.id}:${i}`, async () => { const r = await api<{ run: string }>(`/api/learning/courses/${c.id}/lessons/${i}`, { body: {} }); onOpen(c,i,r.run); });
   return <>
     <section className="lx-panel lx-ask">
       <h2><BookOpenCheck size={14} /> What do you want to learn?</h2>

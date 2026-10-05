@@ -1,0 +1,4 @@
+import type {VentureView} from '@shuacrew/core/projections';
+export function metricProvenance(v:VentureView):'live-provider'|'test-provider'|'manual'|'unknown'{const m=v.metrics;return m?.source==='manual'?'manual':m?.source==='stripe'&&m.mode==='live'?'live-provider':m?.source==='stripe'&&m.mode==='test'?'test-provider':'unknown';}
+export function metricLabel(v:VentureView){return ({'live-provider':'Stripe · live data','test-provider':'Stripe · test data',manual:'Manually reported',unknown:'Revenue source unverified'})[metricProvenance(v)];}
+export function totalsByCurrency(ventures:VentureView[]){const totals=new Map<string,number>();for(const v of ventures)if(metricProvenance(v)==='live-provider'&&!v.syncError&&v.metrics?.mrr!==undefined){const c=v.metrics.currency.toUpperCase();totals.set(c,(totals.get(c)??0)+v.metrics.mrr);}return [...totals].map(([currency,mrr])=>({currency,mrr}));}

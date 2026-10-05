@@ -41,3 +41,13 @@ it("renders transcript speakers once and keeps corrections concise", async () =>
   expect(markup).toContain("updated result"); expect(markup).not.toContain("Corrected what Shua said");
   expect(markup).not.toContain("Sorry, no action ran.");
 });
+
+it("renders long answers and copy controls without truncating text", async () => {
+  const { ConversationTranscript } = await import("./LiveMode");
+  const answer = "A full paragraph.\n".repeat(100) + "Final sentence preserved.";
+  const markup = renderToStaticMarkup(<ConversationTranscript lines={[{role:"user",text:"Explain everything"},{role:"assistant",text:answer}]} />);
+  expect(markup).toContain("Explain everything");
+  expect(markup).toContain("Final sentence preserved.");
+  expect(markup).toContain("Copy conversation");
+  expect(markup).toContain('tabindex="0"');
+});

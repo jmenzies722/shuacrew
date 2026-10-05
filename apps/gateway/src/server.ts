@@ -1,3 +1,5 @@
+import { setupCheckRoutes } from "./setup-check-routes.js";
+import { personalSetupRoutes } from "./personal-setup-routes.js";
 import { workflowTeachingRoutes } from "./workflow-teaching-routes.js";
 import { z } from "zod";
 import { sessionSummaryRoutes } from "./session-summary-routes.js";
@@ -178,6 +180,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     reply.header("Referrer-Policy", "no-referrer");
     return payload;
   });
+  personalSetupRoutes(app, path.dirname(options.store.path), goal => { if(!options.learning)throw Error("Learning profile service is unavailable; setup remains incomplete."); options.learning.setProfile({goal}); });
+  setupCheckRoutes(app, { home:path.dirname(options.store.path), runtimes:options.runtimes, supervisor:options.supervisor, store:options.store });
   speechRoutes(app, options.speech);
   roomRoutes(app, options.rooms);
   devRoutes(app, options.store, options.supervisor);
@@ -834,6 +838,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     app.post<{ Params: { id: string }; Body: { mrr?: number; revenue30d?: number; customers?: number; currency?: string } }>("/api/ventures/:id/metrics", async (request, reply) =>
       attempt(reply, () => ventures.record(request.params.id, request.body ?? {})),
     );
+    app.post<{Params:{id:string}}>("/api/ventures/:id/retry-automation", async(q,r)=>attempt(r,()=>ventures.retryAutomation(q.params.id)));
     // The key is checked, written to a 0600 file and never echoed back.
     app.post<{ Params: { id: string }; Body: { key?: string } }>("/api/ventures/:id/stripe", async (request, reply) => attempt(reply, () => ventures.connect(request.params.id, request.body?.key ?? "")));
     app.delete<{ Params: { id: string } }>("/api/ventures/:id/stripe", async (request, reply) => attempt(reply, () => ventures.disconnect(request.params.id)));

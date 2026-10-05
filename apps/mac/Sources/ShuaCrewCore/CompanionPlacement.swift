@@ -32,8 +32,8 @@ public enum CompanionPlacement {
 /// so nothing inside it is ever clipped mid-animation.
 public enum NotchIsland {
     /// The widest the island grows past the housing, each side; the deepest it drops below it.
-    public static let maxFlare: CGFloat = 240
-    public static let maxDrop: CGFloat = 300
+    public static let maxFlare: CGFloat = 260
+    public static let maxDrop: CGFloat = 500
 
     /// The camera housing, from the menu-bar strips either side of it and the safe-area inset (the cutout's real
     /// height, which can differ from the menu bar's by a point). Nil on a display without a notch.

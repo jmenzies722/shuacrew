@@ -1,9 +1,10 @@
 /**
- * Type what you want, get the command: plain English → one shell command, written by Claude
- * (Haiku) through your own logged-in `claude` CLI — your subscription, no API key, and no tools:
+ * Type what you want, get the command: plain English → one shell command, written by Codex
+ * through your own logged-in Codex subscription — your subscription, no API key, and no tools:
  * it can only answer, never run anything. You see the command and choose to run it.
  */
-import { execFile } from "node:child_process";
+import { CodexRuntime, codexTeachingCompletion } from "@shuacrew/runtimes";
+import { agentEnv } from "@shuacrew/core/redact";
 import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,8 +13,6 @@ const SYSTEM = `You turn a request into ONE shell command for zsh on macOS (BSD 
 Reply with only the command — no explanation, no backticks, no leading $.
 Prefer safe, read-only commands when the request allows. Never use sudo or rm -rf unless the request explicitly asks.
 If it truly needs several steps, join them with && on one line.`;
-
-const bin = () => [path.join(os.homedir(), ".local/bin/claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude", ...(process.env.PATH ?? "").split(":").map((d) => path.join(d, "claude"))].find((p) => existsSync(p));
 
 /**
  * Why the CLI failed, in words worth showing. `claude -p` reports things like a usage limit on
@@ -29,20 +28,19 @@ export function failure(stdout: string, stderr: string, error: Error & { killed?
 
 export type Ask =(args: string[], cwd: string) => Promise<string>;
 
-/** One tool-less `claude -p` call through your logged-in CLI (your subscription, never an API key). */
-export const claude: Ask = (args, cwd) =>
-  new Promise((resolve, reject) => {
-    const file = bin();
-    if (!file) return reject(new Error("the claude CLI isn't installed"));
-    const env = { ...process.env };
-    delete env.ANTHROPIC_API_KEY; // your subscription, never a stray key
-    delete env.ANTHROPIC_AUTH_TOKEN;
-    // No personal settings: your own Claude Code output style or CLAUDE.md would leak into ShuaCrew's answers.
-    const child = execFile(file, [...args, "--setting-sources", ""], { cwd, env, timeout: 60_000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) =>
-      error ? reject(new Error(failure(stdout.toString(), stderr.toString(), error))) : resolve(stdout.toString()),
-    );
-    child.stdin?.end();
+/** Tool-free structured answer using the same subscription transport as visual teaching. */
+export const codex: Ask = async (args, cwd) => {
+  const runtime = new CodexRuntime({ authMode: "subscription" });
+  const model = runtime.models.find(m => m.tier === "fast")?.id ?? runtime.models[0]?.id;
+  if (!model) throw new Error("No Codex model is available");
+  const value = await codexTeachingCompletion({
+    prompt: args[args.indexOf("-p") + 1] ?? "", system: args[args.indexOf("--system-prompt") + 1] ?? "Reply accurately.",
+    schema: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false },
+    model, cwd, env: agentEnv(process.env, "subscription"), signal: AbortSignal.timeout(60000), images: [],
   });
+  if (!value || typeof (value as { answer?: unknown }).answer !== "string") throw new Error("Codex returned no answer");
+  return (value as { answer: string }).answer;
+};
 
 /** The command, cleaned of anything that isn't the command. */
 export function commandFrom(reply: string): string {
@@ -58,7 +56,7 @@ export function commandFrom(reply: string): string {
   return out.join("\n").replace(/^`|`$/g, "");
 }
 
-export async function suggest(input: { prompt: string; cwd?: string; branch?: string; last?: { command: string; exit?: number } }, ask: Ask = claude): Promise<string> {
+export async function suggest(input: { prompt: string; cwd?: string; branch?: string; last?: { command: string; exit?: number } }, ask: Ask = codex): Promise<string> {
   const prompt = input.prompt.trim().replace(/^#\s*/, "");
   if (!prompt) throw new Error("say what you want to do");
   const cwd = input.cwd && existsSync(input.cwd) ? input.cwd : os.homedir();
@@ -77,7 +75,7 @@ export async function suggest(input: { prompt: string; cwd?: string; branch?: st
   ]
     .filter(Boolean)
     .join("\n");
-  const reply = await ask(["-p", context, "--model", "claude-haiku-4-5", "--tools", "", "--system-prompt", SYSTEM], cwd);
+  const reply = await ask(["-p", context, "--model", "codex-auto", "--tools", "", "--system-prompt", SYSTEM], cwd);
   const command = commandFrom(reply);
   if (!command) throw new Error("no command came back — try saying it another way");
   return command;

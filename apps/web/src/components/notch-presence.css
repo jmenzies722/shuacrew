@@ -1,0 +1,35 @@
+.notch-presence{display:flex;align-items:center;gap:11px;min-height:52px;height:52px;flex-shrink:0;padding:2px 1px 7px;box-sizing:border-box}
+.notch-presence-orb{position:relative;display:grid;place-items:center;flex:none;width:38px;height:38px;isolation:isolate;border-radius:50%;background:radial-gradient(circle at 32% 23%,#e3efff99 0,#9fb8eb40 22%,#565a9433 45%,#11121c 72%);box-shadow:inset 0 1px 2px #ecf3ff55,inset 0 -3px 7px #0009,0 4px 12px #0008;overflow:hidden}
+.notch-presence-orb i{position:absolute;inset:5px;border:1px solid #bed1ff60;border-radius:45% 55% 62% 38%;transform:rotate(-30deg);box-shadow:0 0 7px #b4c4ff18}
+.notch-presence-orb i:nth-child(2){inset:9px 3px;transform:rotate(40deg);border-color:#e4ddff50}
+.notch-presence-orb b{width:8px;height:8px;border-radius:50%;background:#e5edff;box-shadow:0 0 10px #c8d7ff77;opacity:.65}
+.notch-presence:is(.is-listening,.is-speaking,.is-thinking,.is-watching) .notch-presence-orb i{animation:presence-orbit 4s linear infinite}
+.notch-presence:is(.is-listening,.is-speaking,.is-thinking,.is-watching) .notch-presence-orb i:nth-child(2){animation-direction:reverse;animation-duration:5s}
+.notch-presence:is(.is-listening,.is-speaking) .notch-presence-orb b{animation:presence-light 1.5s ease-in-out infinite}
+.notch-presence-copy{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}.notch-presence-copy strong{font:550 12px/1.3 system-ui;color:#eef1f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.notch-presence-copy small{font:10px/1.3 system-ui;color:#a3abc0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notch-presence>button{display:grid;place-items:center;width:30px;height:30px;flex:none;border:1px solid #ffffff14;border-radius:10px;background:linear-gradient(#ffffff0c,#ffffff03);color:#bbc8e0;cursor:pointer;box-shadow:inset 0 1px #ffffff08;transition:background .16s,transform .2s}
+.notch-presence>button:hover{background:#cadbff18;color:#fff;transform:translateY(-1px)}.notch-presence>button:active{transform:scale(.94)}.notch-presence>button:focus-visible{outline:2px solid #c3d7ff;outline-offset:3px}
+@keyframes presence-orbit{to{transform:rotate(330deg)}}@keyframes presence-light{50%{opacity:1;box-shadow:0 0 15px #c8d7ffaa}}
+@media(prefers-reduced-motion:reduce){.notch-presence *{animation:none!important;transition:none!important}.notch-presence>button:hover{transform:none}}
+:root[data-motion="reduced"] .notch-presence *{animation:none!important;transition:none!important}:root[data-motion="reduced"] .notch-presence>button:hover{transform:none}
+
+.notch-presence.is-attention .notch-presence-orb{background:radial-gradient(circle at 32% 23%,#f4dbb377,#b68b3d30 40%,#17130e 75%)}
+.notch-presence.is-attention .notch-presence-orb b{background:#e5c79a;box-shadow:0 0 10px #e5c79a44}
+/* Light follows activity; the idle surface stays quiet. */
+.notch-presence-orb{background:radial-gradient(circle at 28% 20%,#b4ceff99,transparent 43%),radial-gradient(circle at 76% 76%,#9456e955,transparent 60%),#101524;box-shadow:inset 0 1px 2px #e0eaff55,inset 0 -4px 9px #040715,0 0 18px #547bea19}
+.notch-presence:is(.is-listening,.is-speaking,.is-thinking,.is-watching) .notch-presence-orb{box-shadow:inset 0 1px 2px #e0eaff66,inset 0 -4px 9px #040715,0 0 22px #7970ed40}
+
+/* A persistent instrument, with measured audio and a separate work-light pattern. */
+.notch-equalizer{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:54px;height:36px;flex:none;color:var(--amber,#b7a5ff);filter:drop-shadow(0 0 7px color-mix(in srgb,var(--amber,#b7a5ff) 25%,transparent))}
+.notch-equalizer>i{display:block;width:5px;height:30px;border-radius:6px;background:linear-gradient(0deg,var(--amber,#b7a5ff),color-mix(in srgb,var(--amber,#b7a5ff) 45%,white));transform:scaleY(.14);transform-origin:center}
+.notch-equalizer.is-compact{width:22px;height:22px;gap:2px;filter:none}
+.notch-equalizer.is-compact>i{width:3px;height:20px}
+.notch-equalizer.is-idle>i{transform:scaleY(.24);opacity:.65}.notch-equalizer.is-idle>i:nth-child(2n){transform:scaleY(.42)}.notch-equalizer.is-idle>i:nth-child(3){transform:scaleY(.6)}
+.notch-equalizer.is-working>i{transform:scaleY(.4);animation:notch-work-light 1.2s ease-in-out infinite}
+.notch-equalizer.is-watching>i{transform:scaleY(.35);animation:notch-work-light 2.4s ease-in-out infinite}
+.notch-equalizer.is-attention>i{background:#e5c79a;transform:scaleY(.5)}
+@keyframes notch-work-light{0%,100%{opacity:.25}50%{opacity:1}}
+.shua-island-ear.is-face:hover .notch-equalizer{filter:drop-shadow(0 0 5px var(--amber,#b7a5ff))}
+.notch-presence>button:focus-visible{outline-color:var(--amber,#b7a5ff)}
+@media(prefers-reduced-motion:reduce){.notch-equalizer>i{animation:none!important}}
+:root[data-motion="reduced"] .notch-equalizer>i{animation:none!important}

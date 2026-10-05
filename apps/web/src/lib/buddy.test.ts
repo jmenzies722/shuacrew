@@ -400,3 +400,9 @@ it("distinguishes native Mac actions from the model shell instead of declaring s
 it("continues the TextEdit workflow after opening the app", () => {
   expect(needsFollowThrough("Open a blank TextEdit document, click the document and type testing Shua cursor control", "Opening TextEdit.")).toBe(true);
 });
+it("does not describe an accepted desktop action as verified task completion", () => {
+  const followup=actFollowUp("Clicked Golden Gate Sunset",true,{width:100,height:100},1,12);
+  expect(followup).not.toContain("Step 1 done");
+  expect(followup).toContain("dispatch is not proof");
+  expect(followup).toContain("visible change");
+});

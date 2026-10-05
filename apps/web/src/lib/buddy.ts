@@ -47,7 +47,7 @@ export type Action =
   | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth" | "night_shift" | "browser_js" | "bluetooth_device" | "empty_trash"; on?: boolean; level?: number; device?: string }
   | { type: "shortcut"; name: string }
   | { type: "settings"; changes: SparkChanges }
-  | { type: "learn"; topic?: string; drill?: boolean }
+  | { type: "learn"; topic?: string; drill?: boolean; course?: string; lesson?: number }
   | { type: "venture"; name: string; pitch?: string; validate?: boolean }
   | { type: "playbook"; playbook: string; idea?: string; venture?: string }
   | { type: "remember"; text: string }
@@ -430,7 +430,7 @@ function toAction(v: unknown): Action | null {
     }
     case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
     case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
-    case "learn": { const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
+    case "learn": { if (o.course !== undefined) { const course = str(o.course, 80); return course && /^[A-Za-z0-9_-]+$/.test(course) && Number.isInteger(o.lesson) && Number(o.lesson) >= 0 && Number(o.lesson) < 20 ? {type:"learn",course,lesson:Number(o.lesson)} : null; } const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
@@ -473,7 +473,7 @@ export function describeAction(a: Action): string {
     case "system": return { dark_mode: "Dark mode", sleep_display: "Sleep display", volume: `Volume to ${a.level}%`, volume_up: "Volume up", volume_down: "Volume down", mute: a.on === false ? "Unmute" : "Mute", lock: "Lock your Mac", screenshot: "Take a screenshot", wifi: `Wi-Fi ${a.on === false ? "off" : "on"}`, bluetooth: `Bluetooth ${a.on === false ? "off" : "on"}`, night_shift: a.on === undefined ? "Toggle Night Shift" : `Night Shift ${a.on ? "on" : "off"}`, browser_js: "Let Shua work inside web pages (Allow JavaScript from Apple Events)", bluetooth_device: `${a.on === false ? "Disconnect" : "Connect"} ${a.device ?? "the device"}`, empty_trash: "Empty the Trash" }[a.what];
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
-    case "learn": return a.drill ? "Quiz drill" : `Course: ${a.topic}`;
+    case "learn": return a.course ? `Open lesson ${(a.lesson ?? 0) + 1}` : a.drill ? "Quiz drill" : `Course: ${a.topic}`;
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
@@ -537,7 +537,7 @@ const STEP_STYLE = " Reply in ONE short sentence (under 15 words) plus the block
 
 /** What goes back after Spark does a step: what happened, a fresh look, and the ask for the next step. */
 export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }, step: number, max: number) {
-  return `[act] Step ${step} ${ok ? "done" : "FAILED"}: ${did}. A fresh screenshot is attached (${screen.width}×${screen.height}). ${Number.isFinite(max) && step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next step as one act block containing exactly one action; wait for its result before continuing, zoom first if the target is small, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000, screen) : ""}${screen.context ? `\n${elementsText(screen.context, 120, screen)}` : ""}` : ""}`;
+  return `[act] Step ${step} ${ok ? "dispatched; outcome unverified" : "FAILED"}: ${did}. Action dispatch is not proof that the user’s goal succeeded. Use the fresh screenshot to identify a visible change that proves the requested result. The target label remaining visible, the cursor arriving, or an accepted press alone is not verification. If the result is unchanged or unclear, inspect the actual selected value, wait for a visible loading state, or choose a different supported action; do not declare completion or repeat the same click blindly. A fresh screenshot is attached (${screen.width}×${screen.height}). ${Number.isFinite(max) && step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next step as one act block containing exactly one action; wait for its result before continuing, zoom first if the target is small, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000, screen) : ""}${screen.context ? `\n${elementsText(screen.context, 120, screen)}` : ""}` : ""}`;
 }
 
 /** The whole reply for the open notch once Spark has finished: every sentence (it used to stop at two), no blocks or markdown marks. */
@@ -633,7 +633,8 @@ const VISUAL_LANGUAGE = [
   '- box, circle {x,y,r}, arrow {from:[x,y], to:[x,y] | target}, text {x,y,text}: the basics.',
   'Add "stay": seconds (up to 300) to any mark to keep the drawing up while they work through it (default ~16 s).',
   'Examples — reviewing a form: check on good fields, cross + card on the bad one · teaching an app: step 1..4 across the real controls · explaining a chart: spotlight the spike + card why · a spreadsheet error: highlight the cell + path from the input it came from + card with the fix.',
-  "Be proactive with it: if you notice something they'd want to know (an error, a wrong total, a missed field, a better button), mark it — don't wait to be asked.",
+  "SECOND CURSOR: your on-screen pointer is a separate assistant pointer, not the user's mouse. Use a highlight for a control, underline for a text passage, an arrow for direction, and numbered guide steps for navigation. Prefer exact target IDs from current screen evidence; do not default to circles. Use at most three relevant marks at once and keep labels short. A drawing explains; it does not prove a click happened.",
+  "PROACTIVE HELP: while screen watching is enabled, you may mark a relevant error, missed field, or suggested next step in the user's active task. Do not navigate, click, type, or open unrelated apps merely because you noticed them. Let the user keep working; clear obsolete marks and reacquire targets after a screen change. For 'take me there' use the guide/action tools and verify each step, not just a circle or spoken promise.",
 ].join("\n");
 
 export function buddyPrompt(question: string, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext } | null, persona: Persona = { name: "Spark", tone: "cheerful", length: "brief" }, crewNow = "", appNow = "") {

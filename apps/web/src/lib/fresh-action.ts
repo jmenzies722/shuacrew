@@ -4,10 +4,13 @@ import { reacquire, type ScreenFacts } from "./snap";
 export function freshAction(action: Act, before: (ScreenFacts & { display?: number }) | null, current: ScreenFacts & { display?: number }): Act {
   if (("screen" in action && action.screen !== undefined && action.screen !== 1) || (before?.display !== undefined && before.display !== current.display)) throw new Error("The target display changed or is a secondary display without verified app identity. Move the app to the primary observed display and look again.");
   if (!before?.context?.app || !current.context?.app || before.context.app !== current.context.app || before.context.window !== current.context.window) throw new Error("The app or window changed. Look again and confirm the next step.");
-  if (action.type !== "click") return action;
-  const target = reacquire({ ...action, w: .03, h: .03 }, before, current);
+  if (action.type !== "click" && action.type !== "press") return action;
+  // Named accessibility presses can report success without activating a control.
+  // Resolve the unique current target, then dispatch an actual click at that control.
+  const aim = action.type === "press" ? {label:action.label,x:0,y:0,w:.03,h:.03} : {...action,w:.03,h:.03};
+  const target = reacquire(aim, before, current);
   if (!target) throw new Error("The click target is missing or ambiguous. No click was sent; look again.");
-  return { ...action, x: target.x, y: target.y };
+  return { ...action, type:"click", x: target.x, y: target.y };
 }
 export async function prepareFreshAction(action: Act, before: (ScreenFacts & { display?: number }) | null, capture: () => Promise<ScreenFacts & { display?: number }>, active: () => boolean): Promise<Act> {
   if (!active()) throw new Error("Stopped before observing.");

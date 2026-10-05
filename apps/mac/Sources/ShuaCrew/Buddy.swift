@@ -127,7 +127,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         panel.contentView = root
         notchSurface.wantsLayer = true
         notchSurface.layer?.backgroundColor = NSColor.black.cgColor
-        notchSurface.layer?.cornerRadius = 24
+        notchSurface.layer?.cornerRadius = 28
         notchSurface.layer?.cornerCurve = .continuous
         notchSurface.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         notchSurface.isHidden = true
@@ -305,8 +305,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         nookTimer = timer
     }
 
-    // MARK: fn key (Globe): tap for the quick card, hold to talk
-    /// fn on its own: a tap shows or hides the small card beside your pointer; holding it talks until you let go.
+    // MARK: fn key (Globe): hold to select an exact screen area
+    /// Holding fn opens the box selector. A quick tap toggles voice.
     /// fn used as a modifier (fn+F-keys, fn+arrows) is left alone (see FnGesture). Watching keys outside
     /// ShuaCrew needs Accessibility access, which Spark already asks for to click for you.
     private var fnGesture = FnGesture()
@@ -367,65 +367,25 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     }
     private func noteState(_ state: CursorBuddy.State) {
         cursorBuddy.set(state)
-        // Hands-free voice: while you talk, a loop you draw round something counts as "this" (no fn needed).
-        // Only a loop — the mouse wanders while people talk, and a circle is rarely an accident.
-        if state == .listening, !cursorBuddy.isInking { cursorBuddy.beginInk(visible: false); voiceInking = true }
-        else if state != .listening, voiceInking {
-            voiceInking = false
-            let g = PointerGesture.classify(cursorBuddy.endInk(keep: true))
-            if case .circle(let r) = g { lastGesture = (g, Date()); cursorBuddy.flash(r); snap(g); send("shuacrew:gesture", ["kind": g.kind]) }
-        }
+        // Precise screen selection is explicit through Fn or the crop button.
+        // Ordinary pointer movement during speech is not treated as a selection.
     }
+
     private func fnSignal(_ signal: FnGesture.Signal) {
-        // Native acknowledgment precedes sound warmup, WebKit and network work.
-        // The small light means key received, not microphone access granted.
-        if signal != .none {
-            let preparing = Self.enabled && FnFeedback.phase(for: signal) == .preparing
-            if preparing, let root = panel.contentView {
-                if fnFeedback.superview == nil { root.addSubview(fnFeedback, positioned: .above, relativeTo: web) }
-                fnFeedback.wantsLayer = true
-                fnFeedback.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.8).cgColor
-                fnFeedback.layer?.cornerRadius = 2
-                if docked, let housing = notchHousing {
-                    fnFeedback.frame = NSRect(x: housing.minX - panel.frame.minX - 8, y: housing.minY - panel.frame.minY - 4, width: housing.width + 16, height: 3)
-                } else { fnFeedback.frame = NSRect(x: root.bounds.midX - 22, y: 4, width: 44, height: 3) }
-            }
-            fnFeedback.isHidden = !preparing
-            if preparing { fnFeedback.displayIfNeeded() }
-        }
-        // Show, don't just tell: while fn is down, what you draw with the cursor is ink, and a gesture Spark reads.
-        switch signal {
-        case .press: voiceInking = false; lastPicks = []; cursorBuddy.clearPicks(); cursorBuddy.beginInk()
-        case .cancel, .tap: _ = cursorBuddy.endInk(keep: false)
-        case .holdEnd:
-            let g = PointerGesture.classify(cursorBuddy.endInk())
-            if g != .none { lastGesture = (g, Date()); snap(g); send("shuacrew:gesture", ["kind": g.kind]) }
-        default: break
-        }
-        let kind: String
-        switch signal {
-        case .none: return
-        // fn might still be a modifier (fn+arrow): warm or cool the mic quietly, without bringing Spark forward.
-        case .press, .cancel:
-            guard Self.enabled else { return }
-            if signal == .press {
-                // Wake the sound engine now (it's running when the hold starts), and tell the page where audio goes:
-                // with Bluetooth headphones it listens through the Mac's mic, so they never drop to call quality.
-                SparkSounds.shared.warm()
-                let route: [String: Any] = ["bluetooth": AudioRoute.bluetoothOut(), "mic": AudioRoute.builtInMic() ?? ""]
-                if let json = try? JSONSerialization.data(withJSONObject: route), let arg = String(data: json, encoding: .utf8) {
-                    web.evaluateJavaScript("window.buddy && window.buddy.audioRoute && window.buddy.audioRoute(\(arg))")
-                }
-            }
-            web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(signal == .press ? "down" : "cancel")')")
-            return
-        case .tap: kind = "tap"; case .holdStart: kind = "hold"; case .holdEnd: kind = "release"
-        }
-        // The sound comes first, straight from here — before Spark is brought forward or the page hears about it.
-        if signal == .holdStart { SparkSounds.shared.play(.listen) } else if signal == .holdEnd { SparkSounds.shared.play(.sent) }
+        guard signal != .none else { return }
+        Self.appendSelfTest("FN \(signal) at=\(ProcessInfo.processInfo.systemUptime)\n")
+        // Resolve tap versus hold before any side effect. A hold never toggles voice.
+        guard signal == .tap || signal == .holdStart else { return }
         if !Self.enabled { setEnabled(true) }
-        start(); raise()
-        web.evaluateJavaScript("window.buddy && window.buddy.fn && window.buddy.fn('\(kind)')")
+        start()
+        if signal == .tap {
+            web.evaluateJavaScript("window.buddy && window.buddy.toggleVoice && window.buddy.toggleVoice()")
+            return
+        }
+        voiceInking = false
+        _ = cursorBuddy.endInk(keep: false)
+        lastGesture = nil; lastPicks = []; cursorBuddy.clearPicks()
+        web.evaluateJavaScript("window.buddy && window.buddy.selectArea && window.buddy.selectArea()")
     }
     /// What the Globe key does in System Settings: anything but "Do Nothing" also opens emoji or dictation.
     private func globeKeyUse() -> Int { UserDefaults(suiteName: "com.apple.HIToolbox")?.integer(forKey: "AppleFnUsageType") ?? 0 }
@@ -585,7 +545,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             send("shuacrew:liveSnapshotRequest", [:])
         case "liveCommand":
             guard let action = body["action"] as? String,
-                  ["start", "end", "text", "cancel", "approve", "deny"].contains(action),
+                  ["start", "end", "text", "narrate", "cancel", "approve", "deny"].contains(action),
                   let command = body["commandId"] as? String, command.count <= 100,
                   (body["text"] as? String ?? "").count <= 4000 else { return }
             if let sender { liveClients.add(sender) }
@@ -861,7 +821,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 send("shuacrew:pointer", ["id": body["id"] as? String ?? "", "ok": false, "message": "The target coordinates or display are no longer available."], to: sender)
                 return
             }
-            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint(), onPresented: { [weak self, weak sender] in
+            pointer.show(on: screen, x: x, y: y, label: String((body["label"] as? String ?? "").prefix(60)), color: body["color"] as? String, from: launchPoint(), width: body["w"] as? Double, height: body["h"] as? Double, presentation: body["presentation"] as? String, onPresented: { [weak self, weak sender] in
                 self?.send("shuacrew:pointer", ["id": body["id"] as? String ?? "", "ok": true], to: sender)
             })
         case "buddyGuide":
@@ -945,8 +905,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             send("shuacrew:fnKey", ["on": fnEnabled, "globe": globeKeyUse(), "trusted": SparkHands.trusted], to: sender)
         case "buddyIsland":
             // The page measured its open island: keep the hover area matched to what you actually see.
-            if let f = body["flare"] as? Double, f.isFinite { islandFlare = min(260, max(0, CGFloat(f))) }
-            if let d = body["drop"] as? Double, d.isFinite { islandDrop = min(500, max(0, CGFloat(d))) }
+            if let f = body["flare"] as? Double, f.isFinite { islandFlare = min(NotchIsland.maxFlare, max(0, CGFloat(f))) }
+            if let d = body["drop"] as? Double, d.isFinite { islandDrop = min(NotchIsland.maxDrop, max(0, CGFloat(d))) }
             updateNotchSurface()
             web.evaluateJavaScript("document.documentElement.dataset.nativeNotchSurface = 'true'")
         case "buddyNowPlaying":
@@ -1005,7 +965,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         case "buddySound":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
             if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
-            if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) { SparkSounds.shared.play(kind) }
+            if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) {
+                Self.appendSelfTest("CUE web \(kind.rawValue) allowed=\(SparkSounds.shared.fnSoundGate.allowsWeb(kind))\n")
+                if SparkSounds.shared.fnSoundGate.allowsWeb(kind) { SparkSounds.shared.play(kind) }
+            }
         case "buddySoundStyle":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
             if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
@@ -1380,7 +1343,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             Task { @MainActor [weak self] in
                 guard let self, let screen = self.panel.screen ?? NSScreen.main else { return }
                 let shot = { (state: String) async in
-                    let ok = await Self.capture(screen: screen, region: CGRect(x: 0.28, y: 0, width: 0.44, height: 0.42), to: NSHomeDirectory() + "/.shuacrew/selftest-notch-\(state).png")
+                    let ok = await Self.capture(screen: screen, region: CGRect(x: 0.28, y: 0, width: 0.44, height: state == "chat" ? 0.85 : 0.42), to: NSHomeDirectory() + "/.shuacrew/selftest-notch-\(state).png")
                     Self.appendSelfTest("SPARK SELFTEST notch state=\(state) saved=\(ok)\n")
                 }
                 let js = { (code: String) in self.web.evaluateJavaScript(code) }
@@ -1389,7 +1352,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 // Typed the way React sees it (the native value setter, then an input event), never sent.
                 js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; i.focus(); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'What is on my calendar today'); i.dispatchEvent(new Event('input', { bubbles: true })); })()")
                 try? await Task.sleep(for: .seconds(0.8)); await shot("typed")
+                let nookCorners = try? await self.web.evaluateJavaScript("(() => { const e = document.querySelector('.shua-island-shape'); const s = getComputedStyle(e); return { topLeft: s.borderTopLeftRadius, topRight: s.borderTopRightRadius, bottomLeft: s.borderBottomLeftRadius, bottomRight: s.borderBottomRightRadius, clip: s.clipPath }; })()")
                 js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); })(); window.buddy && window.buddy.nook(false)")
+                js("window.buddy && window.buddy.focus()"); try? await Task.sleep(for: .seconds(1)); await shot("chat")
+                let chatCorners = try? await self.web.evaluateJavaScript("(() => { const e = document.querySelector('.spk-pop.is-notched'); if (!e) return {}; const s = getComputedStyle(e); return { topLeft: s.borderTopLeftRadius, topRight: s.borderTopRightRadius, bottomLeft: s.borderBottomLeftRadius, bottomRight: s.borderBottomRightRadius, clip: s.clipPath }; })()")
+                let report: [String: Any] = ["nook": nookCorners ?? NSNull(), "chat": chatCorners ?? NSNull(), "nativeBottomRadius": self.notchSurface.layer?.cornerRadius ?? 0]
+                if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: URL(fileURLWithPath: "/private/tmp/shua-notch-corners.json")) }
+                js("window.buddy && window.buddy.toggle()")
             }
             return
         }
@@ -1909,22 +1878,46 @@ final class PointerOverlay {
 
     /// `from` is where Spark is, in global coordinates.
     @discardableResult
-    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil, onPresented: (() -> Void)? = nil) -> CFTimeInterval {
+    func show(on screen: NSScreen, x: Double, y: Double, label: String, color hex: String? = nil, from: NSPoint? = nil, width: Double? = nil, height: Double? = nil, presentation: String? = nil, onPresented: (() -> Void)? = nil) -> CFTimeInterval {
         hide()
         let frame = screen.frame, color = Self.color(hex)
         let (panel, root) = makePanel(frame)
         // Screenshot fractions are measured from the top-left; AppKit's origin is bottom-left.
         let point = CGPoint(x: x * frame.width, y: frame.height - y * frame.height)
         let delay = comet(in: root, from: from.map { CGPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }, to: point, color: color)
-        let layers = Self.focusMarks(at: point, color: color, after: delay)
+        var anchor = CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44)
+        var layers: [CALayer]
+        if let width, let height, width.isFinite, height.isFinite, width > 0, height > 0, width <= 1, height <= 1 {
+            anchor = Highlight.box(x: x, y: y, w: width, h: height, in: frame.size, pad: 4)
+            let mark = CAShapeLayer()
+            if presentation == "underline" {
+                let line = CGMutablePath()
+                line.move(to: CGPoint(x: anchor.minX, y: anchor.minY))
+                line.addLine(to: CGPoint(x: anchor.maxX, y: anchor.minY))
+                mark.path = line; mark.fillColor = NSColor.clear.cgColor
+                mark.lineWidth = 3; mark.lineCap = .round
+            } else {
+                mark.path = Self.outline(anchor, shape: "rounded")
+                mark.fillColor = color.withAlphaComponent(0.12).cgColor
+                mark.lineWidth = 2
+            }
+            mark.strokeColor = color.cgColor
+            mark.shadowColor = NSColor.black.cgColor; mark.shadowOpacity = 0.45; mark.shadowRadius = 2
+            layers = [mark]
+        } else { layers = Self.focusMarks(at: point, color: color, after: delay) }
         var pieces: [NSView] = []
         if !label.isEmpty {
             let p = pill(label, color: color)
-            place(p, near: CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44), in: frame.size)
+            place(p, near: anchor, in: frame.size)
             pieces.append(p)
         }
         present(panel, root: root, delay: delay, pieces: pieces, layers: layers, onPresented: onPresented)
-        hideWhenDone(after: delay + 6.5)
+        // Only the small label is interactive; the highlighted app remains directly usable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.panel === panel, let p = pieces.first, !label.isEmpty else { return }
+            self.addClickTarget(NSRect(x: frame.minX + p.frame.minX, y: frame.minY + p.frame.minY, width: p.frame.width, height: p.frame.height), text: "Explain this highlighted target: " + label)
+        }
+        hideWhenDone(after: delay + 12)
         return delay
     }
 
@@ -1969,7 +1962,7 @@ final class PointerOverlay {
         outline.shadowColor = color.cgColor; outline.shadowRadius = 12; outline.shadowOpacity = 1; outline.shadowOffset = .zero
         let pulse = CABasicAnimation(keyPath: "lineWidth")
         pulse.fromValue = 2.5; pulse.toValue = 5; pulse.autoreverses = true; pulse.repeatCount = .infinity; pulse.duration = 0.9
-        outline.add(pulse, forKey: "pulse")
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { outline.add(pulse, forKey: "pulse") }
         let p = pill(label.isEmpty ? "Here" : label, color: color, badge: step)
         place(p, near: box, in: frame.size)
         present(panel, root: root, delay: delay, pieces: [p], layers: [dim, outline], onPresented: onPresented)

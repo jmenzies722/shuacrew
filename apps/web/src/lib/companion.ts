@@ -71,7 +71,7 @@ export const SPARK_COLORS = ["#8e48ff", "#f5b544", "#ff7a59", "#f472b6", "#a78bf
 export function parseCompanion(value: unknown): CompanionPreferences {
   const v = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const choice = <T extends string>(key: string, options: readonly T[], fallback: T): T => options.includes(v[key] as T) ? v[key] as T : fallback;
-  return { version: 1, enabled: v.enabled === true, kind: choice("kind", ["spark", "crew"], "spark"), nickname: typeof v.nickname === "string" ? [...v.nickname.trim()].slice(0, 40).join("") || "Spark" : "Spark",
+  return { version: 1, enabled: v.enabled === true, kind: choice("kind", ["spark", "crew"], "spark"), nickname: typeof v.nickname === "string" ? [...v.nickname.trim()].slice(0, 40).join("") || "Shua" : "Shua",
     face: choice("face", ["calm", "curious", "bright"], "calm"), accessory: choice("accessory", ["none", "cap", "headphones", "scarf", "glasses", "antenna", "badge"], "none"),
     presence: choice("presence", ["interaction", "subtle", "playful"], "subtle"), placement: choice("placement", ["corner", "room-header"], "corner"), celebration: choice("celebration", ["off", "subtle", "expressive"], "subtle"),
     sound: v.sound === true, volume: typeof v.volume === "number" && Number.isFinite(v.volume) && v.volume >= 0 && v.volume <= 1 ? v.volume : 0.25, focus: choice("focus", ["hide", "still"], "still"),
@@ -89,7 +89,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     // Spark just does things now. A saved "ask" from before that default moves to "auto" once; after that your choice holds.
     control: v.autonomy === 2 ? choice("control", ["off", "ask", "auto"], "auto") : v.control === "off" ? "off" : "auto", autonomy: 2, conversation: v.conversation === true, interrupt: v.interrupt !== false,
-    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "free"), listen: choice("listen", ["auto", "hold"], "auto"), voiceEngine: choice("voiceEngine", ["live", "classic"], "live"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
+    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "notch"), listen: choice("listen", ["auto", "hold"], "auto"), voiceEngine: choice("voiceEngine", ["live", "classic"], "live"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
     modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) && v.modelChoice.startsWith("codex:") ? v.modelChoice.slice(0,160) : "",
     // Spark always uses connected cloud models: the on-Mac models were slow (up to a minute a reply) and held ~16 GB of GPU.
     brain: "auto", localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
@@ -97,7 +97,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
     notice: v.notice !== false, proactive: v.proactive !== false, commandNarration: v.commandNarration !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
-    notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "roomy") };
+    notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "compact") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";
 export function companionPose(input: { connected: boolean; needsApproval: boolean; failed: boolean; active: boolean }): CompanionPose {

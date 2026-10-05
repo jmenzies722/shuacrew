@@ -1,0 +1,26 @@
+{
+  "id": "teach_350f2191-b2a3-44be-ba0d-2348ee952b7d",
+  "title": "Request Journey",
+  "revision": 1,
+  "steps": 2,
+  "keys": [
+    "version",
+    "sessionId",
+    "revision",
+    "title",
+    "answer",
+    "assumptions",
+    "sources",
+    "objects",
+    "steps",
+    "selected",
+    "stepId",
+    "focusId",
+    "highlighted",
+    "annotations",
+    "positions",
+    "edited",
+    "practice"
+  ],
+  "ok": true
+}

@@ -5,3 +5,5 @@ export function demonstrationIntent(text: string): "start" | "stop" | null {
   if (/^(?:please )?(?:stop watching(?: me)?|stop recording|finish (?:the )?demonstration|i(?:'m| am) done teaching)$/.test(value)) return "stop";
   return null;
 }
+
+export function replayIntent(text:string):string|null {const value=text.trim().replace(/[.!?]+$/,"");if(/^(?:please )?replay (?:my |the )?last workflow$/i.test(value))return "last";return /^(?:please )?replay (?:my )?workflow (.+)$/i.exec(value)?.[1]?.trim() || null;}

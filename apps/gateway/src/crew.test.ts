@@ -97,3 +97,52 @@ describe("the crew", () => {
     expect(fold(store.read(0)).members.sam).toMatchObject({ thread: first, sessions: 1 });
   });
 });
+
+it("does not carry a retired provider's model into a Codex-only crew launch", async () => {
+  const {crew,store,supervisor}=await world("codex");
+  crew.starter();
+  const id=supervisor.launch({ask:"Routing test",member:"researcher",hold:true});
+  const run=fold(store.read(0)).runs[id]!;
+  expect(run.runtime).toBe("codex");
+  expect(run.model).toBeUndefined();
+});
+describe('personal assistant brain: Codex first, Claude as backup', () => {
+ const world=(codexStart?:Runtime['start'])=>{
+  const store=new EventStore(':memory:');
+  const codex=Object.assign(new MockRuntime({pace:0}),{id:'codex'},codexStart?{start:codexStart}:{}),claude=Object.assign(new MockRuntime({pace:0}),{id:'claude'});
+  const supervisor=new Supervisor(store,new Map<string,Runtime>([['codex',codex],['claude',claude]]),{workspace:mkdtempSync(path.join(os.tmpdir(),'shua-provider-')),roots:[]});
+  cleanups.push(()=>{supervisor.shutdown();store.close();});
+  return {store,supervisor};
+ };
+ const created=(store:EventStore,id:string)=>store.forRun(id).find(e=>e.kind==='run.created')?.body;
+ it('starts on Codex while Codex is working, even when Claude was asked for',()=>{
+  const {store,supervisor}=world();
+  expect(created(store,supervisor.launch({ask:'Hello',labels:['buddy'],hold:true}))).toMatchObject({runtime:'codex'});
+  const picked=created(store,supervisor.launch({ask:'Hello',labels:['buddy'],runtime:'claude',model:'mock-fast',hold:true}));
+  expect(picked).toMatchObject({runtime:'codex'});expect(picked&&'model' in picked?picked.model:undefined).toBeUndefined();
+  expect(created(store,supervisor.launch({ask:'Crew work',runtime:'claude',hold:true}))).toMatchObject({runtime:'claude'});
+ });
+ it('starts on Claude while Codex is out of its usage window',()=>{
+  const {store,supervisor}=world();
+  store.append('runtime.limited',{runtime:'codex',until:Date.now()+60_000,message:'limited'});
+  expect(created(store,supervisor.launch({ask:'Hello',labels:['buddy'],hold:true}))).toMatchObject({runtime:'claude'});
+ });
+ it('finishes a turn on Claude when Codex breaks mid-turn',async()=>{
+  const {store,supervisor}=world(async function*(){yield {type:'error',message:'Codex app-server exited unexpectedly'};});
+  const id=supervisor.launch({ask:'what time is it',labels:['buddy']});
+  await until(()=>fold(store.read(0)).runs[id]?.status==='done');
+  const routed=store.forRun(id).filter(e=>e.kind==='run.routed');
+  expect(routed.map(e=>e.kind==='run.routed'&&e.body.runtime)).toEqual(['claude']);
+  expect(store.forRun(id).some(e=>e.kind==='error.raised')).toBe(false);
+  // The next conversation skips the broken brain instead of failing first.
+  expect(created(store,supervisor.launch({ask:'again',labels:['buddy'],hold:true}))).toMatchObject({runtime:'claude'});
+ });
+ it('fails once, without bouncing, when both brains break',async()=>{
+  const store=new EventStore(':memory:');const broken:Runtime['start']=async function*(){yield {type:'error',message:'network unreachable'};};
+  const supervisor=new Supervisor(store,new Map<string,Runtime>([['codex',Object.assign(new MockRuntime({pace:0}),{id:'codex',start:broken})],['claude',Object.assign(new MockRuntime({pace:0}),{id:'claude',start:broken})]]),{workspace:mkdtempSync(path.join(os.tmpdir(),'shua-provider-')),roots:[]});
+  cleanups.push(()=>{supervisor.shutdown();store.close();});
+  const id=supervisor.launch({ask:'hi',labels:['buddy']});
+  await until(()=>fold(store.read(0)).runs[id]?.status==='failed');
+  expect(store.forRun(id).filter(e=>e.kind==='run.routed')).toHaveLength(1);
+ });
+});

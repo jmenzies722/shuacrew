@@ -162,7 +162,7 @@ describe("ventures", () => {
 
     // First money in: launching -> earning; the Monday review starts once, not twice.
     ventures.stage("fern", "launching");
-    ventures.record("fern", { mrr: 12 });
+    store.append("venture.metrics", {id:"fern",source:"stripe",mode:"live",currency:"usd",mrr:12,revenue30d:12});
     await settle();
     expect(ventures.get("fern")!.stage).toBe("earning");
     await settle();
@@ -177,4 +177,29 @@ describe("ventures", () => {
     expect(verdictOf("PIVOT to agencies")).toBe("pivot");
     expect(verdictOf("going well")).toBeUndefined();
   });
+});
+it('does not promote test or manual revenue into verified earning',async()=>{
+ const {ventures,store}=await world();ventures.set({name:'Evidence'});ventures.stage('evidence','launching');
+ ventures.record('evidence',{mrr:99});await Promise.resolve();expect(ventures.get('evidence')?.stage).toBe('launching');
+ store.append('venture.metrics',{id:'evidence',source:'stripe',mode:'test',currency:'usd',mrr:99} as never);await Promise.resolve();expect(ventures.get('evidence')?.stage).toBe('launching');
+ store.append('venture.metrics',{id:'evidence',source:'stripe',mode:'live',currency:'usd',revenue30d:99} as never);await Promise.resolve();expect(ventures.get('evidence')?.stage).toBe('earning');
+});
+it('records rejected automation launches and permits an explicit retry',async()=>{
+ const {ventures}=await world();ventures.set({name:'Failed',autopilot:true});ventures.stage('failed','earning');
+ ventures.startPlay=async()=>{throw Error('Worker unavailable');};ventures.weeklyReview();await new Promise(r=>setTimeout(r,10));expect((ventures.get('failed') as any)?.automation).toMatchObject({state:'failed',error:'Worker unavailable'});
+ let calls=0;ventures.startPlay=()=>{calls++;return {};};(ventures as any).retryAutomation('failed');expect(calls).toBe(1);
+});
+it('does not issue duplicate launches while one is pending',async()=>{
+ const {ventures}=await world();ventures.set({name:'Pending',autopilot:true});ventures.stage('pending','earning');let calls=0;let resolve!:(v:unknown)=>void;
+ ventures.startPlay=()=>{calls++;return new Promise(r=>resolve=r);};ventures.weeklyReview();ventures.weeklyReview();expect(calls).toBe(1);resolve({});await Promise.resolve();
+});
+it('reconciles an interrupted launch against finished plays instead of launching again',async()=>{
+ const {ventures,store}=await world();ventures.set({name:'Recovered',autopilot:true});ventures.stage('recovered','earning');
+ store.append('venture.automation',{id:'recovered',playbook:'growth-review',state:'starting',attemptId:'old'});
+ store.append('play.started',{id:'p_recovered',playbook:'growth-review',name:'Growth',title:'Growth review',venture:'recovered',inputs:{},phases:[]} as never);
+ store.append('play.status',{play:'p_recovered',status:'done'});
+ let calls=0;ventures.startPlay=()=>{calls++;};ventures.retryAutomation('recovered');expect(calls).toBe(0);expect(ventures.get('recovered')?.automation?.state).toBe('started');
+});
+it('labels test revenue in agent briefs and includes its observation time',async()=>{
+ const {ventures,store}=await world();ventures.set({name:'Context'});store.append('venture.metrics',{id:'context',source:'stripe',mode:'test',currency:'usd',revenue30d:50});expect(ventures.brief('context')).toContain('TEST DATA');expect(ventures.brief('context')).toContain('Observed');
 });

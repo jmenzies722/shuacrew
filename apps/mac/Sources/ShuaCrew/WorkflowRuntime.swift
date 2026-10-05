@@ -3,7 +3,7 @@ import ApplicationServices
 import Carbon.HIToolbox
 import ShuaCrewCore
 
-/// Explicitly scoped demonstrations. No video, raw key text, or field values are persisted.
+/// Explicitly scoped demonstrations. No video is saved. Demonstrated input is shown for review before local persistence.
 @MainActor
 final class WorkflowRuntime {
     var onChange: (([String: Any]) -> Void)?
@@ -18,6 +18,8 @@ final class WorkflowRuntime {
     private var scanID: UUID?
     private struct RecordingSnapshot { let pid: pid_t; let at: TimeInterval; let targets: [(WorkflowTarget, CGRect)]; let window: AXUIElement? }
     private var recordingHistory: [RecordingSnapshot] = []
+    private var recordingFields: [String: (AXUIElement, NSRunningApplication)] = [:]
+    private var invalidInputs = Set<String>()
     private var generation = UUID()
     private var started = Date()
     private var message = ""
@@ -51,9 +53,10 @@ final class WorkflowRuntime {
          "library": encode(library), "draft": draft.map(encode) ?? NSNull(), "workflowId": current?.id ?? "", "appNames": appNames]
     }
     private func publish(_ text: String? = nil) { if let text { message = text }; onChange?(state()) }
-    private func clearMonitors() { recordScan?.invalidate(); recordScan = nil; scanID = nil; recordingHistory = []; monitors.forEach(NSEvent.removeMonitor); monitors.removeAll(); deadline?.invalidate(); deadline = nil }
+    private func clearMonitors() { recordScan?.invalidate(); recordScan = nil; scanID = nil; recordingHistory = []; recordingFields = [:]; invalidInputs = []; monitors.forEach(NSEvent.removeMonitor); monitors.removeAll(); deadline?.invalidate(); deadline = nil }
     func stop(_ reason: String = "Stopped") {
         let wasRunning = ["running", "needs-approval"].contains(phase)
+        if phase == "recording" { flushRecordedInputs() }
         generation = UUID(); clearMonitors(); inputs.removeAll()
         if phase == "recording" { draft?.demonstrationMs = Date().timeIntervalSince(started) * 1000; phase = "review" }
         else { phase = "stopped" }
@@ -87,7 +90,7 @@ final class WorkflowRuntime {
                 followForeground = follow; observedApp = ""
                 if let replacing = body["workflowId"] as? String {
                     guard var existing = library.first(where: { $0.id == replacing }), Set(existing.apps) == Set(bundles) else { throw failure("Choose the same recorded apps when teaching a correction.") }
-                    existing.steps = []; existing.successes = 0; existing.failures = 0; existing.verifiedStepMs = [:]; existing.lastMs = nil; existing.bestMs = nil
+                    existing.steps = []; existing.recordedInputs = nil; existing.successes = 0; existing.failures = 0; existing.verifiedStepMs = [:]; existing.lastMs = nil; existing.bestMs = nil
                     draft = existing
                 } else { draft = SavedWorkflow(name: taskName.isEmpty ? "New workflow" : taskName, apps: bundles, steps: []) }
                 current = nil
@@ -98,6 +101,7 @@ final class WorkflowRuntime {
                       let workflow = try? JSONDecoder().decode(SavedWorkflow.self, from: JSONSerialization.data(withJSONObject: data)), workflow.validate() else { throw failure("Invalid workflow. Stop recording and review its steps first.") }
                 var clean = SavedWorkflow(name: workflow.name, apps: workflow.apps, steps: workflow.steps, demonstrationMs: workflow.demonstrationMs)
                 clean.teachings = workflow.teachings
+                clean.recordedInputs = workflow.recordedInputs
                 if let index = library.firstIndex(where: { $0.id == workflow.id }) {
                     clean.id = workflow.id; clean.revision = library[index].revision + 1; clean.createdAt = library[index].createdAt
                     let previous = library; library[index] = clean
@@ -227,6 +231,36 @@ final class WorkflowRuntime {
         else { stop("Recording could not access macOS input events."); throw failure(message) }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in if event.keyCode == 53 { self?.stop() }; return event }) { monitors.append(monitor) }
     }
+    private func flushRecordedInputs() {
+        for (parameter, pair) in recordingFields {
+            let (field, app) = pair
+            guard permitted(app), !secure(field), let raw = attr(field, kAXValueAttribute) as? String, let value = workflowRecordedText("", inserted: "", writableValue: raw) else { draft?.recordedInputs?.removeValue(forKey: parameter); continue }
+            if draft?.recordedInputs == nil { draft?.recordedInputs = [:] }
+            draft?.recordedInputs?[parameter] = value
+        }
+    }
+    private func captureInput(_ step: WorkflowStep, event: NSEvent, app: NSRunningApplication, field: AXUIElement?, writable: Bool) {
+        guard let parameter = step.parameter, let field, !secure(field) else { return }
+        let token = generation
+        if writable {
+            recordingFields[parameter] = (field, app)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                guard let self, self.generation == token, self.phase == "recording", self.permitted(app), !self.secure(field), self.draft?.steps.contains(where: { $0.parameter == parameter }) == true else { return }
+                let value = self.text(field, kAXValueAttribute)
+                if let captured = workflowRecordedText("", inserted: "", writableValue: value) {
+                    if self.draft?.recordedInputs == nil { self.draft?.recordedInputs = [:] }
+                    self.draft?.recordedInputs?[parameter] = captured; self.publish()
+                } else { self.draft?.recordedInputs?.removeValue(forKey: parameter); self.publish("This input could not be retained. Review and enter it before replay.") }
+            }
+        } else {
+            guard !invalidInputs.contains(parameter) else { return }
+            let inserted = event.modifierFlags.contains(.command) && event.keyCode == 9 ? NSPasteboard.general.string(forType: .string) ?? "" : event.characters ?? ""
+            if let value = workflowRecordedText(draft?.recordedInputs?[parameter] ?? "", inserted: inserted, writableValue: nil) {
+                if draft?.recordedInputs == nil { draft?.recordedInputs = [:] }
+                draft?.recordedInputs?[parameter] = value
+            } else { invalidInputs.insert(parameter); draft?.recordedInputs?.removeValue(forKey: parameter); publish("This input could not be retained. Review and enter it before replay.") }
+        }
+    }
     private func record(_ event: NSEvent) {
         guard phase == "recording" else { return }
         guard AXIsProcessTrusted() else { stop("Accessibility access was revoked."); return }
@@ -250,8 +284,11 @@ final class WorkflowRuntime {
             case .shortcut(let shortcut): step = .init(app: bundle, operation: "shortcut", shortcut: shortcut)
             case .input:
                 guard let target else { return }
-                if let last = draft?.steps.last, last.operation == "input", last.app == bundle, last.target == target { return }
+                if let last = draft?.steps.last, last.operation == "input", last.app == bundle, last.target == target {
+                    captureInput(last, event: event, app: app, field: field, writable: writable.boolValue); return
+                }
                 step = .init(app: bundle, operation: "input", target: target, parameter: "input_\((draft?.steps.filter { $0.operation == "input" }.count ?? 0) + 1)")
+                captureInput(step, event: event, app: app, field: field, writable: writable.boolValue)
             case .checkpoint(let explanation):
                 if let last = draft?.steps.last, last.operation == "checkpoint", last.app == bundle, last.checkpoint == explanation { return }
                 step = .init(app: bundle, operation: "checkpoint", checkpoint: explanation)
@@ -271,7 +308,7 @@ final class WorkflowRuntime {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self, token == self.generation, self.phase == "recording", self.permitted(app),
                   let index = self.draft?.steps.firstIndex(where: { $0.id == id }) else { return }
-            if let beforeWindow, let afterWindow = self.element(self.root(app), kAXFocusedWindowAttribute), !CFEqual(beforeWindow, afterWindow) { self.draft?.steps[index].newWindow = true }
+            if beforeSnapshot != nil, let afterWindow = self.element(self.root(app), kAXFocusedWindowAttribute), beforeWindow.map({ !CFEqual($0, afterWindow) }) ?? true { self.draft?.steps[index].newWindow = true }
             if let number = self.numericValue(app) { self.draft?.steps[index].expectedNumber = number }
             else if let focus = self.focused(app), let target = self.descriptor(focus), target.role.contains("Text") || target.role == "AXComboBox" { self.draft?.steps[index].expected = target }
             else { self.draft?.steps[index].expected = self.targets(app).map(\.0).first { !before.contains($0) } }
@@ -362,7 +399,7 @@ final class WorkflowRuntime {
                     if step.operation == "focus" { verified = focused(app).flatMap(descriptor).map(expected.matches) ?? false }
                     else { verified = find(expected, in: app) != nil }
                 }
-                if step.newWindow == true { verified = verified && (beforeWindow.map { prior in element(root(app), kAXFocusedWindowAttribute).map { !CFEqual(prior, $0) } ?? false } ?? false) }
+                if step.newWindow == true { verified = verified && (element(root(app), kAXFocusedWindowAttribute).map { after in beforeWindow.map { !CFEqual($0, after) } ?? true } ?? false) }
                 if verified { break }; try await Task.sleep(for: .milliseconds(150))
             }
             guard verified else { stop("Result did not match the recorded checkpoint. No action was repeated; ask Shua to adapt."); return }
@@ -409,7 +446,7 @@ final class WorkflowRuntime {
             let saved = handle(["operation": "save", "workflow": encode(captured)])
             guard saved["ok"] as? Bool == true, let workflow = library.last else { throw failure("Save failed") }
             let persisted = try String(contentsOf: file, encoding: .utf8)
-            report["typedValueNotPersisted"] = !persisted.contains("private demo value")
+            report["reviewedTextPersisted"] = persisted.contains("private demo value")
             var durations: [Double] = []
             for value in ["first verified replay", "second verified replay"] {
                 let result = handle(["operation": "run", "workflowId": workflow.id, "inputs": ["input_1": value]])
@@ -427,7 +464,7 @@ final class WorkflowRuntime {
             for _ in 0..<100 { if !busy { break }; try await Task.sleep(for: .milliseconds(100)) }
             report["changedTargetStopped"] = phase == "stopped" && library.last?.successes == 0 && library.last?.failures == 1 && find(.init(role: "AXTextField", identifier: "workflow.input"), in: app).map { text($0, kAXValueAttribute) == "second verified replay" } == true
             report["changedTargetReason"] = message
-            report["ok"] = report["typedValueNotPersisted"] as? Bool == true && report["changedTargetStopped"] as? Bool == true
+            report["ok"] = report["reviewedTextPersisted"] as? Bool == true && report["changedTargetStopped"] as? Bool == true
         } catch { stop("Probe ended"); report["ok"] = false; report["error"] = error.localizedDescription; report["state"] = state() }
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: output, options: .atomic) }
     }
@@ -457,6 +494,8 @@ final class WorkflowRuntime {
             guard captured.apps == [bundle], followForeground else { throw failure("Foreground app was not scoped automatically") }
             report["followingForeground"] = true
             report["recordedSteps"] = captured.steps.map(\.operation)
+            report["capturedInputs"] = captured.recordedInputs ?? [:]
+            guard captured.recordedInputs?["input_1"] == "demo" else { throw failure("Recorded terminal text was incomplete") }
             guard handle(["operation": "save", "workflow": encode(captured)])["ok"] as? Bool == true, let saved = library.last else { throw failure("Save failed") }
             var durations: [Double] = []
             for value in [" test one", " cafe"] {
@@ -492,7 +531,9 @@ final class WorkflowRuntime {
                 for down in [true, false] { let event = CGEvent(keyboardEventSource: nil, virtualKey: unit == 10 ? 36 : 0, keyDown: down); event?.flags = []; if unit != 10 { event?.keyboardSetUnicodeString(stringLength: 1, unicodeString: &value) }; event?.post(tap: .cghidEventTap) }
                 try await Task.sleep(for: .milliseconds(15))
             }
-            try await Task.sleep(for: .milliseconds(300)); stop("TextEdit demonstration recorded")
+            try await Task.sleep(for: .milliseconds(300))
+            let demonstratedText = focused(app).map { text($0, kAXValueAttribute) }
+            stop("TextEdit demonstration recorded")
             guard var captured = draft else { throw failure("No recorded TextEdit draft") }
             report["recordedSteps"] = captured.steps.map(\.operation); report["captured"] = encode(captured)
             guard captured.steps.count == 2, captured.steps[0].shortcut == "cmd+n", captured.steps[0].newWindow == true, captured.steps[1].operation == "input" else { throw failure("TextEdit recording did not prove a new document before typing") }
@@ -508,7 +549,8 @@ final class WorkflowRuntime {
                 durations.append(library.last?.lastMs ?? -1)
             }
             report["replayMilliseconds"] = durations; report["verifiedRuns"] = library.last?.successes
-            report["typedValueNotPersisted"] = !(try String(contentsOf: file, encoding: .utf8)).contains("disposable demonstration")
+            report["reviewedTextPersisted"] = try WorkflowLibraryStore(file: file).load().last?.recordedInputs == captured.recordedInputs
+            guard captured.recordedInputs?["input_1"] == demonstratedText else { throw failure("Recorded TextEdit text was incomplete") }
             report["ok"] = true
         } catch { stop("TextEdit probe ended"); report["ok"] = false; report["error"] = error.localizedDescription; report["state"] = state() }
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: output, options: .atomic) }

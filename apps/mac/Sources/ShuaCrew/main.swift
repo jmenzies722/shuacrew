@@ -162,9 +162,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         let view = submenu(main, "View")
-        // The five hubs, as in the rail. Each opens on its first tab; the tabs are one click from there.
+        // Keep native shortcuts aligned with the six primary workspace destinations.
         let screens: [(String, String, String)] = [
-            ("Home", "1", "/"), ("Crew", "2", "/crew"), ("Build", "3", "/ventures"), ("Know", "4", "/library"), ("System", "5", "/integrations"),
+            ("Today", "1", "/activity"), ("Projects", "2", "/ventures"), ("Crew", "3", "/floor"),
+            ("Learning", "4", "/learn"), ("Automations", "5", "/playbooks"), ("Library", "6", "/library"),
         ]
         for (title, key, path) in screens { view.addItem(item(title, key, #selector(go(_:)), path)) }
         view.addItem(.separator())

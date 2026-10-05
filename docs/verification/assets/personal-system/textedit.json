@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "recordedSteps": [
+    "shortcut",
+    "input"
+  ],
+  "replayMilliseconds": [
+    789.9410724639893,
+    755.687952041626
+  ],
+  "reviewedTextPersisted": true,
+  "verifiedRuns": 2
+}

@@ -9,6 +9,7 @@ import ShuaCrewCore
 @MainActor
 final class SparkSounds {
     static let shared = SparkSounds()
+    var fnSoundGate = FnSoundGate()
     /// "spatial", "simple" or "off": the page's Settings → Sounds (it tells us when it changes).
     var style = UserDefaults.standard.string(forKey: "sparkSounds") ?? "spatial" { didSet { UserDefaults.standard.set(style, forKey: "sparkSounds") } }
     /// Which instrument (Settings → Sound): glass, pop, chime, pulse, droplet or felt. Switching re-renders the buffers.
@@ -151,6 +152,13 @@ final class SparkSounds {
         if !engine.isRunning { engine.prepare(); try? engine.start() }
         idle?.invalidate()
         idle = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in MainActor.assumeIsolated { self?.engine.stop() } }
+    }
+
+    /// A new Fn hold replaces any prior capture cue instead of layering over it.
+    func stopCaptureCues() {
+        for kind: EarconSynth.Kind in [.listen, .sent, .off] {
+            spatial[kind]?.stop(); plain[kind]?.stop()
+        }
     }
 
     /// Play one sound now, in the chosen style.

@@ -48,6 +48,8 @@ it("uses one hold connection across Fn presses and enables Talk only explicitly"
   expect(calls[0]!.acceptHold).toHaveBeenCalledOnce();
   expect(calls[0]!.release).toHaveBeenCalledWith(false);
   session.liveFn("down");
+  expect(calls[0]!.press).not.toHaveBeenCalled();
+  session.liveFn("hold");
   expect(calls[0]!.press).toHaveBeenCalledOnce();
   expect(calls[0]!.talk).not.toHaveBeenCalled();
   session.startLive();
@@ -174,4 +176,73 @@ it("once Codex allows calls again, the same press connects", async () => {
   session.startLive("hold"); await settle();
   expect(calls).toHaveLength(1);
   expect(session.liveUsable()).toBe(true);
+});
+
+it("rapid Fn taps do not start or toggle a call", async () => {
+  const session = await import("./live-session");
+  for (let i = 0; i < 10; i++) { session.liveFn("down"); session.liveFn(i % 2 ? "tap" : "cancel"); }
+  expect(calls).toHaveLength(0);
+});
+it("does not open the mic when readiness returns after Fn was released", async () => {
+  localStorage.setItem("shuacrew.live.down", String(Date.now() + 86_400_000));
+  let resolve!: (value: unknown) => void;
+  vi.stubGlobal("fetch", vi.fn(() => new Promise(done => { resolve = done; })));
+  const session = await import("./live-session");
+  session.liveFn("down"); session.liveFn("hold"); session.liveFn("release");
+  resolve({ json: async () => ({ usable: true }) }); await settle();
+  expect(calls).toHaveLength(0);
+  expect(session.getLiveSnapshot().capturing).not.toBe(true);
+});
+
+it("narrates an image result after readiness without opening a listening session", async () => {
+  const session = await import("./live-session");
+  expect(session.narrateLiveResult("The crop says Hello.")).toBe(true);
+  expect(calls[0]!.options.mode).toBe("silent");
+  const speak = (calls[0] as unknown as {speak:ReturnType<typeof vi.fn>}).speak;
+  expect(speak).not.toHaveBeenCalled();
+  calls[0]!.options.onEvent({type:"state",state:"ready"});
+  await settle();
+  expect(speak).toHaveBeenCalledWith("The crop says Hello.");
+  expect(calls[0]!.talk).not.toHaveBeenCalled();
+});
+it("cancels a crop readout that was waiting for voice readiness", async () => {
+  const session=await import("./live-session");
+  session.narrateLiveResult("Old crop"); session.stopLiveSpeech();
+  calls[0]!.options.onEvent({type:"state",state:"ready"}); await settle();
+  expect((calls[0] as unknown as {speak:ReturnType<typeof vi.fn>}).speak).not.toHaveBeenCalled();
+});
+
+it("cancels a Talk startup while account readiness is pending", async () => {
+  localStorage.setItem("shuacrew.live.down",String(Date.now()+86000000));
+  let resolve!:(value:unknown)=>void;
+  vi.stubGlobal("fetch",vi.fn(()=>new Promise(done=>{resolve=done;})));
+  const session=await import("./live-session");
+  session.startLive("talk");
+  expect(session.getLiveSnapshot()).toMatchObject({active:true,state:"connecting",capturing:false});
+  session.endLive();
+  resolve({json:async()=>({usable:true})});await settle();
+  expect(calls).toHaveLength(0);expect(session.liveActive()).toBe(false);
+});
+it("coalesces readiness checks and preserves the latest requested voice mode", async () => {
+  localStorage.setItem("shuacrew.live.down",String(Date.now()+86000000));
+  let resolve!:(value:unknown)=>void;
+  vi.stubGlobal("fetch",vi.fn(()=>new Promise(done=>{resolve=done;})));
+  const session=await import("./live-session");
+  session.startLive("silent");session.startLive("talk");
+  resolve({json:async()=>({usable:true})});await settle();
+  expect(calls).toHaveLength(1);expect(calls[0]!.options.mode).toBe("talk");
+});
+
+it("retains all conversation messages when transient tool steps exceed the old feed limit", async () => {
+  const session = await import("./live-session"); session.startLive();
+  const event = calls[0]!.options.onEvent;
+  for (let i = 0; i < 20; i++) {
+    event({type:"caption",role:"user",text:`Question ${i}`,final:true});
+    event({type:"caption",role:"assistant",text:`Answer ${i}`,final:true});
+    event({type:"step",text:`Working ${i}`});
+  }
+  expect(session.getLiveSnapshot().feed.filter(item => item.kind === "line")).toHaveLength(40);
+  expect(session.getLiveSnapshot().feed[0]).toMatchObject({text:"Question 0"});
+  session.endLive();
+  expect(session.getLiveSnapshot().feed.filter(item => item.kind === "line")).toHaveLength(40);
 });

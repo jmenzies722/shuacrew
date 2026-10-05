@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { since } from "@shuacrew/ui";
 import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
 import { useLive } from "../lib/live";
-import { HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
+import { HUBS, PRIMARY_HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
 import { isTopLevelWork } from "../lib/crew";
 import { plain } from "../lib/plain";
 import { useCompanion } from "../lib/companion";
@@ -19,7 +19,7 @@ const PAGE_ICON: Record<string, typeof House> = {
   "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
   "/library": Library, "/memory": Brain, "/learn": GraduationCap, "/teach": Presentation, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
 };
-const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, system: Cpu } as const;
+const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, automations: CalendarClock, library: Library, system: Cpu } as const;
 const LAST = "shuacrew.hubs.last";
 const readLast = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(LAST) ?? "{}"); } catch { return {}; } };
 
@@ -43,9 +43,9 @@ export function HubRail() {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      const n = Number(e.key); if (!(n >= 1 && n <= HUBS.length)) return;
+      const n = Number(e.key); if (!(n >= 1 && n <= PRIMARY_HUBS.length)) return;
       const t = e.target as HTMLElement | null; if (t?.closest("input,textarea,[contenteditable=true],.xterm")) return;
-      e.preventDefault(); go(HUBS[n - 1]!);
+      e.preventDefault(); go(PRIMARY_HUBS[n - 1]!);
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
@@ -60,7 +60,8 @@ export function HubRail() {
     </button>;
   };
   return <nav className="hub-rail" aria-label="Hubs">
-    {HUBS.map((hub, i) => item(hub.id, hub.label, ICON[hub.id], () => go(hub), `${hub.label} — ${hub.hint}  ⌘${i + 1}`, badge(hub.id)))}
+    {PRIMARY_HUBS.map((hub, i) => item(hub.id, hub.label, ICON[hub.id], () => go(hub), `${hub.label} — ${hub.hint}  ⌘${i + 1}`, badge(hub.id)))}
+    {item("system", "Tools", Cpu, () => go(HUBS.find(h => h.id === "system")!), "All tools")}
     <span className="hub-spacer" />
     {item("guide", "Guide", BookOpenText, () => void navigate({ to: "/guide" }), "Guide — everything ShuaCrew can do")}
     {item("settings", "Settings", Settings, () => void navigate({ to: "/settings" }), "Settings  ⌘,")}
@@ -74,12 +75,12 @@ export function HubTabs() {
   const strip = useRef<HTMLDivElement>(null), [ready, setReady] = useState(false);
   useEffect(() => { setReady(true); }, []);
   if (!at || sidebarWide) return null;
-  return <div className="hub-tabs" role="tablist" aria-label={at.hub.label} ref={strip}>
+  return <div className="hub-tabs" aria-label={at.hub.label} ref={strip}>
     <span className="hub-title">{at.hub.label}</span>
     <span className="hub-sep" aria-hidden="true" />
     {at.hub.tabs.map((tab) => {
       const on = tab === at.tab;
-      return <Link key={tab.to} to={tab.to} role="tab" aria-selected={on} className={`hub-tab ${on ? "is-on" : ""}`}>
+      return <Link key={tab.to} to={tab.to} aria-current={on ? "page" : undefined} className={`hub-tab ${on ? "is-on" : ""}`}>
         {on && <motion.span layoutId={`hub-tab-${at.hub.id}`} className="hub-tab-on" initial={false} transition={ready ? { type: "spring", stiffness: 520, damping: 38 } : { duration: 0 }} />}
         <span className="hub-tab-label">{tab.label}</span>
       </Link>;
@@ -117,8 +118,8 @@ export function HubSidebar() {
     const on = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null; if (t?.closest("input,textarea,[contenteditable=true],.xterm")) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      const n = Number(e.key); if (!(n >= 1 && n <= HUBS.length)) return;
-      e.preventDefault(); go(HUBS[n - 1]!);
+      const n = Number(e.key); if (!(n >= 1 && n <= PRIMARY_HUBS.length)) return;
+      e.preventDefault(); go(PRIMARY_HUBS[n - 1]!);
     };
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
   });
@@ -157,14 +158,11 @@ export function HubSidebar() {
         {recentAll.length > RECENT_SHORT && <button type="button" className="side-recent-more" onClick={() => setRecentMore((v) => !v)}>{recentMore ? "Show less" : `Show ${Math.min(RECENT_LONG, recentAll.length) - RECENT_SHORT} more`}</button>}
       </motion.div>}</AnimatePresence>
     </div>}
-    {HUBS.map((hub) => <div key={hub.id} className="side-group">
-      {hub.id !== "home" && <div className="side-label">{hub.label}</div>}
-      {hub.tabs.map((tab) => { const on = at?.tab === tab, Icon = PAGE_ICON[tab.to] ?? Circle, n = tab.to === "/" ? waiting : tab.to === "/crew" ? working : 0;
-        return <Link key={tab.to} to={tab.to} className={`side-row ${on ? "is-on" : ""}`} aria-current={on ? "page" : undefined} title={`${tab.label} — ${hub.hint}`}>
-          {on && <motion.span layoutId="side-hub-on" className="side-hub-on" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
-          <i className="side-ico"><Icon size={16} strokeWidth={1.8} /></i><span>{tab.label}</span>{n > 0 && <em className={tab.to === "/" ? "is-wait" : "is-live"}>{n}</em>}
-        </Link>; })}
-    </div>)}
+    {PRIMARY_HUBS.map(hub => { const Icon = ICON[hub.id], selected = here === hub.id; return <div key={hub.id} className="side-group workspace-section">
+      <Link to={hub.tabs[0]!.to} className={`side-row workspace-primary ${selected ? "is-on" : ""}`} aria-current={selected ? "page" : undefined} title={hub.hint}><i className="side-ico"><Icon size={17} strokeWidth={1.6} /></i><span>{hub.label}</span>{count(hub.id) > 0 && <em>{count(hub.id)}</em>}</Link>
+      {selected && <div className="workspace-children">{hub.tabs.map(tab => <Link key={tab.to} to={tab.to} className={`side-row ${at?.tab === tab ? "is-current" : ""}`} aria-current={at?.tab === tab ? "page" : undefined}><span>{tab.label}</span></Link>)}</div>}
+    </div>; })}
+    <details className="workspace-tools" open={here === "system" || undefined}><summary>All tools <ChevronRight size={12} /></summary>{HUBS.find(h => h.id === "system")!.tabs.map(tab => <Link key={tab.to} to={tab.to} className="side-row">{tab.label}</Link>)}</details>
     </div>
     <div className="side-foot">
       <button type="button" className={`side-row side-guide ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })}><i className="side-ico" data-hub="guide"><BookOpenText size={14} strokeWidth={2} /></i><span>Guide</span></button>

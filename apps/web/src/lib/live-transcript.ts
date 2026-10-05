@@ -12,8 +12,17 @@ export function liveTranscript(feed: LiveView["feed"]): ConversationLine[] {
     }
     if (hasResult && item.kind === "line") continue;
     const line: ConversationLine = { role: "assistant", text: item.text, partial: item.kind === "line" && !item.final, corrected: item.kind === "result" && !!item.corrected };
-    if (reply < 0) { reply = lines.length; lines.push(line); } else lines[reply] = line;
+    if (reply < 0) { reply = lines.length; lines.push(line); }
+    else if (item.kind === "result") lines.splice(reply, lines.length - reply, line);
+    else lines.push(line);
     if (item.kind === "result") hasResult = true;
   }
-  return lines.slice(-8);
+  return lines;
+}
+
+/** The notch's reading area contains conversation, never tool-progress messages. */
+export function liveNotchText(feed: LiveView["feed"], spokenText = ""): string {
+  const last = feed.findLast(item => item.kind !== "step" && item.text.trim());
+  if (!last) return "";
+  return last.text || spokenText;
 }

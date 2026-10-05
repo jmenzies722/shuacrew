@@ -15,7 +15,7 @@ export function MiniCard({ name, prefs, mood, state, heard, guide, reply, onChec
 }) {
   const quiet = state === "ready" && !guide;
   useEffect(() => { if (!quiet) return; const t = setTimeout(onClose, 20_000); return () => clearTimeout(t); }, [quiet, reply]);
-  const label = { listening: "Listening… let go of fn to send", thinking: "Thinking…", speaking: "Speaking", ready: `Hold fn to ask ${name}` }[state];
+  const label = { listening: "Listening…", thinking: "Thinking…", speaking: "Speaking", ready: `Use the mic to ask ${name}` }[state];
   return <motion.div className={`spk-mini-card is-${state}`} role="dialog" aria-label={`${name} quick view`} initial={{ opacity: 0, y: 8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 460, damping: 34 }}>
     <header><span className="spk-mini-face"><SparkCharacter preferences={prefs} mood={mood} size={26} crop="portrait" /></span><b>{name}</b><small>{label}</small>
       <button type="button" aria-label="Close" onClick={onClose}>×</button></header>

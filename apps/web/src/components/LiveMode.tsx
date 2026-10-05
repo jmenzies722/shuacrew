@@ -1,13 +1,13 @@
 import { AudioLines, Check, PhoneOff, ShieldAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { liveTranscript } from "../lib/live-transcript";
+import { liveTranscript, liveNotchText, type ConversationLine } from "../lib/live-transcript";
 import { voiceEnvelope } from "../lib/voice-envelope";
 import { useLive, useLiveLevels, startLive, endLive, stopLiveWork, stopLiveSpeech, answer, type LiveView } from "../lib/live-session";
 import { LiveVoiceSelect } from "./LiveVoiceSelect";
 export { liveActive, liveUsable, startLive, endLive, useLive, liveVoice, setLiveVoice, LIVE_VOICES } from "../lib/live-session";
 import "./live-mode.css";
 
-const LABEL: Record<LiveView["state"], string> = { off: "Live", ready: "Mic off · hold Fn or enable Talk", connecting: "Connecting…", listening: "Listening", speaking: "Speaking", working: "Working on it", ended: "Call ended", error: "Couldn't connect" };
+const LABEL: Record<LiveView["state"], string> = { off: "Live", ready: "Mic off · enable Talk", connecting: "Connecting…", listening: "Listening", speaking: "Speaking", working: "Working on it", ended: "Call ended", error: "Couldn't connect" };
 
 export function LiveButton({ compact = false }: { compact?: boolean }) {
   const live = useLive();
@@ -58,7 +58,7 @@ function CallStatus({ live }: { live: LiveView }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!live.tasks && live.state !== "working") return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [live.tasks, live.state]);
   const working = !!live.tasks || live.state === "working";
-  return <span className="live-status">{live.muted ? "Voice stopped · speak to resume" : live.approval ? "Needs your approval" : live.capturing && live.mode === "hold" ? "Listening · release Fn to send" : working ? `Working · ${Math.max(0, Math.floor((now - (live.workStartedAt ?? now)) / 1000))}s` : LABEL[live.state]}</span>;
+  return <span className="live-status">{live.muted ? "Voice stopped · speak to resume" : live.approval ? "Needs your approval" : live.capturing && live.mode === "hold" ? "Listening" : working ? `Working · ${Math.max(0, Math.floor((now - (live.workStartedAt ?? now)) / 1000))}s` : LABEL[live.state]}</span>;
 }
 
 function Approval({ live, compact }: { live: LiveView; compact?: boolean }) {
@@ -73,20 +73,54 @@ function Approval({ live, compact }: { live: LiveView; compact?: boolean }) {
   );
 }
 
-export function LiveTranscript({ live }: { live: LiveView }) {
-  const lines = liveTranscript(live.feed), list = useRef<HTMLOListElement>(null), follow = useRef(true);
+export function ConversationTranscript({ lines }: { lines: ConversationLine[] }) {
+  const list = useRef<HTMLOListElement>(null), follow = useRef(true);
+  const [behind, setBehind] = useState(false), [copyState, setCopyState] = useState("");
   const latest = lines.at(-1)?.text;
-  useEffect(() => { if (follow.current && list.current) list.current.scrollTop = list.current.scrollHeight; }, [latest, lines.length]);
-  return <ol ref={list} className="live-conversation" aria-label="Conversation transcript" aria-live="polite" onScroll={() => { const el = list.current; if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 36; }}>
-    {lines.map((line, index) => <li key={index} className={`is-${line.role}${line.partial ? " is-partial" : ""}`}><span>{line.role === "user" ? "You" : "Shua"}{line.partial ? " · transcribing" : line.corrected ? " · updated result" : ""}</span><p>{line.text}</p></li>)}
-  </ol>;
+  useEffect(() => {
+    if (follow.current && list.current) list.current.scrollTop = list.current.scrollHeight;
+    else if (lines.length) setBehind(true);
+  }, [latest, lines.length]);
+  useEffect(() => {
+    const element = list.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => { if (follow.current) element.scrollTop = element.scrollHeight; });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [lines.length > 0]);
+  useEffect(() => { setCopyState(""); }, [latest, lines.length]);
+  if (!lines.length) return null;
+  return <div className="conversation-reader">
+    <ol ref={list} className="live-conversation" aria-label="Conversation transcript" tabIndex={0} onScroll={() => {
+      const el = list.current;
+      if (el) { follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 36; if (follow.current) setBehind(false); }
+    }}>
+      {lines.map((line, index) => <li key={index} className={`is-${line.role}${line.partial ? " is-partial" : ""}`}><span>{line.role === "user" ? "You" : "Shua"}{line.partial ? " · live" : line.corrected ? " · updated result" : ""}</span><p>{line.text}</p></li>)}
+    </ol>
+    <div className="conversation-reader-tools">
+      <button type="button" onClick={async () => {
+        try { await navigator.clipboard.writeText(lines.map(line => `${line.role === "user" ? "You" : "Shua"}: ${line.text}`).join("\n\n")); setCopyState("Copied"); }
+        catch { setCopyState("Select text to copy"); }
+      }}>{copyState || "Copy conversation"}</button>
+      {behind && <button type="button" onClick={() => { follow.current = true; setBehind(false); if (list.current) list.current.scrollTop = list.current.scrollHeight; }}>Latest ↓</button>}
+      <span className="conversation-copy-status" role="status">{copyState}</span>
+    </div>
+  </div>;
+}
+
+export function LiveTranscript({ live }: { live: LiveView }) {
+  return <ConversationTranscript lines={liveTranscript(live.feed)} />;
 }
 
 /** The island row while a call is on: orb, what's happening, and the line being said. */
-export function LiveIsland({ expanded = false }: { expanded?: boolean } = {}) {
+export function LiveIsland({ expanded = false, textOnly = false }: { expanded?: boolean; textOnly?: boolean } = {}) {
   const live = useLive();
   if (!live.active) return null;
   const last = live.feed.at(-1);
+  if (textOnly) return <section className={`live-island is-text-only${expanded ? " is-expanded" : ""}`} aria-label="Live conversation">
+    {expanded ? <LiveTranscript live={live} /> : liveNotchText(live.feed, live.spokenText) && <p className="live-island-text">{liveNotchText(live.feed, live.spokenText)}</p>}
+    <Approval live={live} compact />
+  </section>;
   if (expanded) return <section className="live-island is-expanded" aria-label="Live conversation">
     <header><LiveWaveform compact /><CallStatus live={live} /><span className="live-spacer" />{live.state === "speaking" && <button type="button" className="live-btn" onClick={stopLiveSpeech}>Stop voice</button>}{!!live.tasks && <button type="button" className="live-btn" onClick={stopLiveWork}>Stop work</button>}<LiveButton compact /></header>
     <LiveTranscript live={live} /><Approval live={live} compact />

@@ -108,10 +108,17 @@ export class Supervisor {
   private waiting = new Map<string, Waiting>();
   private approveAll = new Set<string>();
   private resumeTimers = new Map<string, NodeJS.Timeout>();
+  /** A brain that just broke mid-turn (crash, sign-out, network): Spark skips it until then. Memory only — a restart retries. */
+  private assistantDown = new Map<string, number>();
   readonly worktrees = new Worktrees();
   private runtimeSnapshots = new Map<string, { status: RuntimeStatus; models?: string[] }>();
   updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
   intelligence(request: IntelligenceRequest) {
+    // Spark's Auto follows its brain order (Codex, then Claude), so the page and launch() never disagree on who answers.
+    if (request.purpose === "conversation" && request.mode === "auto" && !request.preferredRuntime && !request.preferredModel) {
+      const brain = this.assistantRuntime();
+      if (brain) request = { ...request, preferredRuntime: brain };
+    }
     return selectIntelligence(request, [...this.runtimes.values()].map(runtime => {
       const snapshot = this.runtimeSnapshots.get(runtime.id);
       return { ...runtime, models: snapshot?.models ? runtime.models.filter(m => snapshot.models!.includes(m.id)) : runtime.models,
@@ -167,12 +174,17 @@ export class Supervisor {
   }
 
   launch(spec: LaunchSpec, reservedId?: string): string {
+    if (spec.labels?.includes("buddy") && [...this.runtimes.keys()].some(id => id !== "mock")) {
+      const brain = this.assistantRuntime();
+      if (!brain) throw new Error("Connect Codex or Claude to use the personal assistant.");
+      spec = { ...spec, runtime: brain, model: spec.runtime === brain ? spec.model : undefined };
+    }
     this.expand(spec.ask);
     const id = reservedId ?? `r_${randomUUID().slice(0, 8)}`;
     if (!/^r_[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid reserved run ID");
     if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
-    if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? member.model };
+    if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? (member.runtime && this.runtimes.has(member.runtime) ? member.model : undefined) };
     // Auto and Spark use one routing policy. Explicit choices and crew-member defaults stay explicit.
     if (!member && !spec.runtime && !spec.model) {
       const rule = this.options.settings ? matchRoute(this.options.settings().router, spec.ask) : undefined;
@@ -278,7 +290,7 @@ export class Supervisor {
       // Quiet hours: automation waits in the queue and starts when they end (nothing is dropped).
       const quiet = this.options.settings?.().quietHours;
       if (quiet && run.labels.some((l) => l === "schedule" || l === "webhook" || l === "heartbeat") && inQuietHours(quiet)) continue;
-      const agent = this.currentRuntime(run.id, run.runtime);
+      const agent = run.labels.includes("buddy") ? this.keepAssistantUp(run.id, this.currentRuntime(run.id, run.runtime)) : this.currentRuntime(run.id, run.runtime);
       if (this.limitedUntil(agent) > Date.now() || this.allModelsLimited(agent)) continue;
       const cap = this.options.concurrency?.[run.runtime] ?? (run.runtime === "mock" ? 8 : 2);
       const busy = runs.filter((r) => r.runtime === run.runtime && this.active.has(r.id)).length;
@@ -482,6 +494,7 @@ export class Supervisor {
             // Stopped on purpose: the runtime's parting complaint about the abort ("ede_diagnostic …") isn't a failure,
             // and marking it one made Spark start a new conversation after every interruption.
             if (controller.signal.aborted) { ended = true; break; }
+            if (lean && this.assistantFailover(runId, runtime.id, event.message)) { ended = true; return; }
             this.rec("error.raised", { message: event.message, fatal: true }, { run: runId });
             this.setStatus(runId, "failed", event.message);
             ended = true;
@@ -494,7 +507,7 @@ export class Supervisor {
       const message = (error as Error).message;
       if (controller.signal.aborted) {
         if (!isFinished(this.status(runId) ?? "queued")) this.setStatus(runId, "cancelled");
-      } else {
+      } else if (!(lean && this.assistantFailover(runId, runtime.id, message))) {
         this.rec("error.raised", { message, fatal: true }, { run: runId });
         this.setStatus(runId, "failed", message);
       }
@@ -576,8 +589,10 @@ export class Supervisor {
     }
     const what = model ?? runtime;
     const why = credits ? `${what} needs usage credits on your plan` : `${what} is out until ${when(until)}`;
+    const buddy = created?.kind === "run.created" && created.body.labels.includes("buddy");
     const other =
-      this.options.failover && otherMoves < 2
+      buddy ? (otherMoves < 2 ? ASSISTANT_BRAINS.find((id) => id !== runtime && this.assistantUsable(id)) : undefined)
+      : this.options.failover && otherMoves < 2
         ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local") /* the local model has no tools: never hand it crew work */, runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
     const moveToOther = () => {
@@ -585,10 +600,8 @@ export class Supervisor {
       this.setStatus(run, "queued", `moved to ${other}`);
       this.pump();
     };
-    // Spark's conversation: someone is waiting, and one capped model usually means the account is (they share a weekly
-    // window), so go straight to the other provider rather than trying each sibling in turn.
-    const conversation = created?.kind === "run.created" && created.body.labels.includes("buddy");
-    if (conversation && other) return moveToOther();
+    // Spark is a conversation: the other brain answers now, not a sibling model that's likely capped on the same account.
+    if (buddy && other) return moveToOther();
     // Otherwise first another model on the same agent (a weekly cap on one model isn't always the account's).
     const sibling = this.options.failover !== false && siblingMoves < 2 && model ? this.pickModel(runtime, model, [model]) : undefined;
     if (sibling) {
@@ -686,6 +699,54 @@ export class Supervisor {
   private allModelsLimited(runtime: string): boolean {
     const models = this.runtimes.get(runtime)?.models ?? [];
     return models.length > 0 && models.every((m) => this.limitedUntil(runtime, m.id) > Date.now());
+  }
+
+  // ── Spark's brain: Codex first, Claude when Codex isn't working ────────────────────
+
+  private assistantUsable(id: string): boolean {
+    const status = this.runtimeSnapshots.get(id)?.status;
+    if (status && (!status.installed || status.signedIn === false)) return false;
+    return this.runtimes.has(id) &&this.limitedUntil(id) <= Date.now() && !this.allModelsLimited(id) && (this.assistantDown.get(id) ?? 0) <= Date.now();
+  }
+
+  /** The brain a new Spark conversation starts on; when both are down, the one you'd wait for. */
+  private assistantRuntime(): string | undefined {
+    return ASSISTANT_BRAINS.find((id) => this.assistantUsable(id)) ?? ASSISTANT_BRAINS.find((id) => this.runtimes.has(id));
+  }
+
+  /** A queued Spark turn never waits on a down brain while the other is free. A working brain keeps the conversation (no recap churn). */
+  private keepAssistantUp(run: string, current: string): string {
+    if (!ASSISTANT_BRAINS.includes(current) || this.assistantUsable(current)) return current;
+    const other = ASSISTANT_BRAINS.find((id) => id !== current && this.assistantUsable(id));
+    if (!other) return current;
+    this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason: `${current} isn't answering — ${other} is covering` }, { run });
+    return other;
+  }
+
+  /** A Spark turn that broke on one brain is retried once on the other, with a recap; true if it moved. */
+  private assistantFailover(run: string, runtime: string, message: string): boolean {
+    if (!ASSISTANT_BRAINS.includes(runtime) || !shouldFallBack(message)) return false;
+    const turn = this.turns(run);
+    const movedThisTurn = this.store.forRun(run).some((e) => e.kind === "run.routed" && / is covering$/.test(e.body.reason) && this.turnAt(run, e.seq) === turn);
+    const other = ASSISTANT_BRAINS.find((id) => id !== runtime && this.assistantUsable(id));
+    if (movedThisTurn || !other) return false;
+    this.assistantDown.set(runtime, Date.now() + ASSISTANT_COOLDOWN_MS);
+    this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason: `${runtime} failed (${message.slice(0, 120)}) — ${other} is covering` }, { run });
+    this.setStatus(run, "queued", `${other} is covering`);
+    return true;
+  }
+
+  /** The covering brain's model at the same tier as the launch's, so a quick chat stays quick. */
+  private coverModel(run: string, other: string): string | undefined {
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    return this.pickModel(other, this.modelFor(run, other, created?.kind === "run.created" ? created.body.model : undefined));
+  }
+
+  /** The turn a run was on when event `seq` was written. */
+  private turnAt(run: string, seq: number): number {
+    let turn = 0;
+    for (const e of this.store.forRun(run)) { if (e.seq > seq) break; if (e.kind === "turn.started") turn = e.body.turn; }
+    return turn;
   }
 
   /**
@@ -846,6 +907,7 @@ export class Supervisor {
   followUp(run: string, text: string, by = "you", requestId?: string, selection?: {runtime:string;model?:string;effort?:string}): string {
     const created = this.store.forRun(run).find(e => e.kind === "run.created");
     if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) throw new Error("Continue this conversation in its crew room, not the source session.");
+    if (created?.kind === "run.created" && created.body.labels.includes("buddy") && [...this.runtimes.keys()].some(id=>id!=="mock") && !ASSISTANT_BRAINS.includes(selection?.runtime ?? this.currentRuntime(run,created.body.runtime))) throw new Error("The personal assistant runs on Codex, with Claude as its backup.");
     if (selection) {
       const runtime = this.runtimes.get(selection.runtime);
       if (!runtime || (selection.model && !runtime.models.some(m => m.id === selection.model))) throw new Error("That model is not available for the selected agent.");
@@ -1012,6 +1074,22 @@ export class Supervisor {
   pendingApprovals(): string[] {
     return [...this.waiting.keys()];
   }
+}
+
+/** Spark's brains, in order: Codex first, Claude as the backup when Codex isn't working. */
+const ASSISTANT_BRAINS = ["codex", "claude"];
+/** How long a brain that just broke is skipped before Spark tries it again. */
+const ASSISTANT_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * Whether a Spark turn that failed with `message` should be retried on the other brain.
+ * Retrying costs a second answer's wait, and a recap replaces the warm conversation, so it should only happen
+ * when the brain itself broke (crashed, signed out, unreachable), not when the ask was the problem.
+ */
+export function shouldFallBack(message: string): boolean {
+  // TODO(human): decide which failures mean "the brain is down" vs "this ask can't be answered".
+  void message;
+  return true;
 }
 
 function isFinished(status: RunStatus): boolean {

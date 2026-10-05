@@ -23,7 +23,10 @@ async function world() {
 it("selects without creating work and rejects malformed selection requests", async () => {
   const { app, store } = await world();
   const r = await app.inject({ method: "POST", url: "/api/intelligence/select", headers, payload: ask });
-  expect(r.statusCode).toBe(200); expect(r.json()).toMatchObject({ runtime: "claude", model: "claude-model" });
+  // Spark's conversation is Codex first, Claude as the backup.
+  expect(r.statusCode).toBe(200); expect(r.json()).toMatchObject({ runtime: "codex", model: "codex-model" });
+  store.append("runtime.limited", { runtime: "codex", until: Date.now() + 60_000, message: "limited" });
+  expect((await app.inject({ method: "POST", url: "/api/intelligence/select", headers, payload: ask })).json()).toMatchObject({ runtime: "claude", model: "claude-model" });
   expect(Object.keys(fold(store.read(0)).runs)).toHaveLength(0);
   expect((await app.inject({ method: "POST", url: "/api/intelligence/select", headers, payload: { ...ask, images: "yes" } })).statusCode).toBe(400);
 });

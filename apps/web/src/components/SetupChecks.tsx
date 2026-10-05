@@ -1,0 +1,12 @@
+import { useEffect,useState } from 'react';import { api } from '../lib/api';
+interface Receipt{capability:string;state:string;scope:string;checkedAt:number;evidenceKind:string;runId?:string;detail:string}
+export function SetupChecks({devices=false}:{devices?:boolean}){
+ const [checks,setChecks]=useState<Receipt[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const refresh=()=>api<Receipt[]>('/api/personal-setup/checks').then(setChecks).catch(e=>setError(e.message));
+ useEffect(()=>{void refresh();},[]);
+ async function check(){setBusy(true);setError('');try{await api('/api/personal-setup/model-check',{body:{},signal:AbortSignal.timeout(65000)});await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ async function observe(capability:string,ok:boolean){try{await api('/api/personal-setup/observation',{body:{capability,ok}});await refresh();}catch(e){setError((e as Error).message);}}
+ return <div className="setup-checks"><p>Checks describe a specific result. Permissions alone do not prove an action works.</p>{!devices&&<><button type="button" className="wel-next" disabled={busy} onClick={()=>void check()}>{busy?'Checking Codex…':'Test Codex response'}</button>{busy&&<button type="button" onClick={()=>void api('/api/personal-setup/model-check/cancel',{body:{}}).catch(e=>setError(e.message))}>Stop check</button>}</>}
+ {devices&&<><p>Open the notch and try a short voice turn, interrupt playback, then ask for a harmless TextEdit action. Mark only what you actually observed.</p>{(['microphone','speaker','interrupt','text-entry'] as const).map(id=><div className="setup-device" key={id}><b>{id.replace('-',' ')}</b><span>{({microphone:'Say “testing Shua” and check the transcript.',speaker:'Ask for a short spoken reply and listen.',interrupt:'Interrupt a spoken reply and check it stops.', 'text-entry':'Ask Shua to type “testing Shua” in a blank TextEdit document; check the actual text.'})[id]}</span><button onClick={()=>void observe(id,true)}>I verified this</button><button onClick={()=>void observe(id,false)}>Needs fixing</button></div>)}</>}
+ {checks.filter(c=>devices?c.evidenceKind==='user-observed':c.capability==='codex').map(c=><div className="setup-receipt" key={c.capability}><strong>{c.capability} · {c.state}</strong><p>{c.detail}</p><small>{c.scope} · {new Date(c.checkedAt).toLocaleString()}</small>{c.runId&&<a href={`/sessions/${c.runId}`}>Inspect source session ↗</a>}</div>)}{error&&<p role="alert">{error}</p>}</div>;
+}

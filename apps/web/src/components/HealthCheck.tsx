@@ -5,7 +5,7 @@ import { PANES, paneURL } from "../lib/settings-panes";
 import "./health-check.css";
 
 /**
- * Settings → Health check: everything ShuaCrew needs, checked for real in one go — the engine, Claude and Codex, the
+ * Settings → Health check: everything ShuaCrew needs, checked for real in one go — the engine and connected runtimes, the
  * voice (a timed sentence), hearing you, Spark for Chrome, disk space, and on the Mac side every permission and music
  * control. Green, amber or red, each with the one thing that fixes it.
  */
@@ -35,7 +35,7 @@ async function macChecks(): Promise<Check[]> {
   let p: Record<string, string> = {};
   try { p = JSON.parse(perm?.output ?? "{}"); } catch { /* keep empty */ }
   const need = (key: string, label: string, pane: string, why: string, required: boolean): Check =>
-    p[key] === "granted" ? { id: `perm-${key}`, label, status: "ok", detail: "Allowed." }
+    p[key] === "granted" ? { id: `perm-${key}`, label, status: "ok", detail: "Permission granted. This does not verify a completed action." }
       // Never asked: the app isn't in Settings' list yet, so bring up macOS's own prompt instead.
       : { id: `perm-${key}`, label, status: required ? "fail" : "warn", detail: `${p[key] === "not asked" ? "Not allowed yet" : "Turned off"}: ${why}`,
           fix: p[key] === "not asked" && ["calendar", "reminders", "contacts"].includes(key) ? { kind: "request", target: key, label: "Allow" } : { kind: "settings", target: pane, label: "Turn on" } };
@@ -47,7 +47,7 @@ async function macChecks(): Promise<Check[]> {
     need("reminders", "Reminders", "reminders-access", "Spark can't tell you what's due.", false),
     need("contacts", "Contacts", "contacts-access", "Spark won't know who you mean by name.", false),
     !music ? { id: "music", label: "Music control", status: "warn", detail: "Music didn't answer. If macOS asks, allow ShuaCrew to control Music.", fix: { kind: "settings", target: "automation", label: "Review" } }
-      : music.ok ? { id: "music", label: "Music control", status: "ok", detail: music.output?.startsWith("Now in") ? `Working: ${music.output.replace(/^Now in /, "").split(" · ")[0]}` : "Working." }
+      : music.ok ? { id: "music", label: "Music control", status: "ok", detail: music.output?.startsWith("Now in") ? `Working: ${music.output.replace(/^Now in /, "").split(" · ")[0]}` : "Music status query answered. Playback control not tested." }
       : { id: "music", label: "Music control", status: "warn", detail: music.message, fix: { kind: "settings", target: "automation", label: "Review" } },
   ];
 }
@@ -71,11 +71,11 @@ export function HealthCheck() {
     if (pane) native()?.postMessage({ type: "buddyDo", id: crypto.randomUUID(), action: { type: "open_settings", pane: pane.key, url: paneURL(pane) } });
   };
   const fails = checks?.filter((c) => c.status === "fail").length ?? 0, warns = checks?.filter((c) => c.status === "warn").length ?? 0;
-  const headline = !checks ? "Checking everything…" : fails ? `${fails} thing${fails === 1 ? "" : "s"} need${fails === 1 ? "s" : ""} fixing` : warns ? `Working — ${warns} thing${warns === 1 ? "" : "s"} could be better` : "Everything's working";
+  const headline = !checks ? "Checking connected capabilities…" : fails ? `${fails} thing${fails === 1 ? "" : "s"} need${fails === 1 ? "s" : ""} fixing` : warns ? `Working — ${warns} thing${warns === 1 ? "" : "s"} could be better` : "These checks passed";
   return <section className={`health ${fails ? "is-fail" : warns ? "is-warn" : checks ? "is-ok" : ""}`} aria-label="Health check">
     <header className="health-head">
       <i className="health-badge" aria-hidden>{!checks ? <RefreshCw size={18} className="is-spin" /> : fails ? <XCircle size={20} /> : warns ? <AlertTriangle size={19} /> : <CheckCircle2 size={20} />}</i>
-      <div><strong>{headline}</strong><small>{at ? `Checked ${new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — the engine, Claude and Codex, a real spoken sentence, hearing you, Chrome, disk, permissions and music.` : "Running every check for real, including a spoken test sentence."}</small></div>
+      <div><strong>{headline}</strong><small>{at ? `Checked ${new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} — the engine and connected runtimes, generated audio, local transcription, Chrome, disk, permissions and music.` : "Checking services and permissions. Microphone input, speaker playback, and action completion need separate tests."}</small></div>
       <button type="button" className="health-run" disabled={running} onClick={() => void run()}><RefreshCw size={13} className={running ? "is-spin" : ""} />{running ? "Checking…" : "Check again"}</button>
     </header>
     {howto && <p className="health-howto">In Terminal, run <code>{howto}</code>, then check again.</p>}

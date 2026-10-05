@@ -57,3 +57,9 @@ import Testing
     #expect(!CaptureConsistency.valid(startPID: 1, currentPID: 1, startWindow: "Music", currentWindow: "Settings", observedAt: 10, now: 11))
     #expect(!CaptureConsistency.valid(startPID: 1, currentPID: 1, startWindow: "Music", currentWindow: "Music", observedAt: 10, now: 19))
 }
+
+@Test func delayedHoldTimerCannotTurnASelectionHoldIntoVoiceTap() {
+    var gesture = FnGesture()
+    _ = gesture.down(at: 0)
+    #expect(gesture.up(at: 0.4) == .cancel)
+}

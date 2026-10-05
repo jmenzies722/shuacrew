@@ -2,9 +2,10 @@ import { mkdtempSync, mkdirSync, readlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { ClaudeRuntime } from "./claude.js";
 import { ClaudeAccounts, type ReadStatus } from "./claude-accounts.js";
 
-function pool(logins: Record<string, { email?: string; plan?: string; loggedIn?: boolean }>, extras: string[] = []) {
+function pool(logins: Record<string, { email?: string; plan?: string; loggedIn?: boolean }>, extras: string[] = [], accountId?: string) {
   const home = mkdtempSync(path.join(os.tmpdir(), "shua-acct-"));
   const root = path.join(home, ".shuacrew", "claude-accounts");
   for (const name of extras) mkdirSync(path.join(root, name), { recursive: true });
@@ -14,7 +15,7 @@ function pool(logins: Record<string, { email?: string; plan?: string; loggedIn?:
     const l = who[dir ? path.basename(dir) : "default"];
     return l ? { loggedIn: l.loggedIn ?? true, email: l.email, subscriptionType: l.plan } : {};
   };
-  const accounts = new ClaudeAccounts({ home, root, readStatus, ttlMs: 60_000, now: () => now });
+  const accounts = new ClaudeAccounts({ home, root, accountId, readStatus, ttlMs: 60_000, now: () => now });
   return { accounts, who, home, root, tick: (ms: number) => (now += ms), now: () => now };
 }
 
@@ -91,4 +92,20 @@ describe("Claude account pool", () => {
     expect(readlinkSync(path.join(dir, "projects"))).toBe(path.join(home, ".claude", "projects"));
     expect(accounts.create()).toBe(path.join(root, "3"));
   });
+});
+
+it("uses only the explicitly selected saved account and fails closed if it disappears", async () => {
+ const selected=pool({default:{email:"blocked@example.com"},"2":{email:"working@example.com"}},["2"],"2");
+ expect((await selected.accounts.refresh()).map(a=>a.email)).toEqual(["working@example.com"]);
+ expect(selected.accounts.pick()?.email).toBe("working@example.com");
+ const missing=pool({default:{email:"blocked@example.com"}},[],"2");
+ await expect(missing.accounts.refresh()).rejects.toThrow("Selected Claude account");
+});
+
+it("does not fall back to the global login when a selected account is signed out", async () => {
+ const {accounts,home}=pool({default:{email:"other@example.com"},"2":{loggedIn:false}},["2"],"2");
+ const runtime=new ClaudeRuntime({accounts,executable:"/does-not-exist"});
+ const events=[];
+ for await(const e of runtime.start({id:"check",ask:"test",cwd:home},{signal:new AbortController().signal,env:{},approve:async()=>({allow:false,reason:"test"})}))events.push(e);
+ expect(events).toEqual([{type:"error",message:"The selected Claude account is not signed in. Reconnect that account before running work."}]);
 });

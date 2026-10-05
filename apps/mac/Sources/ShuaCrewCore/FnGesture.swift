@@ -4,11 +4,11 @@ import Foundation
 /// other key while it's down means "not for Spark" and nothing fires. Pure state: the Mac app feeds it events
 /// and a clock; the tests pin the timing.
 public struct FnGesture: Sendable {
-    /// `press` fires the instant fn goes down (Spark opens the mic then, so the first words aren't lost); `cancel` says
+    /// `press` fires the instant fn goes down (no microphone is opened yet); `cancel` says
     /// that press wasn't for Spark after all (fn+another key, or let go without a tap or hold).
     public enum Signal: Equatable, Sendable { case none, press, cancel, tap, holdStart, holdEnd }
     public static let holdAfter: TimeInterval = 0.3
-    public static let tapWithin: TimeInterval = 0.5
+    public static let tapWithin: TimeInterval = holdAfter
 
     private var downAt: TimeInterval?
     private var holding = false

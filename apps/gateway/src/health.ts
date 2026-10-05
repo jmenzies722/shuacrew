@@ -24,29 +24,31 @@ export function healthChecks(f: HealthFacts): HealthCheck[] {
   if (f.memoryMb > 2500) Object.assign(checks[0]!, { status: "warn", detail: `Running, but using ${f.memoryMb} MB. Restarting ShuaCrew frees it.` });
 
   // The brains: at least one must be usable, or Spark and the crew can't think.
-  const usable = f.runtimes.filter((r) => r.installed && r.signedIn !== false && r.limitedUntil <= f.now);
+  const usable = f.runtimes.filter((r) => r.installed && r.signedIn === true && r.limitedUntil <= f.now);
+  if (!f.runtimes.length) checks.push({id:"runtime",label:"AI runtime",status:"fail",detail:"No AI runtime is connected.",fix:{kind:"page",target:"/settings#agents",label:"Connect Codex"}});
   for (const r of f.runtimes) {
     const id = `runtime-${r.id}`;
     if (!r.installed) checks.push({ id, label: r.label, status: usable.length ? "warn" : "fail", detail: `Not installed.${usable.length ? " Spark uses the other one." : ""}`, fix: { kind: "page", target: "/settings#agents", label: "Connect" } });
     else if (r.signedIn === false) checks.push({ id, label: r.label, status: usable.length ? "warn" : "fail", detail: "Installed but signed out.", fix: { kind: "page", target: "/settings#agents", label: "Sign in" } });
     else if (r.limitedUntil > f.now) checks.push({ id, label: r.label, status: usable.length ? "warn" : "fail", detail: `At its usage limit for about ${inMinutes(r.limitedUntil, f.now)} more minutes.${usable.length ? " Spark uses the other one meanwhile." : ""}` });
-    else checks.push({ id, label: r.label, status: "ok", detail: r.signedIn === null ? "Ready (sign-in confirmed on first use)." : "Ready." });
+    else if (r.signedIn === null) checks.push({id,label:r.label,status:"warn",detail:"Installed; authentication has not been verified. Run the setup model check.",fix:{kind:"page",target:"/settings#agents",label:"Check connection"}});
+    else checks.push({ id, label: r.label, status: "ok", detail: "Signed in. A successful task still needs its own verification." });
   }
 
   // Voice: installed, and fast enough that it never drags (a sentence should start well under a second).
   const s = f.speech;
   if (!s) checks.push({ id: "voice", label: "Spark's voice", status: "warn", detail: "The voice engine isn't set up.", fix: { kind: "settings", target: "voice", label: "Set up" } });
   else if (s.state !== "ready") checks.push({ id: "voice", label: "Spark's voice", status: s.state === "installing" ? "warn" : "fail", detail: s.state === "installing" ? "Installing the voice engine…" : `The voice engine isn't ready${s.error ? `: ${s.error}` : "."}`, fix: { kind: "settings", target: "voice", label: "Open voice settings" } });
-  else if (s.firstAudioMs === null) checks.push({ id: "voice", label: "Spark's voice", status: "fail", detail: `Installed, but the test sentence didn't play${s.error ? `: ${s.error}` : "."}`, fix: { kind: "settings", target: "voice", label: "Open voice settings" } });
+  else if (s.firstAudioMs === null) checks.push({ id: "voice", label: "Spark's voice", status: "fail", detail: `Installed, but the test sentence produced no audio${s.error ? `: ${s.error}` : "."}`, fix: { kind: "settings", target: "voice", label: "Open voice settings" } });
   else checks.push({ id: "voice", label: "Spark's voice", status: s.firstAudioMs <= 1500 ? "ok" : "warn",
-    detail: (s.firstAudioMs <= 1500 ? `Speaks in ${(s.firstAudioMs / 1000).toFixed(1)} s.` : `Slow to start (${(s.firstAudioMs / 1000).toFixed(1)} s): something else may be using the GPU.`)
+    detail: (s.firstAudioMs <= 1500 ? `Audio generated in ${(s.firstAudioMs / 1000).toFixed(1)} s. Playback not verified.` : `Audio generation took ${(s.firstAudioMs / 1000).toFixed(1)} s. Playback not verified.`)
       + (s.coldMs ? ` (The first sentence after a restart took ${(s.coldMs / 1000).toFixed(1)} s while the voice loaded.)` : "") });
 
   // Hearing you: voice mode and dictation need ffmpeg, whisper and a model on this Mac.
   const t = f.transcription, missing = [!t.ffmpeg && "ffmpeg", !t.whisper && "whisper-cpp", !t.model && "a speech model"].filter(Boolean);
   checks.push(missing.length
-    ? { id: "hearing", label: "Hearing you", status: "fail", detail: `Voice mode can't transcribe: missing ${missing.join(", ")}.`, fix: { kind: "howto", target: "brew install ffmpeg whisper-cpp", label: "How to fix" } }
-    : { id: "hearing", label: "Hearing you", status: "ok", detail: "Speech is transcribed on this Mac." });
+    ? { id: "hearing", label: "Local transcription", status: "fail", detail: `Local transcription is unavailable: missing ${missing.join(", ")}.`, fix: { kind: "howto", target: "brew install ffmpeg whisper-cpp", label: "How to fix" } }
+    : { id: "hearing", label: "Local transcription", status: "ok", detail: "Local transcription components are installed. Microphone input is not verified; live OpenAI voice has a separate path." });
 
   checks.push(f.chrome.connected
     ? { id: "chrome", label: "Spark for Chrome", status: "ok", detail: "Connected: exact on web pages." }

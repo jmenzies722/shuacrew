@@ -1,0 +1,17 @@
+{
+  "chat" : {
+    "bottomLeft" : "28px",
+    "bottomRight" : "28px",
+    "clip" : "inset(0px round 0px 0px 28px 28px)",
+    "topLeft" : "0px",
+    "topRight" : "0px"
+  },
+  "nativeBottomRadius" : 28,
+  "nook" : {
+    "bottomLeft" : "28px",
+    "bottomRight" : "28px",
+    "clip" : "inset(0px round 0px 0px 28px 28px)",
+    "topLeft" : "0px",
+    "topRight" : "0px"
+  }
+}

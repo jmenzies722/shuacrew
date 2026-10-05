@@ -15,6 +15,7 @@ it("does not merge or push without confirmation", async () => {
   for (const type of ["crew_review", "crew_pr"] as const) {
     const result = await perform(type === "crew_review" ? { type, ref: ref(), approve: true } : { type, ref: ref() });
     expect(result.message).not.toContain("deleted");
+    expect(result.ok).toBe(false);
   }
   expect(api).not.toHaveBeenCalled();
 });
@@ -75,4 +76,21 @@ it("does not retry an action whose previous outcome is unknown", async () => {
  const target=ref();vi.mocked(api).mockResolvedValueOnce({claimed:false,conflict:false,result:null});
  expect((await perform({type:"crew_message",ref:target,text:"Hello"},{requestId:"unknown-request"})).ok).toBe(false);
  expect(vi.mocked(api).mock.calls).toHaveLength(1);
+});
+
+it("opens an existing learning lesson without generating it again", async () => {
+  const setItem = vi.fn(), dispatchEvent = vi.fn(), navigate = vi.fn();
+  vi.stubGlobal("localStorage", {setItem}); vi.stubGlobal("window", {dispatchEvent,shuacrew:{navigate}}); vi.stubGlobal("location", {pathname:"/learn"});
+  try {
+    vi.mocked(api).mockResolvedValueOnce({courses:[{id:"c1",lessons:[{title:"Queues",run:"existing"}]}]});
+    expect((await performNow({type:"learn",course:"c1",lesson:0})).ok).toBe(true);
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(setItem).toHaveBeenCalledWith("shuacrew.activeLesson",JSON.stringify({course:"c1",index:0,run:"existing"}));
+    expect(navigate).toHaveBeenCalledWith("/learn");
+  } finally {vi.unstubAllGlobals();}
+});
+it("rejects a removed lesson without creating a replacement", async () => {
+  vi.mocked(api).mockResolvedValueOnce({courses:[]});
+  expect((await performNow({type:"learn",course:"missing",lesson:0})).ok).toBe(false);
+  expect(api).toHaveBeenCalledTimes(1);
 });

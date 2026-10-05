@@ -152,3 +152,6 @@ process.stdin.on("data", (d) => { buf += d; let i; while ((i = buf.indexOf("\\n"
     } finally { live.stop(); }
   });
 });
+it('only archives live transcripts when explicitly enabled', async()=>{
+ const { shouldArchiveLiveCall }=await import('./live.js');expect(shouldArchiveLiveCall({})).toBe(false);expect(shouldArchiveLiveCall({'save-live-transcripts':false})).toBe(false);expect(shouldArchiveLiveCall({'save-live-transcripts':true})).toBe(true);
+});

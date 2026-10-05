@@ -1,0 +1,4 @@
+import {expect,it} from 'vitest';import {metricProvenance,totalsByCurrency} from './venture-metrics';import type {VentureView} from '@shuacrew/core/projections';
+const v=(mode?:string,currency='usd',source='stripe')=>({metrics:{source,mode,currency,mrr:10,at:1}} as unknown as VentureView);
+it('separates test manual and legacy provenance',()=>{expect(metricProvenance(v('test'))).toBe('test-provider');expect(metricProvenance(v())).toBe('unknown');expect(metricProvenance(v('live'))).toBe('live-provider');expect(metricProvenance(v(undefined,'usd','manual'))).toBe('manual');});
+it('never sums currencies or unknown/test/manual values together',()=>{expect(totalsByCurrency([v('live'),v('live','eur'),v('test'),v(),v(undefined,'usd','manual'),{...v('live'),syncError:'offline'}])).toEqual([{currency:'USD',mrr:10},{currency:'EUR',mrr:10}]);});

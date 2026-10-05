@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * Ventures: each startup you're working on, from idea to revenue. A venture ties together its
  * stage, the crew's sessions and playbooks for it, what they saved, and what it earns.
@@ -43,7 +44,7 @@ export function inputsFor(v: VentureView): Record<string, string> {
     product: `${v.name}${v.pitch ? ` — ${v.pitch}` : ""}`,
     audience: v.customer ?? "",
     cta: "Join the waitlist",
-    metrics: m ? `MRR ${formatMoney(m.mrr ?? 0, m.currency)}, revenue last 30 days ${formatMoney(m.revenue30d ?? 0, m.currency)}, ${m.customers ?? "?"} paying customers` : "No numbers yet",
+    metrics: m ? `${m.source === "manual" ? "Manually reported" : m.mode === "live" ? "Live provider" : m.mode === "test" ? "Test data" : "Unverified legacy data"}; MRR ${m.mrr === undefined ? "unknown" : formatMoney(m.mrr,m.currency)}, revenue last 30 days ${m.revenue30d === undefined ? "unknown" : formatMoney(m.revenue30d,m.currency)}, ${m.customers ?? "?"} customers` : "No numbers yet",
     competitor: "",
   };
 }
@@ -61,6 +62,7 @@ export class Ventures {
   private unsubscribe: () => void;
   private timer?: NodeJS.Timeout;
   private weekly?: Cron;
+  private launching = new Set<string>();
   /** How to start a playbook (the Plays service); set at boot. */
   startPlay?: (input: { playbook: string; venture: string; inputs: Record<string, string>; title: string; repo?: string }) => unknown;
 
@@ -102,7 +104,7 @@ export class Ventures {
   private onNumbers(id: string) {
     const v = this.state.ventures[id];
     const m = v?.metrics;
-    if (v?.stage === "launching" && m && ((m.mrr ?? 0) > 0 || (m.revenue30d ?? 0) > 0)) this.advance(id, "earning", "first revenue came in");
+    if (v?.stage === "launching" && m?.source === "stripe" && m.mode === "live" && !v.syncError && (m.revenue30d ?? 0) > 0) this.advance(id, "earning", "first revenue came in");
   }
 
   private advance(id: string, to: VentureStage, why: string) {
@@ -114,12 +116,23 @@ export class Ventures {
 
   private start(v: VentureView, playbook: string) {
     const running = Object.values(this.state.plays).some((p) => p.venture === v.id && p.playbook === playbook && (p.status === "running" || p.status === "waiting"));
-    if (running || !this.startPlay) return;
+    const key = `${v.id}:${playbook}`;
+    if (running || this.launching.has(key)) return;
+    this.launching.add(key);const attemptId=randomUUID();
+    this.store.append("venture.automation",{id:v.id,playbook,state:"starting",attemptId});
+    const failed=(e:unknown)=>{this.store.append("venture.automation",{id:v.id,playbook,state:"failed",attemptId,error:(e instanceof Error?e.message:"Automation could not start").slice(0,300)});this.launching.delete(key);};
     try {
-      this.startPlay({ playbook, venture: v.id, inputs: inputsFor(v), title: `${v.name} — ${playbook.replace(/-/g, " ")}`, repo: v.repo });
-    } catch {
-      // a playbook that can't start (e.g. missing crew) leaves the stage as it is
-    }
+      if(!this.startPlay)throw Error("Automation service is unavailable.");
+      const started=this.startPlay({playbook,venture:v.id,inputs:inputsFor(v),title:`${v.name} — ${playbook.replace(/-/g," ")}`,repo:v.repo});
+      void Promise.resolve(started).then(()=>{this.store.append("venture.automation",{id:v.id,playbook,state:"started",attemptId});this.launching.delete(key);},failed);
+    }catch(e){failed(e);}
+  }
+  retryAutomation(id:string){
+    const v=this.need(id),a=v.automation;
+    if(!a || a.state === "started")throw Error("No failed launch to retry.");
+    const existing=Object.values(this.state.plays).find(p=>p.venture===id && p.playbook===a.playbook && p.startedAt>=a.at);
+    if(existing){this.store.append("venture.automation",{id,playbook:a.playbook,state:"started",attemptId:a.attemptId});return {ok:true};}
+    this.start(v,a.playbook);return {ok:true};
   }
 
   /** Autopilot's weekly beat: Mondays at 9:00, earning ventures get a growth review. */
@@ -206,7 +219,7 @@ export class Ventures {
       v.pitch && `What it is: ${v.pitch}`,
       v.customer && `For: ${v.customer}`,
       v.goal && `Goal: ${v.goal}`,
-      m && `Latest numbers (${m.source}): ${[m.mrr !== undefined && `MRR ${money(m.mrr)}`, m.revenue30d !== undefined && `revenue last 30 days ${money(m.revenue30d)}`, m.customers !== undefined && `${m.customers} paying customers`].filter(Boolean).join(", ")}.`,
+      m && `Observed ${new Date(m.at).toISOString()} — ${m.source === "manual" ? "MANUALLY REPORTED" : m.mode === "test" ? "TEST DATA, not live earnings" : m.mode === "live" ? "LIVE PROVIDER DATA" : "UNVERIFIED LEGACY DATA"}${v.syncError ? "; latest sync failed: " + v.syncError : ""}: ${[m.mrr !== undefined && `MRR ${money(m.mrr)}`, m.revenue30d !== undefined && `revenue last 30 days ${money(m.revenue30d)}`, m.customers !== undefined && `${m.customers} customers in this source`].filter(Boolean).join(", ")}.`,
       v.website && `Website: ${v.website}`,
       "Search the library for this venture's earlier research, specs and decisions before starting, and save deliverables with save_artifact.",
     ]
@@ -254,7 +267,7 @@ export class Ventures {
       const since = Math.floor(Date.now() / 1000) - 30 * 86400;
       const charges = await this.all<StripeCharge>(key, `/v1/charges?limit=100&created[gte]=${since}`);
       const reading = summarise(subs, charges);
-      this.store.append("venture.metrics", { id, source: "stripe", ...reading });
+      this.store.append("venture.metrics", { id, source: "stripe", mode: key.includes("_test_") ? "test" : "live", ...reading });
     } catch (error) {
       this.store.append("venture.metrics", { id, source: "stripe", currency: this.get(id)?.metrics?.currency ?? "usd", error: (error as Error).message.slice(0, 300) });
       throw error;

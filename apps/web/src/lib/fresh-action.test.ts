@@ -24,3 +24,11 @@ it("refuses dispatch preparation if stopped or permissions revoked while capture
   alive = false; resolve(before);
   await expect(pending).rejects.toThrow("Stopped");
 });
+it("turns a named press into a real click on its freshly observed control", () => {
+  const current = {context:{...before.context,elements:[{...before.context.elements[0]!,x:.7}]}};
+  expect(freshAction({type:"press",label:"Play"},before,current)).toMatchObject({type:"click",label:"Play",x:.7,y:.2});
+});
+it("never falls back to a similarly named control in another app for a named press", () => {
+  expect(()=>freshAction({type:"press",label:"Play"},before,{context:{...before.context,elements:[]}})).toThrow("missing or ambiguous");
+  expect(()=>freshAction({type:"press",label:"Play"},before,{context:{...before.context,elements:[...before.context.elements,...before.context.elements]}})).toThrow("missing or ambiguous");
+});

@@ -1,3 +1,4 @@
+import { shouldArchiveLiveCall } from "./live.js";
 /**
  * The gateway process: one long-running local daemon that owns sessions, runs, memory, schedules,
  * approvals and policy, and serves the dashboard. Everything it knows is in its event log, so a
@@ -41,7 +42,7 @@ export function dataDir(): string {
 }
 
 interface RuntimeConfig {
-  claude?: { authMode?: AuthMode; enabled?: boolean };
+  claude?: { authMode?: AuthMode; enabled?: boolean; accountId?: string };
   local?: { enabled?: boolean };
   codex?: { authMode?: AuthMode; enabled?: boolean };
   /** ACP agents are opt-in: nothing launches one unless it is listed here. */
@@ -64,7 +65,7 @@ export async function registry(): Promise<Map<string, Runtime>> {
   const config = runtimeConfig();
   const runtimes = new Map<string, Runtime>();
   const allowed = subscriptionRuntimeIds(config, process.env.SHUACREW_DEMO === "1");
-  if (allowed.includes("claude")) runtimes.set("claude", new ClaudeRuntime({ authMode: "subscription" }));
+  if (allowed.includes("claude")) runtimes.set("claude", new ClaudeRuntime({ authMode: "subscription", accountId: config.claude?.accountId }));
   if (allowed.includes("codex")) runtimes.set("codex", new CodexRuntime({ authMode: "subscription" }));
   if (allowed.includes("mock")) runtimes.set("mock", new MockRuntime());
   return runtimes;
@@ -116,7 +117,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   };
   const terminals = new Terminals(zshIntegration(home));
   // Live calls reach Spark's Mac actions through this gateway's tool server, with a token per call.
-  const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => void library.save({ title, content, summary, filename: "live-call.md", by: "agent" }), protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
+  const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => { if (shouldArchiveLiveCall(settings.get().flags)) library.save({ title, content, summary, filename: "live-call.md", by: "agent" }); }, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
     mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }, 5_000); // spark_do confirms deletes itself; a call's Codex is warmed 5 s after boot
   tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;
@@ -136,7 +137,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     memory,
     crew,
     mcpServers: withLibrary,
-    sparkMcpServers: (runtime) => runtime === "codex" ? mcp.forCodex("spark") : undefined,
+    sparkMcpServers: (runtime) => runtime === "codex" ? mcp.forCodex("spark") : runtime === "claude" ? mcp.forClaude("spark") : undefined,
     toolHint: LIBRARY_HINT,
     plugins: (runtime) => (runtime === "claude" ? skills.plugins() : undefined),
     ventureBrief: (id) => ventures.brief(id),

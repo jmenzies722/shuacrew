@@ -22,3 +22,8 @@ it("theme codes round-trip and can only set valid values", () => {
   expect(safe.appearance.accent).toBe(DEFAULT_APPEARANCE.accent); expect(safe.appearance.sendShortcut).toBe(DEFAULT_APPEARANCE.sendShortcut); expect(safe.look.customAccent).toBeNull();
   expect(() => decodeTheme("hello", { appearance: DEFAULT_APPEARANCE, look: DEFAULT_LOOK })).toThrow(/SHUA1/);
 });
+
+it("round-trips the Obsidian palette without replacing existing themes", () => {
+ const back=decodeTheme(encodeTheme({...DEFAULT_APPEARANCE,palette:"obsidian",dark:"obsidian"},DEFAULT_LOOK),{appearance:DEFAULT_APPEARANCE,look:DEFAULT_LOOK});
+ expect(back.appearance.palette).toBe("obsidian");expect(back.appearance.dark).toBe("obsidian");
+});

@@ -55,3 +55,12 @@ describe("helpers", () => {
     expect(missionBrief("do it")).toMatch(/end to end/);
   });
 });
+
+it("waits for a real decision instead of consenting to any closing question", () => {
+  for (const lastText of ["Which repository should I use?", "Should I publish this to production?", "Can you supply the API key?", "Should I send this email?"]) {
+    expect(nextMove({status:"done",lastText,rounds:0,title:"Research"}).kind).toBe("needs-you");
+  }
+});
+it("does not label an unanswered question complete when retries are exhausted",()=>{
+  expect(nextMove({status:"done",lastText:"Should I continue?",rounds:MAX_ROUNDS,title:"Build"})).toMatchObject({kind:"report",ok:false});
+});

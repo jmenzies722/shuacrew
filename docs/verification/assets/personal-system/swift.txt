@@ -1,0 +1,57 @@
+Building for debugging...
+[Starting]
+[3 / 27]
+[5 / 29] ShuaCrewCore
+[9 / 24] ShuaCrewCore
+[12 / 15] ShuaCrew-product
+[15 / 18] ShuaCrew-product
+/Users/admin/Developer/projects/shuacrew-live/apps/mac/Sources/ShuaCrew/WorkflowRuntime.swift:84:251: warning: 'fullPath(forApplication:)' was deprecated in macOS 11.0: Use -[NSWorkspace URLForApplicationWithBundleIdentifier:] instead. [#DeprecatedDeclaration]
+ 82 |                 var bundles: [String] = []
+ 83 |                 for name in names {
+ 84 |                     guard let url = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == name || $0.localizedName == name })?.bundleURL ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: name) ?? NSWorkspace.shared.fullPath(forApplication: name).map({ URL(fileURLWithPath: $0) }),
+    |                                                                                                                                                                                                                                                           `- warning: 'fullPath(forApplication:)' was deprecated in macOS 11.0: Use -[NSWorkspace URLForApplicationWithBundleIdentifier:] instead. [#DeprecatedDeclaration]
+ 85 |                           let bundle = Bundle(url: url)?.bundleIdentifier, WorkflowPolicy.appAllowed(bundle), !bundles.contains(bundle) else { throw failure("App unavailable, duplicated, or protected: \(name)") }
+ 86 |                     bundles.append(bundle); appNames[bundle] = url.deletingPathExtension().lastPathComponent
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[16 / 18] ShuaCrew-product
+[18 / 20] ShuaCrew-product
+Build complete! (3.94 sec)
+◇ Test run started.
+↳ Testing Library Version: 2078
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite WorkflowTests started.
+◇ Suite WorkflowKeyboardTests started.
+◇ Suite RecordedWorkflowInputTests started.
+◇ Test parametersContainNoCapturedText() started.
+◇ Test teachingHistoryPersistsAndLegacyWorkflowsStillLoad() started.
+◇ Test onlyVerifiedRunsImproveTheCache() started.
+◇ Test protectedAppsAndPathsNeverRecord() started.
+◇ Test libraryPersistsPrivatelyAndRejectsCorruption() started.
+◇ Test recordingUsesPreActionGeometryAndRejectsStaleOrAmbiguousHits() started.
+◇ Test accentsAndOrdinaryTypingAreParameterized() started.
+◇ Test malformedOrDangerousOperationsCannotBecomeExecutable() started.
+◇ Test shortcutsAndSubmitAreNotConfusedWithTyping() started.
+◇ Test returnInAnEditableDocumentIsTextNotAnUnsupportedShortcut() started.
+◇ Test targetMustBeUniqueAndSemantic() started.
+◇ Test keyboardFallbackRequiresExactReadableEchoAndNoSubmitCharacters() started.
+◇ Test recordedDefaultsMustBelongToInputSlots() started.
+◇ Test retainsOnlyReviewableNonSecureText() started.
+✔ Test accentsAndOrdinaryTypingAreParameterized() passed after 0.001 seconds.
+✔ Test returnInAnEditableDocumentIsTextNotAnUnsupportedShortcut() passed after 0.001 seconds.
+✔ Test onlyVerifiedRunsImproveTheCache() passed after 0.001 seconds.
+✔ Test targetMustBeUniqueAndSemantic() passed after 0.001 seconds.
+✔ Test protectedAppsAndPathsNeverRecord() passed after 0.001 seconds.
+✔ Test shortcutsAndSubmitAreNotConfusedWithTyping() passed after 0.001 seconds.
+✔ Test keyboardFallbackRequiresExactReadableEchoAndNoSubmitCharacters() passed after 0.001 seconds.
+✔ Test recordingUsesPreActionGeometryAndRejectsStaleOrAmbiguousHits() passed after 0.001 seconds.
+✔ Test retainsOnlyReviewableNonSecureText() passed after 0.001 seconds.
+✔ Test recordedDefaultsMustBelongToInputSlots() passed after 0.001 seconds.
+✔ Suite WorkflowKeyboardTests passed after 0.001 seconds.
+✔ Suite RecordedWorkflowInputTests passed after 0.001 seconds.
+✔ Test parametersContainNoCapturedText() passed after 0.001 seconds.
+✔ Test malformedOrDangerousOperationsCannotBecomeExecutable() passed after 0.001 seconds.
+✔ Test teachingHistoryPersistsAndLegacyWorkflowsStillLoad() passed after 0.001 seconds.
+✔ Test libraryPersistsPrivatelyAndRejectsCorruption() passed after 0.006 seconds.
+✔ Suite WorkflowTests passed after 0.007 seconds.
+✔ Test run with 14 tests in 3 suites passed after 0.007 seconds.

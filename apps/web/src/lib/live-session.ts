@@ -21,10 +21,14 @@ export type LiveView = {
   approval?: { id: string; kind: "command" | "files" | "action"; text: string; why?: string }; mic: number; voice: number;
 };
 const OFF: LiveView = { active: false, state: "off", feed: [], mic: 0, voice: 0 };
-const FEED_MAX = 14;
-const push = (item: Item) => emit({ feed: [...view.feed, item].slice(-FEED_MAX) });
+function retainFeed(feed: Item[]): Item[] {
+  return feed.filter((item, index) => item.kind !== "step" || feed.length - index <= 14);
+}
+const push = (item: Item) => emit({ feed: retainFeed([...view.feed, item]) });
 let view: LiveView = OFF, call: LiveCall | null = null;
 let pendingTexts: string[] = [];
+let pendingNarration: string | null = null;
+let pendingStart: {mode: "hold" | "talk" | "silent"} | null = null;
 const subs = new Set<() => void>();
 const emit = (next: Partial<LiveView>) => { view = { ...view, ...next }; subs.forEach((f) => f()); if (isLiveOwner()) native()?.postMessage({ type: "liveSnapshot", revision: ++revision, snapshot: { ...view, state: view.state === "ready" ? "listening" : view.state } }); };
 export const useLive = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), () => view);
@@ -49,6 +53,17 @@ export function queueLiveText(text: string) {
     pendingTexts.push(text); return true;
   }
   return sendLiveText(text);
+}
+/** Speak already-grounded image analysis without another task or microphone capture. */
+export function narrateLiveResult(text: string): boolean {
+  text = text.trim().slice(0, 4000);
+  if (!text) return false;
+  if (!isLiveOwner()) { forward("narrate", text); return true; }
+  if (!call) startLive("silent");
+  if (view.state === "connecting") { pendingNarration = text; return true; }
+  if (!call) return false;
+  push({kind:"result",text}); call.recordResult(text); announce(text, call);
+  return true;
 }
 export function sendLiveText(text: string) {
   if (!view.active || view.state === "connecting" || !text.trim()) return false;
@@ -75,15 +90,36 @@ function announce(text: string, current: LiveCall) {
 }
 export function stopLiveWork() { if (!isLiveOwner()) { forward("cancel"); return; } queue?.cancelAll(); denyLocal(); }
 export function stopLiveSpeech() {
+  pendingNarration = null;
   if (!isLiveOwner()) { forward("cancel", "voice"); return; }
   clearTimeout(announcementTimer); announcementTimer = undefined;
   call?.stopSpeaking();
 }
+let fnDown = false, fnAccepted = false, fnGeneration = 0;
 export function liveFn(signal: "down" | "hold" | "release" | "cancel" | "tap") {
-  if (!isLiveOwner() || view.mode === "talk" && view.active) return;
-  if (signal === "down") { if (!call) startLive("hold"); else call.press(); }
-  else if (signal === "hold") call?.acceptHold();
-  else call?.release(signal !== "release");
+  if (!isLiveOwner()) return;
+  if (view.mode === "talk" && view.active) { fnDown = false; fnAccepted = false; fnGeneration++; return; }
+  if (signal === "down") { fnDown = true; return; }
+  if (signal === "hold") {
+    if (!fnDown || fnAccepted) return;
+    fnAccepted = true;
+    const generation = ++fnGeneration;
+    const begin = () => {
+      if (!fnDown || !fnAccepted || generation !== fnGeneration || view.mode === "talk" && view.active) return;
+      if (!call) startLive("hold"); else call.press();
+      call?.acceptHold();
+    };
+    if (liveUsable()) begin();
+    else void checkLiveReady().then(ok => {
+      if (!fnDown || generation !== fnGeneration) return;
+      if (ok) begin();
+      else emit({ ...OFF, mode: "silent", capturing: false, active: false, state: "error", detail: limitDetail(), feed: view.feed });
+    });
+    return;
+  }
+  const accepted = fnAccepted;
+  fnDown = false; fnAccepted = false; fnGeneration++;
+  if (accepted) call?.release(signal !== "release");
 }
 
 /**
@@ -152,13 +188,15 @@ function onEvent(e: LiveEvent) {
       if (e.state === "error") store(DOWN_KEY, liveDownUntil(e.detail));
       updateLevels(0, 0);
       clearTimeout(announcementTimer); announcementTimer = undefined;
+      pendingNarration = null;
       const unsent = pendingTexts.splice(0).map(text => ({ kind: "line" as const, role: "user" as const, text, final: true }));
       call = null; queue?.end(); queue = null; denyLocal(); watchQuiet(false); emit({ ...OFF, mode: "silent", capturing: false, muted: false, callId: undefined, tasks: 0, state: e.state, detail: unsent.length ? `${e.detail ?? "Call ended."} Pending messages were not sent.` : e.detail, feed: [...view.feed, ...unsent] }); window.dispatchEvent(new CustomEvent("shuacrew:livecall", { detail: { on: false } })); return;
     }
     if (e.state === "listening") store(DOWN_KEY, 0); // it connected: Live is fine again
     if (e.state === "listening" || e.state === "ready") {
-      const current = call, waiting = pendingTexts.splice(0);
-      queueMicrotask(() => { if (call === current) for (const text of waiting) sendLiveText(text); });
+      const current = call, waiting = pendingTexts.splice(0), narration = pendingNarration;
+      pendingNarration = null;
+      queueMicrotask(() => { if (call !== current) return; for (const text of waiting) sendLiveText(text); if (narration) narrateLiveResult(narration); });
     }
     return emit({ state: e.state, workStartedAt: e.state === "working" && view.state !== "working" ? Date.now() : view.workStartedAt });
   }
@@ -170,7 +208,7 @@ function onEvent(e: LiveEvent) {
     else feed.push({ kind: "line", role: e.role, text: e.text, final: e.final });
     // "Yes" / "no" to a pending approval, said out loud.
     if (e.final && e.role === "user" && view.approval) { const said = yesOrNo(e.text); if (said !== null) answer(said); }
-    return emit({ feed: feed.slice(-FEED_MAX) });
+    return emit({ feed: retainFeed(feed) });
   }
   if (e.type === "step") return push({ kind: "step", text: e.text });
   if (e.type === "result") {
@@ -255,13 +293,16 @@ const native = () => (window as unknown as { webkit?: { messageHandlers?: { shua
 export function startLive(mode: "hold" | "talk" | "silent" = "talk") {
   if (!isLiveOwner()) { forward("start", mode); return; }
   if (call) { if (mode === "talk" && view.mode !== "talk") { emit({ mode }); call.talk(); } return; }
+  if (pendingStart) { if (mode === "talk") { pendingStart.mode = mode; emit({mode}); } return; }
   // Down lately: ask Codex first (cached, well under a second) instead of a call that fails 2 s later.
   if (!liveUsable()) {
-    emit({ detail: undefined });
+    const request = pendingStart = {mode};
+    emit({active:true, state:"connecting", mode, capturing:false, muted:false, detail:undefined});
     void checkLiveReady().then(ok => {
-      if (call) return;
-      if (ok) startLive(mode);
-      else emit({ ...OFF, mode: "silent", capturing: false, muted: false, callId: undefined, tasks: 0, active: false, state: "error", detail: limitDetail(), feed: view.feed });
+      if (pendingStart !== request || call) return;
+      pendingStart = null;
+      if (ok) startLive(request.mode);
+      else { pendingNarration = null; pendingTexts = []; emit({ ...OFF, mode: "silent", capturing: false, muted: false, callId: undefined, tasks: 0, active: false, state: "error", detail: limitDetail(), feed: view.feed }); }
     });
     return;
   }
@@ -275,7 +316,13 @@ export function startLive(mode: "hold" | "talk" | "silent" = "talk") {
   watchQuiet(true);
   void call.start();
 }
-export function endLive() { if (!isLiveOwner()) { forward("end"); return; } call?.end(); }
+export function endLive() {
+  if (!isLiveOwner()) { forward("end"); return; }
+  const waiting = !!pendingStart;
+  pendingStart = null; pendingNarration = null;
+  if (call) call.end();
+  else if (waiting) { pendingTexts = []; emit({...OFF, state:"ended", mode:"silent", capturing:false, feed:view.feed}); }
+}
 export function announceLiveCommand(text: string): boolean {
   if (!isLiveOwner() || !call || !view.active || view.approval || Date.now() - lastMicActivity < 900) return false;
   return call.announce(text);
@@ -300,6 +347,7 @@ export function connectLiveBridge() {
     if (detail.action === "start") startLive(detail.text === "hold" || detail.text === "silent" ? detail.text : "talk");
     else if (detail.action === "end") endLive();
     else if (detail.action === "cancel") { if (detail.text === "voice") stopLiveSpeech(); else stopLiveWork(); }
+    else if (detail.action === "narrate" && typeof detail.text === "string") narrateLiveResult(detail.text);
     else if (detail.action === "text" && typeof detail.text === "string") { if (!queueLiveText(detail.text)) emit({ detail: "The call is not ready for text yet." }); }
     else if ((detail.action === "approve" || detail.action === "deny") && detail.text === view.approval?.id) answer(detail.action === "approve");
   };

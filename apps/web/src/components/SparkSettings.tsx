@@ -187,7 +187,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <MacReach name={name} />
       <SettingRow name="Brain" detail={<>Each question goes to the model it needs: quick things to a fast model, real work to a stronger one, always Claude or Codex. <a className="spark-link" href="#agents">Manage connected providers →</a></>}><span className="spark-muted">Automatic</span></SettingRow>
       <SettingRow name="Language" detail={`English is fastest and shows live captions. Any language: speak whatever you like — Whisper detects it on this Mac and ${name} answers in it (captions pause).`} modified={prefs.language !== "en"}><Segmented label="Language" value={prefs.language} onChange={(language) => set({ language })} options={[["en", "English"], ["auto", "Any language"]]} /></SettingRow>
-      {prefs.voiceEngine === "classic" ? <WakeRow name={name} nickname={prefs.nickname} /> : <SettingRow name="Microphone privacy" detail="Wake-word listening is off in native mode. Hold Fn for one request, or explicitly enable Talk for continuous listening." />}
+      {prefs.voiceEngine === "classic" ? <WakeRow name={name} nickname={prefs.nickname} /> : <SettingRow name="Microphone privacy" detail="Wake-word listening is off in native mode. Use the notch microphone to start or stop Talk. Hold Fn to select a screen area." />}
       <FnKeyRow name={name} />
       <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
@@ -211,7 +211,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
 
     {(searching || category === "voice") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Personality &amp; voice</h4>
-      <SettingRow name="One Shua, everywhere" detail="Native OpenAI speech through your connected Codex subscription. One voice for Fn, Talk, and spoken chat replies—no local voice layered over it. Hold Fn to speak; release to turn the microphone off. Only Talk enables continuous listening.">
+      <SettingRow name="One Shua, everywhere" detail="Native OpenAI speech through your connected Codex subscription. One voice for Talk and spoken chat replies. Use the notch microphone to start and stop listening. Hold Fn to select an exact screen area; A quick Fn tap toggles Talk; holding Fn selects a box.">
         {prefs.voiceEngine === "classic" ? <button type="button" className="setting-input" onClick={() => set({ voiceEngine: "live" })}>Use Shua calls</button> : <span className="spark-muted">OpenAI connected voice</span>}
       </SettingRow>
       <MicrophoneSettings />
@@ -256,7 +256,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       </SettingRow>
       <SettingRow name="Doing things" detail="Opens apps, websites, and files or folders in your home folder; starts focus timers; adds to your note; hands big jobs to the crew. The Mac app checks every action. Mouse and keyboard actions follow the control mode above. Results appear in the track record." />
       <TrackRecord name={name} />
-      <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => { resetWelcome(); window.dispatchEvent(new Event("shuacrew:welcome")); }}>Replay welcome</button><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
+      <div className="spark-foot"><button type="button" className="tb-btn" onClick={() => { resetWelcome(); window.dispatchEvent(new Event("shuacrew:welcome")); }}>Resume personal setup</button><button type="button" className="tb-btn" onClick={() => saveCompanion({ ...parseCompanion(null), enabled: prefs.enabled })}>Reset {name}</button></div>
     </section>}
   </div>;
 }
@@ -310,7 +310,7 @@ function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pa
     <SettingRow name={`${name}'s captions`} detail={`While ${name} talks, the notch shows the words as they're said, sentence by sentence, so you can read along when it says a lot.`} modified={!prefs.notchCaptions}><Switch label={`${name}'s captions`} on={prefs.notchCaptions} onChange={(notchCaptions) => set({ notchCaptions })} /></SettingRow>
     <SettingRow name="Now playing" detail="Music or Spotify in the notch: artwork, title, progress and play, pause and skip. It only reads a player that's already open." modified={!prefs.notchMedia}><Switch label="Now playing" on={prefs.notchMedia} onChange={(notchMedia) => set({ notchMedia })} /></SettingRow>
     <SettingRow name="Mic & screen controls" detail={`Turn the mic and live screen watching on or off right from the notch and the chat's top edge.`} modified={!prefs.notchControls}><Switch label="Mic and screen controls" on={prefs.notchControls} onChange={(notchControls) => set({ notchControls })} /></SettingRow>
-    <SettingRow name="Sounds" detail={`A soft sound when you start talking (hold fn or voice mode), when ${name} has heard you, and when something's done. Spatial places them up at the notch — best with headphones.`} modified={prefs.sounds !== "spatial"}>
+    <SettingRow name="Sounds" detail={`A soft sound when you start talking (voice mode), when ${name} has heard you, and when something's done. Spatial places them up at the notch — best with headphones.`} modified={prefs.sounds !== "spatial"}>
       <Segmented label="Sounds" value={prefs.sounds} onChange={(sounds) => { set({ sounds }); soundStyle(sounds, prefs.soundPack); earcon("listen", sounds, 0.7, prefs.soundPack); setTimeout(() => earcon("sent", sounds, 0.7, prefs.soundPack), 650); }} options={[["spatial", "Spatial"], ["simple", "Simple"], ["off", "Off"]]} />
     </SettingRow>
     {prefs.sounds !== "off" && <SettingRow name="Sound" detail="The instrument. Pick one to hear the start-talking and heard-you pair.">
@@ -353,7 +353,7 @@ function FnKeyRow({ name }: { name: string }) {
   }, []);
   if (!bridge) return null;
   const clash = state && state.globe !== 0 ? ["", "switches your input source", "opens the emoji picker", "starts dictation"][state.globe] ?? "does something else" : "";
-  return <SettingRow name="fn key" detail={<>Tap <kbd>fn</kbd> for a small {name} card beside your pointer instead of the full chat; hold <kbd>fn</kbd> to talk and let go to send. It guides you one step at a time right where you're working.{state && !state.trusted ? <b> Needs Accessibility access (System Settings → Privacy & Security → Accessibility → ShuaCrew) to hear fn in other apps.</b> : null}{clash ? <b> Your Mac's “Press 🌐 key to” setting also {clash}. Set it to “Do Nothing” in System Settings → Keyboard.</b> : null}</>}>
+  return <SettingRow name="fn key" detail={<>Tap <kbd>fn</kbd> to toggle live voice. Hold <kbd>fn</kbd> to select a precise screen area. Drag a box and release the mouse to read it; Escape cancels. Use the notch microphone to speak.{state && !state.trusted ? <b> Needs Accessibility access (System Settings → Privacy & Security → Accessibility → ShuaCrew) to hear fn in other apps.</b> : null}{clash ? <b> Your Mac's “Press 🌐 key to” setting also {clash}. Set it to “Do Nothing” in System Settings → Keyboard.</b> : null}</>}>
     <Switch label="fn key" on={state?.on ?? true} onChange={(on) => bridge.postMessage({ type: "buddyFnKey", on })} />
   </SettingRow>;
 }

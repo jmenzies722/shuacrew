@@ -9,7 +9,7 @@ export interface StageEdge { id: string; from: string; to: string; kind: "sessio
 const WORKING = new Set(["running", "planning", "queued", "awaiting_approval"]);
 /** Work that is actually moving. Waiting on you is shown as a halo, not a pulse. */
 const FLOWING = new Set(["running", "planning"]);
-const AGENT_COLOR: Record<string, string> = { claude: "#e8845c", codex: "#4ade80" };
+const AGENT_COLOR: Record<string, string> = { claude: "#e8845c", codex: "#91acff" };
 
 /** The Crew Floor stage, from recorded state only: who is working, for whom, and who handed what to whom. */
 export function buildStage(input: {
@@ -27,8 +27,8 @@ export function buildStage(input: {
   for (const room of Object.values(rooms)) for (const a of Object.values(room.assignments)) {
     const child = runs[a.runId];
     if (!child) continue;
-    const live = a.status === "queued" || a.status === "running";
-    if (!live && now - a.updatedAt > linger) continue;
+    const live = a.status === "running" && FLOWING.has(child.status);
+    if (!live && a.status !== "queued" && now - a.updatedAt > linger) continue;
     if (!members[a.memberId] || !members[room.coordinator]) continue;
     edges.push({ id: `d:${a.id}`, from: room.coordinator, to: a.memberId, kind: "delegation", live, label: a.task.slice(0, 60) });
     if (child) (byOwner.get(a.memberId) ?? byOwner.set(a.memberId, []).get(a.memberId)!).push(child);

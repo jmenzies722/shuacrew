@@ -1,3 +1,4 @@
+import { openSetup } from "../lib/personal-setup";
 import { Eyebrow, Panel, StatusGlyph, StatusPill, formatTokens, since } from "@shuacrew/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
@@ -40,7 +41,8 @@ export function MissionControl() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <DayHero />
+        <button type="button" className="tb-btn" onClick={openSetup}>Your setup · goals, models & verified capabilities</button>
+      <DayHero />
         <PaneHeader eyebrow="Live" icon={Radar} title="Right now" description="What needs you, what's moving, and what finished — each item opens where it came from."
           actions={<div className="flex items-center gap-6 pb-1 text-[12px] text-fg-2">
             {/* Running and waiting are the hero's In progress and Needs you cards, right above: not repeated here. */}

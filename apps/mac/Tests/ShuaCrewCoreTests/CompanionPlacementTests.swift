@@ -108,3 +108,15 @@ import Testing
     #expect(!LabelMatch.fits("Wi-Fi", "Bluetooth in the sidebar"))
     #expect(!LabelMatch.fits("", "Save"))
 }
+
+@Test func expandedNotchFitsWithoutClippingItsBottomCorners() {
+    let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let housing = CGRect(x: 754, y: 1079, width: 220, height: 38)
+    let canvas = NotchIsland.canvas(housing: housing, screen: screen)
+    // The frontend uses 340px normally, 420px for calls/review; native accepts up to 500.
+    for drop: CGFloat in [340, 420, 500] {
+        let surface = CGRect(x: housing.minX - 260, y: housing.minY - drop, width: housing.width + 520, height: housing.height + drop)
+        #expect(canvas.contains(surface))
+        #expect(surface.minY - canvas.minY >= 24)
+    }
+}

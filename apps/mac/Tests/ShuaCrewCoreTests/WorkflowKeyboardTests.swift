@@ -29,3 +29,18 @@ import Testing
     }
 
 }
+@Suite struct RecordedWorkflowInputTests {
+ @Test func retainsOnlyReviewableNonSecureText() {
+  #expect(workflowRecordedText("caf", inserted: "é", writableValue: nil) == "café")
+  #expect(workflowRecordedText("old", inserted: "x", writableValue: "replacement") == "replacement")
+  #expect(workflowRecordedText("", inserted: "\n", writableValue: nil) == nil)
+  #expect(workflowRecordedText("", inserted: "/Users/admin/Nectar-Work/file", writableValue: nil) == nil)
+ }
+ @Test func recordedDefaultsMustBelongToInputSlots() {
+  var w = SavedWorkflow(name:"Type",apps:["com.apple.TextEdit"],steps:[WorkflowStep(app:"com.apple.TextEdit",operation:"input",target:WorkflowTarget(role:"AXTextArea",identifier:"body"),parameter:"input_1")])
+  w.recordedInputs=["input_1":"Hello"]
+  #expect(w.validate())
+  w.recordedInputs=["unknown":"Hello"]
+  #expect(!w.validate())
+ }
+}

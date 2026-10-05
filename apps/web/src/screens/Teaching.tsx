@@ -21,7 +21,7 @@ const baseSource = (title: string, text: string): TeachingSource => ({
   mime: null,
   capture: null,
 });
-export function Teaching({ compact = false }: { compact?: boolean }) {
+export function Teaching({ compact = false, initialQuestion = "", initialReference = "" }: { compact?: boolean; initialQuestion?: string; initialReference?: string }) {
   const [pinned, setPinned] = useState<ArchitectureLesson | null>(null);
   useEffect(() => {
     const read = () => {
@@ -36,9 +36,9 @@ export function Teaching({ compact = false }: { compact?: boolean }) {
   const state = useTeaching(),
     doc = state.document,
     prefs = useCompanion(),
-    [question, setQuestion] = useState(""),
+    [question, setQuestion] = useState(initialQuestion),
     engine = "codex" as const,
-    [reference, setReference] = useState(""),
+    [reference, setReference] = useState(initialReference),
     [sources, setSources] = useState<TeachingSource[]>([]),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),

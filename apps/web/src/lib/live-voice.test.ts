@@ -262,3 +262,22 @@ it("still silences audible output immediately when Fn interrupts", async () => {
   expect(wire).toContainEqual(expect.objectContaining({ type: "text", text: expect.stringContaining("Stop speaking") }));
   call.end();
 });
+
+it("shares a pending microphone open across rapid release and re-press", async () => {
+  let resolve!: (stream: MediaStream) => void;
+  const pending = new Promise<MediaStream>(done => {resolve=done;});
+  host(pending);
+  const acquire=vi.spyOn(navigator.mediaDevices,"getUserMedia"), stop=vi.fn(), onEvent=vi.fn();
+  const call=new LiveCall({mode:"silent",onEvent});
+  await call.start();
+  call.press(); call.acceptHold();
+  await Promise.resolve();
+  call.release(); call.press(); call.acceptHold();
+  await Promise.resolve();
+  expect(acquire).toHaveBeenCalledTimes(1);
+  resolve({getTracks:()=>[{stop}]} as unknown as MediaStream);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(stop).not.toHaveBeenCalled();
+  expect(onEvent.mock.calls.filter(([e])=>e.type === "capture" && e.on)).toHaveLength(1);
+  call.release(); expect(stop).toHaveBeenCalledTimes(1); call.end();
+});

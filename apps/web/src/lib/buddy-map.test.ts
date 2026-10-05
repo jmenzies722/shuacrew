@@ -34,3 +34,8 @@ it("keeps Spark's local prompt compact and identical from call to call (so it ca
   expect(ask.split("\n\n[screen]")[0]).toBe("what time is it?"); // the chat shows only the question
   expect(ask).toMatch(/Saturday/);
 });
+
+it("accepts an existing course lesson and rejects invalid lesson indexes", () => {
+  expect(parseActions('```do [{"type":"learn","course":"c1","lesson":0}]```')).toEqual([{type:"learn",course:"c1",lesson:0}]);
+  expect(parseActions('```do [{"type":"learn","course":"c1","lesson":-1}]```')).toEqual([]);
+});

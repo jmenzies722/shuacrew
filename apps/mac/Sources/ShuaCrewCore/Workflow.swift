@@ -39,6 +39,7 @@ public struct WorkflowTeaching: Codable, Equatable {
     }
 }
 public struct SavedWorkflow: Codable, Equatable {
+    public var recordedInputs: [String: String]?
     public var teachings: [WorkflowTeaching]?
     public var id: String
     public var revision: Int
@@ -63,6 +64,9 @@ public struct SavedWorkflow: Codable, Equatable {
               !apps.isEmpty, apps.count <= 8, Set(apps).count == apps.count, apps.allSatisfy(WorkflowPolicy.appAllowed),
               !steps.isEmpty, steps.count <= 100, Set(steps.map(\.id)).count == steps.count,
               createdAt.isFinite, demonstrationMs.isFinite, demonstrationMs >= 0 else { return false }
+        if let recordedInputs {
+            guard recordedInputs.count <= parameters.count, recordedInputs.allSatisfy({ parameters.contains($0.key) && $0.value.count <= 2000 && !WorkflowPolicy.protectedText($0.value) }) else { return false }
+        }
         if let teachings {
             guard teachings.count <= 10, teachings.allSatisfy({ t in
                 t.feedback.count <= 2000 && t.summary.count <= 2000 && t.lessons.count <= 8 && t.lessons.allSatisfy { $0.count <= 500 } && t.model.count <= 100 && t.at.isFinite && !WorkflowPolicy.protectedText(t.feedback + t.summary + t.lessons.joined())

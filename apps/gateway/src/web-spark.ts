@@ -1,10 +1,10 @@
 /**
  * Spark on the web: what you highlighted on a page (or the page itself), and what you want done with it.
- * Answered by Claude through your own logged-in CLI with no tools — it can only answer, never act.
+ * Answered by Codex through your own logged-in CLI with no tools — it can only answer, never act.
  * The text is untrusted page content: it goes in as quoted material, never as instructions.
  */
 import os from "node:os";
-import { claude, type Ask } from "./terminal-ai.js";
+import { codex, type Ask } from "./terminal-ai.js";
 
 export const WEB_ACTIONS = ["explain", "summarize", "rewrite", "reply", "ask", "page"] as const;
 export type WebAction = (typeof WEB_ACTIONS)[number];
@@ -52,8 +52,8 @@ export function validWebInput(body: unknown): WebInput | string {
 }
 
 /** One answer. Sonnet: smart enough to be worth asking, quick enough to feel instant-ish. */
-export async function webAnswer(input: WebInput, ask: Ask = claude): Promise<string> {
-  const reply = await ask(["-p", webPrompt(input), "--model", "sonnet", "--tools", "", "--system-prompt", SYSTEM], os.homedir());
+export async function webAnswer(input: WebInput, ask: Ask = codex): Promise<string> {
+  const reply = await ask(["-p", webPrompt(input), "--model", "codex-auto", "--tools", "", "--system-prompt", SYSTEM], os.homedir());
   const answer = reply.trim();
   if (!answer) throw new Error("no answer came back — try again");
   return answer;

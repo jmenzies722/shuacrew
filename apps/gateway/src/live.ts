@@ -40,6 +40,7 @@ export function livePrompt(name: string, first?: string): string {
     "- Never say something is done or found before the backend says so. While it works, say at most a few words about what you're doing (\"Checking your calendar.\"), then wait quietly.",
     "- When the result arrives, say it in one or two natural sentences. If it failed or found nothing, say that plainly.",
     "Delegate every action, lookup, or question about their Mac, files, apps, schedule, messages, or anything current on the internet; pass their own words. Answer directly only for small talk and general knowledge you are sure of. Corrections and additions to running work: delegate them too, they steer it.",
+    "For questions about ShuaCrew, its Learning courses, current lesson, Visual workspace, or crew activity, delegate a fresh app-context check. Never infer an empty workspace from an earlier turn.",
     "For architecture, system design, diagrams, visual teaching, and follow-ups about an active lesson, always delegate even when you know the subject. Ask the backend to use spark_screen so the existing teaching engine can build the actual notch visual. Do not substitute a spoken essay or promise a diagram before it exists.",
     "Style: warm, quick, natural; short spoken sentences. No lists or markdown, never read code or long paths aloud. No filler like \"Sure!\" or \"Great question\". If they interrupt, stop and listen.",
   ].join("\n");
@@ -54,6 +55,7 @@ export function liveBackendInstructions(protectedPaths: string[], vocab = ""): s
     "You are on the user's Mac. Use the shell (open, osascript, shortcuts, mdfind, curl) and web search to get things done. Ask before anything destructive or that sends something on their behalf.",
     "Your working directory is a private scratch folder, not theirs: \"my folder\" or \"this folder\" means the frontmost Finder window (osascript -e 'tell application \"Finder\" to get POSIX path of (target of front window as alias)'), and their files live under their home folder (find them with mdfind).",
     "For screen interaction (look, point, draw, click, type, scroll, guide) or teaching with an architecture diagram, call spark_screen with the user's own words. Its result determines availability: never claim screen access or a completed action before the tool confirms it. Respect screen-off, denied, failed, cancelled and unavailable results; do not bypass them with shell or other tools. Describe only the reported outcomes, and distinguish a dispatched overlay from independently verified placement.",
+    "For ShuaCrew app questions, learning courses, selected lesson, visual workspace or navigation, call spark_screen with the request even when no screenshot is needed. It supplies fresh structured app data and can navigate via native app actions. Never substitute an old conversation summary for this check.",
     "A cancelled result ends that task: do not continue, retry, or perform its remaining actions. Wait for a fresh user request. For architecture teaching, use spark_screen even with screen access off: a text-only lesson does not need a screenshot.",
     vocab ? `For their calendar, reminders, notes, mail, music, timers, volume and other Mac controls, use the spark_do tool FIRST: it reads every account on this Mac (iCloud, Google, Exchange) natively and needs no approval. Other connectors and the shell only if spark_do can't. Its actions are the JSON objects shown inside these do blocks; pass them as \`actions\`:\n${vocab}` : "",
     protectedPaths.length ? `Never read, list, search, or touch these folders or anything inside them: ${protectedPaths.join(", ")}. If asked, say they're off limits.` : "",
@@ -473,3 +475,6 @@ export function transcriptMarkdown(said: Array<{ role: "user" | "assistant"; tex
 function readJson<T>(file: string, fallback: T): T {
   try { return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) as T : fallback; } catch { return fallback; }
 }
+
+/** Calls stay out of Library unless the user explicitly enables archiving. */
+export const shouldArchiveLiveCall = (flags: Record<string, boolean>) => flags["save-live-transcripts"] === true;

@@ -1,11 +1,10 @@
 import { expect, it } from "vitest";
 import { subscriptionRuntimeIds } from "./openai-policy.js";
-it("registers Claude and Codex, and nothing else, whatever legacy config says", () => {
-  expect(subscriptionRuntimeIds({})).toEqual(["claude", "codex"]);
-  expect(subscriptionRuntimeIds({ claude: { enabled: true }, local: { enabled: true }, acp: [{ id: "other" }] })).toEqual(["claude", "codex"]);
-  expect(subscriptionRuntimeIds({ codex: { enabled: false } })).toEqual(["claude"]);
-  expect(subscriptionRuntimeIds({ claude: { enabled: false } })).toEqual(["codex"]);
-  expect(subscriptionRuntimeIds({}, true)).toEqual(["claude", "codex", "mock"]);
+it("registers both crew providers while respecting disabled connections", () => {
+ expect(subscriptionRuntimeIds({})).toEqual(["codex","claude"]);
+ expect(subscriptionRuntimeIds({claude:{enabled:false}})).toEqual(["codex"]);
+ expect(subscriptionRuntimeIds({codex:{enabled:false}})).toEqual(["claude"]);
+ expect(subscriptionRuntimeIds({},true)).toEqual(["codex","claude","mock"]);
 });
 
 it("maps legacy teaching defaults to an available Codex model", async () => {

@@ -42,8 +42,11 @@ enum WorkflowObservation {
             }
             if depth < 12, let children = attribute(el, kAXChildrenAttribute) as? [AXUIElement] { queue.append(contentsOf: children.map { ($0, depth + 1) }) }
         }
-        guard AXIsProcessTrusted(), let after = element(root, kAXFocusedWindowAttribute), window.map({ CFEqual($0, after) }) == true,
-              !WorkflowPolicy.protectedText(text(after, kAXDocumentAttribute) + " " + text(after, kAXTitleAttribute)) else { return nil }
+        guard AXIsProcessTrusted() else { return nil }
+        let after = element(root, kAXFocusedWindowAttribute)
+        if let window { guard let after, CFEqual(window, after) else { return nil } }
+        else if after != nil { return nil }
+        if let after, WorkflowPolicy.protectedText(text(after, kAXDocumentAttribute) + " " + text(after, kAXTitleAttribute)) { return nil }
         return Snapshot(targets: result, window: window, at: ProcessInfo.processInfo.systemUptime)
     }
 }

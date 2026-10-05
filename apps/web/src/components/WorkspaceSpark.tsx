@@ -7,7 +7,7 @@ const contexts: Record<string, [string, string, string]> = {
   "/": ["Sessions", "Plan the next step", "Help me choose the next useful step in my current work. Ask for any project context you need."],
   "/activity": ["Today", "Shape my day", "Help me plan today around one meaningful priority, time to focus, and something that supports my life outside work."],
   "/crew": ["Crew", "Build my crew", "Help me design a small effective crew for my current goals, with clear responsibilities for Claude and Codex."],
-  "/floor": ["Crew HQ", "Find the next handoff", "Help me understand my crew's current work and identify the next useful handoff. Use available recorded status; ask me if anything is missing."],
+  "/floor": ["Crew Studio", "Find the next handoff", "Help me understand my crew's current work and identify the next useful handoff. Use available recorded status; ask me if anything is missing."],
   "/studio": ["Studio", "Set the mood", "Help me choose a focus routine and a soundscape for the work I want to do next."],
   "/ventures": ["Ventures", "Pressure-test an idea", "Help me pressure-test a venture idea: the user problem, smallest useful product, and an experiment I can run this week."],
   "/playbooks": ["Playbooks", "Make it repeatable", "Help me turn a recurring workflow into a playbook with clear steps, verification, and a stopping point."],
