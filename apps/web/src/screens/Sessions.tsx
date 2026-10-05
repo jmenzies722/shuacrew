@@ -120,6 +120,12 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  * Kiro Crew's working surface: sessions on the left, the conversation in the middle, what it
  * changed on the right. A session is a run — the first message starts it, every next one continues it.
  */
+/** Morning, afternoon or evening, by the clock on your Mac. */
+function greeting(now = new Date()) {
+  const h = now.getHours();
+  return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
   const [changes, setChanges] = useState(false);
@@ -549,23 +555,27 @@ function NewSession() {
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="hero-stack">
           <div className="hero-core">
-          <NeedsYou />
-          {/* Your day, right under what needs you: the first thing you see in a new session. */}
-          <TodayBriefing />
-          <div className="hero-mark">
-            <LogoMark size={60} />
+          {/* A conversation first: the greeting, the box, a few ways in. What needs you and your day sit just below. */}
+          <div className="hero-ask">
+            <div className="hero-mark">
+              <LogoMark size={44} />
+            </div>
+            <h1 className="hero-title">{greeting()}. What should the crew build?</h1>
+            <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
+            <Composer seed={seed} hero />
+            <div className="hero-ideas stagger">
+              {ideas.map(({ icon: Icon, text }) => (
+                <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
+                  <i className="hero-idea-icon"><Icon size={14} /></i>
+                  <span className="line-clamp-2">{text}</span>
+                  <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
+                </button>
+              ))}
+            </div>
           </div>
-          <h1 className="hero-title">What should the crew work on?</h1>
-          <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
-          <Composer seed={seed} hero />
-          <div className="hero-ideas stagger">
-            {ideas.map(({ icon: Icon, text }) => (
-              <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea">
-                <i className="hero-idea-icon"><Icon size={14} /></i>
-                <span className="line-clamp-2">{text}</span>
-                <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
-              </button>
-            ))}
+          <div className="hero-below">
+            <NeedsYou />
+            <TodayBriefing />
           </div>
           </div>
           <GettingStarted />

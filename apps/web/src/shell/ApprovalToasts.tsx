@@ -19,6 +19,7 @@ export function ApprovalToasts() {
   const list = useMemo(() => Object.values(approvals).sort((a, b) => a.seq - b.seq), [approvals]);
   const [explained, setExplained] = useState<string | null>(null);
   const [confirmCritical, setConfirmCritical] = useState<string | null>(null);
+  const [spread, setSpread] = useState(false);
   // On the sessions screens approvals live in the thread, the Needs-you group and the bell;
   // a floating toast there would only cover the composer.
   const path = useRouterState({ select: (r) => r.location.pathname });
@@ -52,23 +53,31 @@ export function ApprovalToasts() {
   };
 
   if (onSessions) return null;
+  // One card at a time: the newest in front, the rest stacked behind it. Hover (or focus) fans them out.
+  const shown = list.slice(-4);
+  const stacked = !spread && shown.length > 1;
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[380px] max-w-[92vw] flex-col gap-2" aria-live="polite" aria-label="Approvals">
+    <div className={`approval-stack pointer-events-none fixed bottom-4 right-4 z-40 flex w-[380px] max-w-[92vw] flex-col gap-2 ${stacked ? "is-stacked" : ""}`} aria-live="polite" aria-label="Approvals"
+      onMouseEnter={() => setSpread(true)} onMouseLeave={() => setSpread(false)} onFocus={() => setSpread(true)} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSpread(false)}>
+      {stacked && <span className="approval-more">{list.length - 1} more waiting · hover to see all</span>}
       <AnimatePresence initial={false}>
-        {list.slice(-4).map((a) => {
+        {shown.map((a, i) => {
           const run = a.run ? runs[a.run] : undefined;
           const isTop = a.id === top?.id;
+          const depth = shown.length - 1 - i, behind = stacked && depth > 0;
           return (
             <motion.div
               key={a.id}
               layout
-              initial={{ opacity: 0, x: 24, scale: 0.98 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={behind ? { opacity: depth > 2 ? 0 : 1 - depth * 0.3, y: -depth * 10, scale: 1 - depth * 0.05 } : { opacity: 1, x: 0, y: 0, scale: 1 }}
               exit={{ opacity: 0, x: 24, transition: { duration: 0.14 } }}
-              transition={{ type: "spring", stiffness: 500, damping: 40 }}
-              className="pointer-events-auto rounded-[var(--radius-l)] border border-line-strong p-3 backdrop-blur-xl"
-              style={{ background: "var(--glass)", boxShadow: "0 16px 48px rgba(0,0,0,.4)" }}
+              transition={{ type: "spring", stiffness: 520, damping: 38 }}
+              className={`approval-toast pointer-events-auto rounded-[var(--radius-l)] border border-line-strong p-3 backdrop-blur-xl ${behind ? "is-behind" : ""}`}
+              style={{ background: "var(--glass)", boxShadow: "0 16px 48px rgba(0,0,0,.4)", zIndex: shown.length - depth, transformOrigin: "50% 100%" }}
               role="alertdialog"
+              aria-hidden={behind || undefined}
+              inert={behind || undefined}
               aria-label={`Approval needed: ${a.tool}`}
             >
               <div className="flex items-center gap-2 text-[12px]">
