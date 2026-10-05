@@ -153,3 +153,15 @@
 .type-pick b { font-size: 26px; line-height: 1.15; font-weight: 600; color: var(--text); letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .type-pick span { font-size: 13px; font-weight: 600; color: var(--text); }
 .type-pick small { font-size: 11.5px; color: var(--text-3); }
+
+/* Atmosphere previews: a tiny window lit the way the option lights the app. */
+.atmo { display: grid; gap: 4px; }
+.atmo-row button { gap: 6px; }
+.atmo-glow, .atmo-aurora, .atmo-corner { display: block; height: 46px; border-radius: 10px; background: #0b0b0d; box-shadow: inset 0 0 0 1px var(--line); margin-bottom: 4px; }
+.atmo-glow.is-subtle { background: radial-gradient(70% 120% at 20% -20%, color-mix(in srgb, var(--amber) 30%, transparent), transparent 70%), #0b0b0d; }
+.atmo-glow.is-vivid { background: radial-gradient(80% 140% at 20% -20%, color-mix(in srgb, var(--amber) 60%, transparent), transparent 70%), radial-gradient(60% 120% at 95% -30%, color-mix(in srgb, #38bdf8 40%, transparent), transparent 70%), #0b0b0d; }
+.atmo-aurora { background: linear-gradient(120deg, color-mix(in srgb, var(--amber) 35%, #0b0b0d), #0b0b0d 45%, color-mix(in srgb, #34d399 30%, #0b0b0d) 75%, #0b0b0d); background-size: 200% 100%; }
+.atmo-row button.is-on .atmo-aurora { animation: atmo-drift 6s ease-in-out infinite alternate; }
+@keyframes atmo-drift { to { background-position: 100% 0; } }
+.atmo-corner { width: 70%; background: color-mix(in srgb, var(--text) 10%, #0b0b0d); }
+.atmo-row { grid-template-columns: 90px repeat(4, minmax(0, 1fr)); }

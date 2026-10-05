@@ -25,6 +25,7 @@ import { EventInspector, GatewayLog, HudToggle, StorageUsage } from "../componen
 import "./settings.css";
 import { HealthCheck } from "../components/HealthCheck";
 import { AccessCenter } from "../components/AccessCenter";
+import { AtmosphereSettings } from "../components/AtmosphereSettings";
 
 const SECTIONS = [
   { id: "appearance", title: "Appearance", description: "A workspace that feels like yours.", icon: Palette, group: "You" },
@@ -111,6 +112,7 @@ export function Settings() {
       <p className="dim">Delivery is not execution. Decisions require a signed Mac acknowledgment; a sleeping Mac may not respond until it wakes.</p>
     </div> },
     { id: "diagnostics", section: "system", title: "Diagnostics & observability", terms: "developer diagnostics logs metrics usage cost tokens latency audit verify refresh gateway version memory", body: <DeveloperSettings /> },
+    { id: "atmosphere", section: "appearance", title: "Atmosphere", terms: "atmosphere ambient light glow vivid subtle off aurora living background corners round crisp soft radius", body: <AtmosphereSettings /> },
     { id: "themes", section: "appearance", title: "Palette & accent", terms: "theme dark light system frost night graphite carbon midnight daylight paper sand blue green coral amber mono", body: <Appearance /> },
     { id: "reading", section: "appearance", title: "Reading & motion", terms: "font size small large text accessibility animations reduced motion", body: <div className="settings-card">
       <Choice name="Reading size" detail="Agent responses and documents. Code scales with the text." field="reading" options={[["small", "Small"], ["default", "Default"], ["large", "Large"]]} />
@@ -142,7 +144,10 @@ export function Settings() {
     { id: "backups", section: "system", title: "Backups & recovery", terms: "data backup restore encryption history", body: <BackupsPanel /> },
   ];
   const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  const visible = groups.filter((g) => words.length ? words.every((w) => `${g.title} ${g.terms} ${g.section}`.toLowerCase().includes(w)) : g.section === section);
+  // Within a section, the biggest choices first (in Appearance: palette, then atmosphere, then type).
+  const FIRST: Record<string, number> = { themes: 0, atmosphere: 1, look: 2, reading: 3, "share-look": 4 };
+  const visible = groups.filter((g) => words.length ? words.every((w) => `${g.title} ${g.terms} ${g.section}`.toLowerCase().includes(w)) : g.section === section)
+    .sort((a, b) => (FIRST[a.id] ?? 9) - (FIRST[b.id] ?? 9));
   const selected = SECTIONS.find((s) => s.id === section)!;
   const reset = () => {
     const d = DEFAULT_APPEARANCE;

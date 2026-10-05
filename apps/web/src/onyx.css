@@ -471,3 +471,13 @@
 :root[data-display="rounded"] :is(.pane-header h1, .hero-title, .learn-head h1, .day-hero h1, .settings-section-heading h2) { font-weight: 640 !important; }
 /* Titles in SF Pro: semibold, tight, crisp — the Mac's own display voice. */
 :root[data-display="same"] :is(.pane-header h1, .hero-title, .learn-head h1, .day-hero h1, .settings-section-heading h2, .settings-hero h1, .lx-studio-header h1) { font-weight: 640 !important; letter-spacing: -.028em !important; }
+
+/* ── Atmosphere (Settings → Appearance) ─────────────────────────────────────────────────────────── */
+:root[data-ambient="off"] .hub-glow { display: none; }
+:root[data-ambient="vivid"] .hub-glow {
+  height: 460px;
+  background: radial-gradient(70% 110% at 16% -12%, color-mix(in srgb, var(--hub, transparent) 26%, transparent), transparent 70%),
+    radial-gradient(50% 90% at 92% -24%, color-mix(in srgb, var(--hub, transparent) 16%, transparent), transparent 70%);
+}
+:root[data-corners="crisp"] { --radius-s: 4px; --radius-m: 6px; --radius-l: 8px; --radius-card: 8px; --frame-radius: 8px; }
+:root[data-corners="round"] { --radius-s: 9px; --radius-m: 12px; --radius-l: 18px; --radius-card: 20px; --frame-radius: 18px; }

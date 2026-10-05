@@ -18,9 +18,13 @@ export interface LookPrefs {
   /** A slow aurora behind the whole app (GPU transforms only). */
   livingBackground: boolean;
   motionStyle: "calm" | "responsive" | "expressive";
+  /** Each section's light at the top of its pages. */
+  ambient: "off" | "subtle" | "vivid";
+  /** How round cards, panels and controls are. */
+  corners: "crisp" | "soft" | "round";
 }
 const KEY = "shuacrew.look";
-export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "system", displayFont: "same", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false, motionStyle: "responsive" };
+export const DEFAULT_LOOK: LookPrefs = { version: 1, uiFont: "system", displayFont: "same", readingFont: "sans", monoFont: "jetbrains", ligatures: true, chatStyle: "bubbles", chatWidth: "default", timestamps: "hover", sounds: { approval: false, done: false, failed: false, volume: 0.4 }, customAccent: null, livingBackground: false, motionStyle: "responsive" , ambient: "subtle", corners: "soft" };
 
 export const FONT_STACK = {
   ui: { geist: `"Geist Variable", system-ui, sans-serif`, system: `-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif`,
@@ -45,6 +49,7 @@ export function parseLook(value: unknown): LookPrefs {
     customAccent: typeof v.customAccent === "string" && /^#[0-9a-f]{6}$/i.test(v.customAccent) ? v.customAccent.toLowerCase() : null,
     livingBackground: v.livingBackground === true,
     motionStyle: pick("motionStyle", ["calm", "responsive", "expressive"], "responsive"),
+    ambient: pick("ambient", ["off", "subtle", "vivid"], "subtle"), corners: pick("corners", ["crisp", "soft", "round"], "soft"),
   };
 }
 
@@ -66,6 +71,8 @@ export function applyLook(p: LookPrefs, root: HTMLElement = document.documentEle
   root.dataset.ligatures = p.ligatures ? "on" : "off";
   root.dataset.chatStyle = p.chatStyle;
   root.dataset.timestamps = p.timestamps;
+  root.dataset.ambient = p.ambient;
+  root.dataset.corners = p.corners;
 }
 
 function load() {

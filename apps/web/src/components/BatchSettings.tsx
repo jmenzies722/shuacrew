@@ -159,7 +159,6 @@ export function MenuBarSettings() {
 export function LookSettings() {
   const look = useLook();
   return <div className="settings-card">
-    <SettingRow name="Living background" detail="A slow aurora behind everything. GPU-only; stops for reduced motion." modified={look.livingBackground}><Switch label="Living background" on={look.livingBackground} onChange={(livingBackground) => saveLook({ livingBackground })} /></SettingRow>
     {/* Type you can see before you choose it: each card is set in its own face. */}
     <div className="type-pick" role="radiogroup" aria-label="Interface font"><span className="type-pick-label">Interface</span>
       {([["system", "SF Pro", "The Mac's own"], ["geist", "Geist", "Crisp and technical"], ["rounded", "Rounded", "Soft and friendly"], ["grotesk", "Grotesk", "Bold character"]] as const).map(([id, name, note]) =>
@@ -169,7 +168,7 @@ export function LookSettings() {
     <div className="type-pick" role="radiogroup" aria-label="Title font"><span className="type-pick-label">Titles</span>
       {([["same", "Match", "Same as interface"], ["serif", "New York", "Editorial serif"], ["rounded", "Rounded", "Warm and modern"], ["grotesk", "Grotesk", "Loud and confident"]] as const).map(([id, name, note]) =>
         <button key={id} type="button" role="radio" aria-checked={look.displayFont === id} className={look.displayFont === id ? "is-on" : ""} onClick={() => saveLook({ displayFont: id })}>
-          <b style={{ fontFamily: id === "same" ? FONT_STACK.ui[look.uiFont] : FONT_STACK.display[id] }}>Good evening.</b><span>{name}</span><small>{note}</small></button>)}
+          <b style={{ fontFamily: id === "same" ? FONT_STACK.ui[look.uiFont] : FONT_STACK.display[id] }}>Today</b><span>{name}</span><small>{note}</small></button>)}
     </div>
     <SettingRow name="Reading font" detail="For agent replies and documents." modified={look.readingFont !== "sans"}><Segmented label="Reading font" value={look.readingFont} onChange={(readingFont) => saveLook({ readingFont })} options={[["sans", "Sans"], ["serif", "New York"]]} /></SettingRow>
     <SettingRow name="Code font" modified={look.monoFont !== "jetbrains"}><Segmented label="Code font" value={look.monoFont} onChange={(monoFont) => saveLook({ monoFont })} options={[["jetbrains", "JetBrains"], ["sf-mono", "SF Mono"], ["menlo", "Menlo"]]} /></SettingRow>
