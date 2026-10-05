@@ -18,7 +18,7 @@ interface Milestone { title: string; why: string; skills: string[]; project: str
 interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
 interface Doc { id: string; kind: "resume" | "interview"; title: string; run: string; created: number }
 interface State { profile: { goal: string; about: string; tracks: Track[] }; cards: Card[]; due: number; days: Array<{ day: string; reviews: number }>; totalReviews: number; drill: { day: string; track: string; run: string; done: boolean } | null; studied: Array<{ run: string; study: string }>; coach: Partial<Record<"analyze" | "quiz" | "explain" | "plan", { run: string }>>; courses: Course[]; roadmaps: Roadmap[]; docs: Doc[] }
-type Tab = "overview" | "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
+export type Tab = "overview" | "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
 const TABS: Array<[Tab, string]> = [["overview", "My path"], ["learn", "Courses"], ["today", "Practice"], ["review", "Review"]];
 interface Session { id: string; title: string; at: number; studied: boolean }
 
@@ -29,9 +29,11 @@ const SUGGESTED: Array<[string, string]> = [
 ];
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
-export function Learning() {
+/** `embedded`: the Library inside Learn — no page header or overview (Learn's Today replaces them). */
+export function Learning({ embedded = false, initialTab }: { embedded?: boolean; initialTab?: Tab } = {}) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(initialTab ?? (embedded ? "learn" : "overview"));
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [selectedLesson, setSelectedLesson] = useState<{course:string;index:number;run:string}|null>(()=>{try{const v=JSON.parse(localStorage.getItem("shuacrew.activeLesson")??"null");return v&&typeof v.course==="string"&&Number.isInteger(v.index)&&typeof v.run==="string"?v:null;}catch{return null;}});
   useEffect(() => {
     const sync = () => { try { const v=JSON.parse(localStorage.getItem("shuacrew.activeLesson")??"null"); setSelectedLesson(v && typeof v.course === "string" && Number.isInteger(v.index) && typeof v.run === "string" ? v : null); } catch { setSelectedLesson(null); } };
@@ -65,12 +67,12 @@ export function Learning() {
   const go = (t: Tab) => { setTab(t); try { localStorage.setItem("shuacrew.learnTab", t); } catch { /* ignore */ } };
   const selectedCourse = s.courses.find(c=>c.id===selectedLesson?.course), selected = selectedCourse?.lessons[selectedLesson?.index??-1];
   if(selectedLesson && selectedCourse && selected) return <div className="pane-scroll"><LessonWorkspace key={selectedLesson.run} course={selectedCourse.title||selectedCourse.topic} title={selected.title} summary={selected.summary} run={selectedLesson.run} done={selected.done} onClose={()=>{setSelectedLesson(null);localStorage.removeItem("shuacrew.activeLesson");}} onDone={async()=>{await api(`/api/learning/courses/${selectedCourse.id}/lessons/${selectedLesson.index}/done`,{body:{done:!selected.done}});await load();}}/></div>;
-  return <div className="pane-scroll lx"><div className="pane-body pane-body-wide">
-    <header className="lx-studio-header">
+  return <div className={embedded ? "lx is-embedded" : "pane-scroll lx"}><div className={embedded ? "" : "pane-body pane-body-wide"}>
+    {!embedded && <header className="lx-studio-header">
       <div><span className="lx-kicker"><GraduationCap size={13} /> Your learning space</span><h1>Learning Studio</h1><p>Pick up a lesson. Put it into practice. Make it yours.</p></div>
       <button type="button" className="lx-goal" onClick={() => go("profile")}><Target size={13} />{s.profile.goal || "Set your learning goal"}</button>
-    </header>
-    {tab === "overview" && <div className="lx-studio-overview">
+    </header>}
+    {!embedded && tab === "overview" && <div className="lx-studio-overview">
       <section className="lx-continue" aria-label="Your next lesson">
         <span className="lx-kicker"><BookOpenCheck size={13} />{lesson ? "Up next" : "A place to begin"}</span>
         {course && lesson ? <>
@@ -93,9 +95,9 @@ export function Learning() {
       </section>
     </div>
     }
-    <nav className="lx-tabs" role="tablist" aria-label="Learning">{TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
-    <div className="lx-secondary"><Link to="/teach">Visual workspace ↗</Link>{([['roadmap','Roadmap'],['coach','Tutor'],['work','From my work'],['career','Career kit'],['profile','Goal & skills']] as const).map(([id,label])=><button key={id} className={tab===id?'is-on':''} onClick={()=>go(id)}>{label}</button>)}</div>
-    {tab === "overview" && <section className="lx-panel"><h2>Your path, one step at a time.</h2><p className="lx-muted">Learn a concept, try the exercise, get feedback, then revisit it in Review. Building ideas live separately in Projects.</p><div className="lx-secondary"><button onClick={()=>go("learn")}>Explore courses</button><button onClick={()=>go("today")}>Practice a skill</button><Link to="/ventures">Recommended projects ↗</Link></div></section>}
+    <nav className="lx-tabs" role="tablist" aria-label="Learning">{(embedded ? TABS.filter(([id]) => id !== "overview") : TABS).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
+    <div className="lx-secondary">{([['roadmap','Roadmap'],['coach','Tutor'],['work','From my work'],['career','Career kit'],['profile','Goal & skills']] as const).map(([id,label])=><button key={id} className={tab===id?'is-on':''} onClick={()=>go(id)}>{label}</button>)}</div>
+    {!embedded && tab === "overview" && <section className="lx-panel"><h2>Your path, one step at a time.</h2><p className="lx-muted">Learn a concept, try the exercise, get feedback, then revisit it in Review. Building ideas live separately in Projects.</p><div className="lx-secondary"><button onClick={()=>go("learn")}>Explore courses</button><button onClick={()=>go("today")}>Practice a skill</button><Link to="/ventures">Recommended projects ↗</Link></div></section>}
     {error && <p className="lx-error" role="alert">{error}</p>}
     {tab === "coach" && <Coach runs={s.coach ?? {}} onChange={() => void load()} />}
     {tab === "today" && <div className="lx-top">

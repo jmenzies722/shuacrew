@@ -21,7 +21,7 @@ const baseSource = (title: string, text: string): TeachingSource => ({
   mime: null,
   capture: null,
 });
-export function Teaching({ compact = false, initialQuestion = "", initialReference = "" }: { compact?: boolean; initialQuestion?: string; initialReference?: string }) {
+export function Teaching({ compact = false, bare = false, initialQuestion = "", initialReference = "" }: { compact?: boolean; /** Inside Learn: Learn's header speaks for it. */ bare?: boolean; initialQuestion?: string; initialReference?: string }) {
   const [pinned, setPinned] = useState<ArchitectureLesson | null>(null);
   useEffect(() => {
     const read = () => {
@@ -187,14 +187,15 @@ export function Teaching({ compact = false, initialQuestion = "", initialReferen
   };
   const busy = state.busy || pending;
   // Nothing open on the full page: a learning home — one question, a few ideas, your past lessons — instead of tools.
-  const home = !doc && !compact;
+  // An empty lesson is still a fresh start: show the welcome and ideas, not the tools.
+  const home = (!doc || (!doc.answer && !doc.objects.length && !doc.steps.length)) && !compact;
   const ideas = ["Explain how HTTPS keeps a connection private", "Walk me through recursion with a diagram", "How does a database index make queries fast?", "Teach me system design for a solo founder"];
   return (
     <section className={`teaching ${compact ? "is-compact" : ""} ${home ? "is-home" : ""}`} aria-label="Visual teaching">
       {pinned && <ArchitectureCard key={JSON.stringify(pinned)} lesson={pinned} onClose={() => { localStorage.removeItem("shuacrew.pinned-lesson"); setPinned(null); window.dispatchEvent(new Event("shuacrew:pinned-lesson")); }} />}
-      {home && <div className="teach-hero"><span className="teach-hero-mark" aria-hidden="true" /><small>Visual teaching</small><h1>What do you want to understand?</h1>
+      {home && !bare && <div className="teach-hero"><span className="teach-hero-mark" aria-hidden="true" /><small>Visual teaching</small><h1>What do you want to understand?</h1>
         <p>Ask anything. You get a clear explanation with diagrams you can explore, then practice it until it sticks.</p></div>}
-      {!home && <header className="teaching-header">
+      {!home && !bare && <header className="teaching-header">
         <div>
           <small>SHUA · VISUAL TEACHING</small>
           <h1>{doc?.title ?? "Make it make sense."}</h1>
@@ -228,7 +229,9 @@ export function Teaching({ compact = false, initialQuestion = "", initialReferen
           e.target.value = "";
         }}
       />
-      {!home && <div className="teaching-session-tools">
+      {/* Lesson tools fold away: saved lessons, export/import, undo and the model are one click off, not a toolbar. */}
+      {!home && <details className="teach-tools"><summary>Lesson tools</summary><div className="teaching-session-tools">
+        {bare && <button disabled={busy} onClick={() => void act(async () => { await teachingApi("/new", {}); setSources([]); setReference(""); })}>New lesson</button>}
         <select
           aria-label="Saved lessons"
           value={state.active ?? ""}
@@ -268,8 +271,7 @@ export function Teaching({ compact = false, initialQuestion = "", initialReferen
           Redo
         </button>
         {doc && <small>Saved · revision {doc.revision}</small>}
-      </div>}
-      {!home && <CompanionModelPicker teaching />}
+      </div><CompanionModelPicker teaching /></details>}
       {doc?.answer && (
         <details className="teaching-answer" open={!compact}>
           <summary>Lesson overview</summary>
@@ -379,7 +381,7 @@ export function Teaching({ compact = false, initialQuestion = "", initialReferen
           </small>
         </section>
       )}
-      {isMac() && doc && (
+      {isMac() && doc && doc.annotations.some((a) => a.stepId === doc.stepId) && (
         <div className="teaching-screen-controls">
           <button
             disabled={!doc.annotations.some((a) => a.stepId === doc.stepId)}

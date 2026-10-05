@@ -22,7 +22,7 @@ it("reopens a hub where you left it", () => {
 });
 
 it("has six primary destinations and preserves every deep link", () => {
-  expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Today", "Projects", "Crew", "Learning", "Automations", "Library"]);
+  expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Today", "Projects", "Crew", "Learn", "Automations", "Library"]);
   expect(locate("/floor")?.hub.id).toBe("crew");
   expect(locate("/teach")?.hub.id).toBe("know");
   expect(locate("/plays/saved")?.hub.id).toBe("automations");

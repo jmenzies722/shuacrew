@@ -6,7 +6,7 @@ export const HUBS: Hub[] = [
   { id: "home", label: "Today", hint: "Your next move", tabs: [{ to: "/activity", label: "Overview" }, { to: "/", label: "Sessions", also: ["/sessions"] }] },
   { id: "build", label: "Projects", hint: "From idea to shipped", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }] },
   { id: "crew", label: "Crew", hint: "Your studio, live", tabs: [{ to: "/floor", label: "Studio floor" }, { to: "/crew", label: "Agents" }, { to: "/rooms", label: "Rooms" }] },
-  { id: "know", label: "Learning", hint: "Understand, practice, retain", tabs: [{ to: "/learn", label: "Learning path" }, { to: "/teach", label: "Visual workspace" }] },
+  { id: "know", label: "Learn", hint: "Get measurably better, with Shua", tabs: [{ to: "/learn", label: "Learn", also: ["/teach"] }] },
   { id: "automations", label: "Automations", hint: "Teach once, reuse carefully", tabs: [{ to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/schedules", label: "Schedules" }] },
   { id: "library", label: "Library", hint: "Everything worth keeping", tabs: [{ to: "/library", label: "Artifacts & knowledge" }, { to: "/memory", label: "Memory" }] },
   { id: "system", label: "All tools", hint: "Connections and controls", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/usage", "/developer", "/insights"] }, { to: "/terminal", label: "Terminal" }] },
