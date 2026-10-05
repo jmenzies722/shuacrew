@@ -603,6 +603,13 @@ function verbOf(tool: string): { past: string; doing: string; Icon: typeof Wrenc
   const hit = VERBS.find(([re]) => re.test(tool));
   return hit ? { past: hit[1], doing: hit[2], Icon: hit[3] } : { past: tool, doing: tool, Icon: Wrench };
 }
+/** "Read 4 · Edited 2 · Ran 3": what the work actually was, most frequent first — the way Cursor sums up a turn. */
+function summarize(tools: Array<{ tool: string }>): string {
+  const counts = new Map<string, number>();
+  for (const t of tools) { const v = verbOf(t.tool).past; counts.set(v, (counts.get(v) ?? 0) + 1); }
+  const parts = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([v, n]) => `${v} ${n}`);
+  return parts.join(" · ") || `${tools.length} step${tools.length === 1 ? "" : "s"}`;
+}
 const isShell = (tool: string) => /^(bash|shell|commandexecution|exec)/i.test(tool);
 const isEdit = (tool: string) => /^(edit|multiedit|write|create|filechange|apply_patch|str_replace)/i.test(tool);
 
@@ -634,7 +641,7 @@ function WorkGroupView({ steps, live }: { steps: Step[]; live: boolean }) {
         ) : (
           <span className="min-w-0 flex-1 truncate text-fg-2">
             <span className="font-medium text-fg">Worked{ms >= 1000 ? ` for ${fmtMs(ms)}` : ""}</span>
-            <span className="text-fg-3"> · {tools.length} step{tools.length === 1 ? "" : "s"}</span>
+            <span className="text-fg-3" title={`${tools.length} step${tools.length === 1 ? "" : "s"}`}> · {summarize(tools)}</span>
           </span>
         )}
         <span className="flex shrink-0 items-center gap-1.5">

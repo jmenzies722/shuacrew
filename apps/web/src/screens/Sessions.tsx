@@ -264,7 +264,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
   const working = WORKING.has(run.status) && !run.pendingApprovals.length;
 
   return (
-    <section className="sheet flex min-h-0 flex-col" aria-label="Conversation">
+    <section key={run.id} className="sheet thread-enter flex min-h-0 flex-col" aria-label="Conversation">
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
         <h1 className="min-w-0 truncate text-[14px] font-semibold">{run.title}</h1>
         <StatusPill status={run.status} />
@@ -892,7 +892,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             {power.presets.map((p) => <button key={p.id} type="button" className="preset-chip" title={presetTitle(p)} onClick={() => applyPreset(p)}><Zap size={11} />{p.label}</button>)}
           </div>
         )}
-        <div className={`composer-box chat-composer ${hero ? "is-hero" : ""}`}>
+        <div className={`composer-box chat-composer ${hero ? "is-hero" : ""}${working ? " is-working" : ""}`}>
           {files.length > 0 && (
             <div className="mb-2.5 flex flex-wrap gap-2">
               {files.map((f) => (

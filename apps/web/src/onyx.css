@@ -416,3 +416,24 @@
 .approval-more { align-self: flex-end; margin-bottom: 18px; padding: 3px 10px; border-radius: 999px; font-size: 11px; color: var(--text-2); background: var(--float, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong); pointer-events: auto; }
 :root[data-design="onyx"] .approval-toast { background: var(--float) !important; box-shadow: var(--float-shadow) !important; border: 0 !important; border-radius: 14px !important; }
 :root[data-design="onyx"] .approval-toast > div:last-child > button:first-child { background: var(--primary-bg); color: var(--primary-fg); border-radius: 7px; }
+
+/* While the crew works on this session, the composer's edge carries a slow light: you can see it's alive from
+   anywhere on the page. Only while working, and paused when ShuaCrew is idle or motion is reduced. */
+@property --compose-ring { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+:root[data-design="onyx"] .composer-box.is-working {
+  border-color: transparent !important;
+  background: linear-gradient(var(--panel), var(--panel)) padding-box,
+    conic-gradient(from var(--compose-ring), color-mix(in srgb, var(--amber) 85%, transparent), transparent 22%, transparent 60%, color-mix(in srgb, var(--accent-2, var(--amber)) 70%, transparent), color-mix(in srgb, var(--amber) 85%, transparent)) border-box;
+  border: 1px solid transparent;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 6%, transparent), 0 18px 50px -30px var(--amber);
+  animation: compose-ring 4s linear infinite;
+}
+@keyframes compose-ring { to { --compose-ring: 360deg; } }
+:root[data-design="onyx"][data-idle] .composer-box.is-working { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .composer-box.is-working { animation: none; } }
+:root[data-motion="reduced"] .composer-box.is-working { animation: none; }
+
+/* Switching sessions: the conversation settles in instead of snapping. */
+:root[data-design="onyx"] .thread-enter { animation: thread-in .32s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes thread-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .thread-enter { animation: none; } }
