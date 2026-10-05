@@ -1218,7 +1218,47 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// SHUACREW_SPARK_SELFTEST="open_app:Activity Monitor" at launch runs one action through the real page → app → page path and logs the result.
     /// Only whoever launches the app can set it; web pages can't.
     private var selfTestStarted = false
+    private var notchSnapshotStarted = false
+    /// SHUACREW_NOTCH_SNAPSHOT=/path/notch.png at launch: what the notch's page draws at rest, opened (as a hover opens
+    /// it) and after a spoken-style ask, saved as notch-rest.png / notch-open.png beside it. The page's own pixels, so
+    /// it needs no screen recording and no synthetic pointer. Only whoever launches the app can set it.
+    private func notchSnapshots(_ base: String) {
+        let steps: [(String, String, Double)] = [("rest", "", 4), ("open", "window.buddy && window.buddy.nook && window.buddy.nook(true)", 2), ("closed", "window.buddy && window.buddy.nook && window.buddy.nook(false)", 1.5)]
+        func step(_ i: Int) {
+            guard i < steps.count else { return }
+            let (name, script, wait) = steps[i]
+            if !script.isEmpty { web.evaluateJavaScript(script) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                guard let self else { return }
+                self.web.takeSnapshot(with: nil) { image, _ in
+                    if let tiff = image?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: base.replacingOccurrences(of: ".png", with: "-\(name).png")))
+                    }
+                    // And the real pixels on screen around the notch (menu bar included), when screen access is on.
+                    let frame = self.panel.frame, screen = self.panel.screen ?? NSScreen.main
+                    Task { @MainActor in
+                        if let screen, ScreenAccess.granted(), let content = try? await SCShareableContent.current,
+                           let display = content.displays.first(where: { $0.displayID == (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) }) {
+                            let config = SCStreamConfiguration()
+                            config.sourceRect = CGRect(x: frame.minX - screen.frame.minX, y: screen.frame.maxY - frame.maxY, width: frame.width, height: frame.height)
+                            config.width = Int(frame.width * screen.backingScaleFactor); config.height = Int(frame.height * screen.backingScaleFactor)
+                            if let shot = try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: config) {
+                                let png = NSBitmapImageRep(cgImage: shot).representation(using: .png, properties: [:])
+                                try? png?.write(to: URL(fileURLWithPath: base.replacingOccurrences(of: ".png", with: "-\(name)-screen.png")))
+                            }
+                        }
+                        step(i + 1)
+                    }
+                }
+            }
+        }
+        step(0)
+    }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if webView === web, !notchSnapshotStarted, let base = ProcessInfo.processInfo.environment["SHUACREW_NOTCH_SNAPSHOT"], base.hasSuffix(".png") {
+            notchSnapshotStarted = true
+            notchSnapshots(base)
+        }
         // Once per launch, in the notch's page: every page that finished loading used to start it, so asks ran twice.
         guard webView === web, !selfTestStarted, let spec = ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] else { return }
         selfTestStarted = true
