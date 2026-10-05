@@ -44,7 +44,9 @@ import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation } from "../lib/conversation";
 import { MessageQueue } from "../components/MessageQueue";
 import { shouldSend } from "../lib/composer-keys";
-import { canRemoveSession, removeSession, sessionRemovalCopy } from "../lib/session-removal";
+import { canRemoveSession, removeSession } from "../lib/session-removal";
+import { SessionRemovalConfirmation } from "../components/SessionRemoval";
+import { useSidebarWide } from "../shell/HubNav";
 import { pauseClock, scopeRuns, recentWork } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
@@ -133,6 +135,7 @@ export function Sessions() {
     return !previous;
   });
   const [changes, setChanges] = useState(false);
+  const sidebarWide = useSidebarWide();
   useEffect(() => {
     const show = () => setChanges(true);
     window.addEventListener("shuacrew:open-file", show);
@@ -143,8 +146,9 @@ export function Sessions() {
   const loaded = useLive((s) => s.crew.head > 0);
   const id = params.id && (known || !loaded) ? params.id : undefined;
   return (
-    <div className={`sessions-layout ${id ? "is-thread" : "is-fresh"} ${id && changes ? "has-changes" : ""} ${sessionsCollapsed ? "sessions-collapsed" : ""}`}>
-      <SessionsPanel selected={id} collapsed={sessionsCollapsed} onToggle={toggleSessions} />
+    <div className={`sessions-layout ${id ? "is-thread" : "is-fresh"} ${id && changes ? "has-changes" : ""} ${sessionsCollapsed ? "sessions-collapsed" : ""} ${sidebarWide ? "no-pane" : ""}`}>
+      {/* With the full sidebar open, sessions live there (one sidebar, like Notion/Cursor); the slim rail brings this list back. */}
+      {!sidebarWide && <SessionsPanel selected={id} collapsed={sessionsCollapsed} onToggle={toggleSessions} />}
       {id ? <Chat id={id} changes={changes} onToggleChanges={() => setChanges((v) => !v)} /> : <NewSession />}
       {id && changes && <ChangesPanel id={id} />}
     </div>
@@ -199,15 +203,6 @@ function Group({ title, runs, selected }: { title?: string; runs: RunView[]; sel
       ))}
     </div>
   );
-}
-
-function SessionRemovalConfirmation({ title, error, removing, allowed, onConfirm, returnFocus }: { title: string; error: string; removing: boolean; allowed: boolean; onConfirm: () => void; returnFocus?: () => void }) {
-  return <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm" /><Dialog.Content onCloseAutoFocus={event => { if (returnFocus) { event.preventDefault(); returnFocus(); } }} className="fixed left-1/2 top-1/2 z-[81] w-[min(440px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-6 shadow-2xl">
-    <Dialog.Title className="text-lg font-semibold text-fg">{sessionRemovalCopy.title}</Dialog.Title>
-    <Dialog.Description className="mt-3 text-sm leading-relaxed text-fg-2">“{title}” — {sessionRemovalCopy.description}</Dialog.Description>
-    {error && <p role="alert" className="mt-3 text-sm text-bad">{error}</p>}
-    <div className="mt-5 flex justify-end gap-3"><Dialog.Close asChild><Button disabled={removing}>Cancel</Button></Dialog.Close><Button disabled={removing || !allowed} onClick={onConfirm}>{removing ? "Deleting…" : "Delete session"}</Button></div>
-  </Dialog.Content></Dialog.Portal>;
 }
 
 function SessionCard({ run, selected }: { run: RunView; selected: boolean }) {

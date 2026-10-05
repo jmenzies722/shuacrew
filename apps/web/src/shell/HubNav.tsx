@@ -1,17 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import type { RunView } from "@shuacrew/core/projections";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { since } from "@shuacrew/ui";
-import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Settings, ShieldCheck, SquareKanban, SquareTerminal, Users } from "lucide-react";
+import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Search, Settings, ShieldCheck, SquareKanban, SquarePen, SquareTerminal, Trash2, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, PRIMARY_HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
-import { isTopLevelWork } from "../lib/crew";
+import { isTopLevelWork, scopeRuns } from "../lib/crew";
+import { groupSessions } from "../lib/session-list";
+import { canRemoveSession, removeSession } from "../lib/session-removal";
+import { SessionRemovalConfirmation } from "../components/SessionRemoval";
 import { plain } from "../lib/plain";
 import { useCompanion } from "../lib/companion";
 import { sparkVars } from "../lib/spark-color";
 import { toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
 import { SparkCharacter } from "../components/SparkCharacter";
-import { LogoMark } from "../lib/motion";
 import "./hub-nav.css";
 
 const PAGE_ICON: Record<string, typeof House> = {
@@ -96,21 +100,38 @@ export function setSidebarWide(next: boolean) { wide = next; try { localStorage.
 export function useSidebarWide() { const [, force] = useState(0); useEffect(() => { const l = () => force((n) => n + 1); wideListeners.add(l); return () => { wideListeners.delete(l); }; }, []); return wide; }
 
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
-/** Recent sessions in the sidebar: folded or open (remembered), and how many show before "Show more". */
-const RECENT_OPEN = "shuacrew.side.recentOpen", RECENT_SHORT = 5, RECENT_LONG = 12;
-const readRecentOpen = () => { try { return localStorage.getItem(RECENT_OPEN) !== "0"; } catch { return true; } };
+/** How many sessions show before "Show more", and whether the Sessions / Tools sections are folded (remembered). */
+const SESSIONS_SHORT = 8, SESSIONS_LONG = 40;
+const FOLD = "shuacrew.side.folded";
+const readFolded = (): Record<string, boolean> => { try { return JSON.parse(localStorage.getItem(FOLD) ?? "{}"); } catch { return {}; } };
+/** The sidebar's width: drag its edge (Notion-style), double-click the edge to reset. */
+const WIDTH = "shuacrew.side.width", WIDTH_DEFAULT = 248, WIDTH_MIN = 200, WIDTH_MAX = 380;
+const readWidth = () => { try { const n = Number(localStorage.getItem(WIDTH)); return n >= WIDTH_MIN && n <= WIDTH_MAX ? n : WIDTH_DEFAULT; } catch { return WIDTH_DEFAULT; } };
+
+type SideRun = RunView;
+/**
+ * The sidebar's session list: which groups, in what order. Gets every visible top-level session (already filtered to
+ * the current scope) and returns titled groups, top to bottom.
+ */
+export function sidebarGroups(runs: SideRun[], now = Date.now()): Array<{ title: string; runs: SideRun[] }> {
+  // Live work is pinned in "Now" (newest first) so it never scrolls under older days; the rest group by day as usual.
+  const live = runs.filter((r) => LIVE.has(r.status) || r.pendingApprovals.length).sort((a, b) => b.updatedAt - a.updatedAt);
+  const rest = groupSessions(runs.filter((r) => !live.includes(r)), "", now);
+  return live.length ? [{ title: "Now", runs: live }, ...rest] : rest;
+}
 
 /**
- * Linear-style sidebar: Ask Spark and New session up top, then your sessions (live ones first) so they're always in
- * view, then the five hubs' pages, Settings at the bottom. ⌘\ folds it back to the slim rail.
+ * Notion/Cursor-style sidebar: quiet actions up top (Search, Ask, New), the hubs as a flat page list, then every
+ * session grouped by day, Guide and Settings at the foot. It sits on the window, not in a card. ⌘\ folds it to the rail.
  */
 export function HubSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : path.startsWith("/guide") ? "guide" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
-  const runs = useLive((s) => s.crew.runs);
+  const runs = useLive((s) => s.crew.runs), scope = useLive((s) => s.scope);
   const connection = useLive((s) => s.connection);
+  const setPalette = useLive((s) => s.setPalette);
   const prefs = useCompanion(), sparkOpen = useSparkPanel();
   useRemember(path);
   const go = (hub: Hub) => void navigate({ to: hub.id === here ? hub.tabs[0]!.to : hubEntry(hub, readLast()) });
@@ -123,52 +144,96 @@ export function HubSidebar() {
     };
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
   });
-  const all = Object.values(runs);
-  const working = all.filter((r) => r.status === "running" || r.status === "planning").length;
-  const [recentOpen, setRecentOpen] = useState(readRecentOpen), [recentMore, setRecentMore] = useState(false);
-  const toggleRecent = () => setRecentOpen((v) => { try { localStorage.setItem(RECENT_OPEN, v ? "0" : "1"); } catch { /* ignore */ } return !v; });
-  const recentAll = all.filter((r) => isTopLevelWork(r, runs)).sort((a, b) => Number(LIVE.has(b.status)) - Number(LIVE.has(a.status)) || b.updatedAt - a.updatedAt);
-  const recent = recentAll.slice(0, recentMore ? RECENT_LONG : RECENT_SHORT);
-  const liveCount = recentAll.filter((r) => LIVE.has(r.status)).length;
+  const working = Object.values(runs).filter((r) => r.status === "running" || r.status === "planning").length;
   const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
+  const [folded, setFolded] = useState(readFolded), [more, setMore] = useState(false);
+  const fold = (key: string) => setFolded((f) => { const next = { ...f, [key]: !f[key] }; try { localStorage.setItem(FOLD, JSON.stringify(next)); } catch { /* ignore */ } return next; });
+  const visible = useMemo(() => Object.values(scopeRuns(runs, scope)).filter((r) => isTopLevelWork(r, runs) && !r.labels?.some((l) => l === "buddy" || l === "learning")), [runs, scope]);
+  const groups = useMemo(() => {
+    let left = more ? SESSIONS_LONG : SESSIONS_SHORT;
+    return sidebarGroups(visible).map((g) => { const shown = g.runs.slice(0, Math.max(0, left)); left -= shown.length; return { ...g, runs: shown }; }).filter((g) => g.runs.length);
+  }, [visible, more]);
+  const liveCount = visible.filter((r) => LIVE.has(r.status)).length;
+  const [width, setWidth] = useState(readWidth);
+  const drag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX, startW = width; let last = startW;
+    document.documentElement.dataset.sideResizing = "";
+    const move = (m: PointerEvent) => { last = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, startW + m.clientX - startX)); setWidth(last); };
+    const up = () => { window.removeEventListener("pointermove", move); delete document.documentElement.dataset.sideResizing; try { localStorage.setItem(WIDTH, String(last)); } catch { /* ignore */ } };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up, { once: true });
+  };
+  const resetWidth = () => { setWidth(WIDTH_DEFAULT); try { localStorage.removeItem(WIDTH); } catch { /* ignore */ } };
   const name = prefs.nickname || "Spark";
-  return <nav className="side" aria-label="Sidebar">
-    <div className="side-brand">
-      <span className="side-logo" aria-hidden><LogoMark size={24} bare /></span>
-      <span className="side-brand-text"><b>Shua <em>Crew</em></b><small className={`is-${connection}`}><i />{connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting" : "Gateway offline"}</small></span>
-      <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
-    </div>
-    <button type="button" className={`side-spark ${sparkOpen ? "is-on" : ""}`} style={sparkVars(prefs.color)} onClick={toggleSparkPanel} title={`${name}  ⌘J`}>
-      <span className="side-spark-av"><SparkCharacter preferences={prefs} size={32} crop="portrait" /></span>
-      <span className="side-spark-text"><b>Ask {name}</b><small>anything, anywhere</small></span><kbd>⌘J</kbd>
-    </button>
-    <button type="button" className="side-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}><Plus size={15} /> New session<kbd>⌘N</kbd></button>
-    <div className="side-scroll">
-    {recent.length > 0 && <div className={`side-group side-recent ${recentOpen ? "is-open" : ""}`}>
-      <div className="side-recent-head">
-        <button type="button" className="side-label side-recent-toggle" aria-expanded={recentOpen} onClick={toggleRecent}>
-          <ChevronRight size={12} className="side-recent-chev" />Recent sessions{!recentOpen && liveCount > 0 && <em className="side-recent-live">{liveCount} live</em>}
-        </button>
-        <Link to="/" className="side-recent-all" title="All sessions">All</Link>
+  const tools = HUBS.find((h) => h.id === "system")!;
+  return <nav className="side" aria-label="Sidebar" style={{ "--side-w": `${width}px` } as React.CSSProperties}>
+    <div className="side-actions">
+      <div className="side-top">
+        <button type="button" className="side-row side-search" onClick={() => setPalette(true)} title="Search sessions, screens, actions  ⌘K"><i className="side-ico"><Search size={15} strokeWidth={1.8} /></i><span>Search</span><kbd>⌘K</kbd></button>
+        <button type="button" className="side-fold" onClick={() => setSidebarWide(false)} title="Collapse sidebar  ⌘\\" aria-label="Collapse sidebar"><PanelLeftClose size={15} /></button>
       </div>
-      <AnimatePresence initial={false}>{recentOpen && <motion.div key="recent" className="side-recent-list" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}>
-        {recent.map((r) => { const on = path === `/sessions/${r.id}`, live = LIVE.has(r.status); return <Link key={r.id} to="/sessions/$id" params={{ id: r.id }} className={`side-run ${on ? "is-on" : ""}`} title={plain(r.ticker) || r.title}>
-          <i className={`side-dot is-${live ? (r.status === "awaiting_approval" ? "wait" : "live") : r.status === "failed" ? "bad" : "done"}`} /><span>{r.title}</span><small>{live ? "now" : since(r.updatedAt).replace(/ ago$/, "").replace("just now", "now")}</small>
-        </Link>; })}
-        {recentAll.length > RECENT_SHORT && <button type="button" className="side-recent-more" onClick={() => setRecentMore((v) => !v)}>{recentMore ? "Show less" : `Show ${Math.min(RECENT_LONG, recentAll.length) - RECENT_SHORT} more`}</button>}
-      </motion.div>}</AnimatePresence>
-    </div>}
-    {PRIMARY_HUBS.map(hub => { const Icon = ICON[hub.id], selected = here === hub.id; return <div key={hub.id} className="side-group workspace-section">
-      <Link to={hub.tabs[0]!.to} className={`side-row workspace-primary ${selected ? "is-on" : ""}`} aria-current={selected ? "page" : undefined} title={hub.hint}><i className="side-ico"><Icon size={17} strokeWidth={1.6} /></i><span>{hub.label}</span>{count(hub.id) > 0 && <em>{count(hub.id)}</em>}</Link>
-      {selected && <div className="workspace-children">{hub.tabs.map(tab => <Link key={tab.to} to={tab.to} className={`side-row ${at?.tab === tab ? "is-current" : ""}`} aria-current={at?.tab === tab ? "page" : undefined}><span>{tab.label}</span></Link>)}</div>}
-    </div>; })}
-    <details className="workspace-tools" open={here === "system" || undefined}><summary>All tools <ChevronRight size={12} /></summary>{HUBS.find(h => h.id === "system")!.tabs.map(tab => <Link key={tab.to} to={tab.to} className="side-row">{tab.label}</Link>)}</details>
+      <button type="button" className={`side-row side-spark ${sparkOpen ? "is-on" : ""}`} style={sparkVars(prefs.color)} onClick={toggleSparkPanel} title={`Ask ${name} anything  ⌘J`}>
+        <i className="side-ico side-spark-av"><SparkCharacter preferences={prefs} size={18} crop="portrait" /></i><span>Ask {name}</span><kbd>⌘J</kbd>
+      </button>
+      <button type="button" className="side-row side-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))}><i className="side-ico"><SquarePen size={15} strokeWidth={1.8} /></i><span>New session</span><kbd>⌘N</kbd></button>
+    </div>
+    <div className="side-scroll">
+      <div className="side-group">
+        {PRIMARY_HUBS.map((hub) => { const Icon = ICON[hub.id], selected = here === hub.id; return <div key={hub.id} className="side-page">
+          <Link to={hub.tabs[0]!.to} className={`side-row ${selected && hub.tabs.length <= 1 ? "is-on" : selected ? "is-open" : ""}`} aria-current={selected ? "page" : undefined} title={hub.hint}><i className="side-ico"><Icon size={16} strokeWidth={1.7} /></i><span>{hub.label}</span>{count(hub.id) > 0 && <em className={hub.id === "home" ? "is-wait" : "is-live"}>{count(hub.id)}</em>}</Link>
+          {selected && hub.tabs.length > 1 && <div className="side-children">{hub.tabs.map((tab) => <Link key={tab.to} to={tab.to} className={`side-row side-child ${at?.tab === tab && !path.startsWith("/sessions/") ? "is-on" : ""}`} aria-current={at?.tab === tab ? "page" : undefined}><span>{tab.label}</span></Link>)}</div>}
+        </div>; })}
+      </div>
+      <Section id="tools" label="Tools" folded={folded.tools ?? here !== "system"} onFold={fold}>
+        {tools.tabs.map((tab) => <Link key={tab.to} to={tab.to} className={`side-row ${at?.tab === tab ? "is-on" : ""}`}><span>{tab.label}</span></Link>)}
+      </Section>
+      <Section id="sessions" label="Sessions" folded={!!folded.sessions} onFold={fold} badge={folded.sessions && liveCount ? `${liveCount} live` : undefined}
+        action={<button type="button" className="side-section-act" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))} title="New session  ⌘N" aria-label="New session"><Plus size={13} /></button>}>
+        {!groups.length && <p className="side-empty">Your sessions will appear here.</p>}
+        {groups.map((g) => <div key={g.title} className="side-day"><h4>{g.title}</h4>{g.runs.map((r) => <SessionRow key={r.id} run={r} on={path === `/sessions/${r.id}`} />)}</div>)}
+        {visible.length > SESSIONS_SHORT && <button type="button" className="side-more" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more"}</button>}
+      </Section>
     </div>
     <div className="side-foot">
-      <button type="button" className={`side-row side-guide ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })}><i className="side-ico" data-hub="guide"><BookOpenText size={14} strokeWidth={2} /></i><span>Guide</span></button>
-      <button type="button" className={`side-row ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })}><i className="side-ico" data-hub="settings"><Settings size={14} strokeWidth={2} /></i><span>Settings</span><kbd>⌘,</kbd></button>
+      <span className={`side-conn is-${connection}`} title={connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting to the gateway" : "Gateway offline"}><i />{connection === "live" ? "Live" : connection === "connecting" ? "Connecting" : "Offline"}</span>
+      <button type="button" className={`side-foot-btn ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })} title="Guide — everything ShuaCrew can do" aria-label="Guide"><BookOpenText size={15} strokeWidth={1.8} /></button>
+      <button type="button" className={`side-foot-btn ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })} title="Settings  ⌘," aria-label="Settings"><Settings size={15} strokeWidth={1.8} /></button>
     </div>
+    <div className="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onPointerDown={drag} onDoubleClick={resetWidth} title="Drag to resize · double-click to reset" />
   </nav>;
+}
+
+/** A Notion-style section: a quiet label that folds what's under it, with an action on hover. */
+function Section({ id, label, folded, onFold, action, badge, children }: { id: string; label: string; folded: boolean; onFold: (id: string) => void; action?: React.ReactNode; badge?: string; children: React.ReactNode }) {
+  return <div className={`side-section ${folded ? "" : "is-open"}`}>
+    <div className="side-section-head">
+      <button type="button" className="side-section-label" aria-expanded={!folded} onClick={() => onFold(id)}>{label}<ChevronRight size={12} className="side-chev" />{badge && <em>{badge}</em>}</button>
+      {action}
+    </div>
+    <AnimatePresence initial={false}>{!folded && <motion.div key="body" className="side-section-body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}>{children}</motion.div>}</AnimatePresence>
+  </div>;
+}
+
+/** One session: a status dot, its title on one line, and when it last moved — or a delete button on hover. */
+function SessionRow({ run, on }: { run: SideRun; on: boolean }) {
+  const navigate = useNavigate();
+  const [confirm, setConfirm] = useState(false), [removing, setRemoving] = useState(false), [error, setError] = useState("");
+  const live = LIVE.has(run.status), allowed = canRemoveSession(run.status);
+  const remove = async () => {
+    setRemoving(true); setError("");
+    try { await removeSession(run.id, run.status); setConfirm(false); if (on) await navigate({ to: "/" }); }
+    catch (e) { setError((e as Error).message); } finally { setRemoving(false); }
+  };
+  const tone = run.status === "awaiting_approval" || run.pendingApprovals.length ? "wait" : live ? "live" : run.status === "failed" ? "bad" : "done";
+  return <Dialog.Root open={confirm} onOpenChange={(o) => { if (!removing) { setConfirm(o); setError(""); } }}>
+    <div className={`side-run ${on ? "is-on" : ""}`}>
+      <Link to="/sessions/$id" params={{ id: run.id }} aria-current={on ? "page" : undefined} title={plain(run.ticker) || run.title}>
+        <i className={`side-dot is-${tone}`} /><span>{run.title || run.ask || "Untitled session"}</span><small>{live ? "now" : since(run.updatedAt).replace(/ ago$/, "").replace("just now", "now")}</small>
+      </Link>
+      {allowed && <Dialog.Trigger asChild><button type="button" className="side-run-del" aria-label={`Delete session: ${run.title}`} title="Delete session"><Trash2 size={13} /></button></Dialog.Trigger>}
+    </div>
+    <SessionRemovalConfirmation title={run.title} error={error} removing={removing} allowed={allowed} onConfirm={() => void remove()} />
+  </Dialog.Root>;
 }
 
 /** The slim rail, with a way back to the full sidebar. */

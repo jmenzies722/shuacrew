@@ -124,3 +124,7 @@
 .composer-picks select { max-width: 150px; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--text-2); }
 .composer-picks:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, var(--line-strong)); }
 @media (max-width: 700px) { .composer-picks select { max-width: 90px; } }
+/* The full sidebar carries the session list, so the page drops its own column. */
+.sessions-layout.no-pane:is(.is-fresh, .is-thread) { grid-template-columns: minmax(0, 1fr); }
+.sessions-layout.no-pane.is-thread.has-changes { grid-template-columns: minmax(0, 1fr) minmax(0, 300px); }
+@media (max-width: 1150px) { .sessions-layout.no-pane.is-thread.has-changes { grid-template-columns: minmax(0, 1fr); } }

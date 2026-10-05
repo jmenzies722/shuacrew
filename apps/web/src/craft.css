@@ -70,10 +70,7 @@
 @media (max-width: 1560px) { [data-frame]:has(.spark-side) aside.side-pane { display: none; } }
 @media (max-width: 1900px) { [data-frame]:has(.spark-side) aside.sheet { display: none; } }
 .spark-side-inner { width: clamp(340px, 24vw, 400px) !important; }
-@media (max-width: 1300px) { .side { width: 220px !important; } }
 .composer-tools > button { white-space: nowrap; }
-/* Narrow sidebar: the shortcut hint makes way so "Ask Spark" and its line read in full. */
-@media (max-width: 1300px) { .side-spark kbd { display: none; } }
 /* The Today brief: its rows wrap inside the card instead of running past its edge. */
 .brief .grid { grid-template-columns: minmax(0, 1fr); }
 .brief-item { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
