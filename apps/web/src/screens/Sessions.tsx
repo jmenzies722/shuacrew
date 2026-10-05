@@ -52,6 +52,7 @@ import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
 import { ReplayBar } from "../components/Replay";
 import { LogoMark } from "../lib/motion";
+import { dayGreeting } from "../lib/greeting";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
@@ -125,12 +126,6 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  * Kiro Crew's working surface: sessions on the left, the conversation in the middle, what it
  * changed on the right. A session is a run — the first message starts it, every next one continues it.
  */
-/** Morning, afternoon or evening, by the clock on your Mac. */
-function greeting(now = new Date()) {
-  const h = now.getHours();
-  return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-}
-
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
   const [sessionsCollapsed, setSessionsCollapsed] = useState(() => {
@@ -523,7 +518,7 @@ function NewSession() {
             <div className="hero-mark">
               <LogoMark size={44} />
             </div>
-            <h1 className="hero-title">{greeting()}. What should the crew build?</h1>
+            <h1 className="hero-title">{dayGreeting()}. What should the crew build?</h1>
             <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
             <Composer seed={seed} hero />
             <div className="hero-ideas stagger">

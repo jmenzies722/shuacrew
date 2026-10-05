@@ -18,6 +18,7 @@ import { commandAnnouncement } from "../lib/command-narration";
 import { scheduleNotchClose } from "../lib/notch-hover";
 import { CompanionApproval } from "../components/CompanionApproval";
 import { notchActivity } from "../lib/notch-activity";
+import { dayGreeting } from "../lib/greeting";
 import { notchPreviewWanted, notchReplyText } from "../lib/notch-presentation";
 import { requestPointer } from "../lib/pointer-feedback";
 import { SelectedAreaPreview } from "../components/SelectedAreaPreview";
@@ -46,7 +47,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ComposerActions } from "../components/ComposerActions";
 import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompanionDraftRevision, restoreCompanionDraft, setCompanionDraft, useCompanionDraft } from "../lib/companion-draft";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -283,6 +284,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [nook, setNook] = useState(false), cancelNookClose = useRef<(() => void) | undefined>(undefined), nookFocus = useRef(false);
   useEffect(() => { if (!nook) cancelNookClose.current?.(); return () => cancelNookClose.current?.(); }, [nook]);
   const [notchTucked, setNotchTucked] = useState(false);
+  // The open island: typing swaps the dock for a one-line field; More reveals missions, workflows and access.
+  const [islandTyping, setIslandTyping] = useState(false), [islandMore, setIslandMore] = useState(false);
   // The notch island's geometry (from the Mac app: the camera housing's real size) and the open body's measured height.
   const [notchGeo, setNotchGeo] = useState<{ w: number; h: number; real: boolean }>({ w: 200, h: 32, real: false });
   const [islandDrop, setIslandDrop] = useState(250), islandBody = useRef<HTMLDivElement>(null);
@@ -1509,6 +1512,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const stuckHelp = () => { const o = stuck; if (!o) return; setStuck(null); void ask(`${o.kind === "error" ? `I'm stuck on this in ${o.app}: “${o.detail.slice(0, 200)}”` : "I keep searching and can't find the answer"}. Look at my screen and walk me through it, one step at a time.`, { look: true }); };
   const stuckLater = () => { if (stuck) stuckState.current = muteStuck(stuckState.current, stuck.key, Date.now()); setStuck(null); };
   const islandOpen = nook && !open && prefs.desktopPlacement === "notch";
+  useEffect(() => { if (!islandOpen) { setIslandTyping(false); setIslandMore(false); } }, [islandOpen]);
   const showMedia = prefs.desktopPlacement === "notch" && prefs.notchMedia && !embedded;
   useEffect(() => {
     if (!showMedia || !native()) { setMedia(null); return; }
@@ -1682,7 +1686,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     const observe = () => { ro.disconnect(); ro.observe(el); Array.from(el.children).forEach(child => ro.observe(child)); measure(); };
     const mutations = new MutationObserver(observe); mutations.observe(el, { childList: true }); observe();
     return () => { ro.disconnect(); mutations.disconnect(); };
-  }, [islandOpen, call.active, accessOpen, workflowsOpen, companionApprovals.length]);
+  }, [islandOpen, call.active, accessOpen, workflowsOpen, companionApprovals.length, islandTyping, islandMore]);
   const nookHover = useRef((_: boolean) => {});
   const scrubbing = useRef(false);
   const scrubHold = useCallback((on: boolean) => { scrubbing.current = on; }, []);
@@ -1696,6 +1700,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const nextMoves = lastSpark && !working && !busy ? parseNext(messages.at(-1)!.text) : [];
   // Nothing asked yet: the first three starters (the chat's own, fitting the moment), so the open notch is never an empty box.
   const nookStarters = !messages.length && !working && !busy ? starters.slice(0, 3) : [];
+  // The island's one line: what it hears, says or does right now; else what needs you, the last reply, or the day.
+  const lastReply = lastSpark ? speakable(messages.at(-1)!.text).replace(/```[\s\S]*$/, "").trim() : "";
+  const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean } =
+    (fnHeld || hearingNow) && heard ? { text: heard, live: true }
+    : streamingNow ? { text: visibleStream, live: true }
+    : speaking && caption ? { text: caption.text, live: true }
+    : processing || working || !!busy ? { text: fnSent && heard ? heard : "Working on it", live: true, shimmer: true }
+    : lastReply ? { text: lastReply }
+    : { text: dayGreeting(new Date()), sub: [workingNow && `${workingNow} working`, approvals && `${approvals} waiting on you`].filter(Boolean).join(" · ") || "Talk, type, or let me look" };
+  const callOwnsIsland = call.active && call.mode !== "silent";
+  const islandChip = !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback ? (nextMoves[0] ?? nookStarters[0] ?? null) : null;
   const quick = nextMoves.length ? nextMoves : lastSpark && !working && !busy ? ["Tell me more", "Make it shorter", ...(see ? ["Show me on screen"] : []), ...(prefs.control !== "off" && see ? ["Do it for me"] : [])] : [];
   const close = () => { setNook(false); setMini(false); if (embedded) onClose?.(); else setOpen(false); };
   // Doze after 15 quiet minutes with nothing running; anything happening wakes it.
@@ -1883,31 +1898,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null)}</div>
-        <div className="shua-island-body" ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
-          <div className="spark-nook-row">
-            <form className="spark-nook-ask" onSubmit={(e) => { e.preventDefault(); const d = getCompanionDraft(); if (!d.trim()) return; void ask(d); }}>
-              <DraftInput tabIndex={islandOpen ? 0 : -1} onFocus={() => { nookFocus.current = true; macContext.prefetch(); post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (busy || working || speaking) void interrupt(); else { nookFocus.current = false; e.currentTarget.blur(); setNook(false); } } }} placeholder={`Ask ${prefs.nickname || "Spark"} anything…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
-              <ComposerActions compact active={!!busy || working || speaking} onStop={() => void interrupt()} tabIndex={islandOpen ? 0 : -1} />
-            </form>
-            {prefs.notchControls && <>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`spark-nook-voice ${talkEnabled ? "is-on" : ""}`} aria-pressed={talkEnabled} onClick={toggleTalk} title={talkEnabled ? "End the conversation" : "Enable continuous listening"} aria-label={talkEnabled ? "End call" : "Talk to Shua"}>{talkEnabled ? <><Square size={12} /><span>End</span></> : <><Mic size={14} /><span>Talk</span></>}</button>
-
-            </>}
-          </div>
+        <div className={`shua-island-body${islandMore || workflowsOpen || accessOpen || missionOpen ? " is-more" : ""}`} ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
+          {/* One line, not a text box: what Spark is hearing, saying or doing right now — or your day at a glance. */}
+          {!callOwnsIsland && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}`} onClick={openChat} title="Open the conversation">
+            <span className="isl-hero-text">{islandHero.text}</span>{islandHero.sub && <small>{islandHero.sub}</small>}
+          </button>}
           {selectedArea && <SelectedAreaPreview {...selectedArea} onClear={() => setSelectedArea(null)} />}
-          {!call.active && <ConversationTranscript lines={[
-            ...messages.map(m => ({ role: m.who === "you" ? "user" as const : "assistant" as const, text: m.who === "spark" ? speakable(m.text) : m.text, partial: !!m.live })).filter(m => m.text.trim()),
-            ...(brief ? [{role:"user" as const,text:brief.q},{role:"assistant" as const,text:brief.a}] : []),
-            ...((fnHeld || hearingNow) && heard ? [{ role: "user" as const, text: heard, partial: true }] : []),
-          ]} />}
           {companionApprovals.map(approval => <CompanionApproval key={approval.id} approval={approval} />)}
-          {call.active && <LiveIsland expanded textOnly />}
-          {!call.active && call.feed.some(item => item.kind !== "step" && item.text.trim()) && <details className="notch-voice-history"><summary>Last voice conversation</summary><LiveTranscript live={call} /></details>}
-          {workflowsOpen || accessOpen || missionOpen ? assistantDeck : <NotchTeachingBar state={workflows} blocked={prefs.control === "off" || !hands.trusted || !!busy || working || !!task || (call.tasks ?? 0) > 0}
-            onToggle={() => ask(workflows.phase === "recording" ? "stop watching" : "watch me")} onReview={() => setWorkflowsOpen(true)}>{assistantDeck}{pointerFeedback?.phase !== "blocked" && pointerStatus}</NotchTeachingBar>}
-          {pointerFeedback?.phase === "blocked" && pointerStatus}
+          {callOwnsIsland && <LiveIsland expanded textOnly />}
+          {pointerFeedback && pointerStatus}
           {error && !pointerFeedback && <div className="notch-error" role="alert"><span>{error}</span><button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={14} /></button></div>}
-          {notchUpdate && <article className={`notch-update is-${notchUpdate.tone}`}><header><span>{notchUpdate.tone === "wait" ? "NEEDS YOU" : "CREW UPDATE"}</span><button type="button" aria-label="Dismiss crew update" onClick={() => setNotchUpdate(null)}><X size={13} /></button></header><strong>{notchUpdate.title}</strong><p>{notchUpdate.text}</p><button type="button" className="notch-update-open" onClick={() => { post({ type: "buddyOpen", path: notchUpdate.path }); setNotchUpdate(null); }}>Open session <ChevronRight size={12} /></button></article>}
+          {notchUpdate && <article className={`notch-update is-${notchUpdate.tone}`}><header><span>{notchUpdate.tone === "wait" ? "NEEDS YOU" : "CREW UPDATE"}</span><button type="button" aria-label="Dismiss crew update" onClick={() => setNotchUpdate(null)}><X size={13} /></button></header><strong>{notchUpdate.title}</strong>{notchUpdate.text.replace(notchUpdate.title, "").trim() && <p>{notchUpdate.text.replace(notchUpdate.title, "").trim()}</p>}<button type="button" className="notch-update-open" onClick={() => { post({ type: "buddyOpen", path: notchUpdate.path }); setNotchUpdate(null); }}>Open session <ChevronRight size={12} /></button></article>}
           {visual && (visual.type === "architecture" ? <section className="notch-lesson-summary" aria-label="Architecture lesson"><strong>{visual.title}</strong><p>{visual.summary}</p><div><button type="button" onClick={() => { pinLesson(); setNook(false); setNotchTucked(true); }}>Expand diagram <Maximize2 size={12} /></button><button type="button" aria-label="Dismiss lesson" onClick={dismissLesson}><X size={12} /></button></div></section> : <VisualCard v={visual} onClose={dismissLesson} />)}
           {timers.length > 0 && <ul className="spark-nook-timers" aria-label="Timers">{[...timers].sort((a, b) => remaining(a, now) - remaining(b, now)).map((t) => <li key={t.id} className={t.paused !== undefined ? "is-paused" : ""}>
             <span>{t.kind === "alarm" ? <AlarmClock size={13} /> : <Timer size={13} />}{t.label || (t.kind === "alarm" ? "Alarm" : "Timer")}</span>
@@ -1917,10 +1918,30 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             <button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => asking.answer(true)}>{asking.yes ?? "Delete"}</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => asking.answer(false)}>{asking.yes === "Delete" || !asking.yes ? "Keep" : "Cancel"}</button></div>}
           {stuck && <div className="spark-nook-stuck"><div><b>{stuck.kind === "error" ? `Stuck in ${stuck.app}?` : "Still searching?"}</b><small>{stuck.detail}</small></div>
             <button type="button" tabIndex={islandOpen ? 0 : -1} className="is-go" onClick={stuckHelp}>Show me</button><button type="button" tabIndex={islandOpen ? 0 : -1} onClick={stuckLater}>Not now</button></div>}
-          {nextMoves.length > 0 && !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback && <div className={`spark-nook-next${nextMoves.length ? "" : " is-starter"}`}>{(nextMoves.length ? nextMoves : nookStarters).slice(0, 2).map((n) => <button key={n} type="button" tabIndex={islandOpen ? 0 : -1} onClick={() => void ask(n)}>{n}</button>)}</div>}
           <LiveActivities tab={islandOpen ? 0 : -1} showMedia={showMedia} media={media} mediaCmd={mediaCmd} mediaSeek={mediaSeek} scrubHold={scrubHold} activeMissions={activeMissions} runs={crew.runs}
             task={pending ? task : null} pending={pending} guide={guide} busy={!!busy} working={working} runAct={(a, step) => void runAct(a, step)} doAll={() => { setAutoTask(true); if (pending && task) void runAct(pending, task.step); }}
-            stopTask={stopTask} advance={() => void advance()} stopGuide={stopGuide} radio={radio} setRadio={setRadio} timer={timer} now={now} focusPct={focusPct} workingRuns={workingRuns} approvals={approvals} />        </div>
+            stopTask={stopTask} advance={() => void advance()} stopGuide={stopGuide} radio={radio} setRadio={setRadio} timer={timer} now={now} focusPct={focusPct} workingRuns={workingRuns} approvals={approvals} />
+          {(islandMore || workflowsOpen || accessOpen || missionOpen) && <div className="isl-more">
+            {workflowsOpen || accessOpen || missionOpen || !["recording", "review"].includes(workflows.phase) ? assistantDeck : <NotchTeachingBar inline state={workflows} blocked={prefs.control === "off" || !hands.trusted || !!busy || working || !!task || (call.tasks ?? 0) > 0}
+              onToggle={() => ask(workflows.phase === "recording" ? "stop watching" : "watch me")} onReview={() => setWorkflowsOpen(true)}>{assistantDeck}</NotchTeachingBar>}
+          </div>}
+          {/* The dock: four ways in, one suggestion. Typing swaps the dock for a slim line, never a box. */}
+          <div className={`isl-dock${islandTyping ? " is-typing" : ""}`}>
+            {islandTyping ? <>
+            <form className="spark-nook-ask isl-type" onSubmit={(e) => { e.preventDefault(); const d = getCompanionDraft(); if (!d.trim()) return; void ask(d); }}>
+              <DraftInput autoFocus tabIndex={islandOpen ? 0 : -1} onFocus={() => { nookFocus.current = true; macContext.prefetch(); post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (busy || working || speaking) void interrupt(); else { nookFocus.current = false; e.currentTarget.blur(); setIslandTyping(false); } } }} placeholder={`Ask ${prefs.nickname || "Spark"}…`} aria-label={`Ask ${prefs.nickname || "Spark"}`} />
+              <ComposerActions compact active={!!busy || working || speaking} onStop={() => void interrupt()} tabIndex={islandOpen ? 0 : -1} />
+            </form>
+            </> : <>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn is-talk${talkEnabled ? " is-on" : ""}`} aria-pressed={talkEnabled} onClick={toggleTalk} title={talkEnabled ? "End the conversation" : "Talk"} aria-label={talkEnabled ? "End call" : "Talk"}>{talkEnabled ? <Square size={13} /> : <Mic size={15} />}</button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn" onClick={() => setIslandTyping(true)} title="Type" aria-label="Type"><Keyboard size={15} /></button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${see || liveOn ? " is-on" : ""}`} aria-pressed={see || liveOn} onClick={() => { if (see || liveOn) void interrupt(); if (liveOn) post({ type: "buddyLive", on: false }); saveSee(!(see || liveOn)); }} title={see || liveOn ? "Stop looking at the screen" : "Look at my screen"} aria-label="Screen"><Eye size={15} /></button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${islandMore ? " is-on" : ""}`} aria-pressed={islandMore} onClick={() => setIslandMore(v => !v)} title="Missions, workflows, access" aria-label="More"><Ellipsis size={15} /></button>
+              {islandChip && <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-chip" onClick={() => void ask(islandChip)} title={islandChip}><Sparkles size={12} /><span>{islandChip}</span></button>}
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn is-open" onClick={openChat} title="Open the full conversation" aria-label="Open chat"><ArrowUpRight size={15} /></button>
+            </>}
+          </div>
+        </div>
       </div>
     </div> : <div className={`buddy-spark size-${prefs.size} ${working || busy ? "is-thinking" : ""} ${speaking ? "is-speaking" : ""}`} aria-hidden="true">
       {timer && <svg className="buddy-focus" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" /><circle cx="50" cy="50" r="46" className="fill" style={{ strokeDashoffset: `${289 * (1 - focusPct)}` }} /></svg>}
