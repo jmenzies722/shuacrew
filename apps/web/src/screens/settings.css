@@ -125,3 +125,20 @@
 @container settings-content (max-width: 680px) { .preference-row { align-items: flex-start; flex-direction: column; gap: 12px; } .setting-control { max-width:100%; flex-wrap:wrap; } .segmented { flex-wrap:wrap; max-width:100%; } }
 
 .settings-content { container: settings-content / inline-size; min-width:0; }
+
+/* Every section has its own light: a hue for the heading's glow and its icon, so you always know where you are. */
+.settings-section-heading[data-section] { --sec: var(--amber); position: relative; overflow: hidden; isolation: isolate;
+  background: radial-gradient(120% 180% at 0% 0%, color-mix(in srgb, var(--sec) 18%, transparent), transparent 60%), var(--panel); }
+.settings-section-heading[data-section]::after { content: ""; position: absolute; z-index: -1; right: -40px; top: -60px; width: 220px; height: 220px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--sec) 22%, transparent), transparent 70%); filter: blur(8px); }
+.settings-section-heading[data-section] .settings-ico-lg { color: var(--sec); background: color-mix(in srgb, var(--sec) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sec) 30%, transparent); }
+.settings-section-heading[data-section="appearance"] { --sec: #c084fc; }
+.settings-section-heading[data-section="shua"] { --sec: #60a5fa; }
+.settings-section-heading[data-section="workspace"] { --sec: #2dd4bf; }
+.settings-section-heading[data-section="access"] { --sec: #34d399; }
+.settings-section-heading[data-section="agents"] { --sec: #818cf8; }
+.settings-section-heading[data-section="automation"] { --sec: #fbbf24; }
+.settings-section-heading[data-section="safety"] { --sec: #f87171; }
+.settings-section-heading[data-section="notifications"] { --sec: #fb923c; }
+.settings-section-heading[data-section="mobile"] { --sec: #38bdf8; }
+.settings-section-heading[data-section="system"] { --sec: #a3a3a3; }

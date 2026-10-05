@@ -46,6 +46,11 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>NSContactsUsageDescription</key><string>So Spark knows who you mean ("email Sam", "what's Mia's number"). Looked up on this Mac only, never sent anywhere.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Only for the "Hey Spark" wake word, and only if you turn it on. Recognised on this Mac; nothing is sent anywhere.</string>
   <key>NSMicrophoneUsageDescription</key><string>So you can talk to Shua. Live calls send microphone audio to OpenAI; Classic transcription runs on this Mac.</string>
+  <key>NSCameraUsageDescription</key><string>Only when you ask Shua to look through your camera. Frames stay on this Mac unless you ask Shua about them.</string>
+  <key>NSPhotoLibraryUsageDescription</key><string>So Shua can find, sort and share your photos when you ask.</string>
+  <key>NSDesktopFolderUsageDescription</key><string>So Shua and your crew can open, organise and build with files on your Desktop when you ask.</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>So Shua and your crew can open, organise and build with your documents when you ask.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>So Shua can find and tidy what you download when you ask.</string>
   <key>NSBluetoothAlwaysUsageDescription</key><string>Only so Spark can turn Bluetooth on or off when you ask.</string>
   <key>NSScreenCaptureUsageDescription</key><string>Shua captures your screen when you ask with the eye enabled. Live watching streams screen frames only while you turn it on. Requested screen context can be sent to your connected AI provider.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>

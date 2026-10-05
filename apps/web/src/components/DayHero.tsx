@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { AudioLines, Award, CalendarDays, Briefcase, CheckCircle2, Flame, GraduationCap, Loader2, Lock, Megaphone, Play, Sunrise } from "lucide-react";
@@ -117,7 +118,7 @@ export function DayHero() {
           <Play size={16} /> {starting ? "Starting…" : "Start my day"}
         </button>
         <button type="button" className={`day-hero-hear ${speaking ? "is-on" : ""}`} onClick={speak} aria-pressed={speaking}>
-          <AudioLines size={15} /> {speaking ? "Stop" : `Hear it from ${prefs.nickname || "Spark"}`}
+          <AudioLines size={15} /> {speaking ? "Stop" : `Hear it from ${companionName(prefs)}`}
         </button>
       </div>
     </div>

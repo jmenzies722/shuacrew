@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import "../obsidian.css";
 import { listenForCommands } from "../lib/radio";
 import { startDj } from "../lib/radio-dj";
@@ -306,8 +307,8 @@ function TokensToday({ tokens }: { tokens: number }) {
 function SparkButton() {
   const open = useSparkPanel(), prefs = useCompanion(), sidebarWide = useSidebarWide();
   if (sidebarWide) return null; // the sidebar's "Ask" row is the way in
-  return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${prefs.nickname || "Spark"}  ⌘J`} aria-pressed={open} aria-label={`Open ${prefs.nickname || "Spark"}`} data-no-drag style={sparkVars(prefs.color)}>
-    <SparkCharacter preferences={prefs} size={22} crop="portrait" /><span>{prefs.nickname || "Spark"}</span>
+  return <button type="button" onClick={toggleSparkPanel} className={`spark-btn ${open ? "is-on" : ""}`} title={`${companionName(prefs)}  ⌘J`} aria-pressed={open} aria-label={`Open ${companionName(prefs)}`} data-no-drag style={sparkVars(prefs.color)}>
+    <SparkCharacter preferences={prefs} size={22} crop="portrait" /><span>{companionName(prefs)}</span>
   </button>;
 }
 

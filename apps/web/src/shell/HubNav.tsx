@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { RunView } from "@shuacrew/core/projections";
@@ -164,7 +165,7 @@ export function HubSidebar() {
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up, { once: true });
   };
   const resetWidth = () => { setWidth(WIDTH_DEFAULT); try { localStorage.removeItem(WIDTH); } catch { /* ignore */ } };
-  const name = prefs.nickname || "Spark";
+  const name = companionName(prefs);
   const tools = HUBS.find((h) => h.id === "system")!;
   return <nav className="side" aria-label="Sidebar" style={{ "--side-w": `${width}px` } as React.CSSProperties}>
     <div className="side-actions">

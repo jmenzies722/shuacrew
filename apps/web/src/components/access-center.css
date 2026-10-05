@@ -1,0 +1,74 @@
+/* Access: a ring for how much of the Mac Shua can reach, then one tile per capability. Theme tokens only. */
+.access { display: grid; gap: 22px; }
+.access-hero {
+  display: flex; align-items: center; gap: 20px; padding: 22px 24px; border-radius: 20px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 55%),
+    radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 60%),
+    var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+.access-ring {
+  --p: 0; flex: none; position: relative; display: grid; place-content: center; text-align: center; width: 76px; height: 76px; border-radius: 50%;
+  background: conic-gradient(var(--amber) calc(var(--p) * 1%), color-mix(in srgb, var(--text) 10%, transparent) 0);
+  transition: --p .8s;
+}
+.access-ring::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--panel); }
+.access-ring b, .access-ring small { position: relative; }
+.access-ring b { font-size: 22px; line-height: 1; font-weight: 650; color: var(--text); }
+.access-ring small { font-size: 10.5px; color: var(--text-3); }
+.access-hero-text { flex: 1; min-width: 0; }
+.access-hero-text h2 { margin: 0 0 4px; font-size: 18px; font-weight: 620; letter-spacing: -.01em; color: var(--text); }
+.access-hero-text p { margin: 0; font-size: 13px; color: var(--text-2); }
+.access-cta {
+  flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 18px;
+  font-size: 13px; font-weight: 600; color: var(--on-accent, #fff); background: var(--amber);
+  box-shadow: 0 6px 22px -8px var(--amber); transition: transform .25s cubic-bezier(.34, 1.45, .55, 1);
+}
+.access-cta:hover { transform: translateY(-1px); }
+.access-cta span { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 11px; background: rgba(0, 0, 0, .18); }
+
+.access-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.access-tile {
+  display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 14px; border-radius: 16px; background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow .25s, transform .25s;
+}
+.access-tile:hover { box-shadow: inset 0 0 0 1px var(--line-strong); transform: translateY(-1px); }
+.access-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--text-2); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.access-tile.is-granted .access-icon { color: var(--ok, #34d399); background: color-mix(in srgb, var(--ok, #34d399) 14%, transparent); }
+.access-tile.is-essential:not(.is-granted) .access-icon { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.access-tile strong { display: block; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.access-tile p { margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-3); }
+.access-tile footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.access-state { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3); }
+.access-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.access-tile.is-granted .access-state { color: var(--ok, #34d399); }
+.access-tile.is-granted .access-state i { background: var(--ok, #34d399); box-shadow: 0 0 8px var(--ok, #34d399); }
+.access-tile.is-relaunch .access-state, .access-tile.is-denied .access-state { color: var(--amber); }
+.access-tile.is-relaunch .access-state i, .access-tile.is-denied .access-state i { background: var(--amber); }
+.access-tile footer button, .access-link {
+  height: 28px; padding: 0 12px; border-radius: 14px; font-size: 12px; font-weight: 550; color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line); transition: background .2s;
+}
+.access-tile footer button:hover, .access-link:hover { background: color-mix(in srgb, var(--text) 14%, transparent); }
+.access-tile.is-ask footer button, .access-tile.is-relaunch footer button { color: var(--on-accent, #fff); background: var(--amber); box-shadow: none; }
+.access-tile footer button:disabled { opacity: .55; }
+
+.access-apps { display: grid; gap: 10px; padding: 16px 18px; border-radius: 16px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.access-apps header { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.access-apps h3 { flex: 1; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.access-apps > p { margin: 0; font-size: 12px; color: var(--text-3); }
+.access-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.access-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 15px; font-size: 12.5px; color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line);
+}
+.access-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.access-chip.is-granted i { background: var(--ok, #34d399); }
+.access-chip.is-denied i { background: var(--amber); }
+.access-chip:not(:disabled):hover { background: color-mix(in srgb, var(--text) 12%, transparent); }
+.access-chip:disabled { cursor: default; }
+.access-foot { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--text-3); }
+.access-empty { display: flex; align-items: center; gap: 12px; padding: 18px; border-radius: 16px; color: var(--text-2); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.access-empty p { margin: 0; font-size: 13px; }
+@property --p { syntax: "<number>"; inherits: false; initial-value: 0; }

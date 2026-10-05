@@ -150,3 +150,20 @@ export function requestLocation(timeoutMs = 20_000): Promise<{ lat: number; lon:
     navigator.geolocation.getCurrentPosition((p) => resolve({ lat: Math.round(p.coords.latitude * 100) / 100, lon: Math.round(p.coords.longitude * 100) / 100 }), (e) => reject(new Error(e.message)), { timeout: timeoutMs, maximumAge: 3_600_000 });
   });
 }
+
+/** The Access center (PermissionCenter.swift): ask for the snapshot, a real prompt, a Settings pane, or a relaunch. */
+export type PermissionOp = "list" | "request" | "automation" | "open" | "relaunch";
+export function permissions(op: PermissionOp = "list", id = ""): boolean {
+  const native = handler();
+  if (!native) return false;
+  native.postMessage({ type: "permissions", op, id } as never);
+  return true;
+}
+
+/** Every voice goes through Shua: in the Mac app the composer's mic opens Shua's voice in the notch. */
+export function talkToShua(): boolean {
+  const native = handler();
+  if (!native) return false;
+  native.postMessage({ type: "shuaTalk" } as never);
+  return true;
+}

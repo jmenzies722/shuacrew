@@ -37,6 +37,7 @@ import {
   Sunrise,
   Trash2,
   ArrowUpRight,
+  Mic,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Thread } from "../components/Thread";
@@ -53,7 +54,9 @@ import { Dictation } from "../components/Dictation";
 import { ReplayBar } from "../components/Replay";
 import { LogoMark } from "../lib/motion";
 import { dayGreeting } from "../lib/greeting";
-import { isMac, pickFolder } from "../lib/native";
+import { companionName, getCompanion } from "../lib/companion";
+
+import { isMac, pickFolder, talkToShua } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
 import { DEFAULT_WORKSPACE, getWorkspace, saveWorkspace } from "../lib/workspace-prefs";
@@ -989,7 +992,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             <button onClick={() => picker.current?.click()} className="grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" title="Attach photos, videos, voice notes or files (or drop / paste them)" aria-label="Attach files">
               <Paperclip size={14} />
             </button>
-            <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />
+            {isMac() ? <button type="button" className="composer-shua grid h-6 w-6 place-items-center rounded-full text-fg-3 hover:bg-raised hover:text-fg" onClick={() => talkToShua()} title={`Talk to ${companionName(getCompanion())} (fn)`} aria-label={`Talk to ${companionName(getCompanion())}`}><Mic size={15} /></button>
+              : <Dictation available={media.voice} reason={media.missing[0]} onText={(t) => (setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t)), field.current?.focus())} />}
             <Toggle on={auto} onClick={() => void cyclePermission()} icon={<ShieldCheck size={12} />} label={auto ? "Autopilot" : "Supervised"} title="Supervised asks before risky actions. Autopilot lets those through. Deny rules always apply. Click to switch this session." />
             {/* Agent · model · effort, always in reach (they used to sit behind Options, twice). For an open session they
                 apply to your next message, and wait while a turn is running. */}

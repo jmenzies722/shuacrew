@@ -108,6 +108,21 @@ export function migrateToOnyx(a: Appearance, saved: boolean, store: Pick<Storage
   return next;
 }
 
+/**
+ * Onyx in the Mac app, once (2026-10-05): the redesign only shows on Onyx/Porcelain, and a palette picked before it
+ * kept people off it entirely. Your palette moves to Onyx (dark) and Porcelain (light) one time; your accent stays,
+ * and anything you pick after this sticks. A separate key, so the Pristine move never re-runs.
+ */
+export function migrateOnyxEverywhere(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
+  let done = false; try { done = store.getItem("shuacrew.design.onyx-mac") === "1"; } catch { /* ignore */ }
+  if (!saved || done) return a;
+  const mode = (id: string) => PALETTES.find(p => p.id === id)?.mode;
+  const next = { ...a, dark: "onyx" as PaletteId, light: "porcelain" as PaletteId };
+  if (next.palette !== "system") next.palette = mode(next.palette) === "light" ? "porcelain" : "onyx";
+  try { store.setItem("shuacrew.design.onyx-mac", "1"); } catch { /* cosmetic */ }
+  return next;
+}
+
 export function loadAppearance(): Appearance {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Appearance> | null;
@@ -116,7 +131,11 @@ export function loadAppearance(): Appearance {
     const base = normalizeAppearance(saved);
     if (!saved && legacy === "dark") base.palette = "onyx";
     if (!saved && legacy === "light") base.palette = "porcelain";
-    return migrateToOnyx(migrateToPristine(base, Boolean(saved)), Boolean(saved));
+    const migrated = migrateOnyxEverywhere(migrateToOnyx(migrateToPristine(base, Boolean(saved)), Boolean(saved)), Boolean(saved));
+    // A migration marks itself done, so its result must be kept now: the app reads appearance more than once at
+    // startup, and the second read would otherwise see "done" and hand back the old palette.
+    if (saved && JSON.stringify(migrated) !== JSON.stringify(base)) saveAppearance(migrated);
+    return migrated;
   } catch {
     return DEFAULT_APPEARANCE;
   }

@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import { ArrowUpRight } from "lucide-react";
 import { useCompanion } from "../lib/companion";
 import { suggestToSpark } from "../lib/spark-panel";
@@ -35,7 +36,7 @@ export function WorkspaceSpark({ section }: { section: string }) {
   const [name, action, prompt] = contexts[section] ?? ["Workspace", "Find my next step", "Help me find the next useful step in ShuaCrew."];
   // Only what's particular to this page: the page title says where you are, and the sidebar already opens Spark.
   return <div className="workspace-companion" aria-label={`${name} companion`}>
-    <button type="button" className="workspace-suggestion" onClick={() => suggestToSpark(`I'm in ${name}. ${prompt}`)} title={`Ask ${prefs.nickname || "Spark"}: prepares the message for you to review before sending`}>
+    <button type="button" className="workspace-suggestion" onClick={() => suggestToSpark(`I'm in ${name}. ${prompt}`)} title={`Ask ${companionName(prefs)}: prepares the message for you to review before sending`}>
       <SparkCharacter preferences={prefs} mood="idle" size={20} crop="portrait" />{action}<ArrowUpRight size={12} />
     </button>
   </div>;

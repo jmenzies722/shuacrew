@@ -371,6 +371,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         // Ordinary pointer movement during speech is not treated as a selection.
     }
 
+    /// Talk to Shua from anywhere in the app (the composer's mic): the same voice as a tap of fn, in the notch.
+    func talk() {
+        if !Self.enabled { setEnabled(true) }
+        start()
+        web.evaluateJavaScript("window.buddy && window.buddy.toggleVoice && window.buddy.toggleVoice()")
+    }
+
     private func fnSignal(_ signal: FnGesture.Signal) {
         guard signal != .none else { return }
         Self.appendSelfTest("FN \(signal) at=\(ProcessInfo.processInfo.systemUptime)\n")
@@ -815,6 +822,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
         case "buddyScreenAccess":
             send("shuacrew:screenAccess", ["granted": ScreenAccess.handle(body)], to: sender)
+        case "permissions":
+            // The Access center: Shua asks for exactly what it needs, in the moment, from the notch.
+            PermissionCenter.handle(body) { [weak self] snapshot in self?.send("shuacrew:permissions", snapshot, to: sender) }
         case "buddyPoint":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double, (0...1).contains(x), (0...1).contains(y),
                   let screen = lookedAt(body["screen"]) else {

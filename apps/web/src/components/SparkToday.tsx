@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import { useEffect, useMemo, useState } from "react";
 import { Ear, Eye, Hand, History, Trash2 } from "lucide-react";
 import { clearSparkLog, useSparkLog, type LogEntry } from "../lib/spark-log";
@@ -12,7 +13,7 @@ const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "numeri
 
 /** Privacy at a glance: everything Spark saw, heard and did today — kept only on this Mac, deletable in one click. */
 export function SparkToday() {
-  const log = useSparkLog(), prefs = useCompanion(), name = prefs.nickname || "Spark";
+  const log = useSparkLog(), prefs = useCompanion(), name = companionName(prefs);
   const [sure, setSure] = useState(false);
   const [memory, setMemory] = useState<{ moments: number; today: number; keepDays: number } | null>(null);
   const loadMemory = () => void fetch("/api/screen-memory").then((r) => r.json()).then(setMemory).catch(() => setMemory(null));

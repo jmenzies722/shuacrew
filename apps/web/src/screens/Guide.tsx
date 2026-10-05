@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, BookOpenText } from "lucide-react";
@@ -88,7 +89,7 @@ function Cards({ features }: { features: Feature[] }) {
 }
 
 export function Guide() {
-  const name = useCompanion().nickname || "Spark";
+  const name = companionName(useCompanion());
   const ids = useRef(TOC.flatMap((g) => g.items.map(([id]) => id))).current;
   const on = useInView(ids);
   return <PaneLayout>

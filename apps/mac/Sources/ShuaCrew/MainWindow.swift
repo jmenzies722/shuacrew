@@ -22,6 +22,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     var onMobileSettings: (() -> Void)?
     var onBuddyEnabled: ((Bool) -> Void)?
     var onBuddyHotkey: ((String) -> Void)?
+    var onShuaTalk: (() -> Void)?
     var onBuddyMessage: ((WKUserContentController, WKScriptMessage) -> Void)?
 
     init(gateway: Gateway) {
@@ -77,6 +78,10 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             strip.heightAnchor.constraint(equalToConstant: Self.titleBarHeight),
         ])
         super.init(window: window)
+        // Back from System Settings: the Access page shows what you just switched on, without a reload.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { PermissionCenter.handle([:]) { snapshot in self?.publishPermissions(snapshot) } }
+        }
         MainWindow.current = self
         voiceAudio.onEvent = { [weak self] body in
             guard let data = try? JSONSerialization.data(withJSONObject: body), let json = String(data: data, encoding: .utf8) else { return }
@@ -111,6 +116,12 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
                 overlay.show(.failed(error.localizedDescription))
             }
         }
+    }
+
+    /// The Access page's live picture: re-sent whenever you come back from System Settings.
+    func publishPermissions(_ snapshot: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: snapshot), let json = String(data: data, encoding: .utf8) else { return }
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('shuacrew:permissions', { detail: \(json) }))")
     }
 
     func reportScreenAccess(_ granted: Bool = ScreenAccess.granted()) {
@@ -222,10 +233,19 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
                   let combo = body["combo"] as? String else { return }
             onBuddyHotkey?(combo)
+        case "shuaTalk":
+            // Every voice goes through Shua: the composer's mic hands off to the notch.
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            onShuaTalk?()
         case "buddyScreenAccess":
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
             reportScreenAccess(ScreenAccess.handle(body))
+        case "permissions":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
+            PermissionCenter.handle(body) { [weak self] snapshot in self?.publishPermissions(snapshot) }
         case "noDrag":
             strip.controls = (body["rects"] as? [[Double]] ?? []).compactMap { r in
                 r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil

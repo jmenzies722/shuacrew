@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import type { CSSProperties } from "react";
 import { useScreenMemory, useWakeWord } from "../lib/screen-memory";
 import { SPARK_FINISHES, sparkVars, stops } from "../lib/spark-color";
@@ -127,7 +128,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
   }, []);
   const toggleDesktop = (on: boolean) => { setDesktop(on); try { localStorage.setItem(DESKTOP, on ? "1" : "0"); } catch { /* ignore */ } native()?.postMessage({ type: "buddyEnabled", on }); };
   const hotkey = (combo: SparkHotkey) => { set({ hotkey: combo }); native()?.postMessage({ type: "buddyHotkey", combo }); };
-  const name = prefs.nickname || "Spark";
+  const name = companionName(prefs);
 
   return <div className="spark-settings">
     <section className="settings-card spark-hero">
@@ -136,7 +137,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
         <div className="spark-moods" role="group" aria-label="Try a mood">{(["idle", "thinking", "speaking", "happy", "sleepy"] as Mood[]).map((m) => <button key={m} type="button" aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div>
       </div>
       <div className="spark-identity">
-        <label className="spark-name"><small>Name</small><input value={nameDraft} maxLength={40} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { set({ nickname: nameDraft }); setNameDraft(nameDraft.trim() || "Spark"); }} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} aria-label="Your buddy's name" placeholder="Spark" /></label>
+        <label className="spark-name"><small>Name</small><input value={nameDraft} maxLength={40} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { set({ nickname: nameDraft }); setNameDraft(nameDraft.trim() || "Shua"); }} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} aria-label="Your buddy's name" placeholder="Spark" /></label>
         <p>{name} lives on your desktop, over every app. {native() ? "Click it or press " : "In the Mac app, press "}<kbd>{SPARK_HOTKEYS[prefs.hotkey]}</kbd> to ask. {prefs.desktopPlacement === "notch" ? "At home beside your MacBook notch." : "Drag it to a favorite spot."}</p>
         <div className="spark-toggle"><span>On your desktop</span><Switch label="Show on the desktop" on={desktop} onChange={toggleDesktop} /></div>
       </div>

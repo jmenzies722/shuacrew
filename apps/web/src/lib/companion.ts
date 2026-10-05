@@ -118,6 +118,9 @@ function load() {
     // Fast by default, once: "This Mac only" read ~15k tokens per turn on a 20B model (up to a minute a reply). Auto sends
     // quick questions to a fast cloud model and still falls back to this Mac when the cloud is out. Picking it again sticks.
     if (localStorage.getItem("shuacrew.companion.brain") !== "auto-1") { if (p.brain === "local") p.brain = "auto"; localStorage.setItem("shuacrew.companion.brain", "auto-1"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
+    // Shua, once: everything goes through one assistant now, and it carries the product's name. The old default
+    // "Spark" becomes "Shua"; a name you choose after this stays.
+    if (localStorage.getItem("shuacrew.companion.name") !== "shua") { if (p.nickname === "Spark") p.nickname = "Shua"; localStorage.setItem("shuacrew.companion.name", "shua"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
     return p;
   } catch { return parseCompanion(null); }
 }
@@ -130,4 +133,6 @@ export function saveCompanion(next: CompanionPreferences): boolean {
 // Spark's desktop panel shares this storage: a change in Settings reaches it at once.
 if (typeof window !== "undefined") window.addEventListener("storage", (e) => { if (e.key === "shuacrew.companion") { preferences = load(); listeners.forEach((l) => l()); } });
 export function getCompanion() { return preferences; }
+/** What you call your assistant, everywhere it's named. */
+export const companionName = (p: Pick<CompanionPreferences, "nickname"> = preferences) => p.nickname || "Shua";
 export function useCompanion() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => preferences, () => preferences); }

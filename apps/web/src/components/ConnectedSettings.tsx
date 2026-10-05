@@ -1,3 +1,4 @@
+import { companionName } from "../lib/companion";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, AudioLines, BrainCircuit, Check, ChevronRight, Laptop, Palette, RefreshCw, Sparkles } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -19,7 +20,7 @@ export function ConnectedSettings({ go }: { go: (section: string) => void }) {
     load(); const timer = setInterval(load, 30_000); window.addEventListener("focus", load);
     return () => { live = false; clearInterval(timer); window.removeEventListener("focus", load); };
   }, []);
-  const name = prefs.nickname || "Spark";
+  const name = companionName(prefs);
   return <div className="connected-settings">
     <section className="connected-hero" style={sparkVars(prefs.color)}>
       <div className="connected-portrait"><SparkCharacter preferences={prefs} mood="idle" size={126} /></div>
