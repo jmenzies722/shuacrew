@@ -2,10 +2,10 @@
  * How ShuaCrew looks: a palette (surfaces and text) and an accent. "Follow system" pairs a dark
  * palette with a light one. Applied as attributes on <html>; themes.css does the rest.
  */
-export type PaletteId = "pristine" | "frost" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
+export type PaletteId = "onyx" | "porcelain" | "pristine" | "frost" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
 /** Palettes folded into a near-identical one: a saved choice moves to its twin instead of snapping back to the default. */
 const RETIRED: Record<string, PaletteId> = { night: "midnight", cursor: "frost" };
-export type AccentId = "iris" | "amber" | "mono" | "blue" | "green" | "coral";
+export type AccentId = "azure" | "iris" | "amber" | "mono" | "blue" | "green" | "coral";
 
 export interface Palette {
   id: PaletteId;
@@ -17,6 +17,8 @@ export interface Palette {
 }
 
 export const PALETTES: Palette[] = [
+  { id: "onyx", name: "Onyx", mode: "dark", blurb: "Editor-grade neutral black, lit edges", swatch: ["#0e0e10", "#151517", "#1c1c1f", "#ececee"] },
+  { id: "porcelain", name: "Porcelain", mode: "light", blurb: "Onyx's light twin: soft white, crisp ink", swatch: ["#f5f5f6", "#ffffff", "#f0f0f2", "#121214"] },
   { id: "pristine", name: "Pristine", mode: "dark", blurb: "Graphite layers, hairline edges", swatch: ["#0c0c0e", "#131316", "#19191d", "#ededf0"] },
   { id: "frost", name: "Frost Black", mode: "dark", blurb: "Frosted glass on true black", swatch: ["#050506", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "#f2f2f4"] },
   { id: "graphite", name: "Graphite", mode: "dark", blurb: "Soft neutral grey", swatch: ["#161618", "#1c1c1f", "#242428", "#e8e8ea"] },
@@ -28,6 +30,7 @@ export const PALETTES: Palette[] = [
 ];
 
 export const ACCENTS: Array<{ id: AccentId; name: string; dark: string; light: string }> = [
+  { id: "azure", name: "Azure", dark: "#5aa9ff", light: "#1f6feb" },
   { id: "iris", name: "Iris", dark: "#8e48ff", light: "#723acc" },
   { id: "amber", name: "Amber", dark: "#ffb020", light: "#b86e00" },
   { id: "mono", name: "Mono", dark: "#ededed", light: "#18181b" },
@@ -53,7 +56,7 @@ export interface Appearance {
 }
 
 const KEY = "shuacrew.appearance";
-export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "pristine", light: "daylight", accent: "iris", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
+export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "onyx", light: "porcelain", accent: "azure", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
 
 export function normalizeAppearance(value: unknown): Appearance {
   const raw = { ...(value && typeof value === "object" ? value as Record<string, unknown> : {}) };
@@ -77,7 +80,7 @@ export function normalizeAppearance(value: unknown): Appearance {
  * A palette or accent you chose yourself is left exactly as it is.
  */
 export function migrateToPristine(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
-  let done = false; try { done = store.getItem("shuacrew.design") === "pristine"; } catch { /* ignore */ }
+  let done = false; try { const d = store.getItem("shuacrew.design"); done = d === "pristine" || d === "onyx"; } catch { /* ignore */ }
   if (!saved || done) return a;
   const next = { ...a };
   if (next.dark === "frost") next.dark = "pristine";
@@ -87,15 +90,32 @@ export function migrateToPristine(a: Appearance, saved: boolean, store: Pick<Sto
   return next;
 }
 
+/**
+ * The Onyx redesign, once: a setup still on the previous defaults (Pristine, Daylight, Iris) moves to Onyx, Porcelain
+ * and Azure. A palette or accent you picked yourself stays exactly as it is.
+ */
+export function migrateToOnyx(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
+  let done = false; try { done = store.getItem("shuacrew.design") === "onyx"; } catch { /* ignore */ }
+  if (!saved || done) return a;
+  const next = { ...a };
+  if (next.dark === "pristine") next.dark = "onyx";
+  if (next.light === "daylight") next.light = "porcelain";
+  if (next.palette === "pristine") next.palette = "onyx";
+  if (next.palette === "daylight") next.palette = "porcelain";
+  if (next.accent === "iris") next.accent = "azure";
+  try { store.setItem("shuacrew.design", "onyx"); } catch { /* cosmetic */ }
+  return next;
+}
+
 export function loadAppearance(): Appearance {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Appearance> | null;
     // The old setting was just "dark" / "light" / "system".
     const legacy = localStorage.getItem("shuacrew.theme");
     const base = normalizeAppearance(saved);
-    if (!saved && legacy === "dark") base.palette = "pristine";
-    if (!saved && legacy === "light") base.palette = "daylight";
-    return migrateToPristine(base, Boolean(saved));
+    if (!saved && legacy === "dark") base.palette = "onyx";
+    if (!saved && legacy === "light") base.palette = "porcelain";
+    return migrateToOnyx(migrateToPristine(base, Boolean(saved)), Boolean(saved));
   } catch {
     return DEFAULT_APPEARANCE;
   }
@@ -129,6 +149,8 @@ export function applyAppearance(a: Appearance, animate = false) {
   }
   root.setAttribute("data-theme", palette.mode);
   root.setAttribute("data-palette", palette.id);
+  // Onyx and Porcelain share one design language (onyx.css); the older palettes keep theirs.
+  root.setAttribute("data-design", palette.id === "onyx" || palette.id === "porcelain" ? "onyx" : "classic");
   root.setAttribute("data-accent", a.accent);
   root.setAttribute("data-density", a.density);
   root.setAttribute("data-navigation", a.navigation);

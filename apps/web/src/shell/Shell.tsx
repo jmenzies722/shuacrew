@@ -38,7 +38,8 @@ import { RadioHost } from "../components/NowPlaying";
 import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../components/surfaces.css";
-import "../alive.css"; // last: the accent gradient and the touches that make it feel lit
+import "../alive.css"; // the accent gradient and the touches that make it feel lit
+import "../onyx.css"; // last: the Onyx design language (Onyx and Porcelain palettes)
 import "../lib/look";
 
 export const NAV = [
