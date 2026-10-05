@@ -159,7 +159,7 @@ function FocusTile({ close }: { close?: () => void }) {
     </> : <>
       <strong className="tb-title">Focus timer</strong>
       <div className="tb-presets">{FOCUS_MINUTES.map((m) => <button key={m} type="button" onClick={() => { setFocus(startFocus(m)); close?.(); }}>{m}<small>min</small></button>)}</div>
-      <p className="tb-foot">A notification and a chime when it ends. Same timer in the app and in Spark.</p>
+      <p className="tb-foot">A notification and a chime when it ends. Same timer in the app and in Shua.</p>
     </>}
   </div>;
 }
@@ -245,7 +245,7 @@ function NoteTile({ ctx }: { ctx: WidgetCtx }) {
   const note = useNote(), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const send = async () => { setBusy(true); setError(""); try { const r = await launchRun({ ask: note }); ctx.go(`/sessions/${r.id}`); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   return <div className="wg-note">
-    <header className="wg-head"><strong>Scratch note</strong><span>syncs with Spark</span></header>
+    <header className="wg-head"><strong>Scratch note</strong><span>syncs with Shua</span></header>
     <textarea value={note} onChange={(e) => saveNote(e.target.value)} placeholder="Jot it down: an idea, a TODO, a bug to chase…" aria-label="Scratch note" rows={5} />
     {error && <p className="tb-foot" style={{ color: "var(--bad)" }}>{error}</p>}
     <div className="tb-row" style={{ justifyContent: "flex-end" }}>

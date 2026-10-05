@@ -207,7 +207,7 @@
 /* ── Surfaces: one material for every card ──────────────────────────────────────────────────── */
 :root[data-design="onyx"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
   .today-lanes-box, .island-tile, .wg-tile, .spark-record, .brief, .crew-cta, .lib-row, .pb-row, .tl-card, .sheet, .card,
-  .spark-today, .routines, .crew-perf, .health-alerts li, .getting-started, .hero-idea, .theme-card, .settings-link-card, .stat-chip) {
+  .spark-today, .routines, .crew-perf, .health-alerts li, .getting-started, .hero-idea, .theme-card, .settings-link-card) {
   background: var(--panel) !important; background-image: none !important; border-color: transparent !important; border-radius: var(--radius-card);
   box-shadow: var(--edge) !important;
   transition: box-shadow var(--t-med) var(--ease-out), transform var(--t-med) var(--ease-out), background var(--t-med) !important;
@@ -437,3 +437,27 @@
 :root[data-design="onyx"] .thread-enter { animation: thread-in .32s cubic-bezier(.22, 1, .36, 1) both; }
 @keyframes thread-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .thread-enter { animation: none; } }
+
+/* ── Stats: one calm line, never a row of boxed zeros ──────────────────────────────────────────── */
+:root[data-design="onyx"] .stat-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0; }
+:root[data-design="onyx"] .stat-chip { height: auto !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; font-size: 13px; color: var(--text-3); }
+:root[data-design="onyx"] .stat-chip strong { margin-right: 5px; font-size: 13px; font-weight: 600; color: var(--text); }
+:root[data-design="onyx"] .stat-chip.is-amber strong, :root[data-design="onyx"] .stat-chip.is-wait strong { color: var(--amber); }
+:root[data-design="onyx"] .stat-chip.is-ok strong { color: var(--ok); }
+:root[data-design="onyx"] .stat-chip + .stat-chip::before { content: "·"; margin: 0 10px; color: var(--text-3); }
+:root[data-design="onyx"] a.stat-chip:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Every section, its own light ─────────────────────────────────────────────────────────────── */
+.workspace-card { position: relative; isolation: isolate; }
+.workspace-card[data-hub="home"] { --hub: #60a5fa; }
+.workspace-card[data-hub="build"] { --hub: #34d399; }
+.workspace-card[data-hub="crew"] { --hub: #818cf8; }
+.workspace-card[data-hub="know"] { --hub: #f59e0b; }
+.workspace-card[data-hub="automations"] { --hub: #facc15; }
+.workspace-card[data-hub="library"] { --hub: #38bdf8; }
+.workspace-card[data-hub="system"] { --hub: #a3a3a3; }
+.hub-glow { position: absolute; z-index: -1; inset: 0 0 auto 0; height: 340px; pointer-events: none; border-radius: inherit; overflow: hidden;
+  background: radial-gradient(60% 100% at 18% -10%, color-mix(in srgb, var(--hub, transparent) 13%, transparent), transparent 70%),
+    radial-gradient(40% 80% at 92% -20%, color-mix(in srgb, var(--hub, transparent) 7%, transparent), transparent 70%);
+  transition: background .6s ease; }
+:root[data-theme="light"] .hub-glow { opacity: .6; }

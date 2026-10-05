@@ -10,7 +10,7 @@ export function WidgetSettings() {
   const prefs = useWidgets(), navigate = useNavigate();
   const ctx = { go: (path: string) => void navigate({ to: path }) };
   return <div className="settings-card wgs">
-    <p className="power-hint" style={{ padding: "0 0 8px" }}>All widgets use real data from this Mac and your crew. Changes reach the top bar and Spark instantly.</p>
+    <p className="power-hint" style={{ padding: "0 0 8px" }}>All widgets use real data from this Mac and your crew. Changes reach the top bar and Shua instantly.</p>
     <ol className="wgs-list">{prefs.order.map((id: WidgetId, i) => {
       const top = prefs.topbar.includes(id), spark = prefs.spark.includes(id);
       return <li key={id} className={top || spark ? "is-on" : ""}>
@@ -20,7 +20,7 @@ export function WidgetSettings() {
         </div>
         <div className="wgs-text"><strong>{WIDGET_INFO[id].name}</strong><small>{WIDGET_INFO[id].blurb}</small></div>
         <label className="wgs-place" title="Show in the top bar"><Monitor size={12} /><span>Top bar</span><Switch label={`${WIDGET_INFO[id].name} in the top bar`} on={top} onChange={(on) => toggleWidget(id, "topbar", on)} /></label>
-        <label className="wgs-place" title="Show in Spark's Widgets tab"><Sparkles size={12} /><span>Spark</span><Switch label={`${WIDGET_INFO[id].name} in Spark`} on={spark} onChange={(on) => toggleWidget(id, "spark", on)} /></label>
+        <label className="wgs-place" title="Show in Shua's Widgets tab"><Sparkles size={12} /><span>Shua</span><Switch label={`${WIDGET_INFO[id].name} in Shua`} on={spark} onChange={(on) => toggleWidget(id, "spark", on)} /></label>
         {(top || spark) && <details className="wgs-preview"><summary>Preview &amp; options</summary><div className="wg-tile"><WidgetTile id={id} ctx={ctx} /></div></details>}
       </li>;
     })}</ol>

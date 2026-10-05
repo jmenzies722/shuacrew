@@ -26,7 +26,7 @@ const contexts: Record<string, [string, string, string]> = {
   "/terminal": ["Terminal", "Explain a command", "Help me understand a terminal command before I run it. Ask me to paste it, then explain its effects and how to verify the result."],
   "/developer": ["Developer", "Trace a problem", "Help me investigate a platform problem using observable evidence, a minimal reproduction, and a verification step."],
   "/guide": ["Guide", "Ask about any feature", "Help me understand what ShuaCrew can do. Ask what I am trying to get done, then point me to the right page and how to start."],
-  "/settings": ["Settings", "Make it feel like me", "Help me personalize ShuaCrew's appearance, motion, Spark, and model routing. Ask what I want to improve first."],
+  "/settings": ["Settings", "Make it feel like me", "Help me personalize ShuaCrew's appearance, motion, Shua, and model routing. Ask what I want to improve first."],
 };
 
 /** A small, consistent companion affordance across every workspace section. */

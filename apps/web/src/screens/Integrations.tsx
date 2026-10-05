@@ -268,10 +268,10 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
           </span>
         ) : <span className="tl-status">Not checked</span>}
         <button className={`tl-status ${server.spark ? "is-ok" : ""}`} aria-pressed={!!server.spark}
-          title={server.spark ? "Spark can use these tools by voice, without asking. Click to stop." : "Let Spark (the notch) use these tools by voice, without asking. Each server adds a little to Spark's first word."}
+          title={server.spark ? "Shua can use these tools by voice, without asking. Click to stop." : "Let Shua (the notch) use these tools by voice, without asking. Each server adds a little to Shua's first word."}
           disabled={busy || testing}
           onClick={() => server.spark ? void act(() => api(`/api/mcp/${server.id}/spark`, { body: { on: false } })) : setSparkConfirm(true)}>
-          <Sparkles size={11} /> {server.spark ? "In Spark" : "Use in Spark"}
+          <Sparkles size={11} /> {server.spark ? "In Shua" : "Use in Shua"}
         </button>
         {needsSignIn ? (
           <Button size="s" variant="primary" disabled={busy || testing} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/signin`, { body: {} }); await test(); })}>
@@ -291,10 +291,10 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
         )}
       </div>
       {error && <p role="alert" className="mt-2 text-[12px] text-bad">{error}</p>}
-      {server.spark && <p className="mt-2 text-[11px] text-fg-3">Spark voice access is enabled for this server, without asking before use.</p>}
+      {server.spark && <p className="mt-2 text-[11px] text-fg-3">Shua voice access is enabled for this server, without asking before use.</p>}
       {sparkConfirm && <div className="mt-3 rounded-lg border border-line p-3 text-[12px]">
-        <p>Allow Spark to use this server’s tools by voice without asking? This is separate from adding tools to crew sessions.</p>
-        <div className="mt-2 flex gap-2"><Button size="s" disabled={busy} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/spark`, { body: { on: true } }); setSparkConfirm(false); })}>Enable Spark access</Button><Button size="s" variant="ghost" disabled={busy} onClick={() => setSparkConfirm(false)}>Cancel</Button></div>
+        <p>Allow Shua to use this server’s tools by voice without asking? This is separate from adding tools to crew sessions.</p>
+        <div className="mt-2 flex gap-2"><Button size="s" disabled={busy} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/spark`, { body: { on: true } }); setSparkConfirm(false); })}>Enable Shua access</Button><Button size="s" variant="ghost" disabled={busy} onClick={() => setSparkConfirm(false)}>Cancel</Button></div>
       </div>}
       <AnimatePresence initial={false}>
         {open && conn?.ok && (

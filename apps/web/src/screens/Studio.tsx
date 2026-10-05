@@ -20,7 +20,7 @@ export function Studio() {
       <header className="radio-head">
         <span className="radio-mark"><RadioIcon size={16} /></span>
         <div><h1>ShuaCrew Radio</h1><p>Your own lofi, as stations. Keeps playing wherever you go in the app.</p></div>
-        <span className="radio-skill" title="Crew sessions and Spark can control the radio through the shuacrew-radio skill"><Sparkles size={12} /> Ask Spark or any agent: “put on lofi jazz”</span>
+        <span className="radio-skill" title="Crew sessions and Shua can control the radio through the shuacrew-radio skill"><Sparkles size={12} /> Ask Shua or any agent: “put on lofi jazz”</span>
       </header>
 
       <AppleMusic />

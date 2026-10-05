@@ -5,7 +5,10 @@ import "./surfaces.css";
 export interface Stat { value: ReactNode; label: string; tone?: "ok" | "wait" | "amber" | "bad"; live?: boolean; to?: string; hash?: string }
 /** Live counts under a pane header. A stat with `to` is a link to where that number matters. */
 export function StatStrip({ stats }: { stats: Stat[] }) {
-  return <div className="stat-strip">{stats.map((s) => {
+  // Zeros are noise: a row of "0 running · 0 waiting · 0 finished" says nothing. Show only what's actually there.
+  const shown = stats.filter((s) => s.value !== 0 && s.value !== "0");
+  if (!shown.length) return null;
+  return <div className="stat-strip">{shown.map((s) => {
     const body = <>{s.live && <i aria-hidden="true" />}<strong>{s.value}</strong><span>{s.label}</span></>;
     const cls = `stat-chip ${s.tone ? `is-${s.tone}` : ""}`;
     return s.to ? <Link key={s.label} to={s.to} hash={s.hash} className={cls}>{body}</Link> : <div key={s.label} className={cls}>{body}</div>;

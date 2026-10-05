@@ -168,7 +168,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // UI errors (including delayed microphone/guide errors) cannot settle an execution.
   const setError = setErrorState;
   const [done, setDone] = useState<Record<string, Done[]>>({});
-  const corrected = useRef(new Set<string>()); // replies whose failed action Spark already owned up to
+  const corrected = useRef(new Set<string>()); // replies whose failed action Shua already owned up to
   // What's actually installed, told to Spark once per conversation (cached with its rules), so it never offers an app you don't have.
   const installed = useRef("");
   useEffect(() => { void api<{ apps: string[] }>("/api/system/apps").then((r) => { installed.current = r.apps.join(", "); }).catch(() => {}); }, []);
@@ -236,7 +236,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }, [fnPreparing]);
   const [fnHeld, setFnHeld] = useState(false), [fnSent, setFnSent] = useState(false);
   const fnCapturing = useRef(false);
-  useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Spark
+  useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Shua
   // A command waiting for your yes.
   /** Your last spoken turn: stays in the notch, shimmering, until Spark starts answering — so you can see it heard you. */
   const [asking, setAsking] = useState<{ kind: "run" | "delete"; command: string; why: string; yes?: string; answer: (yes: boolean) => void } | null>(null);
@@ -383,7 +383,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    const refresh = () => void selectIntelligence({ ask: "Spark availability", mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: false, tier: "fast" })
+    const refresh = () => void selectIntelligence({ ask: "Shua availability", mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: false, tier: "fast" })
       .then(next => { if (alive) { setChoice(next); setChoiceError(""); } }).catch((e: Error) => { if (alive) setChoiceError(e.message); });
     refresh(); const timer = setInterval(refresh, 30_000); window.addEventListener("focus", refresh);
     return () => { alive = false; clearInterval(timer); window.removeEventListener("focus", refresh); };
@@ -719,7 +719,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (handled.current === null) { handled.current = last?.id ?? 0; return; }
     if (!last?.id || last.id <= handled.current) return;
     handled.current = last.id;
-    if (!mine() || !allowWork.current) return; // the other Spark surface asked; it speaks and acts
+    if (!mine() || !allowWork.current) return; // the other Shua surface asked; it speaks and acts
     const key = last.key;
     // "Switched it" with nothing done: don't let the claim stand. Stop saying it and send Spark straight back to do it
     // (or say plainly it can't) — once per turn.
@@ -867,7 +867,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => {
     const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("mission"));
     const prev = seen.current; seen.current = Object.fromEntries(work.map((r) => [r.id, r.status]));
-    if (!prev || embedded) return; // crew news is the desktop Spark's to announce, once
+    if (!prev || embedded) return; // crew news is the desktop Shua's to announce, once
     for (const r of work) {
       if (prev[r.id] === r.status || !prev[r.id]) continue;
       if (r.status === "done" || r.status === "merged") feel("happy"); else if (r.status === "failed") feel("concerned");
@@ -1900,7 +1900,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null)}</div>
         <div className={`shua-island-body${islandMore || workflowsOpen || accessOpen || missionOpen ? " is-more" : ""}`} ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
-          {/* One line, not a text box: what Spark is hearing, saying or doing right now — or your day at a glance. */}
+          {/* One line, not a text box: what Shua is hearing, saying or doing right now — or your day at a glance. */}
           {!callOwnsIsland && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}`} onClick={openChat} title="Open the conversation">
             <span className="isl-hero-text">{islandHero.text}</span>{islandHero.sub && <small>{islandHero.sub}</small>}
           </button>}

@@ -1,3 +1,4 @@
+import { locate } from "../lib/hubs";
 import { companionName } from "../lib/companion";
 import "../obsidian.css";
 import { listenForCommands } from "../lib/radio";
@@ -85,6 +86,8 @@ export function Shell() {
   useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
   const { flow } = usePower();
   const home = useRouterState({ select: s => s.location.pathname === "/" });
+  // Each section has its own light, so every place reads as itself (Settings does the same per section).
+  const hub = locate(workspacePath)?.hub.id ?? "other";
   useGlobalKeys();
   useSpotlight();
   // One section, one entrance: switching sessions inside the chat doesn't re-animate the page.
@@ -97,7 +100,8 @@ export function Shell() {
       <TopBar />
       <Sidebar />
       <main className="min-h-0 min-w-0 overflow-hidden flex" id="main">
-        <div className="workspace-card min-h-0 min-w-0 flex flex-1 flex-col">
+        <div className="workspace-card min-h-0 min-w-0 flex flex-1 flex-col" data-hub={hub}>
+        <i className="hub-glow" aria-hidden="true" />
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
@@ -107,7 +111,7 @@ export function Shell() {
         </motion.div>
         </div>
         <SparkSide />
-        {/* In the Mac app Spark lives on the desktop (over every app), so the in-window one steps aside. */}
+        {/* In the Mac app Shua lives on the desktop (over every app), so the in-window one steps aside. */}
         {document.documentElement.dataset.shell !== "mac" && <CompanionHost />}
       </main>
       <Milestones />
@@ -137,7 +141,7 @@ function SparkSide() {
     };
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
   }, [full]);
-  return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Spark"
+  return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Shua"
     initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
     <div className="spark-side-inner"><Buddy embedded full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
   </motion.aside>}</AnimatePresence>;

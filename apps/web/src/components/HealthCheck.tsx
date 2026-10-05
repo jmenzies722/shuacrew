@@ -40,12 +40,12 @@ async function macChecks(): Promise<Check[]> {
       : { id: `perm-${key}`, label, status: required ? "fail" : "warn", detail: `${p[key] === "not asked" ? "Not allowed yet" : "Turned off"}: ${why}`,
           fix: p[key] === "not asked" && ["calendar", "reminders", "contacts"].includes(key) ? { kind: "request", target: key, label: "Allow" } : { kind: "settings", target: pane, label: "Turn on" } };
   return [
-    need("screen", "See your screen", "screen-recording", "Spark can't look at your screen to guide you.", true),
-    need("accessibility", "Click and type", "accessibility-access", "Spark can't find controls exactly or do steps for you.", true),
+    need("screen", "See your screen", "screen-recording", "Shua can't look at your screen to guide you.", true),
+    need("accessibility", "Click and type", "accessibility-access", "Shua can't find controls exactly or do steps for you.", true),
     need("microphone", "Microphone", "microphone", "voice mode can't hear you.", true),
-    need("calendar", "Calendar", "calendars-access", "Spark can't see what's next.", false),
-    need("reminders", "Reminders", "reminders-access", "Spark can't tell you what's due.", false),
-    need("contacts", "Contacts", "contacts-access", "Spark won't know who you mean by name.", false),
+    need("calendar", "Calendar", "calendars-access", "Shua can't see what's next.", false),
+    need("reminders", "Reminders", "reminders-access", "Shua can't tell you what's due.", false),
+    need("contacts", "Contacts", "contacts-access", "Shua won't know who you mean by name.", false),
     !music ? { id: "music", label: "Music control", status: "warn", detail: "Music didn't answer. If macOS asks, allow ShuaCrew to control Music.", fix: { kind: "settings", target: "automation", label: "Review" } }
       : music.ok ? { id: "music", label: "Music control", status: "ok", detail: music.output?.startsWith("Now in") ? `Working: ${music.output.replace(/^Now in /, "").split(" · ")[0]}` : "Music status query answered. Playback control not tested." }
       : { id: "music", label: "Music control", status: "warn", detail: music.message, fix: { kind: "settings", target: "automation", label: "Review" } },

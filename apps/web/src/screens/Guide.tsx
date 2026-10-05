@@ -23,7 +23,7 @@ const HUBS: HubSection[] = [
     { title: "Hire and review", where: "Crew › Team", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
     { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
     { title: "Crew HQ", where: "Crew › Crew HQ", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
-    { title: "Studio & Radio", where: "Crew › Studio", to: "/studio", body: "A focus room with a timer, Flow mode, rain sounds and ShuaCrew Radio: a lofi station with a spinning-record player, built from your own music folders or official YouTube live streams. Music quiets down while you talk to Spark. Spark can even DJ." },
+    { title: "Studio & Radio", where: "Crew › Studio", to: "/studio", body: "A focus room with a timer, Flow mode, rain sounds and ShuaCrew Radio: a lofi station with a spinning-record player, built from your own music folders or official YouTube live streams. Music quiets down while you talk to Shua. Shua can even DJ." },
   ] },
   { id: "build", hub: "Hub 3 · ⌘3", title: "Build: ventures, plans and the board", features: [
     { title: "Idea to revenue", where: "Build › Ventures", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
@@ -110,7 +110,7 @@ export function Guide() {
 
         <Section id="start" hub="First run" title="Getting started" intro="The first time you open ShuaCrew, a short welcome tour walks you through these steps. Each one takes about a minute.">
           <ol className="guide-steps">
-            <li><b>Meet your assistant</b><span>Name your companion (Spark by default), pick one of five characters and choose a voice. You can change all of it later.</span></li>
+            <li><b>Meet your assistant</b><span>Name your companion (Shua by default), pick one of five characters and choose a voice. You can change all of it later.</span></li>
             <li><b>Tell it your goal</b><span>A career goal or a project you're working toward. Your companion keeps it in mind in every conversation.</span></li>
             <li><b>Connect your engines</b><span>ShuaCrew finds the Claude Code and Codex logins already on your Mac. There are no API keys to paste and no new accounts to create.</span></li>
             <li><b>Grant what you want to use</b><span>Microphone, screen, accessibility and calendar are each optional. The tour explains what each one unlocks before macOS asks you.</span></li>
@@ -147,7 +147,7 @@ export function Guide() {
             { title: "It remembers you", where: "Memory", body: "Your goal, lessons from past sessions and what you did today carry into every conversation. You can see and delete that history in its privacy panel." },
             { title: "It walks you through things", where: "Guides", body: "Guided steps highlight exactly where to click, one short line at a time. It walks beside each step and comes back when you're done." },
             { title: "Missions", where: "“agent: …”", body: "Hand it a task and it stays with it: keeps the crew going when it stalls, brings approvals to you, and tells you when it's finished. A strip in its panel shows what it's minding." },
-            { title: "Email & Notion", where: "Mail app · Tools & Skills", body: "Unread, search, read and draft (never send) through Mail. Notion through the crew once you connect it in Tools & Skills. Both show in Settings → Spark." },
+            { title: "Email & Notion", where: "Mail app · Tools & Skills", body: "Unread, search, read and draft (never send) through Mail. Notion through the crew once you connect it in Tools & Skills. Both show in Settings → Shua." },
             { title: "fn screen selection", where: "Hold fn, then drag a box", body: "Select an exact screen region and release the mouse to have Shua read it. Escape cancels. Tap Fn to toggle live voice, or use Talk in the notch. Needs the Globe key set to “Do Nothing”." },
             { title: "A live welcome", where: "Chat window", body: "A greeting for the time of day, a Right now strip from what's really happening, and suggestions that change with it. Tap to ask." },
             { title: "Quick replies", where: "Under each answer", body: "Tell me more, Make it shorter, Show me on screen, Do it for me: the next step in one tap, without typing." },
@@ -172,14 +172,14 @@ export function Guide() {
             { title: "Does it with you, as long as it takes", where: "Guides and autopilot", body: "It guides you step by step (the box lands on the real control), moves on after any action of yours, or does the clicking itself until the job's done. Approve, let it run, or stop, right from the notch." },
             { title: "Looks it up, then teaches", where: "Any question", body: "When it isn't sure, it searches the web and reads the source, then explains, drawing on your screen as it talks, and ends with a few next moves you can tap." },
             { title: "Works better with…", where: "In your chats", body: "It suggests the connection (Vercel, Stripe, Sentry, Notion…) or skill that fits what you asked, only ones you don't have. One tap connects and signs you in; × hides it for good." },
-            { title: "Full screen", where: "⌘⇧J · Esc to leave", body: "Spark takes the whole window: the same conversation, roomy and centred, for long talks, lessons and diagrams." },
+            { title: "Full screen", where: "⌘⇧J · Esc to leave", body: "Shua takes the whole window: the same conversation, roomy and centred, for long talks, lessons and diagrams." },
           ]} />
         </Section>
 
         <Section id="chrome" hub="In your browser · ⌥⇧S" title="Spark for Chrome" intro={`Highlight anything on the web and ${name} acts on it right there. It works with ShuaCrew on this Mac, and nothing else can use it.`}>
           <div className="guide-spark">
             <div className="guide-prose">
-              <p><b>Highlight, then choose.</b> A small Spark button appears next to your selection: <b>Explain</b>, <b>Summarize</b>, <b>Rewrite</b> (and put it back into the box you selected from), <b>Draft a reply</b>, <b>Ask</b> anything about it, <b>Save to Library</b>, or <b>Hand to the crew</b> as a mission {name} stays with on your Mac.</p>
+              <p><b>Highlight, then choose.</b> A small Shua button appears next to your selection: <b>Explain</b>, <b>Summarize</b>, <b>Rewrite</b> (and put it back into the box you selected from), <b>Draft a reply</b>, <b>Ask</b> anything about it, <b>Save to Library</b>, or <b>Hand to the crew</b> as a mission {name} stays with on your Mac.</p>
               <p><b>Or right-click</b> a selection, or press <kbd>⌥⇧S</kbd>. With nothing selected, it summarizes the page.</p>
               <p><b>Proactive, quietly.</b> On a long read it offers once to give you the gist. Turn that off in the extension's popup.</p>
               <p><b>Private by design.</b> Your gateway still refuses every website and every other extension. Only Spark for Chrome, holding your pairing key, gets through, and page text is treated as material to work on, never as instructions.</p>

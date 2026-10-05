@@ -11,7 +11,7 @@ type State = "granted" | "denied" | "not asked";
 const ABILITIES: Array<{ key: string; pane: string; icon: typeof Monitor; name: string; does: string; optional?: boolean }> = [
   { key: "screen", pane: "screen-recording", icon: Monitor, name: "See your screen", does: "Reads what's on screen to point, guide and notice when you're stuck." },
   { key: "accessibility", pane: "accessibility-access", icon: MousePointerClick, name: "Click and type for you", does: "Finds every button, icon and menu exactly, and does steps on autopilot." },
-  { key: "files", pane: "full-disk-access", icon: FolderOpen, name: "Everywhere, no prompts", does: "Optional (Full Disk Access). Spark already reads your files; this skips the one-time folder prompts and adds iCloud Drive and external drives.", optional: true },
+  { key: "files", pane: "full-disk-access", icon: FolderOpen, name: "Everywhere, no prompts", does: "Optional (Full Disk Access). Shua already reads your files; this skips the one-time folder prompts and adds iCloud Drive and external drives.", optional: true },
   { key: "calendar", pane: "calendars-access", icon: Calendar, name: "Calendar", does: "Knows what's next and plans around your meetings." },
   { key: "reminders", pane: "reminders-access", icon: ListChecks, name: "Reminders", does: "Tells you what's due and adds reminders when you ask." },
   { key: "contacts", pane: "contacts-access", icon: Contact, name: "Contacts", does: "Knows who you mean: “email Sam”, “what's Mia's number”." },

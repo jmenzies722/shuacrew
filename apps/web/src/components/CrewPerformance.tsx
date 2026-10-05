@@ -10,7 +10,7 @@ export function CrewPerformance({ members, runs, lessons }: { members: CrewMembe
   const rows = useMemo(() => crewPerformance(members.map((m) => m.id), Object.values(runs) as never, lessons), [members, runs, lessons]);
   const any = rows.some((r) => r.finished || r.failed);
   return <section className="crew-perf" aria-label="Crew performance">
-    <header><strong>Performance review</strong><span>{any ? "From each member's own sessions — Spark chats and learning don't count." : "Numbers appear here once your crew finishes sessions."}</span></header>
+    <header><strong>Performance review</strong><span>{any ? "From each member's own sessions — Shua chats and learning don't count." : "Numbers appear here once your crew finishes sessions."}</span></header>
     <div className="crew-perf-table" role="table">
       <div role="row" className="is-head"><span role="columnheader">Member</span><span role="columnheader">Finished</span><span role="columnheader">Failed</span><span role="columnheader">Success</span><span role="columnheader">Typical time</span><span role="columnheader">Tokens</span><span role="columnheader">Lessons</span></div>
       {rows.map((r) => { const m = members.find((x) => x.id === r.member)!; return <div role="row" key={r.member}>

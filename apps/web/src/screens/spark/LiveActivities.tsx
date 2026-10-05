@@ -73,7 +73,7 @@ export function LiveActivities(p: LiveActivitiesProps) {
           </div>}
           {activeMissions.length > 0 && <button type="button" className="spark-nook-mission" tabIndex={tab} onClick={() => post({ type: "buddyOpen", path: `/sessions/${activeMissions.at(-1)!.run}` })}>
             <i className="is-live" /><span><small>Mission</small><b>{runs[activeMissions.at(-1)!.run]?.title ?? activeMissions.at(-1)!.task}</b></span><em>{runs[activeMissions.at(-1)!.run]?.status.replace("_", " ")}</em></button>}
-          {/* What Spark is doing for you, driven from here: approve, let it run, or stop. */}
+          {/* What Shua is doing for you, driven from here: approve, let it run, or stop. */}
           {task && <div className="spark-nook-live is-task"><i className="is-crew">{task.step}</i><span><small>{pending ? "Can I?" : "Doing it"}</small><b>{pending ? describeAct(pending) : `Step ${task.step}`}</b></span>
             <div className="spark-nook-ctl">{pending && <><button type="button" className="is-go" tabIndex={tab} onClick={() => runAct(pending, task.step)}>Do it</button><button type="button" tabIndex={tab} title="Do the rest without asking" onClick={p.doAll}>All</button></>}
               <button type="button" tabIndex={tab} onClick={() => stopTask("Stopped.")}>Stop</button></div></div>}

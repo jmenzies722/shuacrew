@@ -137,13 +137,13 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
         <div className="spark-moods" role="group" aria-label="Try a mood">{(["idle", "thinking", "speaking", "happy", "sleepy"] as Mood[]).map((m) => <button key={m} type="button" aria-pressed={mood === m} onClick={() => setMood(m)}>{m}</button>)}</div>
       </div>
       <div className="spark-identity">
-        <label className="spark-name"><small>Name</small><input value={nameDraft} maxLength={40} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { set({ nickname: nameDraft }); setNameDraft(nameDraft.trim() || "Shua"); }} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} aria-label="Your buddy's name" placeholder="Spark" /></label>
+        <label className="spark-name"><small>Name</small><input value={nameDraft} maxLength={40} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { set({ nickname: nameDraft }); setNameDraft(nameDraft.trim() || "Shua"); }} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} aria-label="Your buddy's name" placeholder="Shua" /></label>
         <p>{name} lives on your desktop, over every app. {native() ? "Click it or press " : "In the Mac app, press "}<kbd>{SPARK_HOTKEYS[prefs.hotkey]}</kbd> to ask. {prefs.desktopPlacement === "notch" ? "At home beside your MacBook notch." : "Drag it to a favorite spot."}</p>
         <div className="spark-toggle"><span>On your desktop</span><Switch label="Show on the desktop" on={desktop} onChange={toggleDesktop} /></div>
       </div>
     </section>
 
-    <div className="spark-categories"><Segmented label="Spark settings category" value={category} onChange={setCategory} options={[["character", "Your robot"], ["presence", "Presence & brain"], ["voice", "Voice"], ["guidance", "Guidance"]]} /></div>
+    <div className="spark-categories"><Segmented label="Shua settings category" value={category} onChange={setCategory} options={[["character", "Your robot"], ["presence", "Presence & brain"], ["voice", "Voice"], ["guidance", "Guidance"]]} /></div>
     {(searching || category === "character") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Meet your next sidekick</h4><p className="spark-workshop-note">A different silhouette. The same companion, memories, and conversation.</p>
       <div className="spark-gallery">{ROBOT_CHARACTERS.map((id) => <button key={id} type="button" className={prefs.character === id ? "is-on" : ""} aria-pressed={prefs.character === id} onClick={() => set({ character: id })} style={sparkVars(prefs.color)}>
