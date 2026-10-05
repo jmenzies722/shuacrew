@@ -1,0 +1,169 @@
+/*
+ * The notch, alive. Same island and states as buddy.css (rest → live → open, processing, ready); this layer gives it
+ * the Onyx feel: a liquid spring when it changes shape, light that bleeds from under it while the crew works, a light
+ * that orbits its edge when Spark is busy, a magnetic swell under the pointer, and contents that cascade in.
+ * Everything is transform/opacity/box-shadow, pauses when ShuaCrew is in the background, and stops with Reduce motion.
+ */
+.buddy {
+  --n-spring: cubic-bezier(.34, 1.45, .55, 1);     /* overshoot, then settle */
+  --n-settle: cubic-bezier(.22, 1, .36, 1);
+  --n-glow: color-mix(in srgb, var(--amber) 55%, transparent);
+  --n-ink: #000;
+  --n-raised: #0f0f11;
+  --n-line: rgba(255, 255, 255, .08);
+  --n-text: #f3f3f5;
+  --n-text-2: #a6a6ae;
+}
+
+/* ── The shape: a liquid spring. Width leads, height follows a beat later, so it pours open. ─────────────── */
+.shua-island-shape {
+  background: var(--n-ink);
+  transition:
+    width .52s var(--n-spring),
+    height .46s var(--n-spring) .03s,
+    border-radius .46s var(--n-settle),
+    box-shadow .5s var(--n-settle),
+    transform .3s var(--n-spring);
+  will-change: width, height;
+}
+/* Closing is quicker and doesn't bounce: it tucks away. */
+.shua-island.is-rest .shua-island-shape { transition: width .34s var(--n-settle), height .3s var(--n-settle), border-radius .34s var(--n-settle), box-shadow .4s var(--n-settle), transform .3s var(--n-spring); }
+
+/* Under the pointer it swells a touch before it opens; pressed, it gives. */
+.shua-island.is-rest .shua-island-shape:hover { transform: scale(1.035, 1.08); transform-origin: 50% 0; }
+.shua-island-shape:active { transform: scale(.985); transition-duration: .12s; }
+
+/* The open island: black at the camera, a breath of the accent lower down, a lit lower rim. */
+.shua-island.is-open .shua-island-shape {
+  --r: 30px;
+  background:
+    radial-gradient(120% 60% at 50% 115%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 70%),
+    var(--n-ink);
+  box-shadow:
+    0 30px 70px -24px rgba(0, 0, 0, .95),
+    0 14px 40px -20px var(--n-glow),
+    inset 0 -1px 0 color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.shua-island.is-live .shua-island-shape { --r: 20px; box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .9), 0 8px 26px -14px var(--n-glow); }
+
+/* ── Alive at rest: light pools under the notch while the crew works, and the shape breathes with it ────── */
+.shua-island:has(.shua-island-ear em.is-live, .shua-island-dot.is-busy) .shua-island-shape { animation: n-breathe 2.8s ease-in-out infinite; }
+.shua-island:not(.is-open):has(.shua-island-ear em.is-wait) .shua-island-shape { --n-glow: color-mix(in srgb, #ffb340 60%, transparent); animation: n-breathe 2.2s ease-in-out infinite; }
+@keyframes n-breathe {
+  0%, 100% { box-shadow: 0 6px 16px -10px var(--n-glow), 0 0 0 0 transparent; }
+  50% { box-shadow: 0 10px 30px -8px var(--n-glow), 0 2px 10px -6px var(--n-glow); }
+}
+.shua-island.is-open .shua-island-shape { animation: none; }
+
+/* Busy: a light runs round the island's lower edge (masked to a hairline ring). */
+.shua-island-shape::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0;
+  background: conic-gradient(from var(--n-orbit, 0deg) at 50% 0%, transparent 0deg, color-mix(in srgb, var(--amber) 90%, #fff) 40deg, var(--accent-2, #a78bfa) 80deg, transparent 130deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  transition: opacity .4s var(--n-settle); }
+.shua-island:is(.is-processing, :has(.shua-island-dot.is-busy, .shua-island-face.is-busy)) .shua-island-shape::after { opacity: 1; animation: n-orbit 2.4s linear infinite; }
+@property --n-orbit { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes n-orbit { from { --n-orbit: 90deg; } to { --n-orbit: 450deg; } }
+/* The spectrum glow (Settings → Notch) keeps its ring; this one gives way to it. */
+.buddy[data-notch-glow="spectrum"] .shua-island:is(.is-live, .is-open) .shua-island-shape::after { opacity: 1; }
+.buddy[data-notch-glow="off"] .shua-island .shua-island-shape { animation: none; }
+.buddy[data-notch-glow="off"] .shua-island .shua-island-shape::after { display: none; }
+
+/* ── The ears: Spark's face on the left, what's live on the right ───────────────────────────────────── */
+.shua-island-ear { color: var(--n-text); }
+.shua-island-face { width: 22px; height: 22px; border-radius: 8px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .12); transition: transform .4s var(--n-spring), box-shadow .3s; }
+.shua-island-shape:hover .shua-island-face { transform: scale(1.08) rotate(-4deg); }
+.shua-island-face.is-busy, .shua-island-face.is-speaking { box-shadow: 0 0 0 1.5px var(--amber), 0 0 14px var(--n-glow); animation: n-face-bob 1.6s ease-in-out infinite; }
+@keyframes n-face-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px) scale(1.04); } }
+.shua-island.is-open .shua-island-ear strong { font-size: 13px; letter-spacing: -.01em; animation: n-fade-right .4s var(--n-settle) .08s both; }
+.shua-island.is-open .shua-island-ear small { animation: n-fade-left .4s var(--n-settle) .1s both; }
+
+/* Status: a dot that pings, counts that pop in. */
+.shua-island-dot { width: 7px; height: 7px; background: var(--ok, #3fd18b); box-shadow: none; animation: n-ping 2.8s var(--n-settle) infinite; --n-ping: var(--ok, #3fd18b); }
+.shua-island-dot.is-busy { background: var(--amber); --n-ping: var(--amber); animation: n-ping 1.4s var(--n-settle) infinite; }
+@keyframes n-ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--n-ping) 60%, transparent); } 70%, 100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--n-ping) 0%, transparent); } }
+.shua-island-ear em { height: 18px; min-width: 18px; border-radius: 999px; font-size: 10.5px; font-weight: 650; font-variant-numeric: tabular-nums; animation: n-pop .5s var(--n-spring) both; }
+.shua-island-ear em.is-wait { color: #1a1000; background: #ffb340; --n-ping: #ffb340; animation: n-pop .5s var(--n-spring) both, n-ping 1.8s var(--n-settle) .5s infinite; }
+.shua-island-ear em.is-live { color: var(--on-accent, #fff); background: var(--amber); background-image: none; --n-ping: var(--amber); animation: n-pop .5s var(--n-spring) both, n-ping 1.8s var(--n-settle) .5s infinite; }
+.shua-island-ear em.is-timer, .shua-island-ear em.is-focus { color: #0a0a0a; background: var(--n-text); }
+@keyframes n-pop { from { transform: scale(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Album art sits like a tiny record sleeve, gently lit. */
+.shua-island-art { border-radius: 6px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .12), 0 0 12px -2px rgba(255, 255, 255, .25); animation: n-pop .5s var(--n-spring) both; }
+
+/* ── Live row (tucked-in captions, hints) ───────────────────────────────────────────────────────────── */
+.shua-island.is-live .shua-island-live { animation: n-rise .42s var(--n-settle) both; }
+.shua-island-hint { color: color-mix(in srgb, var(--amber) 35%, #fff); font-weight: 500; }
+
+/* ── The open body: every block cascades in, a beat after the shape lands ───────────────────────────── */
+.shua-island-body { padding: 4px 16px 16px; gap: 10px; transition: opacity .2s, transform .4s var(--n-spring); }
+.shua-island.is-open .shua-island-body { transition-delay: .1s; }
+.shua-island.is-open .shua-island-body > * { animation: n-rise .5s var(--n-settle) both; }
+.shua-island.is-open .shua-island-body > :nth-child(1) { animation-delay: .1s; }
+.shua-island.is-open .shua-island-body > :nth-child(2) { animation-delay: .15s; }
+.shua-island.is-open .shua-island-body > :nth-child(3) { animation-delay: .2s; }
+.shua-island.is-open .shua-island-body > :nth-child(4) { animation-delay: .25s; }
+.shua-island.is-open .shua-island-body > :nth-child(n+5) { animation-delay: .3s; }
+@keyframes n-rise { from { opacity: 0; transform: translateY(-6px) scale(.985); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes n-fade-right { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes n-fade-left { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
+
+/* The ask field: a dark well whose edge lights up, ring of accent when you're in it. */
+.spark-nook-ask { height: 40px; border-radius: 14px; background: var(--n-raised); box-shadow: inset 0 0 0 1px var(--n-line), inset 0 1px 0 rgba(255, 255, 255, .04); transition: box-shadow .25s var(--n-settle); }
+.spark-nook-ask:hover { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.spark-nook-ask:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 75%, transparent), 0 0 0 4px color-mix(in srgb, var(--amber) 16%, transparent), 0 0 24px -6px var(--n-glow); }
+.spark-nook-ask input { font-size: 13px; color: var(--n-text); }
+.spark-nook-ask button { width: 30px; height: 30px; border-radius: 10px; color: var(--on-accent, #fff); background: var(--amber); background-image: none; transition: transform .3s var(--n-spring), opacity .2s, background .2s; }
+.spark-nook-ask button:not(:disabled) { animation: n-pop .45s var(--n-spring) both; }
+.spark-nook-ask button:not(:disabled):hover { transform: translateY(-1px) scale(1.06); }
+.spark-nook-ask button:disabled { background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .5); opacity: 1; }
+.spark-nook-ask button.is-stop { background: var(--n-text); color: #000; }
+.spark-nook-voice, .spark-nook-toggle { height: 40px; border-radius: 14px; transition: transform .25s var(--n-spring), background .2s, border-color .2s, box-shadow .2s; }
+.spark-nook-voice:active, .spark-nook-toggle:active { transform: scale(.95); }
+.spark-nook-voice.is-on { animation: n-voice 1.8s ease-in-out infinite; }
+@keyframes n-voice { 0%, 100% { box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 0 0 3px rgb(255 255 255 / .08), 0 0 14px rgb(255 255 255 / .16); } 50% { box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 0 0 5px rgb(255 255 255 / .1), 0 0 26px rgb(255 255 255 / .3); } }
+
+/* Suggestions: glassy chips that lift under the pointer. */
+.spark-nook-next { gap: 6px; }
+.spark-nook-next button, .spark-nook-next.is-starter button {
+  height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; color: #d9d9de; background: rgba(255, 255, 255, .05);
+  box-shadow: inset 0 0 0 1px var(--n-line); transition: transform .3s var(--n-spring), background .2s, color .2s, box-shadow .2s;
+}
+.spark-nook-next button:hover, .spark-nook-next.is-starter button:hover { transform: translateY(-1px); color: #fff; background: color-mix(in srgb, var(--amber) 16%, rgba(255, 255, 255, .04)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent), 0 6px 16px -10px var(--n-glow); }
+.spark-nook-next button:active { transform: scale(.96); }
+
+/* Tiles and widgets: dark glass. */
+.spark-nook-tile, .notch-widgets .wg-tile { border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .02)); box-shadow: inset 0 0 0 1px var(--n-line), inset 0 1px 0 rgba(255, 255, 255, .05); transition: transform .3s var(--n-spring), box-shadow .2s; }
+.spark-nook-tile:hover, .notch-widgets .wg-tile:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14), inset 0 1px 0 rgba(255, 255, 255, .06); }
+.spark-nook-ctl button { border-radius: 9px; background: rgba(255, 255, 255, .07); transition: transform .25s var(--n-spring), background .2s; }
+.spark-nook-ctl button:hover { background: color-mix(in srgb, var(--amber) 22%, rgba(255, 255, 255, .06)); }
+.spark-nook-ctl button:active { transform: scale(.94); }
+.spark-nook-ctl button.is-wait { color: #1a1000; background: #ffb340; }
+.spark-nook-ctl button.is-go, .spark-nook footer button { background: var(--amber); background-image: none; color: var(--on-accent, #fff); }
+.spark-nook-bar > i, .nook-scrub-track > span > i { background: linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--amber) 40%, #fff)); }
+.spark-nook-say.is-busy { color: color-mix(in srgb, var(--amber) 40%, #fff); }
+.spark-nook-say.is-reply { color: #e6e6ea; }
+
+/* ── The chat grown out of the notch ────────────────────────────────────────────────────────────────── */
+.buddy.is-docked .spk-pop.is-notched {
+  border-radius: 0 0 30px 30px;
+  background: radial-gradient(120% 40% at 50% 104%, color-mix(in srgb, var(--amber) 9%, transparent), transparent 70%), var(--n-ink);
+  box-shadow: 0 30px 70px -24px rgba(0, 0, 0, .95), 0 14px 40px -22px var(--n-glow), inset 0 -1px 0 color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.shua-chat-cap strong { animation: n-fade-right .4s var(--n-settle) .1s both; }
+.shua-chat-cap button { transition: transform .25s var(--n-spring), background .15s, color .15s; }
+.shua-chat-cap button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+.shua-chat-cap button:active { transform: scale(.92); }
+
+/* Notch waveform: brighter core, accent halo. */
+.notch-wave i { background: linear-gradient(180deg, #fff, color-mix(in srgb, #fff 55%, var(--amber))); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent); }
+
+/* ── Rest and Reduce motion ─────────────────────────────────────────────────────────────────────────── */
+:root[data-idle] .buddy :is(.shua-island-shape, .shua-island-dot, .shua-island-ear em, .shua-island-face, .spark-nook-voice) { animation-play-state: paused !important; }
+:root[data-idle] .buddy .shua-island-shape::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .buddy :is(.shua-island-shape, .shua-island-dot, .shua-island-ear em, .shua-island-face, .shua-island-body > *, .spark-nook-voice, .spark-nook-ask button, .shua-island-live) { animation: none !important; }
+  :root:not([data-motion="full"]) .buddy .shua-island-shape::after { animation: none !important; }
+  :root:not([data-motion="full"]) .buddy .shua-island-shape { transition-timing-function: ease !important; transition-duration: .15s !important; transform: none !important; }
+}
+:root[data-motion="reduced"] .buddy :is(.shua-island-shape, .shua-island-dot, .shua-island-ear em, .shua-island-face, .shua-island-body > *, .spark-nook-voice, .spark-nook-ask button, .shua-island-live) { animation: none !important; }
+:root[data-motion="reduced"] .buddy .shua-island-shape::after { animation: none !important; }
+:root[data-motion="reduced"] .buddy .shua-island-shape { transform: none !important; }

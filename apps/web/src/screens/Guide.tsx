@@ -254,7 +254,7 @@ export function Guide() {
 
         <Section id="settings" hub="Settings · ⌘," title="Make it yours">
           <ul className="guide-prose guide-list">
-            <li><b>Look:</b> Pristine (default), Frost Black, Graphite, Carbon, Midnight, Paper and Sand palettes. Space Grotesk or SF Pro for the interface, and JetBrains Mono, SF Mono or Menlo for code. Share a theme as a code. Your accent colour carries through everything: the ShuaCrew logo (in the sidebar, the top bar and on Sessions), gradient buttons, the lit edge on where you are, and a glowing ring around the box you're typing in.</li>
+            <li><b>Look:</b> Onyx (default) and its light twin Porcelain, plus Pristine, Frost Black, Graphite, Carbon, Midnight, Paper and Sand palettes. Geist (Space Grotesk on the older palettes) or SF Pro for the interface, and JetBrains Mono, SF Mono or Menlo for code. Share a theme as a code. Your accent colour carries through everything: the ShuaCrew logo (in the sidebar, the top bar and on Sessions), gradient buttons, the lit edge on where you are, and a glowing ring around the box you're typing in.</li>
             <li><b>Modes:</b> Deep work, Cost saver and Wind down, which can switch on automatically on a schedule. Also quiet hours and a daily budget.</li>
             <li><b>Crew behavior:</b> engine fallback order, routing rules, session limits, hooks, your own instructions and a prompt inspector.</li>
             <li><b>{name}:</b> follow my cursor, keep going on its own (missions), fn key, “Hey {name}”, voice, character and colour, the chat window's look (Solid or Glass, tone, corners, text size, header), plus Email (via Mail), Notion and Spark for Chrome (your pairing key).</li>

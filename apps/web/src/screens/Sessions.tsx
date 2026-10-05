@@ -51,6 +51,7 @@ import { pauseClock, scopeRuns, recentWork } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
 import { ReplayBar } from "../components/Replay";
+import { LogoMark } from "../lib/motion";
 import { isMac, pickFolder } from "../lib/native";
 import { size as fileSize, upload, withAttachments, type Attachment } from "../lib/attachments";
 import { Glyph } from "../lib/glyphs";
@@ -124,6 +125,12 @@ const folderOf = (run: RunView) => (run.repo ? run.repo.split("/").filter(Boolea
  * Kiro Crew's working surface: sessions on the left, the conversation in the middle, what it
  * changed on the right. A session is a run — the first message starts it, every next one continues it.
  */
+/** Morning, afternoon or evening, by the clock on your Mac. */
+function greeting(now = new Date()) {
+  const h = now.getHours();
+  return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
 export function Sessions() {
   const params = useParams({ strict: false }) as { id?: string };
   const [sessionsCollapsed, setSessionsCollapsed] = useState(() => {
@@ -511,35 +518,40 @@ function NewSession() {
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="hero-stack">
           <div className="hero-core">
-          <NeedsYou />
-          <div className="home-heading">
-            <span className="home-eyebrow"><Sparkles size={14} aria-hidden /> YOUR WORKSPACE</span>
-            <h1 className="hero-title">What’s next?</h1>
-            <p className="hero-sub">Start something new, or pick up where you left off.</p>
+          {/* A conversation first: the greeting, the box, a few ways in. What needs you, recent work and your day sit just below. */}
+          <div className="hero-ask">
+            <div className="hero-mark">
+              <LogoMark size={44} />
+            </div>
+            <h1 className="hero-title">{greeting()}. What should the crew build?</h1>
+            <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
+            <Composer seed={seed} hero />
+            <div className="hero-ideas stagger">
+              {ideas.map(({ icon: Icon, text, label }) => (
+                <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
+                  <i className="hero-idea-icon"><Icon size={14} /></i>
+                  <span className="line-clamp-2">{label}</span>
+                  <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
+                </button>
+              ))}
+            </div>
           </div>
-          <Composer seed={seed} hero />
-          <div className="hero-ideas stagger">
-            {ideas.map(({ icon: Icon, text, label }) => (
-              <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
-                <i className="hero-idea-icon"><Icon size={14} /></i>
-                <span>{label}</span>
-                <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
-              </button>
-            ))}
+          <div className="hero-below">
+            <NeedsYou />
+            <section className="home-recent" aria-label="Recent work">
+              <div className="home-section-heading"><h2>Pick up where you left off</h2><span>{scope ? scope.split("/").filter(Boolean).pop() : "Recent work"}</span></div>
+              {recent.length ? recent.map(run => (
+                <Link key={run.id} to="/sessions/$id" params={{ id: run.id }} className="home-recent-row">
+                  <History size={16} aria-hidden />
+                  <span className="home-recent-copy"><strong>{run.title}</strong><small>{folderOf(run)} · {FRIENDLY[run.runtime] ?? run.runtime}</small></span>
+                  <StatusPill status={run.status} />
+                  <ArrowUpRight size={15} aria-hidden />
+                </Link>
+              )) : <p className="home-recent-empty">Your sessions will appear here as you work.</p>}
+            </section>
+            <TodayBriefing />
           </div>
           </div>
-          <section className="home-recent" aria-label="Recent work">
-            <div className="home-section-heading"><h2>Pick up where you left off</h2><span>{scope ? scope.split("/").filter(Boolean).pop() : "Recent work"}</span></div>
-            {recent.length ? recent.map(run => (
-              <Link key={run.id} to="/sessions/$id" params={{ id: run.id }} className="home-recent-row">
-                <History size={16} aria-hidden />
-                <span className="home-recent-copy"><strong>{run.title}</strong><small>{folderOf(run)} · {FRIENDLY[run.runtime] ?? run.runtime}</small></span>
-                <StatusPill status={run.status} />
-                <ArrowUpRight size={15} aria-hidden />
-              </Link>
-            )) : <p className="home-recent-empty">Your sessions will appear here as you work.</p>}
-          </section>
-          <TodayBriefing />
           <GettingStarted />
         </div>
       </div>

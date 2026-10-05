@@ -1,0 +1,418 @@
+/*
+ * Onyx: ShuaCrew's editor-grade look (the Onyx and Porcelain palettes share it, via [data-design="onyx"] on <html>).
+ * Flush, quiet chrome around one bright work surface; hairline edges that catch the light; type set small and tight;
+ * the accent kept for focus, selection and anything live. Motion is springy and short, and every piece of it is
+ * transform/opacity only, rests while ShuaCrew is in the background, and stands down with Reduce motion.
+ *
+ * Loaded last (Shell.tsx), so it refines every earlier layer. Selectors start with :root[data-design="onyx"] to win
+ * over the palette-wide rules in craft.css and alive.css without fighting them anywhere else.
+ */
+
+/* ── Tokens ─────────────────────────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] {
+  --font-ui: "Geist Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --radius-s: 6px; --radius-m: 8px; --radius-l: 12px; --radius-card: 12px; --frame-radius: 12px;
+  --gutter: 6px; --gutter-top: 0px;
+
+  /* Light that edges catch: a brighter hairline on top, nothing below. */
+  --edge: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight);
+  --edge-strong: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 var(--highlight);
+  --lift: 0 1px 2px rgba(0, 0, 0, .25), 0 8px 24px -12px rgba(0, 0, 0, .55);
+  --float-shadow: 0 0 0 1px var(--line-strong), 0 2px 6px rgba(0, 0, 0, .3), 0 24px 64px -16px rgba(0, 0, 0, .7);
+
+  /* The accent and its two neighbours, for the few gradients (focus ring, live edges, the notch). */
+  --accent-2: color-mix(in oklch, var(--amber) 55%, #a78bfa);
+  --accent-3: color-mix(in oklch, var(--amber) 60%, #34d3c5);
+  --accent-grad: linear-gradient(120deg, var(--amber), var(--accent-2));
+  --accent-grad-soft: linear-gradient(120deg, color-mix(in srgb, var(--amber) 14%, transparent), color-mix(in srgb, var(--accent-2) 10%, transparent));
+  --accent-glow: color-mix(in srgb, var(--amber) 40%, transparent);
+  --accent-text: color-mix(in srgb, var(--amber) 70%, #fff);
+  --active-bg: color-mix(in srgb, var(--text) 7%, transparent);
+  --active-line: color-mix(in srgb, var(--text) 10%, transparent);
+  --accent-hover: color-mix(in srgb, var(--amber) 85%, #fff);
+  --hover-bg: color-mix(in srgb, var(--text) 5%, transparent);
+  --press-bg: color-mix(in srgb, var(--text) 8%, transparent);
+
+  /* Primary buttons are ink-on-paper (the text colour as a fill), the way an editor does it; the accent stays rare. */
+  --primary-bg: var(--text);
+  --primary-fg: var(--ink);
+
+  /* Motion. */
+  --spring: cubic-bezier(.32, 1.4, .5, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --t-fast: 120ms; --t-med: 220ms; --t-slow: 420ms;
+  --scene-distance: 8px; --scene-duration: 360ms; --interaction-lift: -2px; --motion-ease: var(--ease-out);
+}
+:root[data-design="onyx"][data-theme="light"] {
+  --accent-text: color-mix(in srgb, var(--amber) 85%, #000);
+  --lift: 0 1px 2px rgba(15, 15, 30, .06), 0 8px 24px -12px rgba(15, 15, 30, .18);
+  --float-shadow: 0 0 0 1px var(--line-strong), 0 2px 6px rgba(15, 15, 30, .06), 0 24px 64px -16px rgba(15, 15, 30, .25);
+}
+:root[data-design="onyx"][data-motion-style="calm"] { --scene-distance: 0px; --scene-duration: 0ms; --interaction-lift: 0px; }
+:root[data-design="onyx"][data-motion-style="expressive"] { --scene-distance: 14px; --scene-duration: 520ms; --interaction-lift: -3px; }
+
+:root[data-design="onyx"] body { font-size: 13px; letter-spacing: -.003em; background: var(--sunken); }
+:root[data-design="onyx"] ::selection { background: color-mix(in srgb, var(--amber) 30%, transparent); }
+:root[data-design="onyx"] :focus-visible { outline: 2px solid color-mix(in srgb, var(--amber) 80%, transparent); outline-offset: 2px; }
+:root[data-design="onyx"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+:root[data-design="onyx"] ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent) padding-box; }
+:root[data-design="onyx"] ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text) 22%, transparent) padding-box; }
+:root[data-design="onyx"] ::-webkit-scrollbar-track { background: transparent; }
+
+/* ── The frame: flush chrome on the sunken ground, one lit work surface ──────────────────────── */
+:root[data-design="onyx"] [data-frame] { background: var(--sunken); grid-template-rows: 44px 1fr; }
+:root[data-design="onyx"][data-shell="mac"] { --chrome: var(--sunken); }
+:root[data-design="onyx"] .living-bg { display: none; }
+:root[data-design="onyx"] #main { padding: 0 var(--gutter) var(--gutter) 0; }
+:root[data-design="onyx"] #main::before { display: none; }
+:root[data-design="onyx"] .workspace-card {
+  background: var(--ink) !important; border-radius: var(--frame-radius); overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line-strong), 0 1px 0 var(--highlight) inset, var(--lift); border: 0;
+}
+/* The surface is lit from above: a faint wash, and a hairline of light that drifts slowly along its top edge. */
+:root[data-design="onyx"] .workspace-card::before {
+  height: 260px;
+  background: radial-gradient(70% 100% at 50% -10%, color-mix(in srgb, var(--amber) 6%, transparent), transparent 70%);
+}
+:root[data-design="onyx"] .workspace-card::after {
+  height: 1px; opacity: 1;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--amber) 0%, transparent) 20%, color-mix(in srgb, var(--amber) 70%, transparent) 45%, color-mix(in srgb, var(--accent-2) 60%, transparent) 55%, transparent 80%) 0 0 / 250% 100% no-repeat;
+  animation: onyx-edge-drift 9s ease-in-out infinite alternate;
+}
+@keyframes onyx-edge-drift { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+
+/* Each section arrives: a short rise and settle (transform only, so content is readable from its first frame). */
+:root[data-design="onyx"] .workspace-scene { animation: onyx-arrive var(--scene-duration) var(--ease-out) both; transform-origin: 50% 0; }
+@keyframes onyx-arrive { from { transform: translateY(var(--scene-distance)) scale(.996); } to { transform: none; } }
+
+/* ── Top bar ────────────────────────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] header[aria-label="Top bar"] { background: transparent !important; box-shadow: none !important; gap: 8px; }
+:root[data-design="onyx"] header[aria-label="Top bar"] > span:first-of-type:not(.tb-logo) {
+  height: 26px; border-radius: 7px; font-size: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--line);
+}
+:root[data-design="onyx"] .tb-center > button {
+  height: 30px !important; max-width: 520px !important; border-radius: 8px !important; font-size: 12.5px;
+  background: color-mix(in srgb, var(--text) 4%, var(--sunken)) !important; border-color: transparent !important;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight) !important;
+  transition: box-shadow var(--t-med) var(--ease-out), background var(--t-med), transform var(--t-fast) var(--ease-out);
+}
+:root[data-design="onyx"] .tb-center > button:hover { background: color-mix(in srgb, var(--text) 6%, var(--sunken)) !important; box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 0 4px color-mix(in srgb, var(--amber) 6%, transparent) !important; color: var(--text-2); }
+:root[data-design="onyx"] .tb-center > button:active { transform: scale(.99); }
+:root[data-design="onyx"] .island-pill { background: transparent !important; box-shadow: inset 0 0 0 1px var(--line) !important; border-radius: 8px; height: 28px; }
+:root[data-design="onyx"] .island-pill:hover { box-shadow: inset 0 0 0 1px var(--line-strong) !important; background: var(--hover-bg) !important; }
+:root[data-design="onyx"] :is(.island-panel, .tb-panel) { background: var(--float) !important; border-radius: 12px; box-shadow: var(--float-shadow) !important; animation: onyx-pop var(--t-med) var(--spring) both; transform-origin: top right; }
+:root[data-design="onyx"] .spark-btn { height: 28px; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+:root[data-design="onyx"] .spark-btn:hover { background: var(--hover-bg); }
+
+/* ── Sidebar: flush, dense, one soft selection that glides ──────────────────────────────────── */
+:root[data-design="onyx"] .side {
+  width: 236px; margin: 0; padding: 4px 8px 8px; border-radius: 0; background: transparent; box-shadow: none; border: 0;
+}
+:root[data-design="onyx"] .rail-wrap { margin: 0; border-radius: 0; background: transparent; box-shadow: none; }
+:root[data-design="onyx"] .side-brand { padding: 4px 4px 10px; margin-bottom: 4px; border-bottom: 0; gap: 9px; }
+:root[data-design="onyx"] .side-logo { width: 26px; height: 26px; border-radius: 8px; }
+:root[data-design="onyx"] .side-brand-text b { font-size: 12.5px; font-weight: 600; letter-spacing: -.01em; text-transform: none; color: var(--text); }
+:root[data-design="onyx"] .side-brand-text b em { background: none; color: var(--text-3); -webkit-text-fill-color: currentColor; font-weight: 500; }
+:root[data-design="onyx"] .side-brand-text small { font-size: 10.5px; }
+:root[data-design="onyx"] .side-brand-text small.is-live i { --ping: var(--ok); background: var(--ok); animation: onyx-ping 2.6s var(--ease-out) infinite; }
+
+:root[data-design="onyx"] .side-spark {
+  padding: 6px 8px 6px 6px; margin-bottom: 6px !important; border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: var(--edge);
+  transition: box-shadow var(--t-med) var(--ease-out), background var(--t-med), transform var(--t-fast) var(--ease-out);
+}
+:root[data-design="onyx"] .side-spark:hover { background: var(--hover-bg); box-shadow: var(--edge-strong), 0 0 0 4px color-mix(in srgb, var(--spark-color, var(--amber)) 8%, transparent); }
+:root[data-design="onyx"] .side-spark:active { transform: scale(.985); }
+:root[data-design="onyx"] .side-spark.is-on { background: color-mix(in srgb, var(--spark-color, var(--amber)) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 40%, transparent); }
+:root[data-design="onyx"] .side-spark.is-on .side-spark-text b { color: var(--text); }
+:root[data-design="onyx"] .side-spark-av { width: 28px; height: 28px; border-radius: 8px; }
+:root[data-design="onyx"] .side-spark-text b { font-size: 12.5px; }
+
+:root[data-design="onyx"] .side .side-new:not(:disabled) {
+  height: 30px; border-radius: 8px; font-size: 12.5px; font-weight: 550; gap: 8px;
+  color: var(--primary-fg) !important; background: var(--primary-bg) !important; background-image: none !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 1px 2px rgba(0, 0, 0, .3) !important;
+  transition: transform var(--t-fast) var(--ease-out), filter var(--t-med), box-shadow var(--t-med);
+}
+:root[data-design="onyx"] .side .side-new:not(:disabled):hover { transform: none; filter: brightness(.92); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 0 4px color-mix(in srgb, var(--text) 8%, transparent) !important; }
+:root[data-design="onyx"] .side-new:active { transform: scale(.98); }
+:root[data-design="onyx"] .side-new kbd { box-shadow: none; opacity: .55; color: inherit; }
+:root[data-design="onyx"] .side-new svg { transition: transform var(--t-med) var(--spring); }
+:root[data-design="onyx"] .side-new:hover svg { transform: rotate(90deg); }
+
+:root[data-design="onyx"] .side-scroll { margin-top: 8px; padding-top: 4px; border-top: 0; }
+:root[data-design="onyx"] .side .side-label { padding: 14px 8px 4px; font-size: 11px; font-weight: 500; color: var(--text-3); letter-spacing: 0; }
+:root[data-design="onyx"] .side .side-row {
+  height: 28px; padding: 0 8px; gap: 9px; border-radius: 7px; font-size: 12.5px; font-weight: 450; color: var(--text-2);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+:root[data-design="onyx"] .side .side-row:hover { background: var(--hover-bg); color: var(--text); }
+:root[data-design="onyx"] .side .side-row.is-on { background: transparent; box-shadow: none; color: var(--text); }
+:root[data-design="onyx"] .side-ico { width: 16px; height: 16px; color: var(--text-3); transition: color var(--t-fast), transform var(--t-med) var(--spring); }
+:root[data-design="onyx"] .side-ico svg { width: 15px; height: 15px; }
+:root[data-design="onyx"] .side-row:hover .side-ico { color: var(--text); transform: translateX(1px) scale(1.06); }
+:root[data-design="onyx"] .side-row.is-on .side-ico { color: var(--text) !important; }
+/* The selection: a soft raised pill with an accent tick that slides from row to row (motion layoutId). */
+:root[data-design="onyx"] .side-hub-on {
+  border-radius: 7px; background: var(--active-bg) !important; background-image: none !important;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight) !important;
+}
+:root[data-design="onyx"] .side-hub-on::before {
+  left: -8px; top: 7px; bottom: 7px; width: 2px; border-radius: 0 2px 2px 0;
+  background: var(--amber); box-shadow: 0 0 8px var(--accent-glow);
+}
+:root[data-design="onyx"] .side-row em { min-width: 17px; height: 17px; font-size: 10px; font-weight: 650; }
+:root[data-design="onyx"] .side-row em.is-wait { background: color-mix(in srgb, var(--wait) 18%, transparent) !important; color: var(--wait); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 40%, transparent); }
+:root[data-design="onyx"] .side-row em.is-live { background: color-mix(in srgb, var(--amber) 18%, transparent) !important; background-image: none !important; color: var(--accent-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent); animation: none; }
+:root[data-design="onyx"] .side-run { height: 26px; padding: 0 8px; border-radius: 7px; font-size: 12px; transition: background var(--t-fast), color var(--t-fast), padding var(--t-med) var(--ease-out); }
+:root[data-design="onyx"] .side-run:hover { padding-left: 10px; }
+:root[data-design="onyx"] .side-run.is-on { background: var(--active-bg); }
+:root[data-design="onyx"] .side-dot { width: 6px; height: 6px; }
+:root[data-design="onyx"] .side-dot.is-live { background: var(--amber); animation: onyx-ping 1.8s var(--ease-out) infinite; }
+:root[data-design="onyx"] .side-dot.is-wait { background: var(--wait); }
+:root[data-design="onyx"] .side-dot.is-done { background: color-mix(in srgb, var(--ok) 60%, var(--text-3)); }
+:root[data-design="onyx"] .side-foot { padding-top: 6px; border-top: 1px solid var(--line); }
+:root[data-design="onyx"] .side-foot kbd { box-shadow: none; }
+:root[data-design="onyx"] .side-fold, :root[data-design="onyx"] .rail-unfold { width: 26px; height: 26px; border-radius: 7px; }
+
+/* The slim rail. */
+:root[data-design="onyx"] .hub { width: 52px; padding: 8px 0 6px; border-radius: 10px; }
+:root[data-design="onyx"] .hub-on { border-radius: 10px; background: var(--active-bg) !important; box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight) !important; }
+:root[data-design="onyx"] .hub.is-on, :root[data-design="onyx"] .hub.is-on .hub-icon { color: var(--text); }
+:root[data-design="onyx"] .hub-label { font-size: 10px; font-weight: 500; }
+
+/* ── Hub tabs: an editor's tab strip ────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] .hub-tabs { height: 40px; padding: 0 12px; gap: 1px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--sunken) 40%, var(--ink)); }
+:root[data-design="onyx"] .hub-title { font-size: 12.5px; font-weight: 600; }
+:root[data-design="onyx"] .hub-tab { height: 28px; padding: 0 11px; border-radius: 7px; font-size: 12.5px; color: var(--text-3); }
+:root[data-design="onyx"] .hub-tab:hover { color: var(--text); background: var(--hover-bg); }
+:root[data-design="onyx"] .hub-tab.is-on { color: var(--text) !important; }
+:root[data-design="onyx"] .hub-tab-on { border-radius: 7px; background: var(--active-bg) !important; background-image: none !important; box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight) !important; }
+:root[data-design="onyx"] .hub-tab-on::after { display: block; content: ""; position: absolute; left: 10px; right: 10px; bottom: -7px; height: 1.5px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 10px var(--accent-glow); }
+
+/* The strip under the tabs: where you are, and Spark. */
+:root[data-design="onyx"] .workspace-companion { min-height: 38px; padding: 4px 20px; border-bottom: 1px solid var(--line); }
+:root[data-design="onyx"] .workspace-location { font-size: 11.5px; letter-spacing: 0; color: var(--text-3); }
+:root[data-design="onyx"] .workspace-suggestion { background: transparent; box-shadow: inset 0 0 0 1px var(--line); border-radius: 7px; padding: 4px 9px; }
+:root[data-design="onyx"] .workspace-suggestion:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+
+/* ── Page headers ───────────────────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] .pane-header h1 { font-size: 22px !important; font-weight: 600; letter-spacing: -.025em; color: var(--text) !important; }
+:root[data-design="onyx"] :is(.hero-title, .guide-hero h1, .spk-hello h2) {
+  letter-spacing: -.035em; font-weight: 600;
+  background: linear-gradient(180deg, var(--text) 40%, color-mix(in srgb, var(--text) 55%, transparent)); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+:root[data-design="onyx"] .workspace-frame :is(.pane-header, .today-head, .floor-head) { border-bottom-color: var(--line); }
+
+/* ── Surfaces: one material for every card ──────────────────────────────────────────────────── */
+:root[data-design="onyx"] :is(.settings-card, .pane-state, .ui-panel, .vn-card, .pb-card, .member-card, .art-card, .pol-card, .pol-tester,
+  .today-lanes-box, .island-tile, .wg-tile, .spark-record, .brief, .crew-cta, .lib-row, .pb-row, .tl-card, .sheet, .card,
+  .spark-today, .routines, .crew-perf, .health-alerts li, .getting-started, .hero-idea, .theme-card, .settings-link-card, .stat-chip) {
+  background: var(--panel) !important; background-image: none !important; border-color: transparent !important; border-radius: var(--radius-card);
+  box-shadow: var(--edge) !important;
+  transition: box-shadow var(--t-med) var(--ease-out), transform var(--t-med) var(--ease-out), background var(--t-med) !important;
+}
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row, .hero-idea, .settings-link-card, .theme-card, .tl-card, .pb-row):hover {
+  box-shadow: var(--edge-strong), var(--lift) !important; transform: translateY(var(--interaction-lift));
+}
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row, .hero-idea, .settings-link-card, .theme-card):active { transform: translateY(0) scale(.995); transition-duration: var(--t-fast) !important; }
+:root[data-design="onyx"] :is(.board-col, .vn-lane) { background: color-mix(in srgb, var(--sunken) 60%, var(--ink)) !important; box-shadow: inset 0 0 0 1px var(--line) !important; border-radius: 12px; }
+:root[data-design="onyx"] .workspace-frame :is(.pane-state, .empty-hero) { background: var(--panel) !important; }
+
+/* The cursor's light: cards glow where the pointer is, and their edge brightens nearest it (useSpotlight). */
+:root[data-design="onyx"] .spot::after { background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--amber) 7%, transparent), transparent 55%); }
+:root[data-design="onyx"] .spot::before { background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--amber) 55%, transparent), color-mix(in srgb, var(--accent-2) 20%, transparent) 40%, transparent 65%); }
+
+/* ── Work in the conversation ───────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] .work-group { border-radius: 10px; border-color: var(--line); background: color-mix(in srgb, var(--panel) 70%, transparent); transition: border-color var(--t-med), box-shadow var(--t-med); }
+:root[data-design="onyx"] .work-group:hover { border-color: var(--line-strong); }
+:root[data-design="onyx"] .work-group > button:hover { border-radius: 10px; background: var(--hover-bg); }
+:root[data-design="onyx"] .work-group.is-live { position: relative; border-color: transparent; box-shadow: none;
+  background: linear-gradient(var(--panel), var(--panel)) padding-box, conic-gradient(from var(--ring, 0deg), var(--amber), transparent 30%, transparent 70%, var(--accent-2), var(--amber)) border-box;
+  border: 1px solid transparent; animation: onyx-spin 3.2s linear infinite; }
+:root[data-design="onyx"] :is(.code-block, .shell-card, .file-card) { border-radius: 10px; }
+:root[data-design="onyx"] .approval-card { border-radius: 12px; border-color: color-mix(in srgb, var(--wait) 40%, transparent); background: color-mix(in srgb, var(--wait) 5%, var(--panel)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wait) 6%, transparent); animation: onyx-attention 2.4s ease-in-out infinite; }
+:root[data-design="onyx"] .approval-card.is-decided { animation: none; }
+:root[data-design="onyx"] .prose-agent a, :root[data-design="onyx"] .settings-kicker { color: var(--accent-text); }
+:root[data-design="onyx"] .prose-agent code { border-radius: 5px; background: color-mix(in srgb, var(--text) 6%, transparent); border-color: var(--line); }
+:root[data-design="onyx"] .shimmer-text { background-image: linear-gradient(90deg, var(--text-3) 0%, var(--text-2) 35%, var(--text) 50%, var(--text-2) 65%, var(--text-3) 100%); }
+:root[data-design="onyx"] .stream-caret { width: 2px; border-radius: 1px; background: var(--amber); box-shadow: 0 0 6px var(--accent-glow); }
+/* New turns slide up into place. */
+:root[data-design="onyx"] :is(.turn, .chat-turn, .msg, .buddy-msg) { animation: onyx-rise var(--t-slow) var(--ease-out) both; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] :is(button, a, [role="button"], [role="tab"], [role="option"]) { -webkit-tap-highlight-color: transparent; }
+:root[data-design="onyx"] :is(.ui-btn, .tb-btn, .settings-reset, .hub-tab, .side-row, .hero-idea, .spark-btn, .island-pill):active:not(:disabled) { transform: scale(.97); }
+:root[data-design="onyx"] :is(.ui-btn, .tb-btn, .settings-reset) { transition: transform var(--t-fast) var(--ease-out), background var(--t-fast), box-shadow var(--t-med), filter var(--t-med); border-radius: 8px; }
+:root[data-design="onyx"] :is(.ui-btn[data-variant="primary"], .wel-next, .guide-ask, .spark-reach-go, .term-suggest .term-suggest-go, .spk-mini-step button.is-go, .term-block-actions .is-run):not(:disabled) {
+  background: var(--primary-bg) !important; background-image: none !important; color: var(--primary-fg) !important; border-color: transparent !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 1px 2px rgba(0, 0, 0, .3) !important;
+}
+:root[data-design="onyx"] :is(.ui-btn[data-variant="primary"], .wel-next, .guide-ask, .spark-reach-go):not(:disabled):hover { transform: none; filter: brightness(.9); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 0 4px color-mix(in srgb, var(--text) 9%, transparent) !important; }
+:root[data-design="onyx"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset) { background: transparent !important; box-shadow: inset 0 0 0 1px var(--line-strong) !important; border-color: transparent !important; }
+:root[data-design="onyx"] :is(.ui-btn[data-variant="quiet"], .tb-btn, .settings-reset):hover { background: var(--hover-bg) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent) !important; }
+/* The send button is the accent, round, and springs when it becomes ready. */
+:root[data-design="onyx"] :is(.buddy-send, .composer-box button[type="submit"]):not(:disabled) {
+  background: var(--amber) !important; background-image: none !important; color: var(--on-accent) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 60%, transparent), 0 4px 14px -4px var(--accent-glow) !important;
+  animation: onyx-ready var(--t-slow) var(--spring) both;
+}
+:root[data-design="onyx"] :is(.buddy-send, .composer-box button[type="submit"]):not(:disabled):hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+/* ── Inputs and the composer ────────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] :is(input[type="text"], input[type="search"], input:not([type]), textarea, select):not(.composer-box *):not([cmdk-input]) { border-radius: 8px; }
+:root[data-design="onyx"] .composer-box:not(.chat-composer), :root[data-design="onyx"] .chat-composer {
+  border-radius: 14px !important; background: var(--panel) !important; border-color: transparent !important;
+  box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 var(--highlight), var(--lift) !important;
+  transition: box-shadow var(--t-med) var(--ease-out);
+}
+:root[data-design="onyx"] :is(.composer-box:not(.chat-composer), .chat-composer):hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 16%, transparent), inset 0 1px 0 var(--highlight), var(--lift) !important; }
+/* In it: a ring of light runs once around the edge, then holds as a soft accent glow. */
+:root[data-design="onyx"] :is(.hero-sheet .composer-box, .spk .chat-composer, .terminal-ask, .composer-box):focus-within {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
+    conic-gradient(from var(--ring), color-mix(in srgb, var(--amber) 90%, #fff), var(--accent-2), var(--accent-3), color-mix(in srgb, var(--amber) 90%, #fff)) border-box !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 10%, transparent), 0 16px 40px -18px var(--accent-glow) !important;
+  animation: ring-turn 1.4s var(--ease-out) 1;
+}
+:root[data-design="onyx"] .composer-tools > button { border-radius: 7px; transition: background var(--t-fast), color var(--t-fast); }
+:root[data-design="onyx"] .composer-tools > button:hover { background: var(--hover-bg); }
+
+/* ── Command palette, menus, sheets: they spring in from where you asked ────────────────────── */
+/* ⌘K: the workspace softens behind it; the sheet floats, lit along its top edge. */
+:root[data-design="onyx"] .cmd-scrim { background: color-mix(in srgb, var(--sunken) 45%, transparent) !important; -webkit-backdrop-filter: blur(6px) saturate(120%); backdrop-filter: blur(6px) saturate(120%); }
+:root[data-design="onyx"] .cmd-sheet { width: 660px; border: 0 !important; border-radius: 14px !important; background: var(--float) !important; box-shadow: var(--float-shadow), inset 0 1px 0 var(--highlight) !important; position: relative; }
+:root[data-design="onyx"] .cmd-sheet::before { content: ""; position: absolute; inset: 0 0 auto; height: 1px; z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--amber) 70%, transparent), color-mix(in srgb, var(--accent-2) 55%, transparent), transparent); }
+:root[data-design="onyx"] .cmd-sheet [cmdk-input] { border-bottom-color: var(--line) !important; }
+:root[data-design="onyx"] .cmd-sheet [cmdk-input]:focus-visible { outline: none; }
+:root[data-design="onyx"] [cmdk-input] { height: 48px; font-size: 14.5px !important; }
+:root[data-design="onyx"] [cmdk-item] { border-radius: 8px !important; height: 34px; padding-block: 0 !important; transition: background var(--t-fast); }
+:root[data-design="onyx"] [cmdk-item][data-selected="true"] { background: var(--active-bg) !important; box-shadow: inset 0 0 0 1px var(--line) !important; }
+:root[data-design="onyx"] [cmdk-item][data-selected="true"] svg { color: var(--accent-text); }
+:root[data-design="onyx"] [cmdk-group-heading] { text-transform: none !important; letter-spacing: 0 !important; font-weight: 500 !important; font-size: 11px !important; }
+:root[data-design="onyx"] :is([role="menu"], [role="listbox"]:not([cmdk-list]), [data-radix-popper-content-wrapper] > *) {
+  border-radius: 10px; background: var(--float) !important; box-shadow: var(--float-shadow) !important; border-color: transparent !important;
+  animation: onyx-pop var(--t-med) var(--spring) both;
+}
+:root[data-design="onyx"] :is([role="dialog"], .sheet-panel, .launch-sheet) { border-radius: 14px; }
+:root[data-design="onyx"] kbd, :root[data-design="onyx"] .ui-kbd {
+  font-family: var(--font-ui); font-size: 10.5px; border-radius: 4px; padding: 0 4px; min-width: 16px;
+  background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text) 8%, transparent); border: 0;
+}
+
+/* ── Badges, chips and status ───────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"] .hub-badge.is-live { background: var(--amber) !important; background-image: none !important; color: var(--on-accent); animation: onyx-ping 1.8s var(--ease-out) infinite; }
+:root[data-design="onyx"] .hub-badge.is-wait { background: var(--wait); color: #1a1000; }
+:root[data-design="onyx"] .island-dot.is-live { --ping: var(--ok); background: var(--ok); animation: onyx-ping 2s var(--ease-out) infinite; }
+:root[data-design="onyx"] .pulse-dot { animation: onyx-ping 1.6s var(--ease-out) infinite; }
+:root[data-design="onyx"] .breathing { animation: onyx-breathe 2.4s ease-in-out infinite; }
+
+/* ── Toasts and floating cards rise in ──────────────────────────────────────────────────────── */
+:root[data-design="onyx"] :is(.approval-toast, .toast, .win-toast) { border-radius: 12px; background: var(--float) !important; box-shadow: var(--float-shadow) !important; animation: onyx-toast var(--t-slow) var(--spring) both; }
+
+/* ── Lists arrive one after another (the first dozen; the rest are already in place) ────────── */
+:root[data-design="onyx"] :is(.side-group, .side-recent) > :is(a, button) { animation: onyx-slide-in var(--t-slow) var(--ease-out) both; }
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, .hero-idea, .lib-row, .settings-card, .tl-card, .pb-row, .board-col) { animation: onyx-rise var(--t-slow) var(--ease-out) both; }
+:root[data-design="onyx"] :is(.side-group, .side-recent) > :nth-child(2) { animation-delay: 15ms; }
+:root[data-design="onyx"] :is(.side-group, .side-recent) > :nth-child(3) { animation-delay: 30ms; }
+:root[data-design="onyx"] :is(.side-group, .side-recent) > :nth-child(4) { animation-delay: 45ms; }
+:root[data-design="onyx"] :is(.side-group, .side-recent) > :nth-child(5) { animation-delay: 60ms; }
+:root[data-design="onyx"] :is(.side-group, .side-recent) > :nth-child(n+6) { animation-delay: 75ms; }
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, .hero-idea, .lib-row, .settings-card, .tl-card, .pb-row, .board-col):nth-child(2) { animation-delay: 30ms; }
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, .hero-idea, .lib-row, .settings-card, .tl-card, .pb-row, .board-col):nth-child(3) { animation-delay: 60ms; }
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, .hero-idea, .lib-row, .settings-card, .tl-card, .pb-row, .board-col):nth-child(4) { animation-delay: 90ms; }
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, .hero-idea, .lib-row, .settings-card, .tl-card, .pb-row, .board-col):nth-child(5) { animation-delay: 120ms; }
+:root[data-design="onyx"] :is(.vn-card, .pb-card, .member-card, .art-card, .hero-idea, .lib-row, .settings-card, .tl-card, .pb-row, .board-col):nth-child(n+6) { animation-delay: 150ms; }
+
+/* ── Keyframes ──────────────────────────────────────────────────────────────────────────────── */
+/* Transform-only entrances: if WebKit holds an occluded window's animations, everything is still in place and legible. */
+@keyframes onyx-rise { from { transform: translateY(6px); } to { transform: none; } }
+@keyframes onyx-slide-in { from { transform: translateX(-4px); } to { transform: none; } }
+@keyframes onyx-pop { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes onyx-toast { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes onyx-ready { 0% { transform: scale(.8); } 100% { transform: none; } }
+/* A ring that leaves the dot and fades: "this is live". --ping picks its colour (the accent unless set). */
+@keyframes onyx-ping {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ping, var(--amber)) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ping, var(--amber)) 0%, transparent); }
+}
+@keyframes onyx-breathe { 0%, 100% { box-shadow: 0 0 0 1px var(--amber), 0 0 0 0 var(--amber-soft); } 50% { box-shadow: 0 0 0 1px var(--amber), 0 0 0 6px var(--amber-soft); } }
+@keyframes onyx-attention { 0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--wait) 6%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--wait) 12%, transparent); } }
+@property --ring { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes onyx-spin { to { --ring: 360deg; } }
+
+/* ── Rest and Reduce motion ─────────────────────────────────────────────────────────────────── */
+:root[data-design="onyx"][data-idle] :is(.hero-mark, .side-dot.is-live, .side-brand-text small i, .work-group.is-live, .approval-card, .hub-badge.is-live, .island-dot.is-live) { animation-play-state: paused !important; }
+:root[data-design="onyx"][data-idle] .workspace-card::after { animation-play-state: paused !important; }
+:root[data-design="onyx"][data-motion="reduced"] *, :root[data-design="onyx"][data-motion="reduced"] *::before, :root[data-design="onyx"][data-motion="reduced"] *::after { animation: none !important; transition-duration: .01ms !important; }
+:root[data-design="onyx"][data-motion="reduced"] :is(.vn-card, .pb-card, .member-card, .art-card, a.lib-row, .hero-idea, .settings-link-card, .theme-card):hover { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="onyx"]:not([data-motion="full"]) *, :root[data-design="onyx"]:not([data-motion="full"]) *::before, :root[data-design="onyx"]:not([data-motion="full"]) *::after { animation: none !important; }
+}
+
+/* ══ Conversation-first layout (ChatGPT-style home and thread, editor-style chrome) ═══════════════ */
+
+/* Fields inside a composer never draw their own focus box: the composer's ring is the focus. */
+:root[data-design="onyx"] :is(.composer-box, .chat-composer, .buddy-input, .spark-nook-ask, .pane-search, .coach-input) :is(input, textarea):focus-visible { outline: none !important; box-shadow: none !important; }
+
+/* Home: the greeting and the box, centred in the page; what needs you and your day follow below. */
+:root[data-design="onyx"] .hero-core { display: flex; flex-direction: column; gap: 0; }
+:root[data-design="onyx"] .hero-ask { display: flex; flex-direction: column; align-items: stretch; min-height: min(62vh, 560px); justify-content: center; padding-top: 4vh; }
+:root[data-design="onyx"] .hero-mark { width: 44px; height: 44px; margin: 0 auto 6px; filter: drop-shadow(0 10px 24px color-mix(in srgb, var(--amber) 30%, transparent)); animation: onyx-float 6s ease-in-out infinite; }
+:root[data-design="onyx"] .hero-title { margin-top: 14px; font-size: clamp(22px, 2.4vw, 30px); line-height: 1.2; text-wrap: balance; }
+:root[data-design="onyx"] .hero-sub { margin: 8px auto 26px; max-width: 520px; text-align: center; font-size: 13.5px; color: var(--text-3); }
+@keyframes onyx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+/* The composer is a soft pill: roomy, its tools tucked along the bottom, the send button a solid circle. */
+:root[data-design="onyx"] .hero-sheet .composer-box { border-radius: 26px !important; padding: 16px 16px 10px 20px; }
+:root[data-design="onyx"] .hero-sheet .composer-box textarea { font-size: 15px; min-height: 28px; }
+:root[data-design="onyx"] .composer-box button[type="submit"] { width: 34px; height: 34px; border-radius: 999px; }
+:root[data-design="onyx"] :is(.composer-box button[type="submit"], .buddy-send):not(:disabled) {
+  background: var(--primary-bg) !important; color: var(--primary-fg) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent), 0 4px 14px -4px color-mix(in srgb, var(--text) 30%, transparent) !important;
+}
+:root[data-design="onyx"] :is(.composer-box button[type="submit"], .buddy-send):disabled { background: color-mix(in srgb, var(--text) 8%, transparent) !important; color: var(--text-3) !important; box-shadow: none !important; }
+
+/* Ways in: rounded chips in a row under the box, like suggestions should be. */
+:root[data-design="onyx"] .hero-ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+@media (max-width: 760px) { :root[data-design="onyx"] .hero-ideas { grid-template-columns: minmax(0, 1fr); } }
+:root[data-design="onyx"] .hero-idea { min-width: 0; padding: 7px 14px 7px 9px !important; border-radius: 999px !important; font-size: 12.5px; color: var(--text-2); background: transparent !important; box-shadow: inset 0 0 0 1px var(--line-strong) !important; }
+:root[data-design="onyx"] .hero-idea > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-line-clamp: unset; }
+:root[data-design="onyx"] .hero-idea:hover { color: var(--text); background: var(--hover-bg) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent) !important; }
+:root[data-design="onyx"] .hero-idea-icon { width: 22px; height: 22px; border-radius: 999px; background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--accent-text); }
+:root[data-design="onyx"] .hero-idea-go { display: none; }
+:root[data-design="onyx"] .hero-below { display: grid; gap: 12px; margin-top: 28px; }
+:root[data-design="onyx"] .hero-below > * { margin: 0 !important; }
+:root[data-design="onyx"] .needs-you { border-radius: 14px !important; }
+
+/* The thread: one centred reading column. Your words in a soft bubble; the crew's as plain, roomy prose. */
+:root[data-design="onyx"] { --chat-width: 760px; }
+:root[data-design="onyx"] .user-bubble {
+  border: 0; border-radius: 22px; padding: 10px 18px; font-size: 14.5px; line-height: 1.6;
+  background: color-mix(in srgb, var(--text) 8%, var(--ink)); box-shadow: none; max-width: 75%;
+  animation: onyx-bubble .42s var(--spring) both; transform-origin: 100% 100%;
+}
+@keyframes onyx-bubble { from { transform: translateY(8px) scale(.96); } to { transform: none; } }
+:root[data-design="onyx"] .prose-agent { font-size: 15px; line-height: 1.72; }
+:root[data-design="onyx"] .msg-actions { opacity: 0; transition: opacity var(--t-med); }
+:root[data-design="onyx"] :is(.turn, .chat-turn, [data-turn]):hover .msg-actions, :root[data-design="onyx"] .msg-actions:focus-within { opacity: 1; }
+/* The reply box floats over the bottom of the thread, the conversation fading out beneath it. */
+:root[data-design="onyx"] .sessions-layout .sheet[aria-label="Conversation"] .composer-box { border-radius: 24px !important; padding: 14px 14px 8px 18px; }
+:root[data-design="onyx"] .sessions-layout .sheet[aria-label="Conversation"] > header { border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 85%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+:root[data-design="onyx"] .sessions-layout .sheet[aria-label="Conversation"] > header h1 { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+
+/* Spark's panel: the same pill composer and bubble language. */
+:root[data-design="onyx"] .spk .chat-composer { border-radius: 22px !important; }
+:root[data-design="onyx"] .spk .buddy-msg.is-you { background: color-mix(in srgb, var(--text) 8%, var(--ink)) !important; background-image: none !important; border-radius: 20px; color: var(--text); }
+:root[data-design="onyx"] .spk-starters > button, :root[data-design="onyx"] .spk-starter { border-radius: 12px; transition: background var(--t-fast), transform var(--t-med) var(--spring), box-shadow var(--t-med); }
+:root[data-design="onyx"] :is(.spk-starters > button, .spk-starter):hover { transform: translateX(2px); }
+
+/* ══ Approvals: one card in front, the rest stacked behind (any design) ═══════════════════════════ */
+.approval-stack { position: fixed; }
+.approval-stack.is-stacked .approval-toast.is-behind { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; overflow: hidden; }
+.approval-stack.is-stacked .approval-toast.is-behind > * { visibility: hidden; }
+.approval-more { align-self: flex-end; margin-bottom: 18px; padding: 3px 10px; border-radius: 999px; font-size: 11px; color: var(--text-2); background: var(--float, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong); pointer-events: auto; }
+:root[data-design="onyx"] .approval-toast { background: var(--float) !important; box-shadow: var(--float-shadow) !important; border: 0 !important; border-radius: 14px !important; }
+:root[data-design="onyx"] .approval-toast > div:last-child > button:first-child { background: var(--primary-bg); color: var(--primary-fg); border-radius: 7px; }

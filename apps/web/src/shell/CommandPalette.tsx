@@ -56,7 +56,7 @@ export function CommandPalette() {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/35 pt-[14vh]"
+          className="cmd-scrim fixed inset-0 z-50 flex items-start justify-center bg-black/35 pt-[14vh]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -68,7 +68,7 @@ export function CommandPalette() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 500, damping: 40 }}
-            className="w-[640px] max-w-[92vw] overflow-hidden rounded-[var(--radius-l)] border border-line-strong backdrop-blur-xl"
+            className="cmd-sheet w-[640px] max-w-[92vw] overflow-hidden rounded-[var(--radius-l)] border border-line-strong backdrop-blur-xl"
             style={{ background: "var(--glass)", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}
           >
             <Command label="Command palette" loop onKeyDown={(e) => e.key === "Escape" && close()}>

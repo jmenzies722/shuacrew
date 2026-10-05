@@ -53,3 +53,25 @@ describe("the Pristine move", () => {
     expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "midnight", accent: "blue" }, true, store())).toMatchObject({ dark: "midnight", accent: "blue" }); // yours stays
   });
 });
+
+describe("the Onyx move", () => {
+  const store = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }; };
+  it("is the default for new setups", async () => {
+    const { DEFAULT_APPEARANCE } = await import("./appearance");
+    expect(DEFAULT_APPEARANCE).toMatchObject({ dark: "onyx", light: "porcelain", accent: "azure" });
+  });
+  it("moves only the previous defaults, once", async () => {
+    const { migrateToOnyx, DEFAULT_APPEARANCE } = await import("./appearance");
+    const s = store();
+    expect(migrateToOnyx({ ...DEFAULT_APPEARANCE, palette: "pristine", dark: "pristine", light: "daylight", accent: "iris" }, true, s))
+      .toMatchObject({ palette: "onyx", dark: "onyx", light: "porcelain", accent: "azure" });
+    expect(migrateToOnyx({ ...DEFAULT_APPEARANCE, dark: "pristine", accent: "iris" }, true, s)).toMatchObject({ dark: "pristine", accent: "iris" }); // already moved
+    expect(migrateToOnyx({ ...DEFAULT_APPEARANCE, palette: "midnight", dark: "carbon", light: "sand", accent: "coral" }, true, store()))
+      .toMatchObject({ palette: "midnight", dark: "carbon", light: "sand", accent: "coral" }); // yours stays
+  });
+  it("doesn't re-run the Pristine move after the Onyx one", async () => {
+    const { migrateToPristine, DEFAULT_APPEARANCE } = await import("./appearance");
+    const s = store(); s.setItem("shuacrew.design", "onyx");
+    expect(migrateToPristine({ ...DEFAULT_APPEARANCE, dark: "frost", accent: "amber" }, true, s)).toMatchObject({ dark: "frost", accent: "amber" });
+  });
+});
