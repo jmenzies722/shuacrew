@@ -59,11 +59,12 @@ export function HubRail() {
   const badge = (id: Hub["id"]) => (id === "home" && waiting ? { tone: "wait", n: waiting } : id === "crew" && working ? { tone: "live", n: working } : null);
   const item = (id: string, label: string, Icon: typeof House, onClick: () => void, title: string, b: { tone: string; n: number } | null = null) => {
     const on = here === id;
-    return <button key={id} type="button" className={`hub ${on ? "is-on" : ""}`} aria-current={on ? "page" : undefined} onClick={onClick} title={title}>
+    return <button key={id} type="button" className={`hub ${on ? "is-on" : ""}`} aria-current={on ? "page" : undefined} onClick={onClick} aria-label={title}>
       {on && <motion.span layoutId="hub-on" className="hub-on" transition={{ type: "spring", stiffness: 560, damping: 40 }} />}
       {on && <motion.span layoutId="hub-bar" className="hub-bar" aria-hidden transition={{ type: "spring", stiffness: 520, damping: 36 }} />}
       <span className="hub-icon"><Icon size={19} strokeWidth={1.75} />{b && <em className={`hub-badge is-${b.tone}`}>{b.n}</em>}</span>
-      <span className="hub-label">{label}</span>
+      {/* Icons only on the rail; the name slides out as a tooltip on hover or keyboard focus. */}
+      <span className="hub-label" aria-hidden>{label}{title.includes("⌘") && <kbd>{title.slice(title.lastIndexOf("⌘"))}</kbd>}</span>
     </button>;
   };
   return <nav className="hub-rail" aria-label="Hubs">
