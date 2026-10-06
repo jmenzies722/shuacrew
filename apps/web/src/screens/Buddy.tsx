@@ -29,6 +29,7 @@ import { crewRef } from "../lib/crew-voice";
 import { companionControl, completionClaim, focusContext, loadFocus, saveFocus, recordActionTiming, type ConversationFocus } from "../lib/companion-reliability";
 import { Teaching } from "./Teaching";
 import "../components/chat-composer.css";
+import "./shua-panel.css";
 import { useTeaching, pausePractice } from "../lib/teaching";
 import { CompanionModelPicker, modelPreference } from "../components/CompanionModelPicker";
 import { setSparkFull, takeSparkSuggestion, watchSparkSuggestion } from "../lib/spark-panel";
@@ -896,7 +897,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         api<{ due: number; profile?: { goal?: string } }>("/api/learning").catch(() => null),
       ]);
       const desc = w ? describe(w.code, w.day) : null;
-      const text = morningBriefLine({ now: Date.now(), name: prefsRef.current.nickname || undefined, agenda: agenda.current, finished, approvals: Object.keys(live.approvals).length,
+      const text = morningBriefLine({ now: Date.now(), agenda: agenda.current, finished, approvals: Object.keys(live.approvals).length,
         due: learn?.due ?? 0, goal: learn?.profile?.goal?.trim() || undefined,
         weather: w && desc ? { temp: w.temp, label: desc.label, hi: w.hi, lo: w.lo, rainSoon: w.hours.slice(0, 6).some((h) => h.rain >= 50) } : null });
       return text;
@@ -1273,7 +1274,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const generation = askGen.current, request = {id:crypto.randomUUID(),started:performance.now()};
       speech.current.unlock();
       recordActionTiming({request:request.id,route:"direct",started:request.started,dispatched:performance.now()});
-      await runInstant(move, (a) => { recordActionTiming({request:request.id,route:"direct",started:request.started,completed:performance.now()}); setBrief({q,a}); speech.current.say(a); clearSubmittedDraft(); }, {fact: (what) => answerFact(what), setRadio,soundsVolume:sounds.volume,requestId:request.id,active:()=>generation===askGen.current});
+      await runInstant(move, (a) => { recordActionTiming({request:request.id,route:"direct",started:request.started,completed:performance.now()}); setBrief({q,a}); if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `INSTANT ${Math.round(performance.now() - request.started)}ms ${move.kind}: ${a}` }); if (liveVoiceRef.current) news.add(a, () => true); else speech.current.say(a); clearSubmittedDraft(); }, {fact: (what) => answerFact(what), setRadio,soundsVolume:sounds.volume,requestId:request.id,active:()=>generation===askGen.current});
       return;
     }
     if (status === "awaiting_approval") { setError("Approve or decline the waiting step first."); return; }

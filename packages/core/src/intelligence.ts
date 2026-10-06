@@ -5,6 +5,8 @@ export const IntelligenceRequestSchema = z.object({
   purpose: z.enum(["work", "conversation"]), images: z.boolean(),
   preferredRuntime: z.string().max(60).optional(), preferredModel: z.string().max(100).optional(),
   tier: z.enum(["fast", "balanced", "frontier"]), localModel: z.string().max(100).optional(),
+  /** "fastest": skip the assistant's brain order and take whichever connected model starts talking soonest (measured). */
+  speed: z.enum(["fastest"]).optional(),
 });
 export type IntelligenceRequest = z.infer<typeof IntelligenceRequestSchema>;
 export type IntelligenceChoice =

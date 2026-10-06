@@ -115,7 +115,7 @@ export class Supervisor {
   updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
   intelligence(request: IntelligenceRequest) {
     // Spark's Auto follows its brain order (Codex, then Claude), so the page and launch() never disagree on who answers.
-    if (request.purpose === "conversation" && request.mode === "auto" && !request.preferredRuntime && !request.preferredModel) {
+    if (request.purpose === "conversation" && request.mode === "auto" && !request.preferredRuntime && !request.preferredModel && request.speed !== "fastest") {
       const brain = this.assistantRuntime();
       if (brain) request = { ...request, preferredRuntime: brain };
     }

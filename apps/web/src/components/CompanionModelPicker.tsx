@@ -4,6 +4,8 @@ import { useCompanion, saveCompanion } from "../lib/companion";
 import { selectIntelligence } from "../lib/intelligence";
 export const modelPreference = (choice: string) => {
   const i = choice.indexOf(":");
+  // "fastest": no pin, so the gateway picks whichever connected model is answering fastest right now (it measures).
+  if (choice === "fastest") return { speed: "fastest" as const };
   return i > 0 && choice.slice(0,i) === "codex" ? { preferredRuntime: "codex", preferredModel: choice.slice(i + 1) } : { preferredRuntime: "codex" };
 };
 type Provider = {
@@ -60,6 +62,7 @@ export function CompanionModelPicker({ teaching = false }: { teaching?: boolean 
         }
       >
         <option value="">{teaching ? "Auto · Codex visual teaching" : "Auto · best Codex model per question"}</option>
+        {!teaching && <option value="fastest">Auto · fastest available (uses Claude too)</option>}
         {providers
           .filter((p) => p.id === "codex")
           .map((p) => (

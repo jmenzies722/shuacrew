@@ -50,7 +50,7 @@ export function Today() {
   const learnStreak = streak(new Set((learn?.days ?? []).filter((d) => d.reviews > 0).map((d) => d.day)), new Date(now));
   const sky = skyAt(now), w = weather ? describe(weather.code, weather.day) : null;
 
-  const brief = morningBrief({ now: new Date(now), name: prefs.nickname || undefined, goal: learn?.profile?.goal, finished: finishedToday.map((r) => r.title), waiting: approvals.length, due,
+  const brief = morningBrief({ now: new Date(now), goal: learn?.profile?.goal, finished: finishedToday.map((r) => r.title), waiting: approvals.length, due,
     ventures: Object.values(crew.ventures ?? {}).map((v) => ({ name: (v as { name: string }).name, stage: (v as { stage: string }).stage })), running: running.length,
     meetings: events.filter((e) => !e.allDay && e.end > now).map((e) => ({ title: e.title, time: hhmm(e.start) })) });
   const headline = approvals.length ? `${approvals.length} decision${approvals.length === 1 ? " needs" : "s need"} you`

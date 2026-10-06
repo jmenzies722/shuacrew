@@ -92,6 +92,6 @@ export function morningBriefLine(o: {
   if (o.finished.length === 1) s.push(`Overnight, ${o.finished[0]}.`);
   else if (o.finished.length > 1) s.push(`Overnight the crew finished ${o.finished.length} things.`);
   if (o.approvals) s.push(`${o.approvals} decision${o.approvals === 1 ? " is" : "s are"} waiting on you.`);
-  if (o.due) s.push(`You have ${o.due} card${o.due === 1 ? "" : "s"} to review${o.goal ? ` toward ${o.goal}` : ""}, about ${Math.max(1, Math.round(o.due * 0.4))} minutes.`);
+  if (o.due) s.push(`You have ${o.due} card${o.due === 1 ? "" : "s"} to review${o.goal ? ` toward ${o.goal}` : ""}, ${o.due * 0.4 < 1.5 ? "about a minute" : `about ${Math.round(o.due * 0.4)} minutes`}.`);
   return s.join(" ");
 }
