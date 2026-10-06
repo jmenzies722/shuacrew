@@ -471,3 +471,10 @@ it("reads a press inside ShuaCrew", () => {
   expect(parseActions('```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"}]```')).toEqual([{ type: "go", path: "/floor" }, { type: "ui", press: "Above" }]);
   expect(parseActions('```do [{"type":"ui","press":""}]```')).toEqual([]);
 });
+
+it("tells the follow-through what that reply already did after opening", () => {
+  const ask = followThroughAsk("ShuaCrew’s Studio floor page", "go to the floor, press Above, then tell me", ["Press “Above” in ShuaCrew (Pressed “Above” on Studio floor)"]);
+  expect(ask).toContain("already did: Press “Above” in ShuaCrew");
+  expect(ask).toContain("Don't repeat those.");
+  expect(followThroughAsk("x", "y")).not.toContain("already did");
+});

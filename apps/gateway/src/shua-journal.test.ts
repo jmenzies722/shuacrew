@@ -37,3 +37,7 @@ it("reports voice speed as p50 and p90 by nearest rank", async () => {
   expect(s).toMatchObject({ count: 3, p50: 1200, p90: 2400, best: 800, last: 2400 });
   expect(s.byMode.live).toEqual({ count: 2, p50: 800 });
 });
+
+it("journals in-app presses by name", () => {
+  expect(toEntry({ kind: "ui", how: "name", label: "Above", ok: true, message: "Pressed “Above” on Studio floor", app: "ShuaCrew", ms: 120 }, 1)).toMatchObject({ kind: "ui", how: "name", ok: true });
+});

@@ -9,7 +9,7 @@ import type { FastifyInstance } from "fastify";
 
 export interface JournalEntry {
   at: number;
-  /** press · click · type · key · scroll */
+  /** press · click · type · key · scroll · ui (a press inside ShuaCrew by name) */
   kind: string;
   /** How the target was found: an exact numbered item, by name, or by position. */
   how: "target" | "name" | "position" | "none";
@@ -34,7 +34,7 @@ export interface JournalStats {
 }
 
 const MAX = 5000;
-const KINDS = new Set(["press", "click", "type", "key", "scroll"]);
+const KINDS = new Set(["press", "click", "type", "key", "scroll", "ui"]);
 const HOWS = new Set(["target", "name", "position", "none"]);
 const str = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
 

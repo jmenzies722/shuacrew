@@ -817,8 +817,10 @@ export function needsFollowThrough(q: string, reply: string): boolean {
 }
 
 /** The turn that finishes the job: what opened, the original ask, and a fresh look to do the rest from. */
-export function followThroughAsk(opened: string, q: string) {
-  return `Carry on.\n\n[screen] You just opened ${opened} as the first step of: “${q.slice(0, 400)}”. A fresh screenshot is attached. Now do the REST of that request on what's open — point, draw, highlight, underline, guide or act as it asks, or answer with the specifics (numbers, names, times) if it was a question. Don't open anything else unless the page is wrong for the ask; don't just describe the page.`;
+export function followThroughAsk(opened: string, q: string, already: string[] = []) {
+  // What else that reply already did after opening (measured: without this it pressed "Above" a second time).
+  const did = already.length ? ` After opening it, that same reply already did: ${already.join("; ")}. Don't repeat those.` : "";
+  return `Carry on.\n\n[screen] You just opened ${opened} as the first step of: “${q.slice(0, 400)}”.${did} A fresh screenshot is attached. Now do the REST of that request on what's open — point, draw, highlight, underline, guide or act as it asks, or answer with the specifics (numbers, names, times) if it was a question. Don't open anything else unless the page is wrong for the ask; don't just describe the page.`;
 }
 
 /**

@@ -727,10 +727,12 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           // finished and the thing has loaded, look at it and do the rest — never stop at "I'll do it once it loads".
           // The ask this is part of: your own words, not the "[act] Step 1 …" reports in between.
           const q = [...messages].reverse().find((m) => m.who === "you" && !/^(\[(act|check|zoom|screen)\]|Carry on\.)/.test(m.text))?.text.split("\n\n[screen]")[0] ?? "";
+          const openedAt = actions.findIndex((a, i) => results[i]?.ok && ["go", "open_url", "open_app", "open_path", "open_settings"].includes(a.type));
+          const already = actions.slice(openedAt + 1).map((a, i) => { const r = results[openedAt + 1 + i]; return r ? `${describeAction(a)} (${r.ok ? r.message || "done" : `FAILED: ${r.message}`})` : ""; }).filter(Boolean);
           if (!failed.length && opened && needsFollowThrough(q, text) && !looked.current.has(key)) {
             looked.current.add(key);
             // Give the page time to load, and let Spark finish its sentence first: a new turn stops the voice.
-            const go = () => { if (turn) turn.pending++; setTimeout(() => { if (turn) turn.pending--; if (active()) speech.current.whenQuiet(() => { if (active()) void askRef.current(followThroughAsk(opened, q), { look: true, ...(turn ? { origin: "live", signal: turn.request.signal } : {}) }); }); }, 3200); };
+            const go = () => { if (turn) turn.pending++; setTimeout(() => { if (turn) turn.pending--; if (active()) speech.current.whenQuiet(() => { if (active()) void askRef.current(followThroughAsk(opened, q, already), { look: true, ...(turn ? { origin: "live", signal: turn.request.signal } : {}) }); }); }, 3200); };
             if (finished.current.has(key)) go(); else carryOn.current.set(key, go);
           }
         }).catch(e => { if (active()) setError((e as Error).message); if (turn) turn.error = (e as Error).message; }).finally(() => { if (turn) turn.pending--; notifyLiveTurn(); });
