@@ -63,6 +63,12 @@ const PHONE_ROUTES: Array<[method: string, pattern: RegExp]> = [
   ["POST", new RegExp(`^/api/runs/${ID}/followup$`)],
   ["POST", new RegExp(`^/api/runs/${ID}/cancel$`)],
   ["POST", /^\/api\/speech\/synthesize$/],
+  // Shua's look (your character, as the Mac draws it) and the brief: read-only.
+  ["GET", /^\/api\/shua\/look$/],
+  ["GET", /^\/api\/brief$/],
+  // Ask the Mac's own Shua, and follow that ask (the notch's listening and taking stay on the Mac).
+  ["POST", /^\/api\/shua\/remote$/],
+  ["GET", /^\/api\/shua\/remote\/ra_[0-9a-f]{12}$/],
 ];
 
 export function phoneAllowed(method: string, path: string): boolean {
