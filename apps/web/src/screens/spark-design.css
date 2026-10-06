@@ -22,7 +22,7 @@
   background: transparent !important; box-shadow: none !important; border: 0 !important; border-radius: 0 0 28px 28px !important;
 }
 .shua-island.is-calling .shua-island-body > :is(.notch-voice-status,.notch-work-status,.notch-conversation) { display: none; }
-.shua-island.is-calling .assistant-deck:not(.assistant-permissions):not(.assistant-mission)>:not(.assistant-access-strip){display:none}
+.shua-island.is-calling .assistant-deck:not(.assistant-permissions):not(.assistant-mission)>:not(.deck-tiles){display:none}
 .buddy-thread.spk-thread.is-voice-thread-hidden{display:none}
 .buddy-card .live-panel:not(.is-error){display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0}
 .buddy-card .live-panel .live-conversation{flex:1;max-height:none}

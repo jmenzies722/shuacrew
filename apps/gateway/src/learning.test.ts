@@ -136,7 +136,7 @@ it("new cards are not stale, and untracked cards read as General", async () => {
 it("names a track whose course was removed after the course its cards came from, never its id", async () => {
   const { analyze } = await import("./learning.js");
   const l = new Learning(path.join(mkdtempSync(path.join(os.tmpdir(), "shua-learn-")), "l.json"));
-  l.addCards([{ front: "Q", back: "A" }], "k_6b4ef4bc", { run: "r_1", title: "AWS DOP-02 for AI Platform" }, now);
+  l.addCards([{ front: "Q", back: "A" }], "k_6b4ef4bc", { run: "r_1", title: "AWS DOP-02 for AI Platform · 1. Build a Secure AWS Service Foundation" }, now);
   l.addCards([{ front: "Q2", back: "A2" }], "k_orphan", {}, now);
   const names = analyze(l.get(), now).tracks.map((t) => t.name);
   expect(names).toContain("AWS DOP-02 for AI Platform");

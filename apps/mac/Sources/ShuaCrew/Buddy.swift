@@ -286,7 +286,32 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// or leave; the page opens the nook and tucks it away. A light 10 Hz check, only while docked and closed.
     private var nookTimer: Timer?
     private var pointerInNook = false
+    /// The opened conversation, docked in the notch, goes back to rest once the pointer has been away from it for
+    /// 1.2 s (the page declines while you're typing). Polls only while it's open, like the hover watch.
+    private var leaveTimer: Timer?
+    private var pointerAwaySince: TimeInterval?
+    private func updateLeaveWatch() {
+        guard docked && isOpen else { leaveTimer?.invalidate(); leaveTimer = nil; pointerAwaySince = nil; return }
+        guard leaveTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.docked, self.isOpen else { return }
+                let near = self.panel.frame.insetBy(dx: -18, dy: -18).contains(NSEvent.mouseLocation)
+                let now = ProcessInfo.processInfo.systemUptime
+                if near || NSEvent.pressedMouseButtons != 0 { self.pointerAwaySince = nil; return }
+                if self.pointerAwaySince == nil { self.pointerAwaySince = now; return }
+                if now - self.pointerAwaySince! >= 1.2 {
+                    self.pointerAwaySince = now + 3600 // once per departure: come back to arm it again
+                    self.web.evaluateJavaScript("window.buddy && window.buddy.leave && window.buddy.leave()")
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        leaveTimer = timer
+    }
+
     private func updateNookWatch() {
+        updateLeaveWatch()
         let watch = docked && !isOpen
         guard watch else { nookTimer?.invalidate(); nookTimer = nil; pointerInNook = false; return }
         guard nookTimer == nil else { return }
@@ -1227,7 +1252,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// it) and after a spoken-style ask, saved as notch-rest.png / notch-open.png beside it. The page's own pixels, so
     /// it needs no screen recording and no synthetic pointer. Only whoever launches the app can set it.
     private func notchSnapshots(_ base: String) {
-        let steps: [(String, String, Double)] = [("rest", "", 4), ("open", "window.buddy && window.buddy.nook && window.buddy.nook(true)", 2), ("closed", "window.buddy && window.buddy.nook && window.buddy.nook(false)", 1.5)]
+        let more = "document.querySelector('.isl-btn[title^=\"Missions\"]')?.click()"
+        let steps: [(String, String, Double)] = [("rest", "", 4), ("open", "window.buddy && window.buddy.nook && window.buddy.nook(true)", 2), ("more", more, 1.5), ("closed", more + "; window.buddy && window.buddy.nook && window.buddy.nook(false)", 1.5)]
         func step(_ i: Int) {
             guard i < steps.count else { return }
             let (name, script, wait) = steps[i]

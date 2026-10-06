@@ -107,6 +107,7 @@ import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
 import { classicCaptureWanted } from "../lib/live-preferences";
 import { voiceTrace } from "../lib/voice-trace";
 import { notchFocus, useLearningFocus } from "../lib/notch-focus";
+import { NotchActivity } from "../components/NotchActivity";
 
 /** The idle island's small label: what kind of thing the line is, readable at a glance. */
 const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", learn: "Get better" };
@@ -384,13 +385,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const actualRuntime = recorded?.runtime ?? convo?.runtime;
   const actualModel = recorded?.model ?? convo?.model;
   useEffect(() => {
-    if (!open) return;
+    if (!open && !islandMore) return; // the chat, or the notch's More panel, both say which brain answers
     let alive = true;
     const refresh = () => void selectIntelligence({ ask: "Shua availability", mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: false, tier: "fast" })
       .then(next => { if (alive) { setChoice(next); setChoiceError(""); } }).catch((e: Error) => { if (alive) setChoiceError(e.message); });
     refresh(); const timer = setInterval(refresh, 30_000); window.addEventListener("focus", refresh);
     return () => { alive = false; clearInterval(timer); window.removeEventListener("focus", refresh); };
-  }, [open, prefs.brain, prefs.modelChoice, prefs.localModel, limited]);
+  }, [open, islandMore, prefs.brain, prefs.modelChoice, prefs.localModel, limited]);
   const timer = useFocusTimer(), [now, setNow] = useState(Date.now());
   // Focus shows minutes, so a 10 s tick is plenty (a 1 s tick re-rendered all of Spark every second).
   useEffect(() => { if (!timer) return; setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 10_000); return () => clearInterval(t); }, [timer]);
@@ -468,6 +469,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
       notchAsk: (text: string) => { speech.current.unlock(); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
+      // The Mac app calls this when the pointer has left the opened notch for a moment: back to rest, unless you're typing.
+      leave: () => leaveOpen.current(),
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
       say: (text: string) => { speech.current.unlock(); for (const s of text.split(/(?<=[.!?])\s+/)) speech.current.say(s); },
       // Self-test (Mac app, SHUACREW_SPARK_SELFTEST=gesture:prompt): a real look, and exactly what Spark would be told
@@ -1479,6 +1482,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const greeting = hour < 5 ? "Up late?" : hour < 12 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
   const workingNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
   const learningFocus = useLearningFocus();
+  // Live activity: the crew's own work (not Shua's chat), newest first, shown under the notch while it runs.
+  const liveRuns = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("buddy") && ["running", "planning", "awaiting_approval"].includes(r.status))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
   const justFinished = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && r.status === "done" && Date.now() - r.updatedAt < 2 * 3600_000 && !r.labels?.includes("buddy"))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const idleFocus = notchFocus({ approvals, working: workingNow, justFinished: justFinished ? { id: justFinished.id, title: justFinished.title } : null, ...learningFocus, hour });
@@ -1655,9 +1661,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     onAccessibility={() => post({ type: "buddyHands", ask: true })} onControl={control => { if (control === "off") void interrupt(); saveCompanion({ ...prefs, control, autonomy: 2 }); }}
     onClose={() => setAccessOpen(false)} onManage={() => post({ type: "buddyOpen", path: "/integrations" })} />
     : <AssistantDeck state={presentation.current} connection={commandConnection} screenEnabled={see || liveOn} evidence={observationEvidence} trusted={hands.trusted} control={prefs.control}
-      background={Object.values(crew.runs).filter(r => r.id !== convo?.run && isTopLevelWork(r, crew.runs) && ["queued", "planning", "running", "awaiting_approval", "paused"].includes(r.status))} onMission={() => setMissionOpen(true)} onWorkflows={() => setWorkflowsOpen(true)} onAsk={text => void ask(text)} onStop={() => void interrupt()} onAccess={() => setAccessOpen(true)} onRun={id => post({ type: "buddyOpen", path: `/sessions/${id}` })} />;
+      background={Object.values(crew.runs).filter(r => r.id !== convo?.run && isTopLevelWork(r, crew.runs) && ["queued", "planning", "running", "awaiting_approval", "paused"].includes(r.status))} brain={choice?.runtime ? { label: `${({ claude: "Claude", codex: "Codex", local: "This Mac" } as Record<string, string>)[choice.runtime] ?? choice.runtime} · ${choice.model}`, note: /usage limit/.test(choice.reason) ? choice.reason.split(" · ")[0] : undefined } : choice ? { label: "No model right now", note: choice.reason } : undefined} onMission={() => setMissionOpen(true)} onWorkflows={() => setWorkflowsOpen(true)} onAsk={text => void ask(text)} onStop={() => void interrupt()} onAccess={() => setAccessOpen(true)} onRun={id => post({ type: "buddyOpen", path: `/sessions/${id}` })} />;
   const pointerStatus = pointerFeedback && <div className="notch-pointer-status" role="status"><MousePointer2 size={14} /><span>{pointerFeedback.message}</span>{pointerFeedback.phase === "blocked" ? <button type="button" onClick={() => showAgain(pointerFeedback.label)}>Find again</button> : pointerFeedback.phase !== "displayed" ? <button type="button" onClick={() => void interrupt()}>Cancel</button> : null}<button type="button" aria-label="Dismiss pointer feedback" onClick={() => { pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" }); }}><X size={12} /></button></div>;
-  const islandWanted = prefs.desktopPlacement === "notch" && notchPreviewWanted({ active: (call.active ? !!liveNotchText(call.feed, call.spokenText) || !!call.approval : !!(heard && (fnHeld || hearingNow || processing)) || !!(prefs.notchCaptions && ((speaking && caption) || visibleStream))) || !!error || pointerFeedback?.phase === "blocked" || !!pending || !!asking, tucked: notchTucked, expanded: islandOpen || open });
+  const islandWanted = prefs.desktopPlacement === "notch" && notchPreviewWanted({ active: (call.active ? !!liveNotchText(call.feed, call.spokenText) || !!call.approval : !!(heard && (fnHeld || hearingNow || processing)) || !!(prefs.notchCaptions && ((speaking && caption) || visibleStream))) || !!error || pointerFeedback?.phase === "blocked" || !!pending || !!asking || (prefs.notchActivities !== false && liveRuns.length > 0), tucked: notchTucked, expanded: islandOpen || open });
   // Fluid, never flickering (measured: it opened for 6–58 ms and snapped shut between a reply's sentences, clipping
   // the caption mid-animation): open at once, close only after 0.9 s of real quiet; within a reply the height only
   // grows; and in a gap it keeps showing what it last showed rather than going blank.
@@ -1686,7 +1692,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         const margins = getComputedStyle(child);
         return (child as HTMLElement).offsetHeight + (parseFloat(margins.marginTop) || 0) + (parseFloat(margins.marginBottom) || 0);
       });
-      const height = notchContentHeight(rows, (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0), parseFloat(style.rowGap) || 0, 420);
+      const height = notchContentHeight(rows, (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0), parseFloat(style.rowGap) || 0, 480);
       if (height === previous) return;
       previous = height; setIslandDrop(height); post({ type: "buddyIsland", flare: ISLAND_FLARE, drop: height });
     };
@@ -1696,6 +1702,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     return () => { ro.disconnect(); mutations.disconnect(); };
   }, [islandOpen, call.active, accessOpen, workflowsOpen, companionApprovals.length, islandTyping, islandMore]);
   const nookHover = useRef((_: boolean) => {});
+  const leaveOpen = useRef(() => {});
   const scrubbing = useRef(false);
   const scrubHold = useCallback((on: boolean) => { scrubbing.current = on; }, []);
   nookHover.current = (inside: boolean) => {
@@ -1721,6 +1728,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const islandChip = !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback ? (nextMoves[0] ?? (!messages.length ? idleFocus.ask : undefined) ?? nookStarters[0] ?? null) : null;
   const quick = nextMoves.length ? nextMoves : lastSpark && !working && !busy ? ["Tell me more", "Make it shorter", ...(see ? ["Show me on screen"] : []), ...(prefs.control !== "off" && see ? ["Do it for me"] : [])] : [];
   const close = () => { setNook(false); setMini(false); if (embedded) onClose?.(); else setOpen(false); };
+  leaveOpen.current = () => {
+    if (embedded || !open || prefs.desktopPlacement !== "notch") return;
+    const field = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    if (field && /^(INPUT|TEXTAREA)$/.test(field.tagName) && field.value.trim()) return; // mid-sentence: stay
+    if (optionsPanel.current?.open) return;
+    close();
+  };
   // Doze after 15 quiet minutes with nothing running; anything happening wakes it.
   useEffect(() => { lastStir.current = Date.now(); setSleepy(false); }, [messages.length, speaking, busy, phase, open]);
   useEffect(() => {
@@ -1732,7 +1746,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const mood = (prefs.celebration !== "off" && (cheer || eventMood === "happy")) ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : eventMood === "concerned" ? "concerned" : sleepy ? "sleepy" : "idle";
   const liveVoiceOn = prefs.voiceEngine === "live";
   const talkEnabled = call.active && call.mode === "talk" || voiceLive;
-  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""} ${call.active ? "is-calling" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${companionName(prefs)}`} onPointerDown={() => setArmed(true)} onKeyDown={(e) => {
+  const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""} ${callOwnsIsland ? "is-calling" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${companionName(prefs)}`} onPointerDown={() => setArmed(true)} onKeyDown={(e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
     e.preventDefault(); e.stopPropagation();
     if (busy || working || speaking) void interrupt(); else if (full) setSparkFull(false); else close();
@@ -1872,7 +1886,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${fnHeld ? " is-ready" : ""}${call.active ? " is-calling" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 180 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${fnHeld ? " is-ready" : ""}${callOwnsIsland ? " is-calling" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 180 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px` } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <NotchAura speaking={buddyState === "speaking"} listening={buddyState === "listening"} processing={processing || working || !!busy || call.state === "connecting" || call.state === "working" || (call.tasks ?? 0) > 0 || workflows.phase === "running"} level={readVoiceLevel} />
@@ -1894,7 +1908,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             {islandOpen && <button type="button" className="shua-island-expand" onClick={openChat} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
-        <div className="shua-island-live" ref={liveBody} aria-hidden={!islandLive} inert={!islandLive}>{call.active ? <LiveIsland textOnly /> : keepRow(
+        <div className="shua-island-live" ref={liveBody} aria-hidden={!islandLive} inert={!islandLive}>{callOwnsIsland ? <LiveIsland textOnly /> : keepRow(
           // The reading surface is reserved for words; activity stays in the hardware-height header.
           (fnHeld || hearingNow || processing) && heard ? <div className="notch-hearing"><Rolling className="notch-heard">{heard}</Rolling></div>
           : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling>
@@ -1907,7 +1921,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           : heads ? <p className={`shua-island-hint is-heads is-${heads.kind}`}>{heads.kind === "reminder" ? <Bell size={12} /> : heads.kind === "event" ? <CalendarClock size={12} /> : <Sparkles size={12} />} {heads.text}</p>
           : asking?.kind === "delete" ? <p className="shua-island-hint is-delete"><Trash2 size={12} /> {asking.command}? Say yes or no</p>
           : guide ? <p className="shua-island-hint">Step {guide.step} · {guide.label}</p>
-          : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null)}</div>
+          : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p>
+          : liveRuns[0] && prefs.notchActivities !== false ? <NotchActivity run={liveRuns[0]} more={liveRuns.length - 1} onOpen={() => (embedded ? window.shuacrew?.navigate(`/sessions/${liveRuns[0]!.id}`) : post({ type: "buddyOpen", path: `/sessions/${liveRuns[0]!.id}` }))} /> : null)}</div>
         <div className={`shua-island-body${islandMore || workflowsOpen || accessOpen || missionOpen ? " is-more" : ""}`} ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
           {/* One line, not a text box: what Shua is hearing, saying or doing right now — or your day at a glance. */}
           {!callOwnsIsland && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}${islandHero.tone ? ` is-tone-${islandHero.tone}` : ""}`} onClick={openChat} title="Open the conversation">

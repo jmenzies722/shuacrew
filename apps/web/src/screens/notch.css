@@ -81,7 +81,8 @@
 .shua-island-dot { width: 7px; height: 7px; background: var(--ok, #3fd18b); box-shadow: none; animation: n-ping 2.8s var(--n-settle) infinite; --n-ping: var(--ok, #3fd18b); }
 .shua-island-dot.is-busy { background: var(--amber); --n-ping: var(--amber); animation: n-ping 1.4s var(--n-settle) infinite; }
 @keyframes n-ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--n-ping) 60%, transparent); } 70%, 100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--n-ping) 0%, transparent); } }
-.shua-island-ear em { height: 18px; min-width: 18px; border-radius: 999px; font-size: 10.5px; font-weight: 650; font-variant-numeric: tabular-nums; animation: n-pop .5s var(--n-spring) both; }
+/* flex: none: in the narrow resting ear a badge shrank to 18px and "12" spilled out of its pill. */
+.shua-island-ear em { flex: none; white-space: nowrap; height: 18px; min-width: 18px; border-radius: 999px; font-size: 10.5px; font-weight: 650; font-variant-numeric: tabular-nums; animation: n-pop .5s var(--n-spring) both; }
 .shua-island-ear em.is-wait { color: #1a1000; background: #ffb340; --n-ping: #ffb340; animation: n-pop .5s var(--n-spring) both, n-ping 1.8s var(--n-settle) .5s infinite; }
 .shua-island-ear em.is-live { color: var(--on-accent, #fff); background: var(--amber); background-image: none; --n-ping: var(--amber); animation: n-pop .5s var(--n-spring) both, n-ping 1.8s var(--n-settle) .5s infinite; }
 .shua-island-ear em.is-timer, .shua-island-ear em.is-focus { color: #0a0a0a; background: var(--n-text); }
@@ -242,3 +243,21 @@
 :root[data-motion="reduced"] .buddy :is(.isl-hero-text, .isl-btn, .isl-kicker i, .isl-kicker i::after) { animation: none !important; }
 /* More is a mode: the line, the deck, the dock. Live cards step aside until you close it. */
 .shua-island-body.is-more > :not(.isl-hero, .isl-more, .isl-dock) { display: none; }
+
+/* Live activity: the crew's work as one slim line under the notch: dot, session, what it's doing, how long. */
+.notch-live-activity { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 30px; padding: 0 12px; border: 0; border-radius: 12px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 14%, transparent), transparent 70%); color: var(--n-text); cursor: pointer;
+  animation: n-fade-left .35s var(--n-settle) both; }
+.notch-live-activity:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 22%, transparent), rgba(255,255,255,.03) 80%); }
+.notch-live-activity > i { flex: none; position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+.notch-live-activity > i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: isl-k-ring 1.8s ease-out infinite; }
+.notch-live-activity.is-awaiting_approval > i { background: #ffb340; }
+.notch-live-activity .nla-title { flex: none; max-width: 42%; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notch-live-activity .nla-doing { flex: 1; min-width: 0; font-size: 11.5px; color: var(--n-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.notch-live-activity .nla-more { flex: none; font-size: 10.5px; font-weight: 650; color: var(--n-text-2); }
+.notch-live-activity time { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--n-text-2); }
+.notch-live-activity > svg { flex: none; color: var(--n-text-2); opacity: .7; }
+:root[data-idle] .buddy .notch-live-activity > i::after { animation: none; }
+:root[data-idle] .buddy .notch-live-activity { animation: none; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .notch-live-activity, :root:not([data-motion="full"]) .notch-live-activity > i::after { animation: none; } }
+:root[data-motion="reduced"] :is(.notch-live-activity, .notch-live-activity > i::after) { animation: none; }
