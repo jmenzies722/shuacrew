@@ -14,6 +14,8 @@ import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
 import { recentlyPlayed } from "../lib/studio";
 import { isMac, pickFolder } from "../lib/native";
+import { AskLibrary, DropLayer, SecondBrain, useDropToLearn } from "../components/LibraryExtras";
+import "./library-extras.css";
 import { Glyph } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
@@ -48,6 +50,7 @@ export function Library() {
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [open, setOpen] = useState<{ type: "artifact" | "knowledge"; id: string; file?: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  const drop = useDropToLearn();
 
   const made = useMemo(() => Object.values(artifacts).sort((a, b) => b.updatedAt - a.updatedAt), [artifacts]);
   const crate = useMemo(() => recentlyPlayed(made, Date.now(), 8), [made]);
@@ -66,8 +69,10 @@ export function Library() {
     return () => clearTimeout(t);
   }, [query, artifacts, knowledge]);
 
+  const empty = !Object.keys(artifacts).length && !Object.keys(knowledge).length;
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto relative" {...drop.bind}>
+      <DropLayer over={drop.over} status={drop.status} />
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader children={<StatStrip stats={[{ value: Object.keys(artifacts).length, label: "made by the crew" }, { value: Object.keys(knowledge).length, label: "in your knowledge" }, { value: Object.values(artifacts).filter((a) => a.createdAt > Date.now() - 7 * 86_400_000).length, label: "saved this week", tone: "ok" }]} />} eyebrow="Your collected work" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
           actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
@@ -75,6 +80,7 @@ export function Library() {
         <label className="lib-search">
           <Search size={15} className="text-fg-3" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search everything — reports, pages, your notes and docs…" aria-label="Search the library" />
+          <AskLibrary query={query} />
           {query && (
             <button onClick={() => setQuery("")} className="member-icon" aria-label="Clear search">
               <X size={13} />
@@ -82,9 +88,10 @@ export function Library() {
           )}
         </label>
 
+        {empty && !hits && <SecondBrain onWrite={() => setAdding(true)} onAdded={() => undefined} />}
         {hits ? (
           <SearchResults hits={hits} onOpen={(h) => setOpen({ type: h.type, id: h.id, file: h.type === "knowledge" && h.where !== "note" ? h.where : undefined })} />
-        ) : (
+        ) : empty ? null : (
           <>
             <div className="mb-4 mt-5 flex flex-wrap items-center gap-2">
               <div className="seg" role="tablist">
