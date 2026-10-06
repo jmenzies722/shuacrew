@@ -1,6 +1,8 @@
 import { Earnings } from "../components/Earnings";
 import { metricLabel, totalsByCurrency } from "../lib/venture-metrics";
 import "./ventures-pipe.css";
+import "./projects-home.css";
+import { FirstDollar, IdeaForge } from "../components/ProjectsHome";
 import type { PlayView, RunView, VentureStage, VentureView } from "@shuacrew/core/projections";
 import { Button, StatusGlyph, toneOf } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -45,6 +47,7 @@ const stageIndex = (s: VentureStage) => STAGES.findIndex((x) => x.id === s);
 export function Ventures() {
   const ventures = useLive((s) => s.crew.ventures), income = useLive((s) => s.crew.income);
   const [editing, setEditing] = useState<Partial<VentureView> | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null), [dropOn, setDropOn] = useState<VentureStage | null>(null);
   const list = useMemo(() => Object.values(ventures).sort((a, b) => b.updatedAt - a.updatedAt), [ventures]);
   const totals = totalsByCurrency(list);
   const open = list.filter((v) => v.stage !== "paused" && v.stage !== "stopped"), focus = open.length <= 3;
@@ -57,24 +60,25 @@ export function Ventures() {
             <Button variant="quiet" onClick={() => setEditing({})}><Plus size={14} /> New project</Button>
           </>} />
         <Earnings ventures={list} income={income} />
-        {/* A handful of ventures: each gets the room to say where it is and what's next. More than that: the pipeline. */}
-        {focus ? <div className="vn-focus-list">
-          {open.map((v) => <FocusVenture key={v.id} venture={v} />)}
-          <button type="button" className="vn-new vn-new-row" onClick={() => setEditing({})}><Plus size={15} /><strong>New project</strong><span>Name the idea and who it's for. The crew validates it first.</span></button>
-        </div> :
+        <div className="ph-top"><FirstDollar onNew={() => setEditing({})} />{open.length < 3 && <IdeaForge onStart={(draft) => setEditing(draft)} />}</div>
+        {/* A handful of ventures get the room to say where they are; the pipeline always shows the whole road. */}
+        {focus && open.length > 0 && <div className="vn-focus-list">{open.map((v) => <FocusVenture key={v.id} venture={v} />)}</div>}
         <div className="vn-pipe" role="list" aria-label="Pipeline">
           {STAGES.map((stage, i) => {
             const here = list.filter((v) => v.stage === stage.id);
-            return <section key={stage.id} className={`vn-lane ${here.length ? "has-cards" : ""}`} role="listitem" aria-label={stage.label}>
+            // Drag a project onto the next stage to move it there (the move is logged with the project's history).
+            return <section key={stage.id} className={`vn-lane ${here.length ? "has-cards" : ""}${dropOn === stage.id ? " is-drop" : ""}`} role="listitem" aria-label={stage.label}
+              onDragOver={(e) => { if (dragging) { e.preventDefault(); setDropOn(stage.id); } }} onDragLeave={() => setDropOn((d) => (d === stage.id ? null : d))}
+              onDrop={(e) => { e.preventDefault(); setDropOn(null); const id = dragging; setDragging(null); if (id && ventures[id]?.stage !== stage.id) void api(`/api/ventures/${id}/stage`, { body: { stage: stage.id, note: "moved on the board" } }); }}>
               <header><span className="vn-lane-n">{i + 1}</span><div><strong>{stage.label}</strong><small>{stage.hint}</small></div><em>{here.length}</em></header>
               <div className="vn-lane-cards">
-                {here.map((v) => <VentureCard key={v.id} venture={v} />)}
+                {here.map((v) => <div key={v.id} draggable onDragStart={(e) => { setDragging(v.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDragging(null); setDropOn(null); }} className={dragging === v.id ? "vn-dragging" : ""}><VentureCard venture={v} /></div>)}
                 {stage.id === "idea" && <button type="button" className="vn-new" onClick={() => setEditing({})}><Plus size={15} /><strong>New project</strong><span>Name the idea and who it's for. The crew validates it first.</span></button>}
                 {stage.id !== "idea" && !here.length && <div className="vn-lane-empty"><span>Next move</span>{NEXT[STAGES[i - 1]!.id]?.label ?? stage.hint}</div>}
               </div>
             </section>;
           })}
-        </div>}
+        </div>
         {list.some((v) => v.stage === "paused" || v.stage === "stopped") && <section className="vn-shelf" aria-label="On the shelf">
           <h2>On the shelf</h2>
           <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">{list.filter((v) => v.stage === "paused" || v.stage === "stopped").map((v) => <VentureCard key={v.id} venture={v} />)}</div>
