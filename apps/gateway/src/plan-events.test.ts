@@ -51,3 +51,17 @@ it("streamed reasoning is batched into a few thoughts, in order, before the repl
   const firstText = events.findIndex((e) => e.kind === "agent.delta" || e.kind === "agent.message");
   expect(lastThought).toBeLessThan(firstText);
 });
+
+it("work sessions are told to keep a plan and prove it before done", async () => {
+  const store = new EventStore(":memory:");
+  const seen: Array<{ system?: string; lean?: boolean }> = [];
+  const mock = new MockRuntime({ pace: 0 });
+  const spy: Runtime = Object.assign(Object.create(mock), { id: "codex", start: (run: { system?: string; lean?: boolean }, ctx: never) => (seen.push(run), mock.start(run as never, ctx)) });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", spy]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-habits-")), roots: [] });
+  cleanups.push(() => { supervisor.shutdown(); store.close(); });
+  supervisor.launch({ ask: "Fix the flaky upload retry test", runtime: "codex" });
+  const deadline = Date.now() + 5000;
+  while (!seen.length && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+  expect(seen[0]!.system).toContain("keep a plan with the update_plan tool");
+  expect(seen[0]!.system).toContain("Before you call anything done, prove it");
+});

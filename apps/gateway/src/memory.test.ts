@@ -72,7 +72,7 @@ describe("memory in the loop", () => {
     expect(seen.find((s) => s.id === second)?.system).toContain("use pnpm");
     const elsewhere = supervisor.launch({ ask: "Install the date-fns package", runtime: "mock", project: "/r/other" });
     await until(() => seen.some((s) => s.id === elsewhere));
-    expect(seen.find((s) => s.id === elsewhere)?.system).toBeUndefined(); // a project lesson stays in its project
+    expect(seen.find((s) => s.id === elsewhere)?.system ?? "").not.toContain("use pnpm"); // a project lesson stays in its project
 
     store.append("review.decided", { approve: true }, { run: second });
     expect(memory.view.lessons[lesson.id]).toMatchObject({ applied: 1, wins: 1, confidence: 0.68 });
@@ -97,7 +97,7 @@ describe("memory in the loop", () => {
     memory.teach("Use the injected clock in tests");
     const run = supervisor.launch({ ask: "Fix the clock in tests", runtime: "mock", incognito: true });
     await until(() => seen.some((s) => s.id === run));
-    expect(seen[0]?.system).toBeUndefined();
+    expect(seen[0]?.system ?? "").not.toContain("injected clock"); // no lesson reaches an incognito run
     expect(store.ofKinds("lesson.applied")).toHaveLength(0);
   });
 });

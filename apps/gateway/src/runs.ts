@@ -34,6 +34,7 @@ import {
 import type { ApprovalAnswer, Runtime, RunSpec, RuntimeStatus } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
+import { workHabits } from "./work-habits.js";
 import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
@@ -397,7 +398,7 @@ export class Supervisor {
       agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
       disableNativeAgents: lean || spec.labels.includes("crew-room"),
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
+      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined,
       mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
