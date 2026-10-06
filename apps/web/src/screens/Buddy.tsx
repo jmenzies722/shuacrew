@@ -61,7 +61,7 @@ import { earcon, soundStyle, warmSounds, type Earcon } from "../lib/earcons";
 import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
 import { crewAsks, crewDetail, crewFinished, lastAskedApproval, noteAsked, statuses } from "../lib/crew-voice";
-import { asksWeather, weatherForSpark } from "../lib/weather";
+import { asksWeather, weatherForSpark, loadWeather, describe } from "../lib/weather";
 import { aboutScreen, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
@@ -72,7 +72,7 @@ import { SparkCharacter } from "../components/SparkCharacter";
 import { Markdown } from "../components/Markdown";
 import { SparkWidgets } from "../components/TopBarWidgets";
 import { useNowPlaying } from "../components/NowPlaying";
-import { crewNowBlock, producerMove, studioAnswer, todaysSet } from "../lib/studio";
+import { crewNowBlock, producerMove, studioAnswer, todaysSet, type FactWhat } from "../lib/studio";
 import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
@@ -95,7 +95,7 @@ import { narrationSegments, type NarrationIdentity } from "../lib/lesson-narrati
 import { NotchAura } from "../components/NotchAura";
 import { due, getTimers, remaining, ringLine, setTimers, useTimers } from "../lib/timers";
 import { parseVisual, type Visual } from "../lib/visual";
-import { announcements, inMeeting, welcomeBack, type Agenda } from "../lib/proactive";
+import { announcements, briefDay, inMeeting, morningBriefLine, morningDue, welcomeBack, type Agenda } from "../lib/proactive";
 import { QuietAnnouncements } from "../lib/quiet-announcements";
 import { copyForPaste, pasteTarget } from "../lib/paste-hint";
 import { PasteChip } from "../components/PasteChip";
@@ -475,6 +475,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
       notchAsk: (text: string) => { speech.current.unlock(); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
+      // "Brief me" and self-tests: the morning brief, now.
+      morning: () => morningRef.current(),
       // The Mac app calls this when the pointer has left the opened notch for a moment: back to rest, unless you're typing.
       leave: () => leaveOpen.current(),
       // Speak without opening anything, sentence by sentence (captions, voice checks, the Settings preview).
@@ -780,6 +782,40 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // talks. One Spark surface says it, once (said keys are shared across surfaces and reloads).
   const [heads, setHeads] = useState<{ text: string; kind: "event" | "reminder" | "welcome" | "timer" } | null>(null);
   const agenda = useRef<Agenda | null>(null);
+  const morningRef = useRef(() => {});
+  const morningTextRef = useRef(async (_awayMs: number) => "");
+  /** Instant answers: from the clock, calendar, crew and cards Shua already holds; no model, so no wait. */
+  const answerFact = async (what: FactWhat): Promise<string> => {
+    const now = new Date(), live = useLive.getState().crew;
+    const time = (t: number | Date) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (what === "time") return `It's ${time(now)}.`;
+    if (what === "date") return `It's ${now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}.`;
+    if (what === "morning") return (await morningTextRef.current(0)) || "Good morning.";
+    if (what === "next") {
+      const a = agenda.current; if (!a) return "I can't see your calendar yet. Allow it in Settings, Access.";
+      const end = new Date(now); end.setHours(23, 59, 59, 999);
+      const next = a.events.filter((e) => !e.allDay && e.end > now.getTime() && e.start <= end.getTime()).sort((x, y) => x.start - y.start)[0];
+      if (!next) return "Nothing else on your calendar today.";
+      const mins = Math.round((next.start - now.getTime()) / 60_000);
+      return next.start <= now.getTime() ? `You're in ${next.title} until ${time(next.end)}.` : `Next up: ${next.title} at ${time(next.start)}, ${mins < 90 ? `in ${mins} minutes` : `in about ${Math.round(mins / 60)} hours`}.`;
+    }
+    if (what === "cards") {
+      const l = await api<{ due: number }>("/api/learning").catch(() => null);
+      if (!l) return "I couldn't reach your cards just now.";
+      return l.due ? `${l.due} card${l.due === 1 ? "" : "s"} due, about ${Math.max(1, Math.round(l.due * 0.4))} minutes. Say "quiz me" to start.` : "No cards due. You're caught up.";
+    }
+    const runs = Object.values(live.runs).filter((r) => isTopLevelWork(r, live.runs));
+    if (what === "crew") {
+      const busy = runs.filter((r) => ["running", "planning", "queued"].includes(r.status));
+      if (busy.length) return `${busy.length} working: ${busy.slice(0, 2).map((r) => r.title).join(" and ")}${busy.length > 2 ? `, and ${busy.length - 2} more` : ""}.`;
+      const last = runs.filter((r) => r.status === "done" || r.status === "merged").sort((x, y) => y.updatedAt - x.updatedAt)[0];
+      return last ? `The crew's idle. Last finished: ${last.title}.` : "The crew's idle.";
+    }
+    const waiting = Object.values(live.approvals);
+    if (!waiting.length) return "Nothing needs you right now.";
+    const first = waiting[0]!;
+    return `${waiting.length} decision${waiting.length === 1 ? "" : "s"} waiting. First: ${first.tool}${first.run && live.runs[first.run] ? ` in ${live.runs[first.run]!.title}` : ""}.`;
+  };
   const newsBlocked = useRef(true);
   const [news] = useState(() => new QuietAnnouncements(() => newsBlocked.current || (!liveActive() && speech.current.busy), text => {
     if (liveVoiceRef.current && !liveActive()) { startNativeLive("silent"); return false; }
@@ -848,17 +884,49 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       try { localStorage.setItem(SAID, JSON.stringify([...said, ...due.map((d) => d.key)].slice(-200))); } catch { /* ignore */ }
       announceRef.current(due.map((d) => d.text).join(" "), due[0]!.kind);
     };
+    // The morning brief: the first wake or unlock between 5 AM and noon (or launching then), once a day. Built from
+    // what's real with no model call, so it's spoken at once; the welcome-back note is folded into it.
+    const BRIEF = "shuacrew.brief.day";
+    const build = async (awayMs: number) => {
+      const live = useLive.getState().crew, since = Date.now() - Math.max(awayMs, 8 * 3_600_000);
+      const finished = Object.values(live.runs).filter((r) => (r.status === "done" || r.status === "merged") && r.updatedAt > since && isTopLevelWork(r, live.runs))
+        .map((r) => `${(r.member && live.members[r.member]?.name) || "the crew"} finished ${r.title}`);
+      const [w, learn] = await Promise.all([
+        Promise.race([loadWeather().catch(() => null), new Promise<null>((ok) => setTimeout(() => ok(null), 1500))]),
+        api<{ due: number; profile?: { goal?: string } }>("/api/learning").catch(() => null),
+      ]);
+      const desc = w ? describe(w.code, w.day) : null;
+      const text = morningBriefLine({ now: Date.now(), name: prefsRef.current.nickname || undefined, agenda: agenda.current, finished, approvals: Object.keys(live.approvals).length,
+        due: learn?.due ?? 0, goal: learn?.profile?.goal?.trim() || undefined,
+        weather: w && desc ? { temp: w.temp, label: desc.label, hi: w.hi, lo: w.lo, rainSoon: w.hours.slice(0, 6).some((h) => h.rain >= 50) } : null });
+      return text;
+    };
+    morningTextRef.current = build;
+    const morning = async (awayMs: number) => {
+      let last: string | null = null; try { last = localStorage.getItem(BRIEF); } catch { /* fresh */ }
+      if (!prefsRef.current.morningBrief || !morningDue(Date.now(), last) || !mine()) return false;
+      try { localStorage.setItem(BRIEF, briefDay(Date.now())); } catch { /* ignore */ }
+      announceRef.current(await build(awayMs), "welcome");
+      return true;
+    };
+    morningRef.current = () => { try { localStorage.removeItem(BRIEF); } catch { /* ignore */ } void morning(0); };
+    // Launched in the morning (no wake event): brief once the agenda's in.
+    const launched = setTimeout(() => void morning(0), 5000);
     const onWelcome = (e: Event) => {
-      const awayMs = Number((e as CustomEvent).detail?.awayMs) || 0, now = Date.now(), live = useLive.getState().crew;
+      const awayMs = Number((e as CustomEvent).detail?.awayMs) || 0;
+      post({ type: "buddyAgenda" });
+      void (async () => { await new Promise((r) => setTimeout(r, 1200)); if (await morning(awayMs)) return; welcome(awayMs); })();
+    };
+    const welcome = (awayMs: number) => {
+      const now = Date.now(), live = useLive.getState().crew;
       const finished = Object.values(live.runs).filter((r) => (r.status === "done" || r.status === "merged") && r.updatedAt > now - awayMs && !r.labels?.includes("buddy"))
         .map((r) => `${(r.member && live.members[r.member]?.name) || "The crew"} finished ${r.title}`);
-      post({ type: "buddyAgenda" }); // fresh "next up"
-      setTimeout(() => { const text = welcomeBack({ awayMs, now, finished, approvals: Object.keys(live.approvals).length, agenda: agenda.current }); if (text && mine()) announceRef.current(text, "welcome"); }, 1200);
+      const text = welcomeBack({ awayMs, now, finished, approvals: Object.keys(live.approvals).length, agenda: agenda.current }); if (text && mine()) announceRef.current(text, "welcome");
     };
     window.addEventListener("shuacrew:agenda", onAgenda); window.addEventListener("shuacrew:welcome", onWelcome);
     post({ type: "buddyAgenda" });
     const every = setInterval(() => post({ type: "buddyAgenda" }), 60_000);
-    return () => { clearInterval(every); window.removeEventListener("shuacrew:agenda", onAgenda); window.removeEventListener("shuacrew:welcome", onWelcome); };
+    return () => { clearInterval(every); clearTimeout(launched); window.removeEventListener("shuacrew:agenda", onAgenda); window.removeEventListener("shuacrew:welcome", onWelcome); };
   }, [embedded, prefs.proactive, prefs.headsUpMinutes]);
   const announceCompletion = async (id: string) => {
     const run = useLive.getState().crew.runs[id];
@@ -1205,7 +1273,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const generation = askGen.current, request = {id:crypto.randomUUID(),started:performance.now()};
       speech.current.unlock();
       recordActionTiming({request:request.id,route:"direct",started:request.started,dispatched:performance.now()});
-      await runInstant(move, (a) => { recordActionTiming({request:request.id,route:"direct",started:request.started,completed:performance.now()}); setBrief({q,a}); speech.current.say(a); clearSubmittedDraft(); }, {setRadio,soundsVolume:sounds.volume,requestId:request.id,active:()=>generation===askGen.current});
+      await runInstant(move, (a) => { recordActionTiming({request:request.id,route:"direct",started:request.started,completed:performance.now()}); setBrief({q,a}); speech.current.say(a); clearSubmittedDraft(); }, {fact: (what) => answerFact(what), setRadio,soundsVolume:sounds.volume,requestId:request.id,active:()=>generation===askGen.current});
       return;
     }
     if (status === "awaiting_approval") { setError("Approve or decline the waiting step first."); return; }

@@ -65,3 +65,33 @@ export function welcomeBack(o: { awayMs: number; now: number; finished: string[]
   const list = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
   return `Welcome back. ${list[0]!.toUpperCase()}${list.slice(1)}.`;
 }
+
+/** Time for the morning brief: 5 AM to noon, once a day (the caller keeps the day it last ran). */
+export function morningDue(now: number, lastDay: string | null): boolean {
+  const d = new Date(now), h = d.getHours();
+  return h >= 5 && h < 12 && lastDay !== `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+export const briefDay = (now: number) => { const d = new Date(now); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+
+/**
+ * The morning brief, spoken: built only from what's real (no model), so it's instant. Short sentences, the most
+ * useful first; anything empty is left out rather than said as "nothing".
+ */
+export function morningBriefLine(o: {
+  now: number; name?: string; weather?: { temp: number; label: string; hi?: number; lo?: number; rainSoon?: boolean } | null;
+  agenda: Agenda | null; finished: string[]; approvals: number; due: number; goal?: string;
+}): string {
+  const s: string[] = [];
+  s.push(`Good morning${o.name ? `, ${o.name}` : ""}.`);
+  if (o.weather) s.push(`It's ${Math.round(o.weather.temp)} degrees and ${o.weather.label.toLowerCase()}${o.weather.hi !== undefined ? `, up to ${Math.round(o.weather.hi)}` : ""}${o.weather.rainSoon ? ", with rain on the way" : ""}.`);
+  const day0 = new Date(o.now); day0.setHours(23, 59, 59, 999);
+  const meetings = (o.agenda?.events ?? []).filter((e) => !e.allDay && e.end > o.now && e.start <= day0.getTime()).sort((a, b) => a.start - b.start);
+  if (meetings.length === 1) s.push(`One meeting today: ${meetings[0]!.title} at ${clock(meetings[0]!.start)}.`);
+  else if (meetings.length > 1) s.push(`${meetings.length} meetings today, starting with ${meetings[0]!.title} at ${clock(meetings[0]!.start)}.`);
+  else if (o.agenda) s.push("Your calendar's clear.");
+  if (o.finished.length === 1) s.push(`Overnight, ${o.finished[0]}.`);
+  else if (o.finished.length > 1) s.push(`Overnight the crew finished ${o.finished.length} things.`);
+  if (o.approvals) s.push(`${o.approvals} decision${o.approvals === 1 ? " is" : "s are"} waiting on you.`);
+  if (o.due) s.push(`You have ${o.due} card${o.due === 1 ? "" : "s"} to review${o.goal ? ` toward ${o.goal}` : ""}, about ${Math.max(1, Math.round(o.due * 0.4))} minutes.`);
+  return s.join(" ");
+}
