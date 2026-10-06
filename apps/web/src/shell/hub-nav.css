@@ -226,3 +226,5 @@
 @media (prefers-reduced-motion: reduce) { .hub-label { transition: opacity .1s; transform: translate(0, -50%); } }
 /* Tooltips stick out of the rail: it must not clip them (nine icons fit any window height). */
 .hub-rail, .rail-wrap { overflow: visible; }
+/* The main panel is the rail's next sibling in the workspace grid and painted over its tooltips: lift the rail. */
+.rail-wrap { position: relative; z-index: 60; }

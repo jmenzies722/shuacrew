@@ -1,0 +1,56 @@
+/* Learn, Today tab: one next step, your path to the goal, learning from your own work, where you stand. Nothing else. */
+.lt { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+.lt-stat { margin: -8px 0 0; font-size: 13px; color: var(--text-3); }
+.lt-kicker { display: block; font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+.lt-go { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 99px; border: 0; background: var(--amber); color: var(--on-accent, #fff); font-size: 13.5px; font-weight: 650; cursor: pointer; white-space: nowrap; transition: transform .15s, filter .15s; }
+.lt-go:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.lt-go:disabled { opacity: .55; transform: none; }
+
+.lt-next { position: relative; overflow: hidden; isolation: isolate; padding: 20px 22px; border-radius: 22px; border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--line));
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 60%), var(--raised, rgba(255,255,255,.03)); }
+.lt-next-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 16px; align-items: center; }
+.lt-next-row > i { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); }
+.lt-next h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.015em; color: var(--text); }
+.lt-next p { margin: 3px 0 0; font-size: 13px; color: var(--text-2); }
+.lt-then { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lt-then > span { font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin-right: 4px; }
+.lt-then button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 99px; border: 1px solid var(--line); background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-then button:hover { color: var(--text); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); }
+
+.lt-path { padding: 20px 22px; border-radius: 22px; border: 1px solid var(--line); background: var(--raised, rgba(255,255,255,.03)); }
+.lt-path > header { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-bottom: 14px; }
+.lt-path h2 { margin: 0; font-size: 18px; font-weight: 650; color: var(--text); }
+.lt-path header small { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.lt-track { position: relative; display: flex; align-items: center; gap: 0; list-style: none; margin: 4px 0 18px; padding: 0 0 22px; }
+.lt-track li { position: relative; flex: 1; display: flex; align-items: center; }
+.lt-track li::before { content: ""; flex: 1; height: 3px; border-radius: 3px; background: var(--line); }
+.lt-track li:first-child::before { flex: 0 0 0; }
+.lt-track li > i { flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--panel, #141418); box-shadow: inset 0 0 0 2px var(--line); }
+.lt-track li.is-done::before, .lt-track li.is-now::before { background: var(--amber); }
+.lt-track li.is-done > i { background: var(--amber); box-shadow: none; }
+.lt-track li.is-now > i { width: 18px; height: 18px; background: var(--panel, #141418); box-shadow: inset 0 0 0 3px var(--amber), 0 0 0 6px color-mix(in srgb, var(--amber) 18%, transparent); animation: lt-now 2.4s ease-in-out infinite; }
+.lt-track li > span { position: absolute; right: 0; top: 22px; transform: translateX(calc(50% - 9px)); font-size: 11.5px; font-weight: 600; color: var(--amber); white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+@keyframes lt-now { 50% { box-shadow: inset 0 0 0 3px var(--amber), 0 0 0 10px color-mix(in srgb, var(--amber) 8%, transparent); } }
+.lt-milestone { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; padding: 14px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 3%, transparent); border: 1px solid var(--line); }
+.lt-milestone strong { font-size: 15px; color: var(--text); }
+.lt-milestone p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.lt-project b { color: var(--text); }
+.lt-skills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.lt-skills span { padding: 3px 9px; border-radius: 99px; font-size: 11px; color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.lt-milestone-actions { display: grid; gap: 6px; }
+.lt-milestone-actions button { height: 32px; padding: 0 14px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.lt-milestone-actions .is-quiet { border-color: var(--line); background: transparent; color: var(--text-2); font-weight: 500; }
+.lt-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.lt-empty p { margin: 0; max-width: 560px; font-size: 13.5px; line-height: 1.55; color: var(--text-2); }
+.lt-empty button:disabled:not(.lt-go) { height: 38px; padding: 0 16px; border-radius: 99px; border: 1px dashed var(--line); background: transparent; color: var(--text-2); }
+
+.lt-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 980px) { .lt-cols { grid-template-columns: 1fr; } }
+.lt-work, .lt-stand { padding: 18px 20px; border-radius: 22px; border: 1px solid var(--line); background: var(--raised, rgba(255,255,255,.03)); display: grid; gap: 8px; align-content: start; }
+.lt-work button { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-radius: 14px; border: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.lt-work button:hover { border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); background: color-mix(in srgb, var(--amber) 5%, transparent); }
+.lt-work button span { display: grid; gap: 2px; min-width: 0; }
+.lt-work strong { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-work small { font-size: 12px; color: var(--text-3); }
+:root[data-idle] .lt-track li.is-now > i { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .lt-track li.is-now > i { animation: none; } }

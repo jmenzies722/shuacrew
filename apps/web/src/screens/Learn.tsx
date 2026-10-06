@@ -6,12 +6,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, BookOpen, Brain, Flame, GraduationCap, Library, Presentation, RotateCcw, Sparkles, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { api } from "../lib/api";
+import { useLive } from "../lib/live";
 import { learningProgress } from "../lib/learning-progress";
 import { companionName, useCompanion } from "../lib/companion";
 import { Learning, type Tab as LibraryTab } from "./Learning";
 import { Teaching } from "./Teaching";
 import { LearningProjects } from "../components/LearningProjects";
 import "./learn.css";
+import "./learn-today.css";
 
 type Mode = "today" | "explain" | "library";
 interface Track { id: string; name: string; level: number; cards: number; due: number; reviews: number; accuracy: number | null; lapses: number; stale: boolean }
@@ -21,13 +23,16 @@ interface Insights {
   roadmap: { title: string; done: number; total: number; next: string | null } | null;
 }
 interface Course { id: string; title: string; topic: string; lessons: Array<{ title: string; done: boolean }> }
-interface State { profile: { goal: string }; courses: Course[] }
+interface Milestone { title: string; why: string; skills: string[]; project: string; weeks: number; done?: boolean }
+interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
+interface State { profile: { goal: string }; courses: Course[]; roadmaps?: Roadmap[] }
 interface Step { id: string; icon: typeof Brain; title: string; why: string; cta: string; run: () => Promise<void> | void }
 
 const pct = (n: number | null) => (n === null ? "–" : `${Math.round(n * 100)}%`);
 
 export function Learn({ initial = "today" }: { initial?: Mode }) {
   const name = companionName(useCompanion());
+  const runs = useLive((s) => s.crew.runs);
   const [mode, setMode] = useState<Mode>(initial);
   const [libraryTab, setLibraryTab] = useState<LibraryTab | undefined>();
   const [insights, setInsights] = useState<Insights | null>(null), [state, setState] = useState<State | null>(null);
@@ -70,8 +75,20 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
     );
   }
   const scored = insights?.tracks.filter((t) => t.reviews > 0).sort((a, b) => (a.accuracy ?? 1) - (b.accuracy ?? 1)) ?? [];
-  const headline = !insights ? "" : insights.weakest && scored.length ? `Your weakest area is ${insights.weakest.name}. Let's close it.`
-    : insights.due ? `${insights.due} card${insights.due === 1 ? " is" : "s are"} ready: right on time.` : "Let's find where you really are.";
+  const goal = state?.profile.goal.trim() ?? "";
+  // "Weakest" only means something with two or more scored tracks and a real gap.
+  const weakGap = scored.length >= 2 && (scored[0]!.accuracy ?? 1) < 0.8 ? scored[0]! : null;
+  const headline = !insights ? "" : weakGap ? `Close the gap in ${weakGap.name}` : goal ? `Becoming a ${goal}` : insights.due ? `${insights.due} card${insights.due === 1 ? " is" : "s are"} ready` : "Let's find where you really are";
+  const statLine = insights ? [insights.due ? `${insights.due} due` : "All caught up", insights.week.reviews ? `${insights.week.reviews} reviewed this week` : null, insights.week.accuracy !== null ? `${pct(insights.week.accuracy)} right` : null].filter(Boolean).join(" · ") : "";
+  // Your path: the newest roadmap for the goal you have now that has milestones; one still being written shows as such.
+  const roadmaps = [...(state?.roadmaps ?? [])].filter((r) => r.goal.trim().toLowerCase() === goal.toLowerCase()).sort((a, b) => b.created - a.created);
+  const path = roadmaps.find((r) => r.milestones.length > 0);
+  const building = !path && roadmaps[0] && runs[roadmaps[0].run] && ["queued", "planning", "running"].includes(runs[roadmaps[0].run]!.status);
+  const current = path ? path.milestones.findIndex((m) => !m.done) : -1;
+  // What the crew finished today, ready to become cards.
+  const worked = Object.values(runs).filter((r) => (r.status === "done" || r.status === "merged") && !r.labels?.some((l) => l === "buddy" || l === "learning") && Date.now() - r.updatedAt < 36 * 3600_000)
+    .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
+  const [first, ...then] = plan;
 
   return <div className="pane-scroll learn"><div className="pane-body pane-body-wide">
     <header className="learn-head">
@@ -82,30 +99,62 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
       </nav>
     </header>
     {error && <p className="lx-error" role="alert">{error}</p>}
-    {mode === "today" && <div className="learn-today">
-      <section className="learn-plan" aria-label="Today's plan">
-        {plan.map((step, i) => <article key={step.id} className={`learn-step${i === 0 ? " is-first" : ""}`}>
-          <i className="learn-step-ico"><step.icon size={17} /></i>
-          <div><strong>{step.title}</strong><p>{step.why}</p></div>
-          <button type="button" disabled={!!busy} onClick={() => void step.run()}>{busy === step.id ? "Starting…" : step.cta}<ArrowRight size={14} /></button>
-        </article>)}
-        {!insights && <p className="learn-muted">Reading your progress…</p>}
+    {mode === "today" && <div className="lt">
+      {statLine && <p className="lt-stat">{statLine}</p>}
+      {first && <section className="lt-next" aria-label="Next up">
+        <span className="lt-kicker">Next up</span>
+        <div className="lt-next-row">
+          <i><first.icon size={20} /></i>
+          <div><h2>{first.title}</h2><p>{first.why}</p></div>
+          <button type="button" className="lt-go" disabled={!!busy} onClick={() => void first.run()}>{busy === first.id ? "Starting…" : first.cta}<ArrowRight size={15} /></button>
+        </div>
+        {then.length > 0 && <div className="lt-then"><span>Then</span>{then.map((step) => <button key={step.id} type="button" disabled={!!busy} onClick={() => void step.run()}><step.icon size={13} />{busy === step.id ? "Starting…" : step.title}</button>)}</div>}
+      </section>}
+
+      <section className="lt-path" aria-label="Your path">
+        <header><div><span className="lt-kicker">Your path</span><h2>{path ? (path.title || `${path.months} months to ${goal}`) : goal ? `A plan to become a ${goal}` : "Where are you headed?"}</h2></div>
+          {path && <small>{path.milestones.filter((m) => m.done).length} of {path.milestones.length} milestones</small>}</header>
+        {path ? <>
+          <ol className="lt-track">{path.milestones.map((m, i) => <li key={i} className={m.done ? "is-done" : i === current ? "is-now" : ""} title={m.title}><i />{i === current && <span>{m.title.replace(/^\d+\.\s*/, "")}</span>}</li>)}</ol>
+          {current >= 0 && <div className="lt-milestone">
+            <div><strong>{path.milestones[current]!.title.replace(/^\d+\.\s*/, "")}</strong><p>{path.milestones[current]!.why}</p>
+              {path.milestones[current]!.project && <p className="lt-project"><b>Prove it:</b> {path.milestones[current]!.project}</p>}
+              <div className="lt-skills">{path.milestones[current]!.skills.slice(0, 6).map((k) => <span key={k}>{k}</span>)}</div></div>
+            <div className="lt-milestone-actions">
+              <button type="button" disabled={!!busy} onClick={() => void run("course", async () => { await api("/api/learning/courses", { body: { topic: path.milestones[current]!.title.replace(/^\d+\.\s*/, "") } }); open("learn"); })}>{busy === "course" ? "Starting…" : "Start a course on it"}</button>
+              <button type="button" className="is-quiet" onClick={() => void run("done", async () => { await api(`/api/learning/roadmaps/${path.id}/milestones/${current}`, { body: { done: true } }); await load(); })}>Mark done</button>
+            </div>
+          </div>}
+        </> : <div className="lt-empty">
+          <p>{building ? `${name} is writing your roadmap now: milestones, the skills each builds, and a project that proves it.` : goal ? `A realistic plan with milestones, the skills each builds, and one project per step that proves it.` : "Tell me what you're working toward and I'll plan the way there."}</p>
+          {building ? <button type="button" disabled>Building your roadmap…</button>
+            : goal ? <button type="button" className="lt-go" disabled={!!busy} onClick={() => void run("roadmap", async () => { await api("/api/learning/roadmaps", { body: { goal, months: 6 } }); await load(); })}>{busy === "roadmap" ? "Starting…" : "Build my roadmap"}<ArrowRight size={15} /></button>
+            : <button type="button" className="lt-go" onClick={() => open("profile")}>Set my goal<ArrowRight size={15} /></button>}
+        </div>}
       </section>
-      <aside className="learn-stand" aria-label="Where you stand">
-        <header><h2>Where you stand</h2>{insights && insights.week.reviews > 0 && <span className={insights.week.change >= 0 ? "is-up" : "is-down"}>{insights.week.change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{insights.week.reviews} this week · {pct(insights.week.accuracy)}</span>}</header>
-        {scored.length ? <ul className="learn-skills">{scored.slice(0, 6).map((t) => <li key={t.id}>
-          <span><b>{t.name}</b>{t.stale && <em>stale</em>}</span>
-          <i className="learn-bar"><i style={{ width: `${Math.round((t.accuracy ?? 0) * 100)}%` }} data-tone={(t.accuracy ?? 0) < 0.6 ? "low" : (t.accuracy ?? 0) < 0.8 ? "mid" : "high"} /></i>
-          <small>{pct(t.accuracy)}</small>
-        </li>)}</ul> : <p className="learn-muted">No graded answers yet. One review or quiz and this fills in with real numbers.</p>}
-        {insights && insights.hardest.length > 0 && <div className="learn-hardest"><h3>You keep missing</h3>{insights.hardest.slice(0, 3).map((h) => <p key={h.front}>{h.front}<small>{h.lapses}×</small></p>)}</div>}
-        <button type="button" className="learn-ask" disabled={!!busy} onClick={() => void run("analyze", async () => { await api("/api/learning/coach", { body: { mode: "analyze", fresh: true } }); open("coach"); })}>
-          <Sparkles size={13} />{busy === "analyze" ? "Thinking…" : `Ask ${name} what to focus on`}</button>
-      </aside>
+
+      <div className="lt-cols">
+        <section className="lt-work" aria-label="Learn from your work">
+          <span className="lt-kicker">Learn from your work</span>
+          {worked.length ? worked.map((r) => <button key={r.id} type="button" disabled={!!busy} onClick={() => void run(`study:${r.id}`, async () => { await api("/api/learning/study", { body: { run: r.id } }); open("coach"); })}>
+            <span><strong>{r.title}</strong><small>{busy === `study:${r.id}` ? "Writing cards…" : "Turn it into 3–6 cards"}</small></span><ArrowRight size={14} /></button>)
+            : <p className="learn-muted">When your crew finishes something, it shows up here, ready to become cards from your own real work.</p>}
+        </section>
+        <aside className="lt-stand" aria-label="Where you stand">
+          <span className="lt-kicker">Where you stand</span>
+          {scored.length ? <ul className="learn-skills">{scored.slice(0, 5).map((t) => <li key={t.id}>
+            <span><b>{t.name}</b>{t.stale && <em>stale</em>}</span>
+            <i className="learn-bar"><i style={{ width: `${Math.round((t.accuracy ?? 0) * 100)}%` }} data-tone={(t.accuracy ?? 0) < 0.6 ? "low" : (t.accuracy ?? 0) < 0.8 ? "mid" : "high"} /></i>
+            <small>{pct(t.accuracy)}</small>
+          </li>)}</ul> : <p className="learn-muted">One review or quiz and this fills in with real numbers.</p>}
+          {insights && insights.hardest.length > 0 && <div className="learn-hardest"><h3>You keep missing</h3>{insights.hardest.slice(0, 3).map((h) => <p key={h.front}>{h.front}<small>{h.lapses}×</small></p>)}</div>}
+          <button type="button" className="learn-ask" disabled={!!busy} onClick={() => void run("analyze", async () => { await api("/api/learning/coach", { body: { mode: "analyze", fresh: true } }); open("coach"); })}>
+            <Sparkles size={13} />{busy === "analyze" ? "Thinking…" : `Ask ${name} what to focus on`}</button>
+        </aside>
+      </div>
     </div>}
-    {mode === "today" && <LearningProjects />}
     {mode === "explain" && <Teaching bare />}
-    {mode === "library" && <Learning embedded initialTab={libraryTab} />}
+    {mode === "library" && <><LearningProjects /><Learning embedded initialTab={libraryTab} /></>}
   </div></div>;
 }
 
