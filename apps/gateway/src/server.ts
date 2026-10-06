@@ -581,6 +581,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     return { ok: true };
   });
 
+  // Backlog: start a parked session; it joins the queue and runs like any other.
+  app.post<{ Params: { id: string } }>("/api/runs/:id/start", async (request, reply) =>
+    supervisor.startBacklog(request.params.id) ? { ok: true } : reply.code(409).send({ error: "that session isn't waiting in your backlog" }));
+
   app.post<{ Params: { id: string }; Body: { priority?: number } }>("/api/runs/:id/priority", async (request) => {
     store.append("run.priority", { priority: Number(request.body?.priority ?? 0) }, { run: request.params.id });
     supervisor.pump();

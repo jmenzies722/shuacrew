@@ -40,6 +40,7 @@ import { selectIntelligence } from "./intelligence.js";
 import type { LatencyBook } from "./latency.js";
 import { inputDigest } from "./mobile/digest.js";
 
+const BACKLOG = "In your backlog: start it when you're ready";
 export interface LaunchSpec {
   baseCommit?: string;
   ask: string;
@@ -55,6 +56,8 @@ export interface LaunchSpec {
   incognito?: boolean;
   /** Record the run but never execute it (a task's parent: its steps do the work). */
   hold?: boolean;
+  /** Put it in the backlog: parked (paused, labelled "backlog") until you start it. Never started by the queue. */
+  later?: boolean;
   /** Work in the repo itself — spec drafts, not a branch. */
   inPlace?: boolean;
   forkOf?: { run: string; turn: number; commit?: string };
@@ -208,7 +211,7 @@ export class Supervisor {
         effort: spec.effort,
         parent: spec.parent,
         // "held" is part of the fact, so a restart knows never to execute this run itself.
-        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : []), ...(spec.inPlace ? ["in-place"] : [])],
+        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : []), ...(spec.later ? ["backlog"] : []), ...(spec.inPlace ? ["in-place"] : [])],
         incognito: spec.incognito ?? false,
         forkOf: spec.forkOf,
         member: member ? spec.member : undefined,
@@ -220,7 +223,8 @@ export class Supervisor {
       this.approveAll.add(id);
       this.rec("run.permission", { mode: "auto" }, { run: id });
     }
-    if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
+    if (spec.later) this.rec("run.status", { status: "paused", reason: BACKLOG }, { run: id });
+    else if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
     else if (spec.forkOf) this.rec("run.status", { status: "done", reason: "forked — waiting for your first message" }, { run: id });
     else queueMicrotask(() => this.pump());
     return id;
@@ -638,7 +642,7 @@ export class Supervisor {
       clearTimeout(this.resumeTimers.get(key)); this.resumeTimers.delete(key);
     }
     for (const run of this.projectRuns()) {
-      if (run.status !== "paused" || this.currentRuntime(run.id, run.runtime) !== runtime) continue;
+      if (run.status !== "paused" || this.currentRuntime(run.id, run.runtime) !== runtime || this.inBacklog(run.id)) continue;
       const wanted = this.modelFor(run.id, runtime, run.model);
       if (model && wanted !== model) continue;
       if (this.limitedUntil(runtime, wanted) > Date.now()) continue;
@@ -663,6 +667,23 @@ export class Supervisor {
    * outright, and runs paused on them go again. Oct 5: Codex was reset by hand but stayed "limited until Oct 11".
    */
   usageAvailable(runtime: string): void { this.accountsChanged(runtime); }
+
+  /** Still in the backlog: launched with later and not started since. */
+  inBacklog(id: string): boolean {
+    const run = this.projectRuns().find((r) => r.id === id);
+    if (!run || run.status !== "paused" || !run.labels.includes("backlog")) return false;
+    // Paused for the backlog, not for a usage window after it was started: the latest status says which.
+    const last = this.store.forRun(id).filter((e) => e.kind === "run.status").at(-1);
+    return last?.kind === "run.status" && last.body.reason === BACKLOG;
+  }
+
+  /** Start a backlog item: into the real queue, where it runs like any other session. */
+  startBacklog(id: string): boolean {
+    if (!this.inBacklog(id)) return false;
+    this.setStatus(id, "queued", "started from your backlog");
+    this.pump();
+    return true;
+  }
 
   private isRetrying(seq: number): boolean {
     return this.store.ofKinds("runtime.retrying", seq).some(e => e.kind === "runtime.retrying" && e.body.limitSeq === seq);
@@ -1066,7 +1087,7 @@ export class Supervisor {
         this.setStatus(run.id, "queued", "gateway restarted — resuming from the last checkpoint");
         resumed.push(run.id);
       }
-      if (run.status === "paused") {
+      if (run.status === "paused" && !this.inBacklog(run.id)) { // a backlog item waits for you, restart or not
         const agent = this.currentRuntime(run.id, run.runtime);
         const limits = this.unresolvedLimits(agent);
         if (limits.length) for (const l of limits) this.scheduleResume(agent, l.until, l.model);

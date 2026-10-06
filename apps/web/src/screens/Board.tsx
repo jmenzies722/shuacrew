@@ -11,6 +11,8 @@ import "./board.css";
 import { useNavigate } from "@tanstack/react-router";
 import { KanbanSquare } from "lucide-react";
 import { StatStrip } from "../components/StatStrip";
+import { BacklogAdd, StartBacklog } from "../components/BacklogAdd";
+import "./board-backlog.css";
 
 const EMPTY: Record<string, string> = { queued: "Nothing waiting to start", running: "No one is working", awaiting: "Nothing needs you", reviewing: "Nothing to review", done: "Nothing finished yet" };
 
@@ -74,6 +76,7 @@ export function Board() {
                   <span className="mono ml-auto text-[11px] text-fg-3">{cards.length}</span>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
+                  {column.id === "queued" && <BacklogAdd />}
                   {cards.length === 0 && (column.id === "queued" && all.length === 0
                     ? <div className="board-start"><strong>Start the board</strong><span>Every session you start lands here and moves right on its own: Running → Awaiting me → Reviewing → Done.</span><Button variant="primary" onClick={() => void navigate({ to: "/" })}>Start a session</Button></div>
                     : <div className="board-empty">{EMPTY[column.id] ?? "Nothing here"}</div>)}
@@ -85,6 +88,7 @@ export function Board() {
                       title={column.id === "queued" ? "Drag to the top to run it next" : undefined}
                     >
                       <AgentCard run={run} compact />
+                      {run.status === "paused" && run.labels?.includes("backlog") && run.statusReason?.startsWith("In your backlog") && <div className="bl-row"><StartBacklog id={run.id} /></div>}
                     </div>
                   ))}
                 </div>
