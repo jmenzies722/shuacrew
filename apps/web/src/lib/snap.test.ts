@@ -62,3 +62,17 @@ it("reacquires a moved target by identity, never by recycled screenshot IDs", as
   expect(reacquire(aim, before, {context:{...after.context,elements:[after.context.elements[0]!]}})).toBeNull();
   expect(reacquire(aim, before, {context:{...after.context,elements:[after.context.elements[1]!,{...after.context.elements[1]!,x:.4}]}})).toBeNull();
 });
+
+it("settles two same-named controls only when one is clearly where it was", async () => {
+  const { reacquire } = await import("./snap");
+  const reply = (x: number, y: number) => ({ name: "Reply", role: "button", x, y, w: .06, h: .03 });
+  const before = { context: { app: "Mail", window: "Inbox", elements: [reply(.3, .2), reply(.3, .6)] } };
+  const after = { context: { app: "Mail", window: "Inbox", elements: [reply(.3, .21), reply(.3, .62)] } };
+  expect(reacquire({ x: 0, y: 0, w: .03, h: .03, label: "", target: "#2" }, before, after)).toMatchObject({ y: .62 });
+  expect(reacquire({ x: .3, y: .2, w: .03, h: .03, label: "Reply" }, before, after, true)).toMatchObject({ y: .21 });
+  // Aimed between them, or not aimed at all: still ambiguous, no click.
+  expect(reacquire({ x: .3, y: .4, w: .03, h: .03, label: "Reply" }, before, after, true)).toBeNull();
+  expect(reacquire({ x: .3, y: .2, w: .03, h: .03, label: "Reply" }, before, after)).toBeNull();
+  // Both crowded together near the old spot: no clear winner.
+  expect(reacquire({ x: 0, y: 0, w: .03, h: .03, label: "", target: "#1" }, before, { context: { ...after.context, elements: [reply(.3, .2), reply(.32, .2)] } })).toBeNull();
+});

@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { api } from "./api";
 import { LiveCall, type LiveEvent, type LiveState } from "./live-voice";
 import { yesOrNo } from "./handsfree";
 import { copyForPaste, pasteTarget } from "./paste-hint";
@@ -196,6 +197,7 @@ function onEvent(e: LiveEvent) {
     }
     return;
   }
+  if (e.type === "latency") { void api("/api/shua/voice", { body: { ms: e.ms, mode: "live" } }).catch(() => {}); return; }
   touch();
   if (e.type === "state") {
     if (e.state === "ended" || e.state === "error") {

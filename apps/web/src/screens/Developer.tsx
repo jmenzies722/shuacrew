@@ -16,7 +16,7 @@ interface Health { ok: boolean; version: string; build: string; head: number; rs
 const COLORS: Record<Group, string> = { agent: "#e879f9", run: "var(--amber)", tool: "#7aa2f7", turn: "var(--ok)", room: "#bb9af7", approval: "var(--wait)", policy: "#f87171", mcp: "#56d4dd", gateway: "#94a3b8", other: "#52525b" };
 // Default order pairs the half-width widgets side by side.
 const WIDGETS = [
-  ["health", "Health"], ["outcomes", "Run outcomes"], ["activity", "Activity"], ["tools", "Tool leaderboard"],
+  ["health", "Health"], ["outcomes", "Run outcomes"], ["shua", "Shua on screen"], ["activity", "Activity"], ["tools", "Tool leaderboard"],
   ["events", "Event inspector"], ["prompts", "Prompt inspector"], ["api", "API explorer"], ["log", "Gateway log"], ["diagnostics", "Memory, audit & voice"], ["flags", "Experimental"], ["report", "Debug report"],
 ] as const;
 type WidgetId = (typeof WIDGETS)[number][0];
@@ -55,6 +55,7 @@ export function Developer() {
       case "activity": return <ActivityWidget m={metrics} />;
       case "tools": return <ToolsWidget m={metrics} />;
       case "outcomes": return <OutcomesWidget m={metrics} />;
+      case "shua": return <ShuaWidget tick={tick} />;
       case "events": return <EventInspector />;
       case "prompts": return <PromptInspector />;
       case "api": return <ApiExplorer />;
@@ -147,7 +148,37 @@ function OutcomesWidget({ m }: { m: Metrics | null }) {
   </div>;
 }
 
-const ENDPOINTS = ["/api/health", "/api/status", "/api/runtimes", "/api/settings", "/api/crew", "/api/rooms", "/api/mcp", "/api/dev/metrics?minutes=60", "/api/dev/storage", "/api/speech/storage", "/api/audit/verify"];
+interface Journal { total: number; ok: number; rate: number | null; byHow: Record<string, { total: number; ok: number }>; failures: Array<{ why: string; count: number }>; recent: Array<{ at: number; kind: string; how: string; label: string; ok: boolean; message: string; app?: string }> }
+interface Voice { count: number; p50: number | null; p90: number | null; best: number | null }
+const HOW: Record<string, string> = { target: "By its number", name: "By name", position: "By position", none: "Keys & typing" };
+/** Every step Shua took on screen this week and whether it worked — measured from its journal, not claimed. */
+function ShuaWidget({ tick }: { tick: number }) {
+  const [j, setJ] = useState<Journal | null>(null), [voice, setVoice] = useState<Voice | null>(null), [err, setErr] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api<Journal>("/api/shua/journal?days=7").then((v) => alive && setJ(v), (e: Error) => alive && setErr(e.message));
+    api<Voice>("/api/shua/voice?days=7").then((v) => alive && setVoice(v), () => undefined);
+    return () => { alive = false; };
+  }, [tick]);
+  const secs = (ms: number | null) => (ms === null ? "—" : `${(ms / 1000).toFixed(1)} s`);
+  const speed = voice?.count ? <p className="dc-muted dc-voice"><b>Voice</b> answers in {secs(voice.p50)} typically · {secs(voice.p90)} on a slow turn · best {secs(voice.best)} · {voice.count} turns this week</p>
+    : <p className="dc-muted dc-voice"><b>Voice</b> speed shows after your next spoken turn.</p>;
+  if (err) return <p className="dc-muted">{/404/.test(err) ? "This gateway doesn't keep Shua's journal yet — restart it to start measuring." : err}</p>;
+  if (!j) return <p className="dc-muted">Loading…</p>;
+  if (!j.total) return <div className="dc-shua"><p className="dc-muted">No steps yet this week. Ask Shua to do something on screen and every click, press and keystroke lands here with whether it worked.</p>{speed}</div>;
+  const rate = Math.round((j.rate ?? 0) * 100), hows = Object.entries(j.byHow).sort((a, b) => b[1].total - a[1].total);
+  return <div className="dc-shua">
+    <div className="dc-outcomes">
+      <div className="dc-ring" style={{ "--p": rate } as React.CSSProperties}><strong>{rate}%</strong><small>worked</small></div>
+      <ul>{hows.map(([how, t]) => <li key={how}><i style={{ background: t.ok === t.total ? "var(--ok)" : t.ok / t.total >= 0.8 ? "var(--amber)" : "var(--bad)" }} />{HOW[how] ?? how}<span>{t.ok}/{t.total}</span></li>)}</ul>
+    </div>
+    {j.failures.length > 0 && <ul className="dc-fails" aria-label="What failed most">{j.failures.map((f) => <li key={f.why}><b>{f.count}×</b><span>{f.why}</span></li>)}</ul>}
+    {speed}
+    <p className="dc-muted">{j.total} steps in 7 days · last: {j.recent[0]!.ok ? "✓" : "✗"} {j.recent[0]!.label || j.recent[0]!.kind}{j.recent[0]!.app ? ` in ${j.recent[0]!.app}` : ""}</p>
+  </div>;
+}
+
+const ENDPOINTS = ["/api/health", "/api/status", "/api/runtimes", "/api/settings", "/api/crew", "/api/rooms", "/api/mcp", "/api/dev/metrics?minutes=60", "/api/brief", "/api/shua/journal?days=7", "/api/shua/voice?days=7", "/api/dev/storage", "/api/speech/storage", "/api/audit/verify"];
 /** Read-only: GET requests to this gateway only. */
 function ApiExplorer() {
   const [path, setPath] = useState(ENDPOINTS[0]!), [out, setOut] = useState(""), [ms, setMs] = useState<number | null>(null), [copied, setCopied] = useState(false), [busy, setBusy] = useState(false);

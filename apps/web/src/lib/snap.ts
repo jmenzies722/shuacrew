@@ -79,8 +79,18 @@ export function locate(aim: Aim, screen: ScreenFacts | null): Region {
   return best ? { x: best.c.x, y: best.c.y, w: best.c.w, h: best.c.h, shape: shapeOf(best.c, aspect), exact: true } : guess;
 }
 
+/**
+ * Two controls with the same name (two "Reply" buttons): take the one still where it was picked or aimed — only when it
+ * barely moved and the other is clearly farther. Anything less certain stays ambiguous and no click is sent.
+ */
+function nearest(list: Candidate[], anchor: { x: number; y: number } | null): Candidate | null {
+  if (!anchor || list.length < 2) return null;
+  const ranked = list.map((c) => ({ c, d: Math.hypot(c.x - anchor.x, c.y - anchor.y) })).sort((a, b) => a.d - b.d);
+  return ranked[0]!.d <= 0.04 && ranked[1]!.d >= ranked[0]!.d + 0.05 ? ranked[0]!.c : null;
+}
+
 /** Re-identify a target after a fresh capture. Numbered IDs belong only to their original capture. */
-export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenFacts): Region | null {
+export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenFacts, aimed = false): Region | null {
   if (before?.context?.app && current.context?.app !== before.context.app) return null;
   if (before?.context?.window && current.context?.window !== before.context.window) return null;
   const original = before ? picked(aim.target, before) : null;
@@ -95,7 +105,7 @@ export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenF
     return exact.length ? exact : list.filter(c => nameMatch(name, c.name) === 1);
   };
   const ax = matching(controls), matches = ax.length ? ax : matching(all.filter(c => !c.role));
-  if (matches.length !== 1) return null;
-  const c = matches[0]!;
+  const c = matches.length === 1 ? matches[0]! : nearest(matches, original ?? (aimed ? aim : null));
+  if (!c) return null;
   return { x:c.x, y:c.y, w:c.w, h:c.h, shape:shapeOf(c,current.aspect), exact:true };
 }

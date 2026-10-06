@@ -111,6 +111,13 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   if (a.type.startsWith("crew_") && "ref" in a && !crewRef(a.ref, a.type === "crew_decide" ? "A" : "S"))
     return Promise.resolve({ ok: false, message: "That crew request is no longer listed. Ask about the session again." });
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
+  if (a.type === "brief") return (async () => {
+    // Read from the gateway's recorded state; the full brief goes back to Shua (chat or voice) to summarize.
+    const since = a.since === "hour" ? Date.now() - 3_600_000 : a.since === "morning" ? new Date().setHours(6, 0, 0, 0) : undefined;
+    const b = await api<{ headline: string; text: string }>(`/api/brief${since ? `?since=${since}` : ""}`);
+    sparkHooks.onMacOutput?.("What's going on in ShuaCrew", b.text);
+    return { ok: true, message: b.headline };
+  })().catch((e: Error) => ({ ok: false, message: `Couldn't read ShuaCrew: ${e.message}` }));
   if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
   if (a.type === "learn" && a.course !== undefined) return (async () => {
     const courseId = a.course!;

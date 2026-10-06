@@ -1,3 +1,4 @@
+import { api } from "./api";
 export type VoiceStamps = Partial<Record<"endpoint" | "transcribed" | "firstText" | "firstAudio" | "playback", number>>;
 export function voiceDurations(stamps: VoiceStamps) {
   const interval = (start: keyof VoiceStamps, end: keyof VoiceStamps): number | null => {
@@ -14,6 +15,11 @@ export function voiceTimingSummary(rows: Array<{ firstAudioMs: number | null }>)
 type Measurement = ReturnType<typeof voiceDurations> & { at: number };
 let history: Measurement[] = [];
 const listeners = new Set<() => void>();
-export function recordVoiceTiming(stamps: VoiceStamps) { history = [...history.slice(-19), { ...voiceDurations(stamps), at: Date.now() }]; listeners.forEach(listener => listener()); }
+export function recordVoiceTiming(stamps: VoiceStamps, mode: "live" | "push" = "push") {
+  const m = { ...voiceDurations(stamps), at: Date.now() };
+  history = [...history.slice(-19), m]; listeners.forEach(listener => listener());
+  // Kept by the gateway too, so voice speed is measured across days, not just this window.
+  if (m.firstAudioMs !== null && m.firstAudioMs >= 50) void api("/api/shua/voice", { body: { ms: m.firstAudioMs, mode } }).catch(() => {});
+}
 export const voiceTimingSnapshot = () => history;
 export const subscribeVoiceTimings = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };

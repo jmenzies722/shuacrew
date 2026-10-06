@@ -7,8 +7,9 @@ export function freshAction(action: Act, before: (ScreenFacts & { display?: numb
   if (action.type !== "click" && action.type !== "press") return action;
   // Named accessibility presses can report success without activating a control.
   // Resolve the unique current target, then dispatch an actual click at that control.
-  const aim = action.type === "press" ? {label:action.label,x:0,y:0,w:.03,h:.03} : {...action,w:.03,h:.03};
-  const target = reacquire(aim, before, current);
+  // A press has no position of its own; a click by position can settle a same-name tie by where it aimed.
+  const aim = action.type === "press" ? {label:action.label,x:0,y:0,w:.03,h:.03,...(action.target ? {target:action.target} : {})} : {...action,w:.03,h:.03};
+  const target = reacquire(aim, before, current, action.type === "click" && !action.target);
   if (!target) throw new Error("The click target is missing or ambiguous. No click was sent; look again.");
   return { ...action, type:"click", x: target.x, y: target.y };
 }

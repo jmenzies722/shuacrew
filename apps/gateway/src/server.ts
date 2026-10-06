@@ -34,6 +34,8 @@ import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:
 import os from "node:os";
 import { execFile } from "node:child_process";
 import { registerPolicyAndUpdates, repoRootFrom } from "./policy-updates.js";
+import { registerBrief } from "./brief.js";
+import { registerShuaJournal } from "./shua-journal.js";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -923,6 +925,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   const auto = options.autonomy;
+  // "What's going on?" for Shua to speak or show, from recorded state only.
+  registerBrief(app, { state, schedules: () => auto?.scheduler.list() ?? [] });
+  // Every step Shua takes on screen and whether it worked, so its accuracy is measured.
+  if (options.store.path !== ":memory:") registerShuaJournal(app, path.dirname(options.store.path));
   if (options.ventures) ideaRoutes(app, options.ventures, auto?.scheduler);
   if (auto) standupRoutes(app, auto.scheduler);
   if (auto) routineRoutes(app, auto.scheduler);

@@ -435,3 +435,10 @@ describe("screen control runs all the way through", () => {
     expect(parseActions('```do [{"type":"open_url","url":"javascript:alert(1)"}]```')).toEqual([]);
   });
 });
+
+it("reads a brief, with an optional window", () => {
+  expect(parseActions('```do [{"type":"brief"}]```')).toEqual([{ type: "brief" }]);
+  expect(parseActions('```do [{"type":"brief","since":"hour"}]```')).toEqual([{ type: "brief", since: "hour" }]);
+  expect(parseActions('```do [{"type":"brief","since":"yesterday"}]```')).toEqual([{ type: "brief" }]);
+  expect(buddyPrompt("what's going on?", null)).toContain('{"type":"brief"}');
+});

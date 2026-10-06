@@ -32,3 +32,14 @@ it("never falls back to a similarly named control in another app for a named pre
   expect(()=>freshAction({type:"press",label:"Play"},before,{context:{...before.context,elements:[]}})).toThrow("missing or ambiguous");
   expect(()=>freshAction({type:"press",label:"Play"},before,{context:{...before.context,elements:[...before.context.elements,...before.context.elements]}})).toThrow("missing or ambiguous");
 });
+it("clicks and presses a numbered control at its fresh frame", async () => {
+  const { parseActs } = await import("./buddy");
+  const [click] = parseActs('```act {"type":"click","target":"#1","label":"Play"}```');
+  expect(click).toMatchObject({ type: "click", target: "#1" });
+  const moved = { context: { ...before.context, elements: [{ ...before.context.elements[0]!, x: .5, y: .4 }] } };
+  expect(freshAction(click!, before, moved)).toMatchObject({ type: "click", x: .5, y: .4 });
+  expect(freshAction({ type: "press", label: "", target: "#1" }, before, moved)).toMatchObject({ type: "click", x: .5, y: .4 });
+  // Its number points at nothing in the screen it was picked from: refuse, never click the placeholder.
+  expect(() => freshAction({ type: "click", x: .5, y: .5, label: "", target: "#9" }, before, moved)).toThrow("missing or ambiguous");
+  expect(parseActs('```act {"type":"click","target":"T4"}```')).toEqual([]);
+});

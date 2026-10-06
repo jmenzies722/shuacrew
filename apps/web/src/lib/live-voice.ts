@@ -21,6 +21,8 @@ export type LiveEvent =
   | { type: "do"; id: string; actions: unknown[] }
   | { type: "task"; id: string; request: string }
   | { type: "cancel"; id: string }
+  /** From the moment you stopped talking to the first sound of the answer. */
+  | { type: "latency"; ms: number }
   | { type: "correction"; said: string; result: string }
   | { type: "usage"; percent: number };
 
@@ -47,6 +49,9 @@ export class LiveCall {
   private state: LiveState = "connecting";
   private working = false;
   private speaking = false;
+  /** When your mic was last loud, and whether that turn is still waiting for the voice to answer. */
+  private micLoudAt = 0;
+  private awaitingReply = false;
   private playback = new NativePlayback(muted => {
     if (this.audio) {
       this.audio.muted = muted;
@@ -261,9 +266,17 @@ export class LiveCall {
         this.o.onEvent({ type: "levels", mic, voice });
         if (this.state === "connecting" || this.over) return;
         // Speaking while its voice is audible (with a short hang so word gaps don't flicker), else working or listening.
+        const now = performance.now(), wasSpeaking = this.speaking;
+        if (mic > 0.06 && !this.speaking) { this.micLoudAt = now; this.awaitingReply = true; }
         loud = voice > 0.012 ? 6 : Math.max(0, loud - 1);
         if (this.playback.muted) loud = 0;
         this.speaking = loud > 0;
+        // How fast it feels: your last loud moment to its first audible one, once per turn.
+        if (this.speaking && !wasSpeaking && this.awaitingReply) {
+          this.awaitingReply = false;
+          const ms = Math.round(now - this.micLoudAt);
+          if (ms >= 50 && ms <= 30_000) this.o.onEvent({ type: "latency", ms });
+        }
         if (this.speaking) {
           this.heardAssistant = true;
           if (this.pendingCaption) { this.o.onEvent(this.pendingCaption); this.pendingCaption = undefined; }

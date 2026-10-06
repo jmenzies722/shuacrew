@@ -51,6 +51,8 @@ export type Action =
   | { type: "venture"; name: string; pitch?: string; validate?: boolean }
   | { type: "playbook"; playbook: string; idea?: string; venture?: string }
   | { type: "remember"; text: string }
+  /** Everything going on in ShuaCrew, read from the gateway: working, waiting and why, finished, failed, usage, next. */
+  | { type: "brief"; since?: "today" | "hour" | "morning" }
   | { type: "run"; command: string }
   | { type: "go"; path: string }
   | { type: "card"; front: string; back: string }
@@ -58,37 +60,38 @@ export type Action =
   | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
   | { type: "open_settings"; pane: string }
   | { type: "mac"; op: "find" | "read" | "recent" | "calendar" | "reminders" | "add_reminder" | "notes" | "contacts" | "status" | "music_now" | "music_playlists" | "notes_new" | "calendar_add" | "new_folder" | "reveal" | "open_file" | "browser_tabs" | "complete_reminder" | "delete_reminder" | "delete_event" | "delete_note" | "delete_reminders" | "complete_reminders" | "send_message" | "facetime" | "directions" | "chess"; to?: string; text?: string; mode?: "driving" | "walking" | "transit"; audio?: boolean; titles?: string[]; all?: boolean; list?: string; query?: string; date?: string; path?: string; kind?: string; days?: number; title?: string; due?: string; body?: string; start?: string; end?: string; location?: string; name?: string; in?: string };
-/** Every page in ShuaCrew and what it's for — the map Spark carries so it can explain the app and take you anywhere. */
+/** Every page in ShuaCrew and what it's for — the map Shua carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
-  { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky" },
-  { path: "/activity", name: "Today", hub: "Home", about: "your day: the morning brief, what needs you, what finished, focus time" },
-  { path: "/crew", name: "Team", hub: "Crew", about: "your AI crew members (each has a role, model, voice, memory and lessons); create or edit them" },
+  { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky. The composer shows live what the agent is doing" },
+  { path: "/activity", name: "Today", hub: "Home", about: "the user's day: the sky and morning brief, a 6am–midnight ribbon of every moment, today in numbers (sessions, shipped, tokens, focus, streak), what needs them" },
+  { path: "/ventures", name: "Projects", hub: "Projects", about: "business ideas and what they earn: income this month, a first-dollar quest, an idea forge, and a pipeline (idea → validating → building → launching → earning)" },
+  { path: "/board", name: "Board", hub: "Projects", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
+  { path: "/specs", name: "Specs", hub: "Projects", about: "plan a feature before code: requirements → design → tasks, each approved, tasks land on the Board as sessions" },
+  { path: "/studio", name: "Creative studio", hub: "Projects", about: "the user's Apple Music, album first: what's playing, shelves of their albums, search their library" },
+  { path: "/floor", name: "Studio floor", hub: "Crew", about: "the crew live: who is working on what right now, each agent's current step, heartbeat and today's numbers, and a box to hand any agent work" },
+  { path: "/crew", name: "Agents", hub: "Crew", about: "the AI crew members (role, model, voice, memory, lessons); create, edit or hand work to one" },
   { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
-  { path: "/floor", name: "Floor", hub: "Crew", about: "a live map of who is working on what right now" },
-  { path: "/studio", name: "Studio", hub: "Crew", about: "the user's Apple Music, album first: what's playing (big cover, progress, controls), shelves of their albums (full albums, recently added, on repeat, rediscover), search, and one-tap play of a whole album" },
-  { path: "/ventures", name: "Ventures", hub: "Build", about: "business ideas as a pipeline (idea → validate → build → launch → grow) with revenue" },
-  { path: "/playbooks", name: "Playbooks", hub: "Build", about: "multi-step plans the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
-  { path: "/specs", name: "Specs", hub: "Build", about: "written specs the crew builds from" },
-  { path: "/board", name: "Board", hub: "Build", about: "every session by status: queued, running, awaiting you, reviewing, done" },
-  { path: "/schedules", name: "Schedules", hub: "Build", about: "work that runs on its own on a schedule" },
-  { path: "/library", name: "Library", hub: "Know", about: "everything the crew made: reports, pages, specs, images, saved knowledge (searchable)" },
-  { path: "/memory", name: "Memory", hub: "Know", about: "what every agent has learned about the user: lessons, preferences, corrections" },
-  { path: "/teach", name: "Visual teaching", hub: "Know", about: "shared step-by-step explanations, source-grounded diagrams, editable canvas and capture-bound screen annotations; use this for visual lessons" },
-  { path: "/learn", name: "Learning", hub: "Know", about: "courses and spaced-repetition quizzes toward the user's career goal" },
-  { path: "/integrations", name: "Tools & Skills", hub: "System", about: "MCP tools, connected services and Claude Code skills (including the radio skill)" },
-  { path: "/policy", name: "Policy & Audit", hub: "System", about: "what agents may never touch, what needs approval, and the full audit trail" },
-  { path: "/observability", name: "Insights", hub: "System", about: "health, what's running or waiting, throughput, reply speed and recent activity" },
-  { path: "/usage", name: "Usage", hub: "System", about: "tokens by day and by plan (Claude, Codex), today against a usual day, weekly rhythm, and which sessions used the most" },
-  { path: "/terminal", name: "Terminal", hub: "System", about: "a real terminal on the Mac, with an agent that can help" },
-  { path: "/guide", name: "Guide", hub: "", about: "the ShuaCrew guide: what the app is, every hub and page, Spark, engines, privacy, shortcuts and what is not finished yet; open it when someone asks how ShuaCrew works" },
-  { path: "/settings", name: "Settings", hub: "", about: "appearance/theme and accent, workspace, widgets, chat, agents, automation, safety, Spark, voice, notifications, mobile, data" },
+  { path: "/learn", name: "Learn", hub: "Learn", about: "get measurably better: Today (cards due, the next step, the user's roadmap toward their goal), Explain (visual lessons and diagrams), Library (courses, cards, career kit)" },
+  { path: "/teach", name: "Explain", hub: "Learn", about: "visual teaching: source-grounded diagrams, an editable canvas and on-screen annotations; use this for visual lessons" },
+  { path: "/playbooks", name: "Playbooks", hub: "Automations", about: "repeatable multi-phase work the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
+  { path: "/schedules", name: "Schedules", hub: "Automations", about: "work that runs on its own: schedules, webhooks and heartbeats" },
+  { path: "/library", name: "Library", hub: "Library", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
+  { path: "/memory", name: "Memory", hub: "Library", about: "what every agent has learned: lessons, preferences, corrections, skills" },
+  { path: "/integrations", name: "Tools & Skills", hub: "Tools", about: "MCP connections (Notion, GitHub…), which ones Shua may use by voice, and Claude Code skills" },
+  { path: "/policy", name: "Policy & Audit", hub: "Tools", about: "what agents may do: a live tester ('why would this be allowed?') on the real engine, decisions over time, the guardrails in force, every rule, and the tamper-evident audit chain" },
+  { path: "/observability", name: "Insights", hub: "Tools", about: "health, what's running or waiting, throughput, reply speed (typical and slowest) and recent activity" },
+  { path: "/usage", name: "Usage", hub: "Tools", about: "tokens by day and by plan (Claude, Codex), today against a usual day, weekly rhythm, and which sessions used the most" },
+  { path: "/terminal", name: "Terminal", hub: "Tools", about: "a real terminal on the Mac, with an agent that can help" },
+  { path: "/developer", name: "Developer", hub: "Tools", about: "gateway health, live activity, tool leaderboard, event and prompt inspectors, API explorer, logs" },
+  { path: "/guide", name: "Guide", hub: "", about: "the ShuaCrew guide: the user's setup live, every hub and feature (searchable), shortcuts and what is not finished; open it when someone asks how ShuaCrew works" },
+  { path: "/settings", name: "Settings", hub: "", about: "appearance, Shua, workspace, access, agents, automation, safety, notifications, mobile and system (updates, backups); each section shows what it's set to now" },
 ];
 /** What the app holds right now, for Spark to answer from (names only — never invented). */
 export function shuacrewNow(input: { members: Array<{ name: string; role?: string }>; ventures: string[]; radio: { on: string | null; stations: string[] } }) {
   return [
     "SHUACREW — THE APP YOU LIVE IN (you know it inside out; explain any part and take them there):",
     ...SHUACREW_PAGES.map((p) => `- ${p.name}${p.hub ? ` (${p.hub})` : ""} ${p.path}: ${p.about}`),
-    "Keys: ⌘J opens you (Spark) inside the app, ⌃⌥Space from anywhere; ⌘K search; ⌘N new session; ⌘1–5 the hubs; ⌘\\ folds the sidebar; ⌘⇧F Flow mode (hides everything but the work).",
+    "Keys: ⌘J opens you inside the app, ⌃⌥Space from anywhere; ⌘K search; ⌘N new session; ⌘1–6 the hubs; ⌘\\ folds the sidebar; ⌘⇧F Flow mode (hides everything but the work).",
     input.members.length ? `Crew members: ${input.members.map((m) => (m.role ? `${m.name} (${m.role})` : m.name)).join(", ")}.` : "No crew members yet.",
     input.ventures.length ? `Ventures: ${input.ventures.slice(0, 12).join(", ")}.` : "",
     `Radio: ${input.radio.on ? `playing ${input.radio.on}` : "off"}${input.radio.stations.length ? `; stations: ${input.radio.stations.slice(0, 10).join(", ")}` : ""}.`,
@@ -128,8 +131,9 @@ export function parseChanges(v: unknown): SparkChanges | null {
 
 /** One step of Spark using the mouse and keyboard, or the end of the task. Coordinates are screenshot fractions. */
 export type Act =
-  | { type: "press"; label: string }
-  | { type: "click"; x: number; y: number; label: string; double?: boolean; button?: "right" }
+  | { type: "press"; label: string; target?: string }
+  /** target: a numbered control ("#12") from the list Spark was given — clicked at its exact frame, wherever it moved. */
+  | { type: "click"; x: number; y: number; label: string; double?: boolean; button?: "right"; target?: string }
   | { type: "type"; text: string; label: string }
   | { type: "key"; keys: string; label: string }
   | { type: "scroll"; x?: number; y?: number; amount: number; label: string }
@@ -435,6 +439,7 @@ function toAction(v: unknown): Action | null {
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
+    case "brief": { const since = ["today", "hour", "morning"].includes(o.since as string) ? (o.since as "today" | "hour" | "morning") : undefined; return { type: "brief", ...(since ? { since } : {}) }; }
     case "card": { const front = str(o.front, 240), back = str(o.back, 800); return front && back ? { type: "card", front, back } : null; }
     case "go": { const path = str(o.path, 80); return path && SHUACREW_PAGES.some((p) => p.path === path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}#`)) ? { type: "go", path } : null; }
     case "radio": { const cmds = ["play", "pause", "resume", "next", "previous", "stop"] as const; const cmd = cmds.find((c) => c === o.cmd); const station = str(o.station, 80); return cmd ? { type: "radio", cmd, ...(station ? { station } : {}) } : null; }
@@ -478,6 +483,7 @@ export function describeAction(a: Action): string {
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
+    case "brief": return "Caught up on everything";
     case "card": return "Added a quiz card";
     case "go": return `Open ${SHUACREW_PAGES.find((p) => a.path === p.path || a.path.startsWith(p.path + "/"))?.name ?? a.path}`;
     case "radio": return a.cmd === "play" ? `Radio: ${a.station ?? "on"}` : `Radio: ${a.cmd}`;
@@ -529,9 +535,11 @@ function toAct(o: Record<string, unknown>): Act | null {
   if (!o || typeof o !== "object") return null;
   try {
     const label = typeof o.label === "string" ? o.label.trim().slice(0, 60) : "";
+    const target = targetId(o.target), tg = target?.startsWith("#") ? { target } : {};
     switch (o.type) {
-      case "press": return label ? { type: "press", label } : null;
-      case "click": return unit(o.x) && unit(o.y) ? { type: "click", x: o.x as number, y: o.y as number, label, ...(o.double === true ? { double: true } : {}), ...(o.button === "right" ? { button: "right" as const } : {}) } : null;
+      case "press": return label || tg.target ? { type: "press", label, ...tg } : null;
+      // By number, the position is only a placeholder: the click lands on the control's fresh frame or not at all.
+      case "click": return (unit(o.x) && unit(o.y)) || tg.target ? { type: "click", x: unit(o.x) ? o.x as number : 0.5, y: unit(o.y) ? o.y as number : 0.5, label, ...(o.double === true ? { double: true } : {}), ...(o.button === "right" ? { button: "right" as const } : {}), ...tg } : null;
       case "type": return typeof o.text === "string" && o.text.length > 0 && o.text.length <= 2000 ? { type: "type", text: o.text, label } : null;
       case "key": return typeof o.keys === "string" && /^[a-z0-9⌘⇧⌥⌃+ ,./\-=\[\]]{1,40}$/i.test(o.keys) ? { type: "key", keys: o.keys, label } : null;
       case "scroll": { const amount = Math.max(-30, Math.min(30, Math.round(Number(o.amount) || -5))); return { type: "scroll", amount, label, ...(unit(o.x) && unit(o.y) ? { x: o.x as number, y: o.y as number } : {}) }; }
@@ -691,6 +699,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
       'Music: the user listens on Apple Music only (no radio, no lofi stations); "put something on", "play some music" → media in Music: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. Take what they mean, not the words: "another song", "something else", "play something", "something like this", "recommend me something" → play_similar (by: "vibe" when they want a different artist); a mood ("something chill", "upbeat music", "focus music") → play_similar {mood: "chill"} (their library, by genre) — never play_query a mood or a whole sentence — it picks from THEIR library on the Mac; NEVER name a song from memory for these (it usually isn\'t theirs and won\'t play). "Skip"/"next" → next. "Another song by <Artist>" / "play <Artist>" → play_query {query: "<Artist>"} (a different one of theirs each time). Only when they name a specific song: play_query "Title by Artist" (finds that exact song, even misheard). Say what is now playing from the result, never what you guessed. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
       'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',
+      '"What\'s going on?", "catch me up", "summarize", "status", "what did the crew do", "anything need me?" → ```do [{"type":"brief"}]``` (since: "hour" for the last hour, "morning" for since 6am) — you get back exactly what is working (and on what step), what waits on them and why, what finished and how it went, what failed, usage and what runs next. Lead with what needs them, then the most important change, in a few short sentences; offer the next move (approve, open, stop, hand off). Never answer these from memory.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
     ].join("\n"),
@@ -708,7 +717,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     ].filter(Boolean).join("\n") : "",
     persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
     persona.control && persona.control !== "off" && screen
-      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name, type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
+      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name (or by its number from the controls list, {"type":"press","target":"#12","label":"Send"} — exact even when two controls share a name), type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. One of two controls with the same name (two Reply buttons), or a listed control you'd otherwise click by position: click it by its number, \`\`\`act {"type":"click","target":"#12","label":"Reply"}\`\`\` — it lands on that control's exact frame even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
       : persona.control && persona.control !== "off" ? "Mouse and keyboard work needs fresh screen evidence. A missing screenshot does not mean screen access is off. Use the current SCREEN STATE; never invent a permission problem." : "You can't click or type inside other apps: SHOW them instead (point, guide, draw).",
     screen
       ? [

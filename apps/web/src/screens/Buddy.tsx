@@ -8,6 +8,7 @@ import { WorkflowLibrary } from "../components/WorkflowLibrary";
 import { useWorkflows, workflowBusy, workflowCommand, workflowContext, workflowReplayIssue } from "../lib/workflow-memory";
 import { AssistantMission } from "../components/AssistantMission";
 import { prepareFreshAction } from "../lib/fresh-action";
+import { journalStep } from "../lib/shua-journal";
 import { AssistantDeck } from "../components/AssistantDeck";
 import { AssistantAccess } from "../components/AssistantAccess";
 import { beginAssistant, reduceAssistant, type AssistantPhase } from "../lib/assistant-state";
@@ -51,7 +52,7 @@ import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompan
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, ArrowUpRight, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
-import { api, cancelRun, followUp } from "../lib/api";
+import { api, cancelRun, decideApproval, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
 import { workspaceContext } from "../lib/workspace-context";
 import { optionalContext } from "../lib/optional-context";
@@ -349,7 +350,16 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const [autopilotWatch, setAutopilotWatch] = useState(readAutopilotWatch);
   const autopilotBusy = useRef(false);
   const completionSeen = useRef(new Set<string>((() => { try { const reports = JSON.parse(localStorage.getItem("shuacrew.completion-reports") ?? "[]"); return Array.isArray(reports) ? reports.flatMap(report => typeof report?.id === "string" ? [report.id] : []) : []; } catch { return []; } })()));
-  const [notchUpdate, setNotchUpdate] = useState<{ title: string; text: string; path: string; tone: "done" | "wait"; run: string; turn: number } | null>(null);
+  const [notchUpdate, setNotchUpdate] = useState<{ title: string; text: string; path: string; tone: "done" | "wait"; run: string; turn: number; approval?: string } | null>(null);
+  const [deciding, setDeciding] = useState(false);
+  /** One tap in the notch answers the crew's request — your decision, exactly as if made in the session. */
+  const decideFromNotch = async (allow: boolean) => {
+    const id = notchUpdate?.approval; if (!id || deciding) return;
+    setDeciding(true);
+    try { await decideApproval(id, allow); sound(allow ? "done" : "error"); setNotchUpdate(null); }
+    catch (e) { setError(`Couldn't answer that request: ${(e as Error).message}`); }
+    finally { setDeciding(false); }
+  };
   const cropOnly = useRef(false);
   const cropNarration = useRef(false);
   const toggleTalkRef = useRef<() => void>(() => {});
@@ -1118,14 +1128,23 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         setBusy(describeAct(a) + "…");
         // Shua does every step itself — in web pages through the page's own elements (ShuaWeb), no browser extension.
         if (!screenAllowed(readSee(), liveScreen.current)) throw new Error("Screen access is off. Enable it before desktop actions.");
-        const before = screenFacts();
-        const checked = await prepareFreshAction(a, before, async () => {
-          const fresh = await capture();
-          return { display: fresh.display, context: fresh.context, text: fresh.text, aspect: fresh.width / fresh.height };
-        }, active);
+        const before = screenFacts(), started = performance.now();
+        let r: { ok: boolean; message: string };
+        try {
+          const checked = await prepareFreshAction(a, before, async () => {
+            const fresh = await capture();
+            return { display: fresh.display, context: fresh.context, text: fresh.text, aspect: fresh.width / fresh.height };
+          }, active);
+          if (!active()) return;
+          r = await perform({ ...checked, color: accentOf(prefs.color) }, {requestId:`${receiptKey}:step:${step}:${i}`,active});
+        } catch (e) {
+          // A target that moved, vanished or became ambiguous is a failed step Shua can re-aim from a fresh look —
+          // nothing was sent. Only being stopped (or losing access) ends the task.
+          if (!active() || /^Stopped|Screen access is off/.test((e as Error).message)) throw e;
+          r = { ok: false, message: (e as Error).message };
+        }
         if (!active()) return;
-        const r = await perform({ ...checked, color: accentOf(prefs.color) }, {requestId:`${receiptKey}:step:${step}:${i}`,active});
-        if (!active()) return;
+        journalStep(a, r, before?.context?.app, performance.now() - started);
         liveTurn.current?.outcomes.push({ description: describeAct(a), ok: r.ok, message: r.message });
         setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
         said.push(`${describeAct(a)}${r.ok ? (r.message && r.message !== describeAct(a) ? ` (${r.message})` : "") : ` — FAILED: ${r.message}`}`);
@@ -1706,7 +1725,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     logSense("heard", "Crew needs your OK", ask.line);
     const approval = crew.approvals[ask.id];
     const approvalRun = approval?.run ? crew.runs[approval.run] : undefined;
-    if (approvalRun) setNotchUpdate({ title: "Your crew needs a decision", text: ask.line, path: `/sessions/${approvalRun.id}`, tone: "wait", run: approvalRun.id, turn: approvalRun.turns });
+    if (approvalRun) setNotchUpdate({ title: "Your crew needs a decision", text: ask.line, path: `/sessions/${approvalRun.id}`, tone: "wait", run: approvalRun.id, turn: approvalRun.turns, approval: ask.id });
     if (getBuddyVoice().on) news.add(ask.line, () => !!useLive.getState().crew.approvals[ask.id] && mine() && getBuddyVoice().on && !speech.current.silenced, () => noteAsked(ask.line, ask.id));
   }, [crew.approvals]); // eslint-disable-line react-hooks/exhaustive-deps
   // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
@@ -1730,8 +1749,9 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   useEffect(() => {
     if (!notchUpdate) return;
     const current = crew.runs[notchUpdate.run];
-    if (!current || current.turns !== notchUpdate.turn || ["running", "planning", "queued"].includes(current.status)) setNotchUpdate(null);
-  }, [crew.runs, notchUpdate]);
+    // Answered somewhere else (the session, the phone, by voice): the card goes too.
+    if (!current || current.turns !== notchUpdate.turn || ["running", "planning", "queued"].includes(current.status) || (notchUpdate.approval && !crew.approvals[notchUpdate.approval])) setNotchUpdate(null);
+  }, [crew.runs, crew.approvals, notchUpdate]);
   const companionApprovals = Object.values(crew.approvals).filter(a => a.run && crew.runs[a.run]?.labels.includes("buddy"));
   const normalActivity = notchActivity({ approval: !!asking || !!pending || !!call.approval || companionApprovals.length > 0, failed: !!error, preparing: fnPreparing, acting: !!task, working: processing || working || !!busy || (call.tasks ?? 0) > 0 || call.state === "working", listening: buddyState === "listening" || (call.active && call.state === "listening"), speaking: speaking || (call.active && call.state === "speaking"), watching: liveOn });
   const activity = workflows.phase === "recording" ? { label: `Watching · ${workflows.stepCount}`, tone: "observing" } : workflows.phase === "running" ? { label: `Workflow · ${workflows.stepIndex + 1}/${workflows.stepCount}`, tone: "working" } : workflows.phase === "needs-approval" ? { label: "Needs permission", tone: "permission" } : normalActivity;
@@ -2027,7 +2047,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           {callOwnsIsland && <LiveIsland expanded textOnly />}
           {pointerFeedback && pointerStatus}
           {error && !pointerFeedback && <div className="notch-error" role="alert"><span>{error}</span><button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={14} /></button></div>}
-          {notchUpdate && <article className={`notch-update is-${notchUpdate.tone}`}><header><span>{notchUpdate.tone === "wait" ? "NEEDS YOU" : "CREW UPDATE"}</span><button type="button" aria-label="Dismiss crew update" onClick={() => setNotchUpdate(null)}><X size={13} /></button></header><strong>{notchUpdate.title}</strong>{notchUpdate.text.replace(notchUpdate.title, "").trim() && <p>{notchUpdate.text.replace(notchUpdate.title, "").trim()}</p>}<button type="button" className="notch-update-open" onClick={() => { post({ type: "buddyOpen", path: notchUpdate.path }); setNotchUpdate(null); }}>Open session <ChevronRight size={12} /></button></article>}
+          {notchUpdate && <article className={`notch-update is-${notchUpdate.tone}`}><header><span>{notchUpdate.tone === "wait" ? "NEEDS YOU" : "CREW UPDATE"}</span><button type="button" aria-label="Dismiss crew update" onClick={() => setNotchUpdate(null)}><X size={13} /></button></header><strong>{notchUpdate.title}</strong>{notchUpdate.text.replace(notchUpdate.title, "").trim() && <p>{notchUpdate.text.replace(notchUpdate.title, "").trim()}</p>}{notchUpdate.approval && crew.approvals[notchUpdate.approval] && <div className="notch-update-decide">
+            <button type="button" className="is-allow" disabled={deciding} onClick={() => void decideFromNotch(true)}><Check size={13} /> Approve</button>
+            <button type="button" disabled={deciding} onClick={() => void decideFromNotch(false)}><X size={13} /> Deny</button>
+          </div>}<button type="button" className="notch-update-open" onClick={() => { post({ type: "buddyOpen", path: notchUpdate.path }); setNotchUpdate(null); }}>Open session <ChevronRight size={12} /></button></article>}
           {visual && (visual.type === "architecture" ? <section className="notch-lesson-summary" aria-label="Architecture lesson"><strong>{visual.title}</strong><p>{visual.summary}</p><div><button type="button" onClick={() => { pinLesson(); setNook(false); setNotchTucked(true); }}>Expand diagram <Maximize2 size={12} /></button><button type="button" aria-label="Dismiss lesson" onClick={dismissLesson}><X size={12} /></button></div></section> : <VisualCard v={visual} onClose={dismissLesson} />)}
           {timers.length > 0 && <ul className="spark-nook-timers" aria-label="Timers">{[...timers].sort((a, b) => remaining(a, now) - remaining(b, now)).map((t) => <li key={t.id} className={t.paused !== undefined ? "is-paused" : ""}>
             <span>{t.kind === "alarm" ? <AlarmClock size={13} /> : <Timer size={13} />}{t.label || (t.kind === "alarm" ? "Alarm" : "Timer")}</span>
