@@ -32,7 +32,7 @@ it("keeps compatible history when refreshed instructions are supplied", () => {
   expect(turnDisposition(done, { runtime: "claude", model: "c", rules: "b" })).toBe("resume"); // started before fingerprints
 });
 
-import { selectIntelligence, type IntelligenceRequest } from "./intelligence";
+import { resolveIntelligence, selectIntelligence, type IntelligenceRequest } from "./intelligence";
 
 const base: IntelligenceRequest = { ask: "hi", mode: "auto", purpose: "conversation", images: false, tier: "fast" };
 const limited = { runtime: null, reason: "No eligible connected model is available.", retryAt: Date.UTC(2026, 9, 11, 19, 38), checkedAt: 1 };
@@ -71,4 +71,13 @@ describe("selectIntelligence", () => {
     const choice = await selectIntelligence({ ...base, preferredRuntime: "codex" });
     expect(choice).toMatchObject({ runtime: null, reason: limited.reason });
   });
+});
+
+it("hands back the request it actually used, so the gateway's re-check agrees with the fallback", async () => {
+  gateway();
+  const { choice, request } = await resolveIntelligence({ ...base, preferredRuntime: "codex" });
+  expect(choice.runtime).toBe("claude");
+  expect(request.preferredRuntime).toBeUndefined();
+  const strict = await resolveIntelligence({ ...base, preferredRuntime: "codex", preferredModel: "gpt-5.6-sol" });
+  expect(strict.request.preferredRuntime).toBe("codex");
 });

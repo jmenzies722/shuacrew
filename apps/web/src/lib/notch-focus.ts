@@ -58,6 +58,18 @@ export function notchFocus(i: FocusInputs): Focus {
   return { tone: "calm", text: dayGreeting(new Date(2000, 0, 1, i.hour)), sub: "Talk, type, or let me look" };
 }
 
+/**
+ * A turn paused by a plan limit, said plainly: "claude-opus-5-5 usage window — resumes 10:50 PM" becomes
+ * "I'll answer at 10:50 PM" / "Claude's usage window is full right now". Shua must never just go quiet.
+ */
+export function pausedLine(reason: string | undefined): { text: string; sub: string } {
+  const r = reason ?? "";
+  const when = /resumes\s+(.+?)\s*$/i.exec(r)?.[1];
+  const who = /\bclaude\b/i.test(r) ? "Claude" : /\b(codex|gpt)\b/i.test(r) ? "Codex" : "Your model";
+  const why = /usage|limit|window/i.test(r) ? `${who}'s usage window is full right now` : r || "Paused";
+  return { text: when ? `I'll answer at ${when}` : "Paused for now", sub: why };
+}
+
 type Insights = { due: number; weakest: { name: string } | null };
 let cache: { at: number; value: Insights } | null = null;
 

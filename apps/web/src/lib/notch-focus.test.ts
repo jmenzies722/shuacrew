@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { notchFocus, reviewMinutes, shortTrack, type FocusInputs } from "./notch-focus";
+import { notchFocus, pausedLine, reviewMinutes, shortTrack, type FocusInputs } from "./notch-focus";
 
 const quiet: FocusInputs = { approvals: 0, working: 0, justFinished: null, due: 0, weakest: null, hour: 14 };
 
@@ -30,5 +30,9 @@ describe("notchFocus", () => {
     expect(shortTrack("AWS DOP-02 for AI Platform and Enablement Engineers")).toBe("AWS DOP-02");
     expect(shortTrack("AWS DevOps Engineer Professional (DOP-C02): Foundations to AI Platform Operations")).toBe("AWS DevOps Engineer Professional");
     expect(shortTrack("Rust")).toBe("Rust");
+  });
+  it("says a paused turn plainly instead of going quiet", () => {
+    expect(pausedLine("claude-opus-5-5 usage window — resumes 10:50 PM")).toEqual({ text: "I'll answer at 10:50 PM", sub: "Claude's usage window is full right now" });
+    expect(pausedLine(undefined).text).toBe("Paused for now");
   });
 });

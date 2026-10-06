@@ -42,7 +42,7 @@ import { NotchCaption, Rolling } from "../components/NotchCaption";
 import { Recommendations } from "../components/Recommendations";
 import { locate, reacquire, type ScreenFacts } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
-import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest } from "../lib/intelligence";
+import { selectIntelligence, turnDisposition, type IntelligenceChoice, type IntelligenceRequest, resolveIntelligence } from "../lib/intelligence";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ComposerActions } from "../components/ComposerActions";
 import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompanionDraftRevision, restoreCompanionDraft, setCompanionDraft, useCompanionDraft } from "../lib/companion-draft";
@@ -100,17 +100,17 @@ import { QuietAnnouncements } from "../lib/quiet-announcements";
 import { copyForPaste, pasteTarget } from "../lib/paste-hint";
 import { PasteChip } from "../components/PasteChip";
 import { ConversationTranscript, LiveTranscript, LiveIsland, LivePanel, VoiceWaveform, endLive, liveActive, startLive, useLive as useLiveCall } from "../components/LiveMode";
-import { getLiveSnapshot, narrateLiveResult, announceLiveCommand, connectLiveBridge, watchLiveReady, getLiveLevels, isLiveOwner, registerExecutor, sendLiveText, queueLiveText, liveFn, startLive as startNativeLive, stopLiveSpeech } from "../lib/live-session";
+import { getLiveSnapshot, narrateLiveResult, announceLiveCommand, connectLiveBridge, watchLiveReady, getLiveLevels, isLiveOwner, registerExecutor, sendLiveText, queueLiveText, liveFn, startLive as startNativeLive, stopLiveSpeech, useLiveUsable } from "../lib/live-session";
 import { executeLiveTurn, type LiveTurnState } from "../lib/live-turn";
 import { saveSee, screenAllowed, useScreenAccess } from "../lib/screen-access";
 import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
 import { classicCaptureWanted } from "../lib/live-preferences";
 import { voiceTrace } from "../lib/voice-trace";
-import { notchFocus, useLearningFocus } from "../lib/notch-focus";
+import { notchFocus, pausedLine, useLearningFocus } from "../lib/notch-focus";
 import { NotchActivity } from "../components/NotchActivity";
 
 /** The idle island's small label: what kind of thing the line is, readable at a glance. */
-const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", learn: "Get better" };
+const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", learn: "Get better", hold: "On hold" };
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -154,14 +154,19 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // The draft is read when it's sent, never subscribed to here: typing re-renders only the text box and send button.
   const setDraft = setCompanionDraft;
   const prefs = useCompanion(), voice = useBuddyVoice(), track = useNowPlaying(), { sounds } = useLook();
+  // Live is Shua's voice only while Codex can take a call; when it can't (usage limit), everything runs classic:
+  // asks go to Claude, fn uses Mac speech, the wake word listens again. It switches back by itself when Live returns.
+  const liveOk = useLiveUsable();
+  const liveVoice = prefs.voiceEngine === "live" && liveOk;
+  const liveVoiceRef = useRef(liveVoice); liveVoiceRef.current = liveVoice;
   // Load Spark's voice as soon as it's on screen, so the first spoken reply starts in a blink instead of after a
   // ~10s cold model load. Re-warms when you switch voices; the gateway keeps it loaded for a while after.
   useEffect(() => {
-    if (!voice.on || prefs.voiceEngine === "live") return;
+    if (!voice.on || liveVoice) return;
     const abort = new AbortController();
     void fetch("/api/speech/warm", { method: "POST", headers: { "X-ShuaCrew": "1", "Content-Type": "application/json" }, body: JSON.stringify({ voiceId: voice.id, warmMinutes: 10 }), signal: abort.signal }).catch(() => {});
     return () => abort.abort();
-  }, [voice.on, voice.id, prefs.voiceEngine]);
+  }, [voice.on, voice.id, liveVoice]);
   const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets" | "teach">("chat"), see = useScreenAccess();
   const [brief, setBriefState] = useState<{ q: string; a: string } | null>(null);
   const setBrief = (value: { q: string; a: string } | null) => {
@@ -306,9 +311,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const mic = useRef<HandsFree>(null as unknown as HandsFree); mic.current ??= new HandsFree();
   // A live call owns the mic and the voice: Spark's open mic, fn push-to-talk and the wake word stand aside meanwhile.
   const call = useLiveCall();
-  const previousVoiceEngine = useRef(prefs.voiceEngine);
+  const previousVoiceEngine = useRef(liveVoice);
   const modeSwitchCaptureBlock = useRef(false);
-  useEffect(() => { if (previousVoiceEngine.current !== prefs.voiceEngine) { previousVoiceEngine.current = prefs.voiceEngine; modeSwitchCaptureBlock.current = true; setVoiceLive(false); if (liveActive()) endLive(); mic.current.stop(); } }, [prefs.voiceEngine]);
+  useEffect(() => { if (previousVoiceEngine.current !== liveVoice) { previousVoiceEngine.current = liveVoice; modeSwitchCaptureBlock.current = true; setVoiceLive(false); if (liveActive()) endLive(); mic.current.stop(); } }, [liveVoice]);
   useEffect(() => connectLiveBridge(), []);
   useEffect(() => watchLiveReady(), []);
   const liveTurnListeners = useRef(new Set<() => void>());
@@ -328,9 +333,9 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const [behind, setBehind] = useState(false);
   const convoRef = useRef(convo); convoRef.current = convo;
   const speech = useRef<SpeechQueue>(null as unknown as SpeechQueue); speech.current ??= new SpeechQueue();
-  speech.current.hush = call.active || prefs.voiceEngine === "live";
+  speech.current.hush = call.active || liveVoice;
   useEffect(() => {
-    const changed = (event: Event) => { speech.current.hush = (event as CustomEvent).detail.on === true || prefsRef.current.voiceEngine === "live"; if (speech.current.hush) { speech.current.stop(); mic.current.stop(); } };
+    const changed = (event: Event) => { speech.current.hush = (event as CustomEvent).detail.on === true || liveVoiceRef.current; if (speech.current.hush) { speech.current.stop(); mic.current.stop(); } };
     window.addEventListener("shuacrew:livecall", changed);
     return () => window.removeEventListener("shuacrew:livecall", changed);
   }, []);
@@ -774,13 +779,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const agenda = useRef<Agenda | null>(null);
   const newsBlocked = useRef(true);
   const [news] = useState(() => new QuietAnnouncements(() => newsBlocked.current || (!liveActive() && speech.current.busy), text => {
-    if (prefsRef.current.voiceEngine === "live" && !liveActive()) { startNativeLive("silent"); return false; }
+    if (liveVoiceRef.current && !liveActive()) { startNativeLive("silent"); return false; }
     if (liveActive()) return announceLiveCommand(text);
     speech.current.beginTurn(); speech.current.say(text); return true;
   }));
   const commandBlocked = useRef(true);
   const [commandNews] = useState(() => new QuietAnnouncements(() => commandBlocked.current || (!liveActive() && speech.current.busy), text => {
-    if (prefsRef.current.voiceEngine === "live" && !liveActive()) { startNativeLive("silent"); return false; }
+    if (liveVoiceRef.current && !liveActive()) { startNativeLive("silent"); return false; }
     if (liveActive()) return announceLiveCommand(text);
     speech.current.beginTurn(); speech.current.say(text); return true;
   }));
@@ -1107,6 +1112,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const ask = async (text = getCompanionDraft(), opt: { look?: boolean; origin?: "user" | "live"; signal?: AbortSignal; area?: Shot } = {}) => {
     const owningTurn = opt.origin === "live" ? liveTurn.current : null;
     const setError = (message: string) => {
+      if (message && (window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: false, message: `ASK ERROR ${message}` });
       if (owningTurn && liveTurn.current === owningTurn && !opt.signal?.aborted && message) { owningTurn.error = message; queueMicrotask(notifyLiveTurn); }
       setErrorState(message);
     };
@@ -1136,7 +1142,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (workflowBusy()) { setError("Stop the workflow before starting another assistant task."); return; }
     const directMove = producerMove(text.trim());
     const direct = !!directMove && isInstant(directMove);
-    if (!opt.area && !selectedArea && !direct && opt.origin !== "live" && prefsRef.current.voiceEngine === "live" && getBuddyVoice().on) {
+    if (!opt.area && !selectedArea && !direct && opt.origin !== "live" && liveVoiceRef.current && getBuddyVoice().on) {
       if (queueLiveText(text)) clearCompanionDraft(text, getCompanionDraftRevision()); else setError("Could not queue that voice request. Try a shorter message after the current request.");
       return;
     }
@@ -1262,10 +1268,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     if (opt.origin !== "live") draftRevision = acceptCompanionDraft(text);
     setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
     // Where a turn's time goes before the model starts (logged during self-tests: SHUACREW_SPARK_SELFTEST=ask:…).
-    const t0 = performance.now(), marks: Record<string, number> = {}, mark = (k: string) => { marks[k] = Math.round(performance.now() - t0); };
+    const t0 = performance.now(), marks: Record<string, number> = {}, mark = (k: string) => { marks[k] = Math.round(performance.now() - t0); if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `STEP ${k} ${marks[k]}ms` }); };
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
-      const intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
+      let intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
       // Asked about the weather: the real forecast comes along (Open-Meteo, ~0.3 s), so Spark answers at once instead of
       // web-searching and reading a page (17–20 s in the log). Never allowed to hold a turn up for more than 2 s.
       const weather = asksWeather(q) ? Promise.race([weatherForSpark().catch(() => ""), new Promise<string>((ok) => setTimeout(() => ok(""), 2000))]) : Promise.resolve("");
@@ -1276,7 +1282,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const radioAnswer = radioNow(); // asked once, used for the context and the status line
       const musicContext = playingContext(() => radioAnswer);
       const relevantMusic = /\b(music|song|track|album|artist|playlist|playing|listening|spotify|radio)\b/i.test(q);
-      const [selected, mac, playing, forecast, workspace] = await Promise.all([selectIntelligence(intelligence).finally(() => mark("pick")), macContext().finally(() => mark("mac")), (relevantMusic ? musicContext : optionalContext(musicContext, 150)).finally(() => mark("playing")), weather, workspaceContext()]); mark("context"); const personal = [mac, playing, forecast].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
+      const [resolved, mac, playing, forecast, workspace] = await Promise.all([resolveIntelligence(intelligence).finally(() => mark("pick")), macContext().finally(() => mark("mac")), (relevantMusic ? musicContext : optionalContext(musicContext, 150)).finally(() => mark("playing")), weather, workspaceContext()]); const selected = resolved.choice; intelligence = resolved.request; /* the request the gateway will re-check */ mark("context"); const personal = [mac, playing, forecast].filter(Boolean).join("\n"); if (stale()) return; setChoice(selected); setChoiceError(""); setHiRes("model" in selected && seesHiRes(selected.model ?? undefined));
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const effort = intelligence.tier === "frontier" ? "high" : intelligence.tier === "balanced" ? "medium" : "low";
@@ -1401,11 +1407,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
     if (voiceLive) m.mode = "auto";
     // With Live as the voice the classic open mic stays off: a call is the conversation.
-    const wanted = classicCaptureWanted({ engine: prefs.voiceEngine, conversation: prefs.listen !== "hold" && prefs.conversation, wake: wakeTurn.current, voice: voiceLive, callActive: call.active, switchBlocked: modeSwitchCaptureBlock.current });
+    const wanted = classicCaptureWanted({ engine: liveVoice ? "live" : "classic", conversation: prefs.listen !== "hold" && prefs.conversation, wake: wakeTurn.current, voice: voiceLive, callActive: call.active, switchBlocked: modeSwitchCaptureBlock.current });
     if (call.active) { speech.current.stop(); wakeTurn.current = false; if (voiceLive) setVoiceLive(false); }
     // Voice mode from the notch listens with the chat closed; otherwise the open mic lives with the open card.
     if (wanted && tab !== "teach" && (open || voiceLive) && armed && (!embedded || focused)) { speech.current.unlock(); void m.start(); } else m.stop();
-  }, [prefs.conversation, prefs.listen, prefs.voiceEngine, prefs.language, open, embedded, focused, armed, tab, voiceLive, call.active]);
+  }, [prefs.conversation, prefs.listen, liveVoice, prefs.language, open, embedded, focused, armed, tab, voiceLive, call.active]);
   // Typing while the mic is open: key clicks never start a voice turn (Whisper made "and" of them), and the notch drops
   // the last thing you said aloud — you're writing now.
   useEffect(() => {
@@ -1421,11 +1427,11 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; if (viaLive()) liveFn("release"); else mic.current.release(); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); mic.current.release(); };
-  }, [prefs.listen, prefs.voiceEngine, open, tab]);
+  }, [prefs.listen, liveVoice, open, tab]);
   useEffect(() => () => mic.current.stop(), []);
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
   /** Talking goes to a Live call when that's your voice and Live can take it (connected lately, plan not used up). */
-  const viaLive = () => prefsRef.current.voiceEngine === "live";
+  const viaLive = () => liveVoiceRef.current;
   // Guidance stays visible over the app being practiced without taking keyboard
   // focus. Pausing restores the user's normal pin preference.
   useEffect(() => { if (!embedded) post({ type: "buddyOnTop", on: prefs.onTop || practicing }); }, [prefs.onTop, practicing, embedded]);
@@ -1433,7 +1439,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   useEffect(() => { if (!embedded) post({ type: "buddyFollow", on: prefs.follow }); }, [prefs.follow, embedded]);
   useEffect(() => { if (!embedded) post({ type: "buddyScreenMemory" }); }, [embedded]); // wakes the recorder if you turned it on
   // "Hey Spark": the Mac app heard it — open, answer, and listen for one request (even with open mic off).
-  useEffect(() => { if (!embedded) post({ type: "buddyWake", names: prefs.nickname ? [prefs.nickname] : [], ...(prefs.voiceEngine === "live" ? { on: false } : {}) }); }, [embedded, prefs.nickname, prefs.voiceEngine]);
+  useEffect(() => { if (!embedded) post({ type: "buddyWake", names: prefs.nickname ? [prefs.nickname] : [], ...(liveVoice ? { on: false } : {}) }); }, [embedded, prefs.nickname, liveVoice]);
   useEffect(() => {
     if (embedded) return;
     const on = () => {
@@ -1464,7 +1470,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     modeSwitchCaptureBlock.current = false;
     if (liveActive()) { if (getLiveSnapshot().mode !== "talk") startNativeLive("talk"); else endLive(); return; }
     if (viaLive()) { setArmed(true); speech.current.unlock(); speech.current.stop(); startLive(); return; }
-    if (prefs.voiceEngine === "live") { setArmed(true); speech.current.unlock(); setVoiceLive(value => !value); return; }
+    if (liveVoice) { setArmed(true); speech.current.unlock(); setVoiceLive(value => !value); return; }
     setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
   toggleTalkRef.current = toggleTalk;
   const reset = () => { dismissLesson(); speech.current.stop(); architectureSession.current = reduceArchitectureSession(architectureSession.current, { type: "reset" }); architectureMessage.current = ""; lessonNarrationOwner.current = ""; stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
@@ -1722,6 +1728,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     : streamingNow ? { text: visibleStream, live: true }
     : speaking && caption ? { text: caption.text, live: true }
     : processing || working || !!busy ? { text: fnSent && heard ? heard : "Working on it", live: true, shimmer: true }
+    : status === "paused" ? { ...pausedLine(recorded?.statusReason), tone: "hold" }
     : lastReply ? { text: lastReply }
     : { text: idleFocus.text, sub: idleFocus.sub, tone: idleFocus.tone };
   const callOwnsIsland = call.active && call.mode !== "silent";
@@ -1733,6 +1740,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     const field = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
     if (field && /^(INPUT|TEXTAREA)$/.test(field.tagName) && field.value.trim()) return; // mid-sentence: stay
     if (optionsPanel.current?.open) return;
+    post({ type: "buddySelfTest", ok: true, message: "LEAVE closed the opened notch (pointer away 1.2 s)" });
     close();
   };
   // Doze after 15 quiet minutes with nothing running; anything happening wakes it.
@@ -1744,7 +1752,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const displayRuntime = working ? actualRuntime : choice?.runtime ?? actualRuntime;
   const displayProvider = displayRuntime === "local" ? "This Mac" : displayRuntime === "claude" ? "Claude" : displayRuntime === "codex" ? "Codex" : displayRuntime ?? "Connecting";
   const mood = (prefs.celebration !== "off" && (cheer || eventMood === "happy")) ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : eventMood === "concerned" ? "concerned" : sleepy ? "sleepy" : "idle";
-  const liveVoiceOn = prefs.voiceEngine === "live";
+  const liveVoiceOn = liveVoice;
   const talkEnabled = call.active && call.mode === "talk" || voiceLive;
   const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""} ${callOwnsIsland ? "is-calling" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${companionName(prefs)}`} onPointerDown={() => setArmed(true)} onKeyDown={(e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;

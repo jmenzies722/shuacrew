@@ -185,7 +185,7 @@
 /* Idle focus: a small kicker says what kind of line this is. One accent, tinted per tone; motion is transform/opacity only. */
 .isl-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 640; letter-spacing: .08em; text-transform: uppercase; color: var(--k, var(--amber)); }
 .isl-kicker i { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--k, var(--amber)); }
-.isl-hero.is-tone-needs { --k: #ffb347; }
+.isl-hero.is-tone-needs, .isl-hero.is-tone-hold { --k: #ffb347; }
 .isl-hero.is-tone-done { --k: #5ad08a; }
 .isl-hero.is-tone-learn, .isl-hero.is-tone-live { --k: var(--amber); }
 .isl-hero.is-tone-needs .isl-kicker i { animation: isl-k-pulse 1.6s ease-in-out infinite; }

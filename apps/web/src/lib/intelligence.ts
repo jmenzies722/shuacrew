@@ -8,12 +8,20 @@ const pick = (request: IntelligenceRequest) => api<IntelligenceChoice>("/api/int
  * A model you picked by name stays strict.
  */
 export async function selectIntelligence(request: IntelligenceRequest): Promise<IntelligenceChoice> {
+  return (await resolveIntelligence(request)).choice;
+}
+/**
+ * The choice and the request that produced it. Send THAT request with the turn: the gateway re-checks it, and the
+ * original (Codex-only) one would say "no model" and refuse the fallback's pick (Oct 5: every ask got a 409).
+ */
+export async function resolveIntelligence(request: IntelligenceRequest): Promise<{ choice: IntelligenceChoice; request: IntelligenceRequest }> {
   const first = await pick(request);
-  if (first.runtime || !request.preferredRuntime || request.preferredModel || request.mode === "local") return first;
-  const fallback = await pick({ ...request, preferredRuntime: undefined });
-  if (!fallback.runtime) return first;
+  if (first.runtime || !request.preferredRuntime || request.preferredModel || request.mode === "local") return { choice: first, request };
+  const used = { ...request, preferredRuntime: undefined };
+  const fallback = await pick(used);
+  if (!fallback.runtime) return { choice: first, request };
   const until = "retryAt" in first && first.retryAt ? ` until ${new Date(first.retryAt).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
-  return { ...fallback, reason: `${request.preferredRuntime === "codex" ? "Codex" : request.preferredRuntime} is at its usage limit${until} · ${fallback.reason}` };
+  return { choice: { ...fallback, reason: `${request.preferredRuntime === "codex" ? "Codex" : request.preferredRuntime} is at its usage limit${until} · ${fallback.reason}` }, request: used };
 }
 /** Model and provider identity belong to a conversation. Switch only between turns. */
 /** Past this, Spark starts a fresh session (with a recap): a conversation once grew to 506K tokens (limit 200K) and every turn died. */
