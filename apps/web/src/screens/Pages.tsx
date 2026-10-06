@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { ACCENTS, PALETTES, resolvePalette, type Palette } from "../lib/appearance";
 import { useLive } from "../lib/live";
+import { ControlHeader, Readouts, type Tone } from "../components/ControlRoom";
 import { PaneHeader } from "../components/Pane";
 import { ShieldCheck } from "lucide-react";
 
@@ -41,45 +42,78 @@ export { Integrations } from "./Integrations";
 const TRY = ["git push --force origin main", "rm -rf ~/Developer", "curl https://get.example.sh | sh", "cat .env", "npm install left-pad", "git commit -am wip"];
 export function Policy() {
   const [verify, setVerify] = useState<{ ok: boolean; count: number; brokenAt?: number; why?: string } | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [command, setCommand] = useState(TRY[0]!);
   const [explained, setExplained] = useState<Decision | null>(null);
   const activity = useLive((s) => s.activity);
   const explain = async (c = command) => { setCommand(c); setExplained(await api<Decision>("/api/policy/explain", { body: { tool: "Bash", input: { command: c } } })); };
+  // Verifying walks the whole chain on the gateway; the seal sweep runs at least once so you can see it happen.
+  const runVerify = async () => {
+    setVerifying(true);
+    const started = Date.now();
+    try { const v = await api<NonNullable<typeof verify>>("/api/audit/verify"); await new Promise((r) => setTimeout(r, Math.max(0, 900 - (Date.now() - started)))); setVerify(v); }
+    catch { /* the badge keeps the last result */ }
+    finally { setVerifying(false); }
+  };
   useEffect(() => { void explain(); void api<typeof verify>("/api/audit/verify").then(setVerify).catch(() => {}); }, []);
   // Real decisions, newest first: what the policy decided on its own, and what you decided when it asked.
   const decisions = useMemo(() => activity.filter((e) => e.kind === "policy.decided" || e.kind === "approval.decided").slice(-40).reverse(), [activity]);
   const asked = useMemo(() => new Map(activity.filter((e) => e.kind === "approval.requested").map((e) => { const b = e.body as { id: string; tool: string }; return [b.id, b.tool]; })), [activity]);
-  const counts = useMemo(() => { const c = { allow: 0, deny: 0, ask: 0 }; for (const e of activity) if (e.kind === "policy.decided") c[(e.body as { verdict: "allow" | "deny" | "ask" }).verdict]++; return c; }, [activity]);
+  const counts = useMemo(() => { const c = { allow: 0, deny: 0, ask: 0, you: 0 }; for (const e of activity) { if (e.kind === "policy.decided") c[(e.body as { verdict: "allow" | "deny" | "ask" }).verdict]++; if (e.kind === "approval.decided") c.you++; } return c; }, [activity]);
   const tone = (v?: string) => (v === "allow" ? "ok" : v === "deny" ? "bad" : "wait");
+  const chain = activity.slice(-7).reverse();
+  const status: { text: string; tone: Tone } = !verify ? { text: "Checking the audit chain…", tone: "idle" }
+    : !verify.ok ? { text: `The audit chain is broken at #${verify.brokenAt}${verify.why ? `: ${verify.why}` : ""}.`, tone: "bad" }
+    : { text: [`Audit chain intact across ${verify.count.toLocaleString()} events`, counts.deny ? `${counts.deny} blocked recently` : "nothing blocked recently", counts.ask ? `${counts.ask} asked you` : null].filter(Boolean).join(" · "), tone: "ok" };
   return (
-    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1440px] px-8 pb-12 pt-6">
-      <PaneHeader title="Policy & Audit" description="One policy for every runtime; the tightest rule wins; every decision says which rule made it."
-        actions={<span className={`pol-chain is-${verify ? (verify.ok ? "ok" : "bad") : "wait"}`}><StatusGlyph tone={verify ? (verify.ok ? "ok" : "bad") : "wait"} />{verify ? (verify.ok ? `Audit chain intact · ${verify.count.toLocaleString()} events` : `Chain broken at #${verify.brokenAt}`) : "Checking the chain…"}</span>} />
-      <SparkToday />
-      <section className="pol-tester">
-        <Eyebrow className="mb-3">Why would this be allowed?</Eyebrow>
-        <div className="flex gap-2">
-          <input value={command} onChange={(e) => setCommand(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void explain()} className="pol-input mono" aria-label="Command to explain" />
-          <Button variant="primary" onClick={() => void explain()}>Explain</Button>
-        </div>
-        <div className="pol-try">{TRY.map((t) => <button key={t} type="button" className={`mono ${t === command ? "is-on" : ""}`} onClick={() => void explain(t)}>{t}</button>)}</div>
-        {explained && <div className={`pol-verdict is-${tone(explained.verdict)}`}>
-          <strong>{explained.verdict}</strong>
-          <div><div>{explained.reason}</div><small>Rule <span className="mono">{explained.rule}</span> · <span className="mono">{explained.layer}</span> layer · risk {explained.risk}</small></div>
-        </div>}
-      </section>
-      <div className="pol-grid">
-        <section className="pol-card">
-          <header><Eyebrow>Decisions</Eyebrow><span className="pol-counts"><i className="is-ok">{counts.allow} allowed</i><i className="is-wait">{counts.ask} asked</i><i className="is-bad">{counts.deny} denied</i></span></header>
-          {decisions.length === 0 && <p className="pol-empty">Decisions appear here as your crew works: every tool call the policy allowed, asked about or blocked, and what you decided.</p>}
-          {decisions.map((e) => { const b = e.body as { tool?: string; verdict?: string; rule?: string; reason?: string; allow?: boolean; by?: string }; const v = e.kind === "approval.decided" ? (b.allow ? "allow" : "deny") : b.verdict;
-            return <div key={e.seq} className="pol-row"><StatusGlyph tone={tone(v)} /><span className="pol-row-main"><b>{e.kind === "approval.decided" ? `${b.by === "timeout" ? "Timed out:" : `${b.by?.startsWith("you") ? "You" : "Policy"} ${b.allow ? "allowed" : "denied"}`} ${toolPhrase(asked.get((b as { id?: string }).id ?? ""))}` : toolPhrase(b.tool)}</b><small>{e.kind === "approval.decided" ? (b.by === "timeout" ? "timed out" : `decided ${b.by?.includes("(") ? b.by.slice(b.by.indexOf("(") + 1, -1) : "in the app"}`) : `${b.rule} · ${b.reason}`}</small></span><span className="pol-when">{since(e.at)}</span></div>; })}
+    <div className="cr-scroll"><div className="cr-page pol">
+      <ControlHeader title="Policy & Audit" kicker={<><ShieldCheck size={13} /> Tools</>} status={status.text} tone={status.tone}>
+        <button type="button" className="cr-btn" onClick={() => void runVerify()} disabled={verifying}><ShieldCheck size={14} /> {verifying ? "Verifying…" : "Verify chain"}</button>
+      </ControlHeader>
+      <Readouts items={[
+        { label: "Allowed by policy", value: counts.allow, sub: "ran without asking" },
+        { label: "Asked you", value: counts.ask, tone: counts.ask ? "wait" : undefined, dim: !counts.ask, sub: `${counts.you} decided by you` },
+        { label: "Blocked", value: counts.deny, tone: counts.deny ? "bad" : undefined, dim: !counts.deny, sub: counts.deny ? "the policy said no" : "nothing blocked" },
+        { label: "Audit chain", value: !verify ? "…" : verify.ok ? "Intact" : "Broken", tone: !verify ? undefined : verify.ok ? "ok" : "bad", sub: verify ? `${verify.count.toLocaleString()} events sealed` : "checking" },
+      ]} />
+      <div className="cr-row is-wide-left">
+        <section className="cr-sheet pol-tester">
+          <header className="cr-sheet-head"><h2>Why would this be allowed?</h2><small>try any command; nothing runs</small></header>
+          <div className="pol-ask">
+            <span className="pol-prompt" aria-hidden="true">$</span>
+            <input value={command} onChange={(e) => setCommand(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void explain()} className="pol-input" aria-label="Command to explain" spellCheck={false} />
+            <button type="button" className="cr-btn is-primary" onClick={() => void explain()}>Explain</button>
+          </div>
+          <div className="pol-try">{TRY.map((t) => <button key={t} type="button" className={t === command ? "is-on" : ""} onClick={() => void explain(t)}>{t}</button>)}</div>
+          {explained && <div className={`pol-verdict is-${tone(explained.verdict)}`} key={`${command}-${explained.rule}`}>
+            <ol className="pol-path" aria-label="How the policy decided">
+              <li><small>Tool</small><b>Bash</b></li>
+              <li><small>Layer</small><b>{explained.layer}</b></li>
+              <li><small>Rule</small><b className="mono">{explained.rule}</b></li>
+              <li className="is-verdict"><small>Verdict</small><b>{explained.verdict}</b></li>
+            </ol>
+            <p>{explained.reason}<span> · risk {explained.risk}</span></p>
+          </div>}
         </section>
-        <section className="pol-card">
-          <header><Eyebrow>Audit chain</Eyebrow><Button onClick={async () => setVerify(await api("/api/audit/verify"))}>Verify now</Button></header>
-          <p className="pol-note">Every event is chained to the one before it with SHA-256. Changing, deleting or reordering any of them breaks the chain, and this says where.</p>
-          <div className="pol-chainlist">{activity.slice(-8).reverse().map((e) => <div key={e.seq} className="pol-link"><span className="mono">#{e.seq}</span><span className="pol-row-main"><b className="mono">{e.kind}</b></span><span className="pol-when">{since(e.at)}</span></div>)}</div>
+        <section className={`cr-sheet pol-chain${verifying ? " is-verifying" : ""}${verify && !verifying ? (verify.ok ? " is-ok" : " is-bad") : ""}`}>
+          <header className="cr-sheet-head"><h2>Audit chain</h2><small>each event sealed to the one before</small></header>
+          <ol className="pol-blocks">{chain.map((e, i) => <li key={e.seq} style={{ ["--i" as string]: i }}>
+            <span className="pol-seal" aria-hidden="true" />
+            <b>#{e.seq.toLocaleString()}</b><span className="pol-kind">{e.kind}</span>
+            {e.hash && <code title={`SHA-256 ${e.hash}`}>{e.hash.slice(0, 8)}</code>}
+            <time>{since(e.at)}</time>
+          </li>)}</ol>
+          <p className="pol-note">SHA-256 links every event to the one before it. Change, delete or reorder any of them and the chain breaks, and Verify names where.</p>
         </section>
+      </div>
+      <div className="cr-row is-wide-left">
+        <section className="cr-sheet pol-decisions">
+          <header className="cr-sheet-head"><h2>Decisions</h2><small>every allow, ask and block, newest first</small></header>
+          {decisions.length === 0 && <p className="cr-muted">Decisions appear here as your crew works: every tool call the policy allowed, asked about or blocked, and what you decided.</p>}
+          <div className="pol-list">{decisions.map((e) => { const b = e.body as { tool?: string; verdict?: string; rule?: string; reason?: string; allow?: boolean; by?: string }; const v = e.kind === "approval.decided" ? (b.allow ? "allow" : "deny") : b.verdict;
+            return <div key={e.seq} className="pol-row"><StatusGlyph tone={tone(v)} /><span className="pol-row-main"><b>{e.kind === "approval.decided" ? `${b.by === "timeout" ? "Timed out:" : `${b.by?.startsWith("you") ? "You" : "Policy"} ${b.allow ? "allowed" : "denied"}`} ${toolPhrase(asked.get((b as { id?: string }).id ?? ""))}` : toolPhrase(b.tool)}</b><small>{e.kind === "approval.decided" ? (b.by === "timeout" ? "timed out" : `decided ${b.by?.includes("(") ? b.by.slice(b.by.indexOf("(") + 1, -1) : "in the app"}`) : `${b.rule} · ${b.reason}`}</small></span><span className="pol-when">{since(e.at)}</span></div>; })}</div>
+        </section>
+        <SparkToday />
       </div>
     </div></div>
   );

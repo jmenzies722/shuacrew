@@ -30,9 +30,10 @@ export function SparkToday() {
         : <button type="button" onClick={() => setSure(true)} disabled={!log.length}><Trash2 size={13} /> Delete history</button>}
     </header>
     {memory && memory.moments > 0 && <p className="spark-today-memory"><History size={13} /> Screen memory: {memory.today} screen{memory.today === 1 ? "" : "s"} of text remembered today ({memory.moments} over the last {memory.keepDays} days). <button type="button" onClick={forget}>Forget all</button></p>}
-    <div className="spark-today-cols">{COLS.map((c) => { const rows = by(c.kind); return <div key={c.kind} className="spark-today-col">
+    {/* Three empty columns said nothing: on a quiet day it is one line. */}
+    {!today.length ? <p className="spark-today-calm">Nothing seen, heard or done yet today.</p> : <div className="spark-today-cols">{COLS.map((c) => { const rows = by(c.kind); return <div key={c.kind} className="spark-today-col">
       <h3><c.icon size={14} /> {c.title} <small>{rows.length}</small></h3>
       {rows.length ? <ol>{rows.map((e: LogEntry, i) => <li key={`${e.at}-${i}`} className={e.ok ? "" : "is-failed"}><time>{time(e.at)}</time><span><b>{e.label}</b>{e.message && <small>{e.message}</small>}</span></li>)}</ol> : <p>{c.empty}</p>}
-    </div>; })}</div>
+    </div>; })}</div>}
   </section>;
 }

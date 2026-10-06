@@ -1,27 +1,62 @@
-.pol-chain { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 999px; font-size: 12px; font-weight: 550; color: var(--text-2); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
-.pol-chain.is-ok { color: var(--ok, #34d399); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok, #34d399) 35%, transparent); }
-.pol-chain.is-bad { color: var(--bad); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 45%, transparent); }
-.pol-tester { padding: 20px; border-radius: 18px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
-.pol-input { flex: 1; height: 40px; padding: 0 14px; border-radius: 11px; font-size: 13px; color: var(--text); background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line-strong); outline: none; transition: box-shadow .15s; }
-.pol-input:focus { box-shadow: inset 0 0 0 1px var(--amber), 0 0 0 4px color-mix(in srgb, var(--amber) 12%, transparent); }
+/* Policy & Audit in the Control Room language: a decision you can trace, and a chain you can watch being checked. */
+
+/* Why would this be allowed? */
+.pol-ask { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pol-ask:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 55%, var(--line-strong)), 0 0 0 3px color-mix(in srgb, var(--amber) 12%, transparent); }
+.pol-prompt { font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; color: var(--amber); }
+.pol-input { flex: 1; min-width: 0; height: 36px; border: 0; outline: none; background: transparent; font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; color: var(--text); }
 .pol-try { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.pol-try button { padding: 4px 10px; border-radius: 999px; font-size: 11px; color: var(--text-3); background: var(--sunken); box-shadow: inset 0 0 0 1px var(--line); transition: color .15s, box-shadow .15s; }
+.pol-try button { padding: 4px 10px; border: 0; border-radius: 99px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--text-3); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: color .15s, box-shadow .15s; }
 .pol-try button:hover, .pol-try button.is-on { color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
-.pol-verdict { display: flex; align-items: flex-start; gap: 16px; margin-top: 16px; padding: 14px 16px; border-radius: 14px; font-size: 13px; animation: pol-in .25s ease both; }
-.pol-verdict strong { min-width: 64px; font-size: 15px; font-weight: 700; text-transform: capitalize; }
-.pol-verdict small { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
-.pol-verdict.is-ok { background: color-mix(in srgb, var(--ok, #34d399) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok, #34d399) 30%, transparent); } .pol-verdict.is-ok strong { color: var(--ok, #34d399); }
-.pol-verdict.is-bad { background: color-mix(in srgb, var(--bad) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 35%, transparent); } .pol-verdict.is-bad strong { color: var(--bad); }
-.pol-verdict.is-wait { background: var(--amber-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent); } .pol-verdict.is-wait strong { color: var(--amber); }
-.pol-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-top: 14px; }
-.pol-card { display: flex; flex-direction: column; gap: 6px; max-height: 520px; padding: 18px; border-radius: 18px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); overflow-y: auto; }
-.pol-card > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.pol-counts { display: flex; gap: 10px; font-size: 11px; } .pol-counts i { font-style: normal; } .pol-counts .is-ok { color: var(--ok, #34d399); } .pol-counts .is-wait { color: var(--amber); } .pol-counts .is-bad { color: var(--bad); }
-.pol-row, .pol-link { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; transition: background .15s; }
-.pol-row:hover, .pol-link:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
-.pol-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; } .pol-row-main small { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pol-link .mono { font-size: 11.5px; color: var(--text-3); } .pol-link b { font-weight: 500; color: var(--text-2); }
+.pol-verdict { --v: var(--wait); margin-top: 16px; padding: 14px; border-radius: 14px; background: color-mix(in srgb, var(--v) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v) 26%, transparent); animation: pol-in .28s var(--ease-out, ease) both; }
+.pol-verdict.is-ok { --v: var(--ok); } .pol-verdict.is-bad { --v: var(--bad); }
+.pol-verdict > p { margin: 12px 2px 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+.pol-verdict > p span { color: var(--text-3); }
+/* Tool › layer › rule › verdict: the same path the gateway took, one step at a time. */
+.pol-path { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pol-path li { position: relative; display: grid; gap: 2px; min-width: 0; padding: 7px 11px; border-radius: 9px; background: color-mix(in srgb, var(--panel) 80%, transparent); box-shadow: inset 0 0 0 1px var(--line); animation: pol-in .3s var(--ease-out, ease) both; }
+.pol-path li:nth-child(2) { animation-delay: 60ms; } .pol-path li:nth-child(3) { animation-delay: 120ms; } .pol-path li:nth-child(4) { animation-delay: 180ms; }
+.pol-path li + li::before { content: "›"; position: absolute; left: -6px; top: 50%; transform: translate(-50%, -50%); font-size: 13px; color: var(--text-3); }
+.pol-path li + li { margin-left: 8px; }
+.pol-path small { font-size: 10.5px; color: var(--text-3); }
+.pol-path b { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.pol-path .is-verdict { background: color-mix(in srgb, var(--v) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--v) 40%, transparent); }
+.pol-path .is-verdict b { color: var(--v); text-transform: capitalize; }
+
+/* The audit chain: linked blocks. Verifying sends a seal down the links. */
+.pol-blocks { position: relative; display: grid; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
+.pol-blocks li { position: relative; display: grid; grid-template-columns: 14px auto minmax(0, 1fr) auto auto; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 9px; font-size: 12px; background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.pol-blocks li + li::before { content: ""; position: absolute; left: 16px; top: -7px; width: 1px; height: 8px; background: var(--line-strong); }
+.pol-blocks b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.pol-kind { min-width: 0; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; }
+.pol-blocks code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--text-3); padding: 1px 6px; border-radius: 6px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.pol-blocks time { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.pol-seal { width: 9px; height: 9px; border-radius: 3px; background: color-mix(in srgb, var(--text) 18%, transparent); transition: background .3s; }
+.pol-chain.is-ok .pol-seal { background: var(--ok); }
+.pol-chain.is-bad .pol-seal { background: var(--bad); }
+.pol-chain.is-verifying .pol-blocks li { animation: pol-seal .55s ease both; animation-delay: calc(var(--i) * 90ms); }
+.pol-chain.is-verifying .pol-seal { background: var(--amber); }
+@keyframes pol-seal { 0% { box-shadow: inset 0 0 0 1px var(--line); } 45% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent), 0 0 0 3px color-mix(in srgb, var(--amber) 14%, transparent); } 100% { box-shadow: inset 0 0 0 1px var(--line); } }
+.pol-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--text-3); }
+
+/* Decisions */
+.pol-list { display: grid; gap: 2px; max-height: 420px; overflow-y: auto; margin: 0 -8px; }
+.pol-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 9px; font-size: 12.5px; transition: background .15s; }
+.pol-row:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.pol-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pol-row-main b { font-weight: 560; color: var(--text); }
+.pol-row-main small { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pol-when { font-size: 11px; color: var(--text-3); white-space: nowrap; }
-.pol-empty, .pol-note { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text-3); }
+
+/* "Shua today" sits in the grid as a sheet. */
+.pol .spark-today { margin: 0; padding: 18px 20px 20px; border-radius: 16px; background: var(--panel); box-shadow: var(--edge, inset 0 0 0 1px var(--line)); align-content: start; }
+.pol .spark-today h2 { font-size: 14px; letter-spacing: -.01em; }
+.pol .spark-today header p { font-size: 12px; }
+.pol .spark-today-cols { grid-template-columns: 1fr; }
+.spark-today-calm { margin: 0; font-size: 12.5px; color: var(--text-3); }
+
 @keyframes pol-in { from { opacity: 0; transform: translateY(4px); } }
-@media (max-width: 1000px) { .pol-grid { grid-template-columns: 1fr; } }
+:root[data-motion="reduced"] :is(.pol-verdict, .pol-path li, .pol-chain.is-verifying .pol-blocks li) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .pol-verdict, .pol-path li, .pol-chain.is-verifying .pol-blocks li { animation: none; } }
+.pol .spark-today-memory { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: 12px; color: var(--text-3); }
+.pol .spark-today-memory svg { flex: none; transform: translateY(2px); }
