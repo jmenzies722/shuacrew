@@ -45,6 +45,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation } from "../lib/conversation";
+import { prepareTurn } from "../lib/prepare-turn";
 import { MessageQueue } from "../components/MessageQueue";
 import { shouldSend } from "../lib/composer-keys";
 import { canRemoveSession, removeSession } from "../lib/session-removal";
@@ -1037,6 +1038,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               setText(e.target.value);
               setSlashIndex(0);
               setCommandsDismissed(false);
+              // A follow-up is on its way: get the agent ready while you finish typing.
+              if (run && !working && e.target.value.trim()) prepareTurn(run.id);
             }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;

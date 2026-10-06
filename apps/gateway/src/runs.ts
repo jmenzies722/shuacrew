@@ -309,6 +309,53 @@ export class Supervisor {
 
   // ── running ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * The parts of a turn that shape the agent's conversation (model, effort, tools): one definition, used by the turn
+   * itself and by prepare(), so a connection opened ahead of time always matches the turn it's for.
+   */
+  private threadShape(runId: string, spec: { labels: string[]; model?: string; effort?: string }, runtime: Runtime) {
+    const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
+    const selectedRoute = this.store.forRun(runId).findLast(e => e.kind === "run.routed" && e.body.effort !== undefined);
+    const effort = selectedRoute?.kind === "run.routed" ? selectedRoute.body.effort || undefined : spec.effort;
+    // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
+    const lean = spec.labels.includes("buddy");
+    return {
+      lean,
+      model,
+      effort,
+      disableNativeAgents: lean || spec.labels.includes("crew-room"),
+      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
+    };
+  }
+
+  /** Where the run's next turn will work, if that's already settled (no worktree is created here). */
+  private settledCwd(runId: string, spec: { labels: string[]; repo?: string; parent?: string }): string | undefined {
+    const parentTree = spec.parent ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
+    if (parentTree?.kind === "run.worktree") return parentTree.body.path;
+    if (spec.repo && spec.labels.includes("in-place")) return spec.repo;
+    const own = this.store.forRun(runId).find((e) => e.kind === "run.worktree");
+    if (own?.kind === "run.worktree") return own.body.path;
+    return spec.repo ? undefined : this.options.workspace;
+  }
+
+  /**
+   * Get a session's next turn ready while you're still typing: the agent started and its conversation reconnected,
+   * so the follow-up begins at once (Codex: ~5s to first word cold, ~2s prepared). False when there's nothing to do.
+   */
+  prepare(runId: string): boolean {
+    if (this.halted || this.active.has(runId)) return false;
+    const created = this.store.forRun(runId).find((e) => e.kind === "run.created");
+    if (created?.kind !== "run.created" || created.body.labels.includes("crew-room")) return false;
+    const spec = created.body;
+    const runtime = this.runtimes.get(this.currentRuntime(runId, spec.runtime));
+    const resume = runtime?.prepare ? this.backendSession(runId, runtime.id) : undefined;
+    const cwd = resume ? this.settledCwd(runId, spec) : undefined;
+    if (!runtime?.prepare || !resume || !cwd) return false;
+    const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(runId, spec, runtime);
+    runtime.prepare({ lean, id: runId, ask: "", cwd, model, effort, resume, disableNativeAgents, mcpServers, plugins: lean ? undefined : this.options.plugins?.(runtime.id) }, agentEnv(process.env, runtime.authMode));
+    return true;
+  }
+
   private async execute(runId: string): Promise<void> {
     const created = this.store.forRun(runId).find((e) => e.kind === "run.created");
     if (!created || created.kind !== "run.created") return;
@@ -381,11 +428,7 @@ export class Supervisor {
     // another agent starts a fresh conversation there, with a recap of the work so far.
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
-    const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
-    const selectedRoute = this.store.forRun(runId).findLast(e => e.kind === "run.routed" && e.body.effort !== undefined);
-    const effort = selectedRoute?.kind === "run.routed" ? selectedRoute.body.effort || undefined : spec.effort;
-    // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
-    const lean = spec.labels.includes("buddy");
+    const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(runId, spec, runtime);
     const run: RunSpec = {
       lean,
       id: runId,
@@ -396,10 +439,10 @@ export class Supervisor {
       effort,
       resume,
       agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
-      disableNativeAgents: lean || spec.labels.includes("crew-room"),
+      disableNativeAgents,
       // A resumed conversation already has its lessons; only a fresh one is told.
       system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined,
-      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
+      mcpServers,
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
     this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });

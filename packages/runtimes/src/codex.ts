@@ -40,6 +40,21 @@ export function codexThreadOverrides(run: RunSpec): Json {
 
 type ServerRequestHandler = (method: string, params: Json) => Promise<Json>;
 
+/**
+ * One app-server connection. Its handlers are swappable, so a connection opened ahead of time (warm) can be handed
+ * to the turn that ends up using it: until then, what it hears goes nowhere and anything it asks is declined.
+ */
+interface Line { note: (method: string, params: Json) => void; request: ServerRequestHandler; exit: (code: number | null) => void; stderr: string }
+interface Conn { key: string; child: ChildProcess; peer: RpcPeer; line: Line; ready: Promise<string | undefined> }
+const IDLE = () => undefined;
+/** How long a connection opened ahead of time waits for its turn before it's let go. */
+const WARM_TTL = 90_000;
+
+/** A warm connection is only used by a turn that would have opened exactly the same thread. */
+export function warmKey(run: RunSpec): string {
+  return JSON.stringify([run.resume ?? null, codexThreadOverrides(run)]);
+}
+
 /** JSON-RPC over a child's stdio, both directions: our requests, its notifications and requests. */
 export class RpcPeer {
   private next = 1;
@@ -304,9 +319,70 @@ export class CodexRuntime implements Runtime {
     }
   }
 
+  private spare?: { conn: Conn; timer: NodeJS.Timeout };
+
+  /** Spawn the app-server, initialize it, and reconnect the thread if there is one: everything before the turn. */
+  private open(run: RunSpec, env: NodeJS.ProcessEnv, key: string): Conn {
+    const child = spawn(this.binary!, ["app-server"], { cwd: run.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    const line: Line = { note: IDLE, request: async () => ({ decision: "decline" }), exit: IDLE, stderr: "" };
+    child.stderr?.on("data", (chunk) => (line.stderr = (line.stderr + String(chunk)).slice(-4000)));
+    child.on("exit", (code) => line.exit(code));
+    const peer = new RpcPeer(child, (method, params) => line.note(method, params), (method, params) => line.request(method, params));
+    const ready = (async () => {
+      await peer.request("initialize", { clientInfo: { name: "shuacrew", title: "ShuaCrew", version: "0.1.0" }, capabilities: { experimentalApi: true } });
+      peer.notify("initialized");
+      if (!run.resume) return undefined;
+      const thread = await peer.request("thread/resume", { threadId: run.resume, ...codexThreadOverrides(run) });
+      return String(thread.thread?.id ?? run.resume);
+    })();
+    ready.catch(() => undefined); // a warm connection that fails is simply not used
+    return { key, child, peer, line, ready };
+  }
+
+  /**
+   * The next follow-up, ready before you send it: the agent started, its tools and skills loaded, the thread
+   * reconnected — measured at ~2.5s of a cold turn's ~5s to first word. One spare at a time; idle ones are let go.
+   */
+  prepare(run: RunSpec, env: NodeJS.ProcessEnv): void {
+    if (!this.binary || !run.resume) return; // a fresh thread's instructions depend on the ask: nothing to get ahead of
+    const key = warmKey(run);
+    if (this.spare?.conn.key === key && this.spare.conn.child.exitCode === null) return void this.spare.timer.refresh();
+    this.dropSpare();
+    const conn = this.open(run, env, key);
+    const timer = setTimeout(() => this.dropSpare(), WARM_TTL);
+    timer.unref?.();
+    this.spare = { conn, timer };
+    conn.line.exit = () => { if (this.spare?.conn === conn) { clearTimeout(timer); this.spare = undefined; } };
+  }
+
+  /** Whether a warm connection is waiting (for tests and diagnostics). */
+  get warmed(): boolean {
+    return !!this.spare && this.spare.conn.child.exitCode === null;
+  }
+
+  private dropSpare(): void {
+    const spare = this.spare;
+    if (!spare) return;
+    this.spare = undefined;
+    clearTimeout(spare.timer);
+    spare.conn.child.kill("SIGTERM");
+  }
+
+  /** The warm connection, if it's the one this turn needs and still alive; anything else is let go. */
+  private take(key: string): Conn | undefined {
+    const spare = this.spare;
+    if (!spare) return undefined;
+    if (spare.conn.key !== key || spare.conn.child.exitCode !== null) return void this.dropSpare();
+    this.spare = undefined;
+    clearTimeout(spare.timer);
+    return spare.conn;
+  }
+
   async *start(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent> {
     if (!this.binary) throw new Error("the codex CLI is not installed");
-    const child = spawn(this.binary, ["app-server"], { cwd: run.cwd, env: ctx.env, stdio: ["pipe", "pipe", "pipe"] });
+    const key = warmKey(run);
+    const conn = this.take(key) ?? this.open(run, ctx.env, key);
+    const { child, peer, line } = conn;
     const translator = new CodexTranslator();
     const queue: RuntimeEvent[] = [];
     let wake: (() => void) | null = null;
@@ -316,16 +392,12 @@ export class CodexRuntime implements Runtime {
       if (events.some((e) => e.type === "done" || e.type === "error" || e.type === "limited")) finished = true;
       wake?.();
     };
-    let stderr = "";
-    child.stderr?.on("data", (chunk) => (stderr = (stderr + String(chunk)).slice(-4000)));
-    child.on("exit", (code) => {
-      if (!finished) push([{ type: "error", message: `codex app-server exited (${code ?? "signal"}): ${stderr.trim().split("\n").pop() ?? ""}` }]);
-    });
-
-    const peer = new RpcPeer(
-      child,
-      (method, params) => push(translator.translate(method, params)),
-      async (method, params) => {
+    line.exit = (code) => {
+      if (!finished) push([{ type: "error", message: `codex app-server exited (${code ?? "signal"}): ${line.stderr.trim().split("\n").pop() ?? ""}` }]);
+    };
+    if (child.exitCode !== null) line.exit(child.exitCode);
+    line.note = (method, params) => push(translator.translate(method, params));
+    line.request = async (method, params) => {
         if (method === "mcpServer/elicitation/request") return codexMcpApproval(params, (tool, input) => ctx.approve(tool, input));
         if (method === "item/commandExecution/requestApproval") {
           const command = String(params.command ?? translator.command(params.itemId));
@@ -338,8 +410,7 @@ export class CodexRuntime implements Runtime {
           return { decision: answer.allow ? "accept" : "decline" };
         }
         return { decision: "decline" }; // anything else it might ask (permissions, elicitation): not without a person
-      },
-    );
+    };
 
     const interrupt = () => {
       if (translator.turnId && threadId) void peer.request("turn/interrupt", { threadId, turnId: translator.turnId }).catch(() => undefined);
@@ -349,11 +420,9 @@ export class CodexRuntime implements Runtime {
 
     let threadId = run.resume;
     try {
-      await peer.request("initialize", { clientInfo: { name: "shuacrew", title: "ShuaCrew", version: "0.1.0" }, capabilities: { experimentalApi: true } });
-      peer.notify("initialized");
-      const overrides = codexThreadOverrides(run);
-      const thread = threadId ? await peer.request("thread/resume", { threadId, ...overrides }) : await peer.request("thread/start", overrides);
-      threadId = String(thread.thread?.id ?? threadId);
+      const resumed = await conn.ready;
+      if (resumed) threadId = resumed;
+      else threadId = String((await peer.request("thread/start", codexThreadOverrides(run))).thread?.id ?? threadId);
       yield { type: "session", id: threadId };
       await peer.request("turn/start", {
         threadId,

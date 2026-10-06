@@ -89,6 +89,11 @@ export interface Runtime {
   models: Array<{ id: string; label: string; tier: "fast" | "balanced" | "frontier" }>;
   start(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent>;
   status(): Promise<RuntimeStatus>;
+  /**
+   * Optional: get the next turn of this conversation ready before it's sent (start the agent, reconnect the thread),
+   * so the turn itself begins at once. `run` is the turn as it will be, minus the ask. A no-op when it can't help.
+   */
+  prepare?(run: RunSpec, env: NodeJS.ProcessEnv): void;
 }
 
 /** Recognise a usage-window / rate-limit message and, when it says, when the window lifts. */

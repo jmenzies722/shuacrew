@@ -65,3 +65,31 @@ it("work sessions are told to keep a plan and prove it before done", async () =>
   expect(seen[0]!.system).toContain("keep a plan with the update_plan tool");
   expect(seen[0]!.system).toContain("Before you call anything done, prove it");
 });
+
+it("a follow-up prepared while you type matches the turn that runs, so the warm agent is actually used", async () => {
+  const { warmKey } = await import("@shuacrew/runtimes");
+  const store = new EventStore(":memory:");
+  const prepared: Array<Parameters<NonNullable<Runtime["prepare"]>>[0]> = [];
+  const started: Array<Parameters<Runtime["start"]>[0]> = [];
+  const fake: Runtime = Object.assign(Object.create(new MockRuntime({ pace: 0 })), {
+    id: "codex",
+    prepare: (run: (typeof prepared)[number]) => void prepared.push(run),
+    async *start(run: (typeof started)[number]) {
+      started.push(run);
+      yield { type: "session", id: "thread-1" } as const;
+      yield { type: "text", text: "ok", final: true } as const;
+      yield { type: "done", text: "ok" } as const;
+    },
+  });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", fake]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-prep-")), roots: [] });
+  cleanups.push(() => { supervisor.shutdown(); store.close(); });
+  const id = supervisor.launch({ ask: "First", runtime: "codex" });
+  const settle = async (n: number) => { const end = Date.now() + 5000; while ((started.length < n || ["running", "queued"].includes(fold(store.read(0)).runs[id]?.status ?? "")) && Date.now() < end) await new Promise((r) => setTimeout(r, 15)); };
+  await settle(1);
+  expect(supervisor.prepare(id)).toBe(true);
+  supervisor.followUp(id, "Second");
+  await settle(2);
+  expect(started[1]!.resume).toBe("thread-1");
+  expect(warmKey(prepared[0]!)).toBe(warmKey(started[1]!));
+  expect(supervisor.prepare("no-such-run")).toBe(false);
+});
