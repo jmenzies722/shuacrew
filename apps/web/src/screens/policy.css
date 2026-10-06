@@ -81,3 +81,71 @@
 .pol-rule-col li span { font-size: 12.5px; color: var(--text); }
 .pol-rule-col li small { font-size: 11px; color: var(--text-3); }
 .pol-rule-col li code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 10.5px; }
+
+/* ── The tester, rebuilt ─────────────────────────────────────────────────────────────────────────────── */
+.pol-kinds { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 12px; }
+.pol-kinds button { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: 9px; font: inherit; font-size: 12.5px; color: var(--text-3); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: color .15s, background .15s, box-shadow .15s; }
+.pol-kinds button:hover { color: var(--text-2); }
+.pol-kinds button.is-on { color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pol-tester .pol-ask { padding: 4px 6px 4px 14px; border-radius: 13px; }
+.pol-tester .pol-input { height: 44px; font-size: 14px; }
+.pol-prompt { display: grid; place-items: center; min-width: 14px; }
+.pol-clear { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: none; color: var(--text-3); cursor: pointer; }
+.pol-clear:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.pol-where { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; font-size: 12px; color: var(--text-3); }
+.pol-where input { flex: 0 1 320px; min-width: 160px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; font: 12px var(--font-mono, ui-monospace, monospace); color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); outline: none; }
+.pol-where input:focus { box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 0 3px color-mix(in srgb, var(--amber) 14%, transparent); }
+.pol-where small { font-size: 11.5px; }
+
+.pol-result { margin-top: 16px; display: grid; gap: 12px; animation: pol-in .28s var(--ease-out, ease) both; }
+.pol-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .pol-modes { grid-template-columns: minmax(0, 1fr); } }
+.pol-mode { --c: var(--wait); display: grid; gap: 4px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--c) 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent); }
+.pol-mode.is-ok { --c: var(--ok); } .pol-mode.is-bad { --c: var(--bad); }
+.pol-mode small { font-size: 11.5px; color: var(--text-3); }
+.pol-mode strong { font-size: 22px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; color: var(--c); }
+.pol-mode span { font-size: 12.5px; color: var(--text-2); }
+.pol-mode.is-voice strong { display: none; }
+.pol-mode.is-voice span { font-size: 15px; font-weight: 600; color: var(--text); }
+.pol-path li button { padding: 0; border: 0; background: none; font: 600 12.5px var(--font-mono, ui-monospace, monospace); color: var(--text); text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.pol-path .is-verdict { --v: var(--wait); } .pol-path .is-verdict.is-ok { --v: var(--ok); } .pol-path .is-verdict.is-bad { --v: var(--bad); }
+.pol-why { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text); }
+.pol-why span { color: var(--text-3); }
+.pol-paths { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--text-3); }
+.pol-paths code { padding: 1px 7px; border-radius: 6px; font: 11.5px var(--font-mono, ui-monospace, monospace); color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.pol-result-actions { display: flex; gap: 8px; }
+.pol-tries { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--text-3); }
+.pol-tries > span { margin-right: 4px; }
+.pol-tries button { display: inline-flex; align-items: center; gap: 6px; max-width: 260px; padding: 3px 10px; border: 0; border-radius: 99px; font: 11px var(--font-mono, ui-monospace, monospace); color: var(--text-2); background: color-mix(in srgb, var(--text) 4%, transparent); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pol-tries button:hover { color: var(--text); }
+.pol-tries i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--wait); }
+.pol-tries i.is-ok { background: var(--ok); } .pol-tries i.is-bad { background: var(--bad); }
+
+/* What fires most, decisions, guardrails. */
+.pol-legend { margin-top: 10px; } .pol-legend b { margin-left: 2px; font-variant-numeric: tabular-nums; }
+.pol-hot { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.pol-hot button { display: grid; grid-template-columns: 14px minmax(0, 1.2fr) minmax(0, 1fr) 28px; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: none; font: inherit; text-align: left; color: var(--text-2); cursor: pointer; }
+.pol-hot button:hover, .pol-hot button.is-on { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.pol-hot button.is-on { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pol-hot code { font: 11.5px var(--font-mono, ui-monospace, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pol-hot em { font-style: normal; font-size: 12px; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.pol-filter { display: inline-flex; align-items: center; gap: 6px; margin: -4px 0 10px; padding: 3px 4px 3px 10px; border-radius: 99px; font-size: 12px; color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.pol-filter code { font: 11.5px var(--font-mono, ui-monospace, monospace); color: var(--text); }
+.pol-filter button { display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 50%; background: none; color: var(--text-3); cursor: pointer; }
+.pol-rule-link { padding: 0; border: 0; background: none; font: inherit; color: var(--text-2); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
+.pol-open { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--text-3); opacity: 0; transition: opacity .15s; }
+.pol-row:hover .pol-open { opacity: 1; } .pol-open:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.pol-guard { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+.pol-guard-item { --c: var(--text-3); min-width: 0; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--c) 5%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 18%, var(--line)); }
+.pol-guard-item.is-ok { --c: var(--ok); } .pol-guard-item.is-bad { --c: var(--bad); }
+.pol-guard-item h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.pol-guard-item h3 em { font-style: normal; font-size: 11.5px; color: var(--c); }
+.pol-guard-item ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pol-guard-item code { display: block; font: 11.5px var(--font-mono, ui-monospace, monospace); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pol-guard .pol-note { grid-column: 1 / -1; }
+.pol-rule-col li.is-flash { animation: pol-flash 2s ease both; }
+@keyframes pol-flash { 0%, 60% { background: color-mix(in srgb, var(--amber) 18%, transparent); box-shadow: inset 0 0 0 1px var(--amber); } 100% { background: transparent; box-shadow: none; } }
+.pol-rule-col li small b { font-weight: 600; color: var(--text-2); }
+:root[data-motion="reduced"] .pol-result, :root[data-motion="reduced"] .pol-rule-col li.is-flash { animation: none; }
+.pol-tester .pol-input:focus, .pol-tester .pol-input:focus-visible { outline: none !important; box-shadow: none !important; }
+.pol-path .is-verdict b { text-transform: none; }

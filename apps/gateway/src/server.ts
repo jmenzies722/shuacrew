@@ -1040,12 +1040,14 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Body: { tool?: string; input?: unknown; workspace?: string } }>("/api/policy/explain", async (request) => {
     const b = request.body ?? {};
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
-    const decision = decide(call, defaultContext(b.workspace ?? process.cwd()), [{ name: "global", rules: defaultRules() }]);
-    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision) };
+    // The same engine, context and layers a real run uses (your protected folders and branches, your "always allow"s),
+    // decided as a Supervised session; Autopilot's answer rides along so the page can show both.
+    const { supervised: decision, autopilot } = supervisor.explain(call.tool, b.input ?? {}, b.workspace);
+    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision), autopilot, kind: call.kind, paths: call.paths };
   });
 
   app.get("/api/audit/verify", async () => store.verify());
-  registerPolicyAndUpdates(app, { repoRoot: repoRootFrom(options.webRoot), version: options.version ?? "0.1.0", build: webBuild });
+  registerPolicyAndUpdates(app, { repoRoot: repoRootFrom(options.webRoot), version: options.version ?? "0.1.0", build: webBuild, store, guardrails: () => supervisor.guardrails() });
 
   // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
   const statusCache = new Map<string, { at: number; value: Promise<RuntimeStatus> }>();

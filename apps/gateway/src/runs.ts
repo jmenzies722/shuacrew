@@ -25,6 +25,7 @@ import {
   standingRule,
   within,
   type AnyEvent,
+  type Decision,
   type Layer,
   type PolicyContext,
   type RunStatus,
@@ -864,6 +865,25 @@ export class Supervisor {
         },
       });
     });
+  }
+
+  /**
+   * "Why would this be allowed?": the exact engine, context and layers a real run uses (your protected folders and
+   * branches, every "always allow" you've given), decided twice: as a Supervised session and as an Autopilot one.
+   */
+  explain(tool: string, input: unknown, workspace?: string): { supervised: Decision; autopilot: Decision } {
+    const roots = this.options.roots ?? ["~/Developer"];
+    const where = workspace?.trim() || roots[0]!;
+    const policy = this.policyFor("explain", where), call = normalise(tool, input);
+    const global = policy.layers()[0]!;
+    return { supervised: decide(call, policy.ctx, [global]), autopilot: decide(call, policy.ctx, [global, { name: "run", rules: [allowAll()] }]) };
+  }
+
+  /** The guardrails a run works within right now, in plain lists (for Policy & Audit). */
+  guardrails(): { roots: string[]; protected: string[]; sensitive: string[]; protectedBranches: string[]; always: Array<{ id: string; description: string }> } {
+    const policy = this.policyFor("explain", (this.options.roots ?? ["~/Developer"])[0]!);
+    return { roots: policy.ctx.roots, protected: policy.ctx.protected, sensitive: policy.ctx.sensitive, protectedBranches: policy.ctx.protectedBranches,
+      always: [...new Map(this.standingRules().map((r) => [r.id, { id: r.id, description: r.description }])).values()] };
   }
 
   /** Cycle this session: ask stops for approval, auto lets those through. A deny still wins. */
