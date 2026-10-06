@@ -46,6 +46,8 @@ export function Review() {
     void load();
   }, [id, run?.lastSeq === undefined ? 0 : run.turns]);
 
+  // A session that worked without its own branch has nothing to review: say so, rather than a raw error and live buttons.
+  const noBranch = /no worktree/i.test(error);
   const file = diff?.files[selected];
   const stats = useMemo(() => (diff?.files ?? []).map((f) => lineStats(f.before, f.after)), [diff]);
 
@@ -94,7 +96,7 @@ export function Review() {
             · review
           </div>
           <h1 className="mt-0.5 flex items-center gap-2 text-[16px] font-semibold">
-            {diff ? `${diff.files.length} file${diff.files.length === 1 ? "" : "s"} changed` : "Loading changes…"}
+            {diff ? `${diff.files.length} file${diff.files.length === 1 ? "" : "s"} changed` : noBranch ? "Nothing to review" : error ? "Couldn't load the changes" : "Loading changes…"}
             {diff && <Chip mono>{diff.branch} → {diff.base}</Chip>}
             {run && <StatusPill status={run.status} reason={run.statusReason} />}
           </h1>
@@ -102,18 +104,20 @@ export function Review() {
         <div className="ml-auto flex items-center gap-2">
           {run?.review?.failed && <span className="max-w-[360px] truncate text-[12px] text-bad" title={run.review.failed}>{run.review.failed}</span>}
           {run?.review?.queued && <span className="text-[12px] text-amber">#{run.review.queued} in the merge queue</span>}
+          {noBranch ? <Link to="/sessions/$id" params={{ id }} className="text-[12.5px] text-fg-2 hover:text-fg">Open the session ↗</Link> : <>
           <Button variant="danger" onClick={() => setRejecting(true)} disabled={busy}>
             Reject
           </Button>
           <Button variant="primary" onClick={() => void decide(true)} disabled={busy || !diff?.files.length || run?.status === "merged"}>
             Approve → merge queue
-          </Button>
+          </Button></>}
         </div>
       </header>
 
       <nav className="overflow-y-auto border-r border-line bg-panel p-2" aria-label="Changed files">
         <Eyebrow className="px-2 pb-2 pt-1">Files <Kbd>j</Kbd> <Kbd>k</Kbd></Eyebrow>
-        {error && <div className="px-2 text-[12px] text-bad">{error}</div>}
+        {noBranch ? <div className="px-2 text-[12.5px] leading-relaxed text-fg-3">This session worked without a branch of its own, so there are no changes to review or merge. Its results are in the conversation.</div>
+          : error && <div className="px-2 text-[12px] text-bad">{error}</div>}
         {diff?.files.map((f, i) => (
           <button
             key={f.path}

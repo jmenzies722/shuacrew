@@ -57,7 +57,7 @@ export function Policy() {
   const [filter, setFilter] = useState<"all" | "allow" | "ask" | "deny" | "you">("all"), [ruleFilter, setRuleFilter] = useState(""), [ruleQuery, setRuleQuery] = useState("");
   const [flash, setFlash] = useState("");
   const activity = useLive((s) => s.activity), head = useLive((s) => s.crew.head);
-  useEffect(() => { void api<Guardrails>("/api/policy/guardrails").then(setGuard).catch(() => undefined); void api<RuleInfo[]>("/api/policy/rules").then(setRules).catch(() => setRules([])); void runVerify(true); }, []);
+  useEffect(() => { void api<Guardrails>("/api/policy/guardrails").then(setGuard).catch(() => setGuard({ roots: [], protected: [], sensitive: [], protectedBranches: [], always: [] })); void api<RuleInfo[]>("/api/policy/rules").then(setRules).catch(() => setRules([])); void runVerify(true); }, []);
   // Stats follow the log: a new decision anywhere refreshes them within a second or two.
   useEffect(() => { const t = setTimeout(() => void api<Stats>(`/api/policy/stats?days=${days}`).then(setStats).catch(() => undefined), 800); return () => clearTimeout(t); }, [days, head]);
   const runVerify = async (quiet = false) => {
@@ -179,8 +179,10 @@ function Tester({ guard, onRule }: { guard: Guardrails | null; onRule: (id: stri
     const n = ++seq.current;
     const t = setTimeout(() => {
       const call = toCall(kind, text);
-      void api<Explained>("/api/policy/explain", { body: { ...call, workspace: where.trim() || undefined } }).then((r) => {
+      void api<Explained>("/api/policy/explain", { body: { ...call, workspace: where.trim() || undefined } }).then((raw) => {
         if (n !== seq.current) return;
+        // An older gateway answers without Autopilot's verdict or the paths; fall back rather than break the page.
+        const r: Explained = { ...raw, autopilot: raw.autopilot ?? raw, kind: raw.kind ?? kind, paths: raw.paths ?? [], trail: raw.trail ?? [] };
         setResult(r); setError("");
         const next = [{ kind, text: text.trim(), verdict: r.verdict }, ...readTries().filter((x) => !(x.kind === kind && x.text === text.trim()))].slice(0, 6);
         try { localStorage.setItem(TRIES, JSON.stringify(next)); } catch { /* this view only */ } setTries(next);

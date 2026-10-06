@@ -312,7 +312,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       <Thread items={items} working={working && scrub === null} run={run} />
       {!replay && !run.labels.includes("buddy") && !run.labels.includes("crew-room") && <div className="shrink-0 px-4"><div className="mx-auto max-w-[var(--chat-width,820px)]"><Recommendations ask={run.ask} /></div></div>}
       {!replay && <ReviewBar run={run} />}
-      {!replay && !run.labels.includes("crew-room") && <MessageQueue key={run.id} run={run.id} events={events ?? []} />}
+      {!replay && !run.labels.includes("crew-room") && <MessageQueue key={`queue-${run.id}`} run={run.id} events={events ?? []} />}
       {replay ? (
         <div className="shrink-0 px-4 pb-3 pt-1">
           <div className="mx-auto max-w-[var(--chat-width,820px)]">
@@ -322,7 +322,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       ) : run.labels.includes("crew-room") ? (
         <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This is a crew-room source conversation. <Link to="/rooms/$id" params={{ id: run.labels.find(label => label.startsWith("room:"))?.slice(5) ?? "" }}>Continue in the crew room →</Link></div>
       ) : (
-        <Composer key={run.id} run={run} />
+        <Composer key={`composer-${run.id}`} run={run} />
       )}
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
