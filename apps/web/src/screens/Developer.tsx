@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, Braces, Check, Copy, Eye, EyeOff, RefreshCw, SlidersHorizontal, SquareTerminal } from "lucide-react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
-import { PaneHeader } from "../components/Pane";
+import { ControlHeader, Readouts, Seg } from "../components/ControlRoom";
 import { DeveloperSettings } from "../components/DeveloperSettings";
-import { EventInspector, GatewayLog, StorageUsage, bytes } from "../components/DevTools";
+import { EventInspector, GatewayLog, bytes } from "../components/DevTools";
 import { DiagnosticsSettings, FlagSettings } from "../components/BatchSettings";
 import { PromptInspector } from "../components/BatchSettings2";
-import { Segmented } from "../components/SettingControls";
-import "./observability.css";
 import "./developer.css";
 
 type Group = "agent" | "run" | "tool" | "turn" | "room" | "approval" | "policy" | "mcp" | "gateway" | "other";
@@ -19,7 +16,7 @@ interface Health { ok: boolean; version: string; build: string; head: number; rs
 const COLORS: Record<Group, string> = { agent: "#e879f9", run: "var(--amber)", tool: "#7aa2f7", turn: "var(--ok)", room: "#bb9af7", approval: "var(--wait)", policy: "#f87171", mcp: "#56d4dd", gateway: "#94a3b8", other: "#52525b" };
 // Default order pairs the half-width widgets side by side.
 const WIDGETS = [
-  ["health", "Health"], ["outcomes", "Run outcomes"], ["activity", "Activity"], ["tools", "Tool leaderboard"], ["storage", "Storage"],
+  ["health", "Health"], ["outcomes", "Run outcomes"], ["activity", "Activity"], ["tools", "Tool leaderboard"],
   ["events", "Event inspector"], ["prompts", "Prompt inspector"], ["api", "API explorer"], ["log", "Gateway log"], ["diagnostics", "Memory, audit & voice"], ["flags", "Experimental"], ["report", "Debug report"],
 ] as const;
 type WidgetId = (typeof WIDGETS)[number][0];
@@ -62,23 +59,21 @@ export function Developer() {
       case "prompts": return <PromptInspector />;
       case "api": return <ApiExplorer />;
       case "log": return <GatewayLog />;
-      case "storage": return <StorageUsage />;
       case "diagnostics": return <DeveloperSettings />;
       case "flags": return <FlagSettings />;
       case "report": return <DiagnosticsSettings />;
     }
   };
-  const wide = new Set<WidgetId>(["activity", "events", "prompts", "api", "log", "diagnostics"]);
-  return <div className="pane-scroll dc">
-    <div className="pane-body pane-body-wide">
-      <PaneHeader eyebrow="System" icon={SquareTerminal} title="Developer" description="Live instruments for the gateway: real activity from the event log, tools, logs and a read-only API explorer. Arrange it the way you work."
-        actions={<>
-          <Segmented label="Time window" value={String(layout.minutes)} onChange={(v) => save({ ...layout, minutes: Number(v) as Layout["minutes"] })} options={[["15", "15m"], ["60", "1h"], ["360", "6h"], ["1440", "24h"]]} />
-          <Segmented label="Refresh" value={String(layout.refresh)} onChange={(v) => save({ ...layout, refresh: Number(v) as Layout["refresh"] })} options={[["5", "5s"], ["15", "15s"], ["60", "1m"], ["0", "Off"]]} />
-          <button type="button" className="dc-btn" onClick={() => setTick((n) => n + 1)} aria-label="Refresh now"><RefreshCw size={14} /></button>
-          <button type="button" className={`dc-btn${customizing ? " is-on" : ""}`} onClick={() => setCustomizing((v) => !v)} aria-pressed={customizing}><SlidersHorizontal size={14} /> Customize</button>
-        </>} />
-      <nav className="obs-tabs dc-tabs" aria-label="Analytics panes"><Link to="/observability">Observability</Link><Link to="/usage">Usage</Link><Link to="/developer" aria-current="page">Developer</Link></nav>
+  const wide = new Set<WidgetId>(["activity", "tools", "events", "prompts", "api", "log", "diagnostics"]);
+  const up = health ? (health.uptimeS < 3600 ? `${Math.max(1, Math.floor(health.uptimeS / 60))} min` : `${Math.floor(health.uptimeS / 3600)} h ${Math.floor((health.uptimeS % 3600) / 60)} min`) : "";
+  return <div className="cr-scroll"><div className="cr-page dc">
+      <ControlHeader title="Developer" kicker={<><SquareTerminal size={13} /> Insights</>} tone={error ? "bad" : !health ? "idle" : health.ok ? "ok" : "bad"}
+        status={error ? `Can't reach the gateway: ${error}` : !health ? "Measuring the gateway…" : `${health.ok ? "Gateway responding" : "Gateway unhealthy"} · up ${up} · ${health.rssMb} MB · event #${Math.max(health.head, head).toLocaleString()}`}>
+        <Seg label="Time window" value={layout.minutes} onChange={(v) => save({ ...layout, minutes: v })} options={[[15, "15m"], [60, "1h"], [360, "6h"], [1440, "24h"]] as const} />
+        <Seg label="Refresh" value={layout.refresh} onChange={(v) => save({ ...layout, refresh: v })} options={[[5, "5s"], [15, "15s"], [60, "1m"], [0, "Off"]] as const} />
+        <button type="button" className="cr-btn" onClick={() => setTick((n) => n + 1)} aria-label="Refresh now" title="Refresh now"><RefreshCw size={14} /></button>
+        <button type="button" className={`cr-btn${customizing ? " is-on" : ""}`} onClick={() => setCustomizing((v) => !v)} aria-pressed={customizing}><SlidersHorizontal size={14} /> Customize</button>
+      </ControlHeader>
       {error && <p className="dc-error" role="alert">{error}</p>}
       {customizing && <section className="dc-customize" aria-label="Customize the console">
         <p>Show, hide and order the widgets. Saved on this Mac.</p>
@@ -93,21 +88,20 @@ export function Developer() {
       <div className="dc-grid">{visible.map((id) => <section key={id} className={`dc-widget${wide.has(id) ? " is-wide" : ""}`} aria-label={WIDGETS.find(([w]) => w === id)![1]}>
         <h2>{WIDGETS.find(([w]) => w === id)![1]}</h2>{widget(id)}
       </section>)}</div>
-    </div>
-  </div>;
+  </div></div>;
 }
 
 function HealthWidget({ health, liveHead }: { health: Health | null; liveHead: number }) {
   if (!health) return <p className="dc-muted">Measuring…</p>;
   const up = health.uptimeS < 3600 ? `${Math.floor(health.uptimeS / 60)}m` : `${Math.floor(health.uptimeS / 3600)}h ${Math.floor((health.uptimeS % 3600) / 60)}m`;
-  return <div className="dc-kpis">
-    <div><span className={`dc-dot ${health.ok ? "is-ok" : "is-bad"}`} />{health.ok ? "Responding" : "Unhealthy"}<small>Gateway {health.version}</small></div>
-    <div><strong>{up}</strong><small>Uptime</small></div>
-    <div><strong>{health.rssMb} MB</strong><small>Memory</small></div>
-    <div><strong>#{Math.max(health.head, liveHead).toLocaleString()}</strong><small>Events</small></div>
-    <div><strong>{health.pendingApprovals}</strong><small>Approvals waiting</small></div>
-    <div><strong>{health.service ? "On" : "Off"}</strong><small>Always-on service</small></div>
-  </div>;
+  return <Readouts className="dc-health" items={[
+    { label: "Gateway", value: health.ok ? "Responding" : "Unhealthy", tone: health.ok ? "ok" : "bad", sub: `version ${health.version}` },
+    { label: "Uptime", value: up },
+    { label: "Memory", value: `${health.rssMb} MB` },
+    { label: "Events", value: `#${Math.max(health.head, liveHead).toLocaleString()}` },
+    { label: "Approvals waiting", value: health.pendingApprovals, tone: health.pendingApprovals ? "wait" : undefined, dim: !health.pendingApprovals },
+    { label: "Always on", value: health.service ? "On" : "Off", dim: !health.service },
+  ]} />;
 }
 
 function ActivityWidget({ m }: { m: Metrics | null }) {

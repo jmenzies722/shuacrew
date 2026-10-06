@@ -117,7 +117,7 @@ export function Usage() {
     { label: "Sessions", value: scoped.totalRuns.toLocaleString(), sub: finished ? `${Math.round((good / finished) * 100)}% finished well` : "none finished yet" },
     { label: "Per session", value: compact((scoped.totals.inputTokens + scoped.totals.outputTokens) / measuredRuns), sub: "tokens, on average" },
     { label: "Reused from cache", value: cacheShare === null ? "—" : `${Math.round(cacheShare * 100)}%`, sub: `${compact(scoped.totals.cacheTokens)} tokens not re-sent` },
-    { label: "First reply", value: seconds(scoped.latency.firstResponse.p50Ms ?? scoped.latency.firstResponse.meanMs), sub: scoped.latency.firstResponse.p90Ms ? `typical · slowest 10% ${seconds(scoped.latency.firstResponse.p90Ms)}` : "typical" },
+    { label: "First reply", value: seconds(scoped.latency.firstResponse.p50Ms ?? scoped.latency.firstResponse.meanMs), sub: scoped.latency.firstResponse.p90Ms ? `slowest 10%: ${seconds(scoped.latency.firstResponse.p90Ms)}` : "typical" },
   ] : [];
 
   const plans = useMemo(() => {

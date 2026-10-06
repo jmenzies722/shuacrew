@@ -45,7 +45,7 @@
 .cr-seg button { position: relative; border: 0; background: none; padding: 5px 12px; border-radius: 7px; font: inherit; font-size: 12.5px; color: var(--text-3); cursor: pointer; transition: color var(--t-fast, 120ms); }
 .cr-seg button:hover { color: var(--text-2); }
 .cr-seg button.is-on { color: var(--text); }
-.cr-seg button > span { position: relative; }
+.cr-seg button > span:not(.cr-seg-on) { position: relative; }
 .cr-seg-on { position: absolute; inset: 0; border-radius: 7px; background: var(--raised, var(--panel)); box-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgba(0, 0, 0, .2); }
 
 /* ── Sheets ─────────────────────────────────────────────────────────────── */
