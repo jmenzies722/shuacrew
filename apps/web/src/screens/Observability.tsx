@@ -11,6 +11,7 @@ import { MetricLineChart } from "../components/MetricLineChart";
 import { OperationCharts } from "../components/OperationCharts";
 import { analyticsEventListener } from "../lib/analytics-events";
 import "./observability.css";
+import { UsageDashboard } from "../components/UsageDashboard";
 
 export type ProviderHealth = { id: string; label: string; authMode: string; limitedUntil: number | null; status: { installed: boolean; signedIn: boolean | null; overridingKeys: string[] } };
 const number = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -24,7 +25,7 @@ export function UsageChart({ rows }: { rows: UsageBucket[] }) {
   return <><MetricLineChart label="Recorded token history" unit="tokens" series={[{ name: "Input", color: "var(--amber)", values: values("inputTokens") }, { name: "Output", color: "var(--ok)", dashed: true, values: values("outputTokens") }]} /><p className="obs-note">Daily UTC observations. Gaps mean no usage measurement; they do not prove zero consumption. Today's bucket is partial.</p><details className="obs-exact"><summary>Exact daily values · UTC</summary><div className="obs-table-scroll"><table><thead><tr><th>Date</th><th>Input</th><th>Output</th><th>Cache (separate)</th><th>Records</th></tr></thead><tbody>{rows.map(r => <tr key={r.id}><td>{r.id}</td><td>{r.records ? number(r.inputTokens) : "Unknown"}</td><td>{r.records ? number(r.outputTokens) : "Unknown"}</td><td>{r.records ? number(r.cacheTokens) : "Unknown"}</td><td>{r.records}</td></tr>)}</tbody></table></div></details></>;
 }
 function Card({ label, value, detail }: { label: string; value: string; detail: string }) { return <article className="obs-card"><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>; }
-export function Observability({ usage = false }: { usage?: boolean }) {
+export function Observability({ usage = false, embedded = false }: { usage?: boolean; embedded?: boolean }) {
   const [prefs] = useState(readObservabilityPreferences), [days, setDays] = useState(prefs.days), [provider, setProvider] = useState(""), [venture, setVenture] = useState(""), [offset, setOffset] = useState(0);
   const [data, setData] = useState<ObservabilityReport>(), [providers, setProviders] = useState<ProviderHealth[]>([]), [error, setError] = useState(""), [loading, setLoading] = useState(false), [refresh, setRefresh] = useState(0);
   const [providerError, setProviderError] = useState("");
@@ -46,8 +47,8 @@ export function Observability({ usage = false }: { usage?: boolean }) {
   const resetPage = (fn: () => void) => { fn(); setOffset(0); };
   const rows = (data?.runs ?? []).filter(r => `${r.title} ${r.id} ${r.runtime} ${r.status}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => sort === "tokens" ? b.inputTokens + b.outputTokens - a.inputTokens - a.outputTokens : b.updatedAt - a.updatedAt);
   return <div className="obs-page">
-    <header className="obs-hero"><div><h1>{usage ? "Usage" : "Insights"}</h1><p>{usage ? "Observed tokens. Honest coverage. No invented bill." : "Find what needs you. Follow every number back to a real run."}</p></div><button className="obs-refresh" onClick={() => setRefresh(n => n + 1)} disabled={loading}><RefreshCw size={14} /> {loading ? "Refreshing…" : "Refresh"}</button></header>
-    <nav className="obs-tabs" aria-label="Analytics panes"><Link to="/observability" aria-current={!usage ? "page" : undefined}>Observability</Link><Link to="/usage" aria-current={usage ? "page" : undefined}>Usage</Link><Link to="/developer">Developer <ArrowUpRight size={13} /></Link></nav>
+    {!embedded && <header className="obs-hero"><div><h1>{usage ? "Usage" : "Insights"}</h1><p>{usage ? "Observed tokens. Honest coverage. No invented bill." : "Find what needs you. Follow every number back to a real run."}</p></div><button className="obs-refresh" onClick={() => setRefresh(n => n + 1)} disabled={loading}><RefreshCw size={14} /> {loading ? "Refreshing…" : "Refresh"}</button></header>}
+    {!embedded && <nav className="obs-tabs" aria-label="Analytics panes"><Link to="/observability" aria-current={!usage ? "page" : undefined}>Observability</Link><Link to="/usage" aria-current={usage ? "page" : undefined}>Usage</Link><Link to="/developer">Developer <ArrowUpRight size={13} /></Link></nav>}
     {!usage && <HealthAlerts />}
     <ProviderStrip providers={providers} />
     {providerError && <p className="obs-warning" role="status">Provider status could not refresh; any connection indicators above are stale. {providerError}</p>}
@@ -55,9 +56,14 @@ export function Observability({ usage = false }: { usage?: boolean }) {
     {error && <p className="obs-warning" role="alert">{data ? "Refresh failed; showing the last successful snapshot. " : "Analytics unavailable. "}{error}</p>}
     {!data ? <p className="obs-empty" role="status">{loading ? "Reading recorded work…" : "No snapshot available. Try Refresh."}</p> : <>
       {!data.totalRuns && <p className="obs-empty">No recorded runs match these filters. This is an empty selection, not a provider outage.</p>}
-      {!usage && <div className="obs-cards"><Card label="Working" value={number((data.statuses.running ?? 0) + (data.statuses.planning ?? 0))} detail="Current state of runs observed in this window" /><Card label="Queued" value={number(data.statuses.queued ?? 0)} detail="Waiting to start" /><Card label="Needs approval" value={number(data.statuses.awaiting_approval ?? 0)} detail="Runs waiting for a decision" /><Card label="Failed" value={number(data.statuses.failed ?? 0)} detail="Runs currently failed · inspect before retrying" /></div>}
+      {!usage && (() => {
+        const working = (data.statuses.running ?? 0) + (data.statuses.planning ?? 0), queued = data.statuses.queued ?? 0, waiting = data.statuses.awaiting_approval ?? 0, failed = data.statuses.failed ?? 0;
+        // Four boxes of zeros said nothing: when all is quiet, say so in one line; otherwise show only what's happening.
+        if (!working && !queued && !waiting && !failed) return <p className="obs-calm"><i /> All quiet: nothing running, nothing waiting on you, nothing failed in this window.</p>;
+        return <div className="obs-cards">{[["Working", working, "Running or planning now"], ["Queued", queued, "Waiting to start"], ["Needs approval", waiting, "Waiting for your decision"], ["Failed", failed, "Inspect before retrying"]].filter(([, n]) => n).map(([label, n, detail]) => <Card key={label as string} label={label as string} value={number(n as number)} detail={detail as string} />)}</div>;
+      })()}
       {usage && <div className="obs-cards"><Card label="Recorded input" value={number(data.totals.inputTokens)} detail={`${data.coverage.usageRecords} usage records`} /><Card label="Recorded output" value={number(data.totals.outputTokens)} detail="Reasoning included for corrected Codex records" /><Card label="Cache tokens" value={number(data.totals.cacheTokens)} detail="Separate category · not added to input" /><Card label="Reported API cost" value={cost(data.totals.reportedCostUsd)} detail={`${data.coverage.costRecords}/${data.coverage.usageRecords} records report cost · not subscription billing`} /></div>}
-      <p className="obs-warning">Coverage: {data.coverage.legacyRecords} legacy records · {data.coverage.deltaRecords} corrected cumulative deltas · {data.coverage.fallbackRecords} last-observation fallbacks · {data.coverage.runsWithoutUsage} runs without usage · {data.coverage.contextOnlyRecords} context-only observations excluded. Legacy totals may contain earlier accounting errors. Subscription bill and remaining quota: unknown.</p>
+      <details className="obs-notes"><summary>Data notes</summary><p>Coverage: {data.coverage.legacyRecords} legacy records · {data.coverage.deltaRecords} corrected cumulative deltas · {data.coverage.fallbackRecords} last-observation fallbacks · {data.coverage.runsWithoutUsage} runs without usage · {data.coverage.contextOnlyRecords} context-only observations excluded. Legacy totals may contain earlier accounting errors. Subscription bill and remaining quota: unknown.</p></details>
 {!usage && <OperationCharts rows={data.operations ?? []} />}
       {usage && <div className="obs-grid"><section className="obs-panel"><div className="obs-panel-heading"><div><h2>Usage over time</h2><p>Recorded tokens · UTC · zero baseline</p></div><span className="obs-legend"><i /> Input <i /> Output</span></div><UsageChart rows={data.daily} /></section><section className="obs-panel"><h2>By provider</h2>{data.providers.length ? data.providers.map(p => <div className="obs-breakdown" key={p.id}><div><strong>{p.id}</strong><span>{number(p.inputTokens + p.outputTokens)} tokens</span></div><progress max={Math.max(1, data.totals.inputTokens + data.totals.outputTokens)} value={p.inputTokens + p.outputTokens} aria-label={`${p.id} recorded tokens`} /><small>{number(p.inputTokens)} input · {number(p.outputTokens)} output · {p.records} records</small></div>) : <p className="obs-empty">No usage reported.</p>}<div className="obs-latency"><div><span>First text response</span><strong>{duration(data.latency.firstResponse.meanMs)}</strong><small>Mean · {data.latency.firstResponse.samples} turns</small></div><div><span>Turn duration</span><strong>{duration(data.latency.turnDuration.meanMs)}</strong><small>Mean · {data.latency.turnDuration.samples} turns</small></div></div><p className="obs-note">Turn start to first recorded text; not microphone-to-audio latency.</p></section></div>}
       {usage && <section className="obs-panel"><h2>By venture</h2><div className="obs-venture-list">{data.ventures.map(v => <div key={v.id}><strong>{v.id === "unassigned" ? "Not assigned to a venture" : ventures[v.id]?.name ?? v.id}</strong><span>{number(v.inputTokens)} input / {number(v.outputTokens)} output</span><small>{cost(v.reportedCostUsd)} reported · {v.records} records</small></div>)}</div></section>}
@@ -67,4 +73,5 @@ export function Observability({ usage = false }: { usage?: boolean }) {
     </>}
   </div>;
 }
-export function Usage() { return <Observability usage />; }
+/** /usage: the dashboard first; every session and the data notes fold away underneath it. */
+export function Usage() { return <UsageDashboard><Observability usage embedded /></UsageDashboard>; }
