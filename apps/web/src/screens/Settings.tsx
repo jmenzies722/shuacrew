@@ -125,7 +125,6 @@ export function Settings() {
       <Choice name="Navigation" detail="Keep screen names visible, or leave more room for your work." field="navigation" options={[["icons", "Icons"], ["labels", "Icons & labels"]]} />
       <Choice name="Start screen" detail="Where a fresh launch opens. Direct links keep their destination." field="startPage" options={[["/", "Sessions"], ["/floor", "Crew HQ"], ["/activity", "Today"], ["/ventures", "Ventures"], ["/board", "Board"]]} />
     </div> },
-    { id: "keys", section: "workspace", title: "Keyboard shortcuts", terms: "commands keyboard shortcuts hotkeys search", body: <button className="settings-link-card" onClick={() => keymap(true)}><Keyboard size={22} /><span><strong>Stay in the flow</strong><small>Explore shortcuts for sessions, search, navigation, and more.</small></span><kbd>?</kbd></button> },
     { id: "composer", section: "workspace", title: "Composer & conversation", terms: "send enter command control shortcut spell check spelling minimap map turn navigator queue messages", body: <div className="settings-card">
       <Choice name="Send shortcut" detail="Shift + Enter always inserts a new line. Arrow only also makes Enter a new line; click the send arrow when ready. While an agent works, messages join the queue." field="sendShortcut" options={[["enter", "Enter"], ["modifier-enter", "⌘ / Ctrl + Enter"], ["button-only", "Arrow only"]]} />
       <Choice name="Spell check" detail="Use the system's spelling suggestions in the message composer." field="spellcheck" options={[["on", "On"], ["off", "Off"]]} />
@@ -144,8 +143,8 @@ export function Settings() {
     { id: "backups", section: "system", title: "Backups & recovery", terms: "data backup restore encryption history", body: <BackupsPanel /> },
   ];
   const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  // Within a section, the biggest choices first (in Appearance: palette, then atmosphere, then type).
-  const FIRST: Record<string, number> = { themes: 0, atmosphere: 1, look: 2, reading: 3, "share-look": 4 };
+    // Every section leads with the choices you'll actually make; the machinery (logs, inspectors, storage) sits last.
+  const FIRST: Record<string, number> = { themes: 0, atmosphere: 1, look: 2, reading: 3, "share-look": 4, spark: 0, "widget-board": 1, topbar: 2, "speech-storage": 9, layout: 0, composer: 1, shortcuts: 2, budget: 3, "tool-cards": 4, permissions: 0, "health-check": 1, crew: 0, "session-defaults": 1, runtimes: 2, instructions: 3, failover: 4, router: 5, caps: 6, presets: 0, snippets: 1, schedule: 2, flow: 3, quiet: 4, hooks: 5, protected: 0, git: 1, "desktop-alerts": 0, sounds: 1, menubar: 2, service: 0, backups: 1, transfer: 2, storage: 3, diagnostics: 4, "diagnostics-report": 5, flags: 6, prompts: 7, events: 8, "gateway-log": 9, hud: 10 };
   const visible = groups.filter((g) => words.length ? words.every((w) => `${g.title} ${g.terms} ${g.section}`.toLowerCase().includes(w)) : g.section === section)
     .sort((a, b) => (FIRST[a.id] ?? 9) - (FIRST[b.id] ?? 9));
   const selected = SECTIONS.find((s) => s.id === section)!;

@@ -121,7 +121,6 @@ export function RuntimeSettings() {
   return (
       <Panel className="p-5">
         <div className="mb-3 flex items-center">
-          <Eyebrow>Runtimes</Eyebrow>
           <Button size="s" className="ml-auto" onClick={() => void test()} disabled={testing}>
             {testing ? "Testing…" : "Test connections"}
           </Button>
@@ -189,7 +188,6 @@ export function BackupsPanel() {
   return (
     <Panel className="p-5">
       <div className="mb-3 flex items-center gap-3">
-        <Eyebrow>Backups</Eyebrow>
         {last && <StatusGlyph tone={last.error ? "bad" : Date.now() - last.at < 36 * 3_600_000 ? "ok" : "wait"} />}
         <span className="text-[12.5px] text-fg-2">
           {!last ? "No backup yet — the first runs tonight at 2:30." : last.error ? `The last backup failed: ${last.error}` : `Last backup ${ago(last.at)} · ${mb(last.bytes)}`}
@@ -233,7 +231,6 @@ export function AlwaysOn() {
   return (
     <Panel className="p-5">
       <div className="mb-3 flex items-center gap-3">
-        <Eyebrow>Always on</Eyebrow>
         {health && <StatusGlyph tone={health.service ? "ok" : "wait"} />}
         <span className="text-[12.5px] text-fg-2">
           {!health ? "Checking…" : health.service ? `On — starts at login and restarts itself. Up ${since}.` : `Off — the gateway runs only while something started it (up ${since}).`}
