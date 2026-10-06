@@ -121,6 +121,16 @@ const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
 export async function createServer(options: ServerOptions): Promise<{ app: FastifyInstance; hub: Hub; merges: MergeQueue; state: () => CrewState; briefing?: Briefing }> {
   const { store, supervisor } = options;
+  /**
+   * Codex's own usage reading, and what it means for limits we recorded: a real reading with usage left lifts them
+   * (a reset or top-up), so Shua never stays "limited until Oct 11" after the plan was reset. A failed read changes nothing.
+   */
+  const healCodex = async () => {
+    if (!options.live) return { usable: true };
+    const ready = await options.live.readiness() as { usable?: boolean; usedPercent?: number };
+    if (ready.usable && typeof ready.usedPercent === "number" && ready.usedPercent < 100) supervisor.usageAvailable("codex");
+    return ready;
+  };
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK.has(host) && !options.token) {
     throw new Error(`refusing to listen on ${host} without a token — set SHUACREW_TOKEN`);
@@ -255,7 +265,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   if (options.live) {
     const live = options.live;
     app.get("/ws/live", { websocket: true }, (socket) => live.attach(socket));
-    app.get("/api/live/ready", async () => live.readiness());
+    app.get("/api/live/ready", async () => healCodex());
   }
 
   if (options.uploads) {
@@ -1064,6 +1074,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post("/api/intelligence/select", async (request, reply) => {
     const parsed = IntelligenceRequestSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+    await healCodex().catch(() => undefined); // a reset plan is noticed on the very next pick (cached 30 s)
     await refreshIntelligence(parsed.data.mode);
     return supervisor.intelligence(parsed.data);
   });

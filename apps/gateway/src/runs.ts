@@ -658,6 +658,12 @@ export class Supervisor {
     this.restore(runtime);
   }
 
+  /**
+   * The provider itself reports usage left (a reset, a top-up, a bigger plan): limits recorded before are lifted
+   * outright, and runs paused on them go again. Oct 5: Codex was reset by hand but stayed "limited until Oct 11".
+   */
+  usageAvailable(runtime: string): void { this.accountsChanged(runtime); }
+
   private isRetrying(seq: number): boolean {
     return this.store.ofKinds("runtime.retrying", seq).some(e => e.kind === "runtime.retrying" && e.body.limitSeq === seq);
   }

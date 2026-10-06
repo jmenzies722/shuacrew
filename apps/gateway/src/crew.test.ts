@@ -127,6 +127,13 @@ describe('personal assistant brain: Codex first, Claude as backup', () => {
   store.append('runtime.limited',{runtime:'codex',until:Date.now()+60_000,message:'limited'});
   expect(created(store,supervisor.launch({ask:'Hello',labels:['buddy'],hold:true}))).toMatchObject({runtime:'claude'});
  });
+ it('goes back to Codex the moment Codex reports usage left (a reset plan), not when the old window ends',()=>{
+  const {store,supervisor}=world();
+  store.append('runtime.limited',{runtime:'codex',until:Date.now()+6*86_400_000,message:'limited until Sunday'});
+  expect(created(store,supervisor.launch({ask:'Hello',labels:['buddy'],hold:true}))).toMatchObject({runtime:'claude'});
+  supervisor.usageAvailable('codex');
+  expect(created(store,supervisor.launch({ask:'Hello again',labels:['buddy'],hold:true}))).toMatchObject({runtime:'codex'});
+ });
  it('finishes a turn on Claude when Codex breaks mid-turn',async()=>{
   const {store,supervisor}=world(async function*(){yield {type:'error',message:'Codex app-server exited unexpectedly'};});
   const id=supervisor.launch({ask:'what time is it',labels:['buddy']});
