@@ -26,3 +26,6 @@
 .crew-roster > .is-picked .member-card { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--member), 0 18px 40px -20px var(--member); }
 .crew-roster .member-trigger:nth-child(n+4) { display: none; }
 @media (prefers-reduced-motion: reduce) { .cd-face.is-match { animation: none; } }
+.member-teach { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 6px 10px; border-radius: 99px; border: 1px dashed var(--line); background: transparent; color: var(--text-3); font-size: 12px; cursor: pointer; transition: color .15s, border-color .15s; }
+.member-teach:hover { color: var(--text); border-color: color-mix(in srgb, var(--member, var(--amber)) 55%, var(--line)); }
+.crew-roster .member-card { display: flex; flex-direction: column; }

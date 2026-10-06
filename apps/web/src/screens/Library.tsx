@@ -74,7 +74,7 @@ export function Library() {
     <div className="h-full overflow-y-auto relative" {...drop.bind}>
       <DropLayer over={drop.over} status={drop.status} />
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader {...(() => { const made = Object.keys(artifacts).length, known = Object.keys(knowledge).length; return made + known ? { status: `${made} made by the crew · ${known} you gave it to know`, tone: "ok" as const } : { status: "Empty for now. Everything the crew makes, and anything you add, lands here.", tone: "idle" as const }; })()} children={<StatStrip stats={[{ value: Object.keys(artifacts).length, label: "made by the crew" }, { value: Object.keys(knowledge).length, label: "in your knowledge" }, { value: Object.values(artifacts).filter((a) => a.createdAt > Date.now() - 7 * 86_400_000).length, label: "saved this week", tone: "ok" }]} />} eyebrow="Your collected work" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
+        <PaneHeader {...(() => { const made = Object.keys(artifacts).length, known = Object.keys(knowledge).length; return made + known ? { status: `${made} made by the crew · ${known} you gave it to know`, tone: "ok" as const } : { status: "Empty for now. Everything the crew makes, and anything you add, lands here.", tone: "idle" as const }; })()} icon={LibraryBig} title="Library"
           actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
 
         <label className="lib-search">

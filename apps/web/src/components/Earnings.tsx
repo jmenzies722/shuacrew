@@ -58,8 +58,10 @@ export function Earnings({ ventures, income }: { ventures: VentureView[]; income
     catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); setBusy(""); }
   };
 
-  return <section className="earn" aria-label="Earnings">
-    <div className="earn-figures">
+  // Nothing earned or logged yet: one honest line instead of three $0s and an empty chart.
+  const empty = !entries.length && mrr === 0 && subs30 === 0;
+  return <section className={`earn${empty ? " is-empty" : ""}`} aria-label="Earnings">
+    {empty ? <p className="earn-empty"><b>$0 so far.</b> Your first dollar shows up here the moment it's logged, with Stripe synced per project.</p> : <div className="earn-figures">
       <div className="earn-lead"><span>This month</span><strong>{usd(thisMonth)}</strong>
         {goal > 0 && <div className="earn-goal" title={`${usd(mrr)} of ${usd(goal)} goal MRR`}><i style={{ width: `${Math.min(100, (mrr / goal) * 100)}%` }} /><small>{Math.round((mrr / goal) * 100)}% of {usd(goal)} goal</small></div>}
       </div>
@@ -68,7 +70,7 @@ export function Earnings({ ventures, income }: { ventures: VentureView[]; income
       <div className="earn-chart" aria-label="Logged income, last six months">
         {months.map((m) => <span key={m.label} title={`${m.label}: ${usd(m.total)}`}><i style={{ height: `${Math.max(4, (m.total / peak) * 100)}%` }} className={m.total ? "is-on" : ""} /><small>{m.label}</small></span>)}
       </div>
-    </div>
+    </div>}
     <div className="earn-actions">
       <button type="button" className="earn-primary" onClick={() => setLogging((v) => !v)}><Plus size={14} />Log income</button>
       <button type="button" className="earn-ask" disabled={!!busy} onClick={() => void advise()}><Sparkles size={14} />{busy === "advise" ? "Starting…" : `Ask ${name} how to grow it`}</button>

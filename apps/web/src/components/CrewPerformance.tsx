@@ -9,6 +9,8 @@ const mins = (m: number | null) => (m === null ? "—" : m < 1 ? "<1 min" : m < 
 export function CrewPerformance({ members, runs, lessons }: { members: CrewMember[]; runs: Record<string, RunView>; lessons: Record<string, number> }) {
   const rows = useMemo(() => crewPerformance(members.map((m) => m.id), Object.values(runs) as never, lessons), [members, runs, lessons]);
   const any = rows.some((r) => r.finished || r.failed);
+  // A table of zeros is clutter: the review appears with the first finished (or failed) session.
+  if (!any) return null;
   return <section className="crew-perf" aria-label="Crew performance">
     <header><strong>Performance review</strong><span>{any ? "From each member's own sessions — Shua chats and learning don't count." : "Numbers appear here once your crew finishes sessions."}</span></header>
     <div className="crew-perf-table" role="table">

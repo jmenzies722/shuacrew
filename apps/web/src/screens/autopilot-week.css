@@ -19,3 +19,6 @@
 .aw-more { font-size: 11px; color: var(--text-3); }
 @keyframes aw-in { from { opacity: 0; transform: translateY(3px); } }
 @media (prefers-reduced-motion: reduce) { .aw-run { animation: none; } }
+.sched-links { display: flex; gap: 14px; font-size: 12.5px; }
+.sched-links a { color: var(--text-2); }
+.sched-links a:hover { color: var(--text); }

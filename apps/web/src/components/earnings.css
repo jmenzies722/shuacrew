@@ -47,3 +47,9 @@
 .earn-recent li button { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--text-3); opacity: 0; transition: opacity .2s; }
 .earn-recent li:hover button { opacity: 1; }
 .earn-recent li button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+
+/* Nothing earned yet: one slim row (the line, then the two actions) instead of three $0s and an empty chart. */
+.earn.is-empty { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 16px; padding-bottom: 16px; }
+.earn.is-empty .earn-actions { margin-top: 0; }
+.earn-empty { margin: 0; font-size: 14px; color: var(--text-2); }
+.earn-empty b { color: var(--text); font-weight: 700; margin-right: 4px; }

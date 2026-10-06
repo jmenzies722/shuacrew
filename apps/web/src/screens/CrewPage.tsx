@@ -50,7 +50,7 @@ export function CrewPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader {...(() => { const busy = Object.values(runs).filter((r) => r.member && ["running", "planning"].includes(r.status)).length; return busy ? { status: `${busy} member${busy === 1 ? " is" : "s are"} working now`, tone: "live" as const } : list.length ? { status: `${list.length} member${list.length === 1 ? "" : "s"} ready · hand work to anyone below`, tone: "ok" as const } : { status: "No crew yet. Add the starter crew and they can take an idea to revenue.", tone: "idle" as const }; })()} children={<StatStrip stats={[{ value: list.length, label: "members" }, { value: list.filter((m) => m.delegatable).length, label: "available in rooms", tone: "amber", to: "/rooms" }, { value: Object.values(runs).filter((r) => r.member && ["running", "planning"].includes(r.status)).length, label: "working now", live: Object.values(runs).some((r) => r.member && ["running", "planning"].includes(r.status)), to: "/floor" }]} />} eyebrow="Work" icon={Users} title="Your crew" description="A standing team you hand work to. Each member keeps its own thread, model and lessons — and new work is routed to whoever it's for." actions={<>
+        <PaneHeader {...(() => { const busy = Object.values(runs).filter((r) => r.member && ["running", "planning"].includes(r.status)).length; return busy ? { status: `${busy} member${busy === 1 ? " is" : "s are"} working now`, tone: "live" as const } : list.length ? { status: `${list.length} member${list.length === 1 ? "" : "s"} ready · hand work to anyone below`, tone: "ok" as const } : { status: "No crew yet. Add the starter crew and they can take an idea to revenue.", tone: "idle" as const }; })()} eyebrow="Work" icon={Users} title="Your crew" actions={<>
           <Button onClick={() => setEditing({ color: COLORS[list.length % COLORS.length], triggers: [] })}>
             <Plus size={14} /> New member
           </Button>
@@ -123,24 +123,11 @@ function StarterCta() {
 
 function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; runs: Record<string, RunView>; lessons: number; onEdit: () => void }) {
   const navigate = useNavigate();
-  const [text, setText] = useState("");
   const [teaching, setTeaching] = useState(false);
   const [lesson, setLesson] = useState("");
-  const [busy, setBusy] = useState(false);
   const mine = useMemo(() => Object.values(runs).filter((r) => r.member === member.id), [runs, member.id]);
   const active = mine.find((r) => WORKING.has(r.status));
   const last = [...mine].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-
-  const talk = async () => {
-    if (!text.trim()) return;
-    setBusy(true);
-    try {
-      const { run } = await api<{ run: string }>(`/api/crew/${member.id}/talk`, { body: { text } });
-      navigate({ to: "/sessions/$id", params: { id: run } });
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <article className={`member-card ${active ? "is-active" : ""}`} style={{ "--member": member.color } as React.CSSProperties}>
@@ -163,7 +150,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
         </button>
       </div>
 
-      <div className="member-status">
+      {(active || last) && <div className="member-status">
         {active ? (
           <>
             <span className="h-2 w-2 shrink-0 animate-pulse rounded-full" style={{ background: member.color }} />
@@ -177,7 +164,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
             <span className="min-w-0 flex-1 truncate text-fg-3">{last ? `Last: ${last.title}` : "Hasn't worked yet"}</span>
           </>
         )}
-      </div>
+      </div>}
 
       <p className="member-persona">{member.persona}</p>
 
@@ -189,7 +176,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
         ))}
       </div>
 
-      <div className="member-foot">
+      {(mine.length > 0 || lessons > 0 || member.thread) && <div className="member-foot">
         <span>{mine.length} session{mine.length === 1 ? "" : "s"}</span>
         <span>
           {lessons} lesson{lessons === 1 ? "" : "s"}
@@ -199,7 +186,7 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
             Open thread →
           </button>
         )}
-      </div>
+      </div>}
 
       {teaching ? (
         <div className="member-talk">
@@ -221,15 +208,9 @@ function MemberCard({ member, runs, lessons, onEdit }: { member: CrewMember; run
           />
         </div>
       ) : (
-        <div className="member-talk">
-          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void talk()} placeholder={`Ask ${member.name}…`} aria-label={`Talk to ${member.name}`} />
-          <button onClick={() => setTeaching(true)} className="member-icon" title={`Teach ${member.name}`} aria-label={`Teach ${member.name}`}>
-            <GraduationCap size={14} />
-          </button>
-          <button onClick={() => void talk()} disabled={!text.trim() || busy} className="member-send" aria-label={`Send to ${member.name}`}>
-            <ArrowUp size={14} strokeWidth={2.5} />
-          </button>
-        </div>
+        <button type="button" className="member-teach" onClick={() => setTeaching(true)} aria-label={`Teach ${member.name}`}>
+          <GraduationCap size={13} /> Teach {member.name} something
+        </button>
       )}
     </article>
   );

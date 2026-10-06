@@ -71,7 +71,7 @@ export function Memory() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader {...(() => { const active = lessons.filter((l) => !l.retired).length; return active ? { status: `${active} lesson${active === 1 ? "" : "s"} shaping how your crew works`, tone: "ok" as const } : { status: "No lessons yet. They form as finished sessions are reviewed.", tone: "idle" as const }; })()} children={<StatStrip stats={[{ value: lessons.filter((l) => !l.retired).length, label: "lessons in use", tone: "amber" }, { value: lessons.filter((l) => l.retired).length, label: "retired" }, { value: skills.length, label: "skills" }]} />} eyebrow="Brain" icon={BookOpen} title="Memory" description="Lessons with provenance and confidence, skills you approve — all inspectable, all deletable. Confidence moves with the reviews of the runs a lesson was used in."
+        <PaneHeader {...(() => { const active = lessons.filter((l) => !l.retired).length; return active ? { status: `${active} lesson${active === 1 ? "" : "s"} shaping how your crew works`, tone: "ok" as const } : { status: "No lessons yet. They form as finished sessions are reviewed.", tone: "idle" as const }; })()} eyebrow="Brain" icon={BookOpen} title="Memory"
           actions={<Button onClick={async () => (setEvolve(await api<Evolve>("/api/memory/evolve", { body: {} })), refresh())}>Evolve now</Button>} />
 
         {evolve && (
