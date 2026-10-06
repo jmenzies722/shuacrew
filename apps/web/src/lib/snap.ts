@@ -10,7 +10,7 @@ import type { ScreenContext, ScreenLine } from "./buddy";
  * the Mac side. Mixing centre and top-left once shifted every highlight by half its size.
  */
 export type RegionShape = "circle" | "pill" | "rounded";
-export interface Region { x: number; y: number; w: number; h: number; shape: RegionShape; exact: boolean }
+export interface Region { x: number; y: number; w: number; h: number; shape: RegionShape; exact: boolean; /** What it is, when re-identified. */ name?: string }
 export interface Aim { x: number; y: number; w: number; h: number; label: string; target?: string }
 export interface ScreenFacts { text?: ScreenLine[]; context?: ScreenContext; aspect?: number }
 type Candidate = { x: number; y: number; w: number; h: number; name: string; role?: string };
@@ -79,10 +79,30 @@ export function locate(aim: Aim, screen: ScreenFacts | null): Region {
   return best ? { x: best.c.x, y: best.c.y, w: best.c.w, h: best.c.h, shape: shapeOf(best.c, aspect), exact: true } : guess;
 }
 
+/**
+ * Two controls with the same name (two "Reply" buttons): take the one still where it was picked or aimed — only when it
+ * barely moved and the other is clearly farther. Anything less certain stays ambiguous and no click is sent.
+ */
+function nearest(list: Candidate[], anchor: { x: number; y: number } | null): Candidate | null {
+  if (!anchor || list.length < 2) return null;
+  const ranked = list.map((c) => ({ c, d: Math.hypot(c.x - anchor.x, c.y - anchor.y) })).sort((a, b) => a.d - b.d);
+  return ranked[0]!.d <= 0.04 && ranked[1]!.d >= ranked[0]!.d + 0.05 ? ranked[0]!.c : null;
+}
+
 /** Re-identify a target after a fresh capture. Numbered IDs belong only to their original capture. */
-export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenFacts): Region | null {
-  if (before?.context?.app && current.context?.app !== before.context.app) return null;
-  if (before?.context?.window && current.context?.window !== before.context.window) return null;
+/** Dock items and menu-bar status icons belong to no app: the same ones are there whichever app is in front. */
+const SYSTEM_WIDE = new Set(["dockitem", "menuextra"]);
+export function systemWide(target: string | undefined, before: ScreenFacts | null): boolean {
+  const role = target && before ? picked(target, before)?.role : undefined;
+  return !!role && SYSTEM_WIDE.has(role);
+}
+
+export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenFacts, aimed = false): Region | null {
+  // A Dock item survives the front app changing (opening ShuaCrew to ask it something does exactly that); an app's
+  // own controls don't.
+  const anyApp = systemWide(aim.target, before);
+  if (!anyApp && before?.context?.app && current.context?.app !== before.context.app) return null;
+  if (!anyApp && before?.context?.window && current.context?.window !== before.context.window) return null;
   const original = before ? picked(aim.target, before) : null;
   if (aim.target && before && !original) return null;
   const name = original?.name || aim.label;
@@ -95,7 +115,7 @@ export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenF
     return exact.length ? exact : list.filter(c => nameMatch(name, c.name) === 1);
   };
   const ax = matching(controls), matches = ax.length ? ax : matching(all.filter(c => !c.role));
-  if (matches.length !== 1) return null;
-  const c = matches[0]!;
-  return { x:c.x, y:c.y, w:c.w, h:c.h, shape:shapeOf(c,current.aspect), exact:true };
+  const c = matches.length === 1 ? matches[0]! : nearest(matches, original ?? (aimed ? aim : null));
+  if (!c) return null;
+  return { x:c.x, y:c.y, w:c.w, h:c.h, shape:shapeOf(c,current.aspect), exact:true, name:c.name };
 }

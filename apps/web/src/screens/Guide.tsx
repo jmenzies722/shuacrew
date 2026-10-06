@@ -1,9 +1,12 @@
 import { companionName } from "../lib/companion";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, BookOpenText } from "lucide-react";
+import { ArrowUpRight, BookOpenText, Check, Search, Sparkles } from "lucide-react";
 import { PaneHeader, PaneLayout } from "../components/Pane";
-import { toggleSparkPanel } from "../lib/spark-panel";
+import { suggestToSpark, toggleSparkPanel } from "../lib/spark-panel";
+import { useLive } from "../lib/live";
+import { api } from "../lib/api";
+import { useLearningNow } from "../components/TopBarWidgets";
 import { useCompanion } from "../lib/companion";
 import "./guide.css";
 
@@ -19,40 +22,66 @@ const HUBS: HubSection[] = [
     { title: "Your day, in one place", where: "Home › Today", to: "/activity", body: <>A morning brief with the weather, a plan and your meetings (if you connect your calendar). <b>Start my day</b> turns on Flow and the radio and shows the first thing that needs you.</>,
       points: ["Approve or deny crew requests right there", "From 6pm, an evening recap (“Your day, wrapped”) that becomes your journal", "Streaks and achievements, counted only from real work"] },
   ] },
-  { id: "crew", hub: "Hub 2 · ⌘2", title: "Crew: your team, live", intro: "A crew is a set of standing team members, each with its own persona, specialty, ongoing conversation and lessons learned. ShuaCrew sends each request to the member best suited to it.", features: [
-    { title: "Hire and review", where: "Crew › Team", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
-    { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
-    { title: "Crew HQ", where: "Crew › Crew HQ", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
-    { title: "Studio & Radio", where: "Crew › Studio", to: "/studio", body: "A focus room with a timer, Flow mode, rain sounds and ShuaCrew Radio: a lofi station with a spinning-record player, built from your own music folders or official YouTube live streams. Music quiets down while you talk to Shua. Shua can even DJ." },
+  { id: "build", hub: "Hub 2 · ⌘2", title: "Projects: what you build and what it earns", features: [
+    { title: "Idea to revenue", where: "Projects › Projects", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
+    { title: "The Board", where: "Projects › Board", to: "/board", body: "Five lanes covering all your runs. Each run has a detail page, a review cockpit with inline comments sent back to the agent, a merge queue and a replay of what the terminal did." },
+    { title: "Specs", where: "Projects › Specs", to: "/specs", body: "Write down what you want built before anyone starts, so the crew builds against your spec instead of guessing." },
+    { title: "Studio", where: "Projects › Creative studio", to: "/studio", body: "Your Apple Music, album first: what's playing big, lit by its cover; your albums on shelves (full albums, recently added, on repeat, rediscover); search across your whole library; one tap plays a whole record. Ask Shua to pick an album for right now, or tell you the story behind one." },
   ] },
-  { id: "build", hub: "Hub 3 · ⌘3", title: "Build: ventures, plans and the board", features: [
-    { title: "Idea to revenue", where: "Build › Ventures", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
-    { title: "Multi-phase work", where: "Build › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
-    { title: "Specs", where: "Build › Specs", to: "/specs", body: "Write down what you want built before anyone starts, so the crew builds against your spec instead of guessing." },
-    { title: "The Board", where: "Build › Board", to: "/board", body: "Five lanes covering all your runs. Each run has a detail page, a review cockpit with inline comments sent back to the agent, a merge queue and a replay of what the terminal did." },
-    { title: "Schedules & routines", where: "Build › Schedules", to: "/schedules", body: "Recurring work you switch on once:",
+  { id: "crew", hub: "Hub 3 · ⌘3", title: "Crew: your team, live", intro: "A crew is a set of standing team members, each with its own persona, specialty, ongoing conversation and lessons learned. ShuaCrew sends each request to the member best suited to it.", features: [
+    { title: "Crew HQ", where: "Crew › Studio floor", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
+    { title: "Hire and review", where: "Crew › Agents", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
+    { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
+  ] },
+  { id: "know", hub: "Hub 4 · ⌘4", title: "Learn: get measurably better, with Shua", features: [
+    { title: "Learn from your own work", where: "Learn › Today", to: "/learn", body: "Lessons drawn from your real sessions, a daily drill and spaced-repetition review. It also includes a career coach: roadmaps, resume review and interview prep." },
+    { title: "Visual teaching", where: "Learn › Explain", to: "/teach", body: "Give it a screenshot, PDF, image or code and it turns it into an editable diagram lesson. Guided practice watches the screen you're practicing on and tells you whether you got it right, with hints. It only watches after you press Start." },
+  ] },
+  { id: "automations", hub: "Hub 5 · ⌘5", title: "Automations: teach once, reuse carefully", features: [
+    { title: "Multi-phase work", where: "Automations › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
+    { title: "Schedules & routines", where: "Automations › Schedules", to: "/schedules", body: "Recurring work you switch on once:",
       points: ["Weekday 8:30 crew standup", "Weekly growth review, competitor watch, personal wiki", "Nightly scoring of new ideas", "Webhooks, heartbeats and script-only jobs"] },
   ] },
-  { id: "know", hub: "Hub 4 · ⌘4", title: "Know: library, memory, learning", features: [
-    { title: "Library", where: "Know › Library", to: "/library", body: "Everything the crew makes, plus the knowledge you add, all searchable by you and by every agent. Documents preview their own pages. It's stored privately on your Mac." },
-    { title: "Memory", where: "Know › Memory", to: "/memory", body: "Lessons stay only if they keep proving useful. The crew suggests new skills and you approve them. A recall check keeps memory accurate." },
-    { title: "Learn from your own work", where: "Know › Learning", to: "/learn", body: "Lessons drawn from your real sessions, a daily drill and spaced-repetition review. It also includes a career coach: roadmaps, resume review and interview prep." },
-    { title: "Visual teaching", where: "Know › Visual teaching", to: "/teach", body: "Give it a screenshot, PDF, image or code and it turns it into an editable diagram lesson. Guided practice watches the screen you're practicing on and tells you whether you got it right, with hints. It only watches after you press Start." },
+  { id: "library", hub: "Hub 6 · ⌘6", title: "Library: everything worth keeping", features: [
+    { title: "Library", where: "Library › Artifacts & knowledge", to: "/library", body: "Everything the crew makes, plus the knowledge you add, all searchable by you and by every agent. Documents preview their own pages. It's stored privately on your Mac." },
+    { title: "Memory", where: "Library › Memory", to: "/memory", body: "Lessons stay only if they keep proving useful. The crew suggests new skills and you approve them. A recall check keeps memory accurate." },
   ] },
-  { id: "system", hub: "Hub 5 · ⌘5", title: "System: tools, policy, insights", features: [
-    { title: "Tools & skills", where: "System › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
-    { title: "Policy & audit", where: "System › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
-    { title: "Insights", where: "System › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
-    { title: "Terminal", where: "System › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
+  { id: "system", hub: "Tools", title: "Tools: connections, guardrails and the numbers", features: [
+    { title: "Tools & skills", where: "Tools › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
+    { title: "Policy & audit", where: "Tools › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
+    { title: "Insights", where: "Tools › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
+    { title: "Usage", where: "Tools › Usage", to: "/usage", body: "How many tokens, carried by which plan, when you work and where it went: a week you can scrub day by day, today against your own usual day, and a map of your heaviest sessions. Recorded numbers only; subscriptions have no per-token bill." },
+    { title: "Terminal", where: "Tools › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
       points: ["Save commands you use often as snippets, then run or insert them in one click", "Open a new terminal in Home, a project or a recent folder", "Filter your history; copy any command's output; hand a failure to the crew to fix", <><kbd>⌘T</kbd> new terminal, <kbd>⌘D</kbd> split, <kbd>⌘⇧H</kbd> history and snippets</>] },
   ] },
 ];
 
 const TOC: Array<{ group: string; items: Array<[id: string, label: string]> }> = [
   { group: "Start", items: [["what", "What it is"], ["start", "Getting started"], ["spark", "Spark"], ["chrome", "Spark for Chrome"]] },
-  { group: "The five hubs", items: HUBS.map((h) => [h.id, h.title.split(":")[0]!] as [string, string]) },
+  { group: "The hubs", items: HUBS.map((h) => [h.id, h.title.split(":")[0]!] as [string, string]) },
   { group: "Reference", items: [["engines", "Engines"], ["privacy", "Privacy & safety"], ["keys", "Shortcuts & commands"], ["settings", "Make it yours"], ["status", "Where things stand"]] },
 ];
+
+/** One live line per hub, from what's on this Mac right now. */
+function useHubLive(): Record<string, string> {
+  const crew = useLive((s) => s.crew), learn = useLearningNow().value;
+  // Playbooks live in the gateway's library, not the event projection.
+  const [books, setBooks] = useState<number | null>(null);
+  useEffect(() => { void api<unknown[]>("/api/playbooks").then((b) => setBooks(Array.isArray(b) ? b.length : null)).catch(() => setBooks(null)); }, []);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const runs = Object.values(crew.runs);
+  const working = runs.filter((r) => r.status === "running" || r.status === "planning").length;
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  return {
+    home: `${plural(runs.filter((r) => r.createdAt >= today.getTime()).length, "session")} today`,
+    build: plural(Object.keys(crew.ventures ?? {}).length, "project"),
+    crew: `${plural(Object.keys(crew.members).length, "agent")}${working ? ` · ${working} working` : ""}`,
+    know: learn ? `${plural(learn.due ?? 0, "card")} due` : "",
+    automations: books === null ? "" : plural(books, "playbook"),
+    library: plural(Object.keys(crew.artifacts ?? {}).length + Object.keys(crew.knowledge ?? {}).length, "item"),
+    system: `${plural(Object.keys(crew.approvals).length, "approval")} waiting`,
+  };
+}
 
 const jump = (id: string) => document.getElementById(`guide-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -69,32 +98,77 @@ function useInView(ids: string[]) {
   return on;
 }
 
-function Section({ id, hub, title, intro, children }: { id: string; hub: string; title: string; intro?: ReactNode; children: ReactNode }) {
+function Section({ id, hub, title, intro, children, live }: { id: string; hub: string; title: string; intro?: ReactNode; children: ReactNode; live?: string }) {
   return <section id={`guide-${id}`} className="guide-section">
-    <div className="guide-sec-head"><span>{hub}</span><h2>{title}</h2>{intro && <p>{intro}</p>}</div>
+    <div className="guide-sec-head"><span>{hub}</span><h2>{title}{live && <em className="guide-live"><i />{live}</em>}</h2>{intro && <p>{intro}</p>}</div>
     {children}
   </section>;
 }
 
+/** What you typed in the guide's search box, so every card can decide whether it matches. */
+const QueryContext = createContext("");
+const plainText = (n: ReactNode): string => (typeof n === "string" || typeof n === "number" ? String(n) : Array.isArray(n) ? n.map(plainText).join(" ") : isValidElement(n) ? plainText((n.props as { children?: ReactNode }).children) : "");
+export const featureMatches = (f: Pick<Feature, "title" | "where" | "body" | "points">, q: string) => !q.trim() || q.toLowerCase().trim().split(/\s+/).every((w) => `${f.title} ${f.where} ${plainText(f.body)} ${(f.points ?? []).map(plainText).join(" ")}`.toLowerCase().includes(w));
+
 function Cards({ features }: { features: Feature[] }) {
+  const q = useContext(QueryContext), name = companionName(useCompanion());
+  const shown = features.filter((f) => featureMatches(f, q));
+  if (!shown.length) return q ? <p className="guide-nomatch">Nothing here matches “{q}”.</p> : null;
   return <div className="guide-cards">
-    {features.map((f) => <article key={f.title} className="guide-card">
+    {shown.map((f) => <article key={f.title} className="guide-card">
       <span className="guide-where">{f.where}</span>
       <h3>{f.title}</h3>
       <p>{f.body}</p>
       {f.points && <ul>{f.points.map((p, i) => <li key={i}>{p}</li>)}</ul>}
-      {f.to && <Link to={f.to} className="guide-open">Open {f.where.split("› ")[1]} <ArrowUpRight size={13} /></Link>}
+      <div className="guide-card-actions">
+        {f.to && <Link to={f.to} className="guide-open">Open {f.where.split("› ")[1] ?? "it"} <ArrowUpRight size={13} /></Link>}
+        <button type="button" className="guide-ask-card" onClick={() => suggestToSpark(`Show me how to use “${f.title}” in ShuaCrew (${f.where}). Walk me through it step by step on my own setup, and point at it on screen if you can.`)}><Sparkles size={12} /> Ask {name} to show me</button>
+      </div>
     </article>)}
   </div>;
+}
+
+/** Your setup, live: each step checked against what's really on this Mac right now, with the way to finish it. */
+function SetupLive() {
+  const members = useLive((s) => Object.keys(s.crew.members).length), runs = useLive((s) => s.crew.runs);
+  const done = Object.values(runs).filter((r) => r.status === "done" || r.status === "merged").length;
+  const [state, setState] = useState<{ engines: string[]; goal: string; tools: number; schedules: number; backup: number | null } | null>(null);
+  useEffect(() => {
+    const soft = <T,>(p: Promise<T>) => p.catch(() => null);
+    void Promise.all([soft(api<Array<{ label: string; status: { installed: boolean; signedIn: boolean | null } }>>("/api/runtimes")), soft(api<{ profile?: { goal?: string } }>("/api/learning")),
+      soft(api<unknown[]>("/api/mcp")), soft(api<unknown[]>("/api/schedules")), soft(api<{ last: { at: number } | null }>("/api/backups"))])
+      .then(([rt, learn, mcp, sch, bk]) => setState({ engines: (rt ?? []).filter((r) => r.status.installed && r.status.signedIn === true).map((r) => r.label.replace(/\s*\(.*\)$/, "")),
+        goal: learn?.profile?.goal ?? "", tools: Array.isArray(mcp) ? mcp.length : 0, schedules: Array.isArray(sch) ? sch.length : 0, backup: bk?.last?.at ?? null }));
+  }, []);
+  const steps = !state ? [] : [
+    { ok: state.engines.length > 0, title: "Connect your engines", detail: state.engines.length ? `${state.engines.join(" and ")} connected` : "No engine signed in yet", to: "/settings", hash: "runtimes" },
+    { ok: !!state.goal, title: "Tell it your goal", detail: state.goal ? `Working toward ${state.goal}` : "Your goal shapes Learn and every chat", to: "/learn" },
+    { ok: members > 0, title: "Meet your crew", detail: members ? `${members} agent${members === 1 ? "" : "s"} ready` : "Add the starter crew in one click", to: "/crew" },
+    { ok: done > 0, title: "Get a first win", detail: done ? `${done} session${done === 1 ? "" : "s"} finished` : "Hand the crew one small real task", to: "/" },
+    { ok: state.tools > 0, title: "Connect a tool", detail: state.tools ? `${state.tools} connection${state.tools === 1 ? "" : "s"}` : "Notion, GitHub, Stripe and more", to: "/integrations" },
+    { ok: state.schedules > 0, title: "Put something on autopilot", detail: state.schedules ? `${state.schedules} schedule${state.schedules === 1 ? "" : "s"} running` : "A morning standup, a weekly review", to: "/schedules" },
+    { ok: !!state.backup, title: "Know you're backed up", detail: state.backup ? `Last backup ${new Date(state.backup).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "Nightly, encrypted, to iCloud", to: "/settings", hash: "backups" },
+  ];
+  const n = steps.filter((x) => x.ok).length;
+  return <section className="guide-setup" aria-label="Your setup, live">
+    <header><div><span>Your setup, live</span><h2>{!state ? "Checking your setup…" : n === steps.length ? "Everything's set up. Go make something." : `${n} of ${steps.length} done`}</h2></div>
+      {state && <i className="guide-setup-bar" style={{ ["--p" as string]: `${(n / steps.length) * 100}%` }} aria-hidden="true" />}</header>
+    {state && <ol>{steps.map((st) => <li key={st.title} className={st.ok ? "is-ok" : ""}>
+      <i aria-hidden="true">{st.ok ? <Check size={12} strokeWidth={3} /> : null}</i><b>{st.title}</b><small>{st.detail}</small>
+      {!st.ok && <Link to={st.to} hash={st.hash} className="guide-do">Do it <ArrowUpRight size={12} /></Link>}</li>)}</ol>}
+  </section>;
 }
 
 export function Guide() {
   const name = companionName(useCompanion());
   const ids = useRef(TOC.flatMap((g) => g.items.map(([id]) => id))).current;
   const on = useInView(ids);
-  return <PaneLayout>
+  const [query, setQuery] = useState("");
+  const live = useHubLive();
+  return <QueryContext.Provider value={query}><PaneLayout>
     <div className="guide">
       <nav className="guide-toc" aria-label="Guide contents">
+        <label className="guide-search"><Search size={13} /><input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the guide…" aria-label="Search the guide" /></label>
         {TOC.map((g) => <div key={g.group}>
           <h4>{g.group}</h4>
           {g.items.map(([id, label]) => <button key={id} type="button" className={on === id ? "is-on" : ""} aria-current={on === id ? "true" : undefined} onClick={() => jump(id)}>{label}</button>)}
@@ -107,6 +181,8 @@ export function Guide() {
             description="ShuaCrew is a Mac app that turns the AI subscriptions you already pay for (Claude and Codex) into a standing team. You chat with it and it plans, codes, reviews and ships. Its companion sits on your desktop, talks with you out loud and runs your day. Everything runs locally on your Mac and asks before it does anything risky."
             actions={<button type="button" className="guide-ask" onClick={toggleSparkPanel}>Ask {name} about anything here <kbd>⌘J</kbd></button>} />
         </div>
+
+        <SetupLive />
 
         <Section id="start" hub="First run" title="Getting started" intro="The first time you open ShuaCrew, a short welcome tour walks you through these steps. Each one takes about a minute.">
           <ol className="guide-steps">
@@ -138,7 +214,7 @@ export function Guide() {
                 ["“What was that error I saw earlier?”", "Recalls it from screen memory, if you've turned it on."],
                 ["“idea: a bot that summarizes city council meetings”", "Files it as a new venture. The crew scores it overnight."],
                 ["“Explain this.”", "Reads the text you've selected, explains it and adds a quiz card."],
-                ["“Put on some lofi and start my day.”", "Starts the radio and Flow, then shows the first thing that needs you."]].map(([said, does]) =>
+                ["“Put on an album and start my day.”", "Plays something from your Apple Music, starts Flow, then shows the first thing that needs you."]].map(([said, does]) =>
                 <div key={said}><small>You say</small><b>{said}</b><span>{does}</span></div>)}
             </div>
           </div>
@@ -192,7 +268,7 @@ export function Guide() {
           </div>
         </Section>
 
-        {HUBS.map((h) => <Section key={h.id} id={h.id} hub={h.hub} title={h.title} intro={h.intro}><Cards features={h.features} /></Section>)}
+        {HUBS.map((h) => <Section key={h.id} id={h.id} hub={h.hub} title={h.title} intro={h.intro} live={live[h.id]}><Cards features={h.features} /></Section>)}
 
         <Section id="engines" hub="Reference" title="Engines" intro="ShuaCrew doesn't have its own model. It runs on the subscriptions you already have, and you can set a fallback order and routing rules in Settings.">
           <div className="guide-engines">
@@ -230,7 +306,7 @@ export function Guide() {
               <tr><td><kbd>⌘</kbd> <kbd>J</kbd></td><td>Opens your companion in a side panel in the app</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>K</kbd></td><td>Search and jump anywhere</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>N</kbd></td><td>Starts a new session</td></tr>
-              <tr><td><kbd>⌘</kbd> <kbd>1</kbd>–<kbd>5</kbd></td><td>Switches between the five hubs. Each one reopens where you left it.</td></tr>
+              <tr><td><kbd>⌘</kbd> <kbd>1</kbd>–<kbd>6</kbd></td><td>Switches between the six hubs. Each one reopens where you left it.</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>\</kbd></td><td>Collapses the sidebar to a thin rail</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>F</kbd></td><td>Flow mode: hides everything but the work</td></tr>
               <tr><td>Hold <kbd>Space</kbd></td><td>Push-to-talk. The mic turns off as soon as your words are sent.</td></tr>
@@ -277,5 +353,5 @@ export function Guide() {
         </Section>
       </div>
     </div>
-  </PaneLayout>;
+  </PaneLayout></QueryContext.Provider>;
 }

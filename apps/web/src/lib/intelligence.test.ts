@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { turnDisposition } from "./intelligence";
 it("resumes only a compatible completed conversation and never reuses a foreign session", () => {
   expect(turnDisposition({ runtime: "claude", model: "c", status: "done" }, { runtime: "claude", model: "c" })).toBe("resume");
@@ -30,4 +30,54 @@ it("keeps compatible history when refreshed instructions are supplied", () => {
   expect(turnDisposition({ ...done, rules: "a" }, { runtime: "claude", model: "c", rules: "a" })).toBe("resume");
   expect(turnDisposition({ ...done, rules: "a" }, { runtime: "claude", model: "c", rules: "b" })).toBe("resume");
   expect(turnDisposition(done, { runtime: "claude", model: "c", rules: "b" })).toBe("resume"); // started before fingerprints
+});
+
+import { resolveIntelligence, selectIntelligence, type IntelligenceRequest } from "./intelligence";
+
+const base: IntelligenceRequest = { ask: "hi", mode: "auto", purpose: "conversation", images: false, tier: "fast" };
+const limited = { runtime: null, reason: "No eligible connected model is available.", retryAt: Date.UTC(2026, 9, 11, 19, 38), checkedAt: 1 };
+const claude = { runtime: "claude", model: "claude-haiku-4-5", acceptsImages: true, checkedAt: 1, verification: "unverified", reason: "Connected provider order · Claude" };
+
+/** Answers like the gateway: Codex is limited, anything else picks Claude. */
+function gateway(claudeUp = true) {
+  const calls: IntelligenceRequest[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (_: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body)) as IntelligenceRequest;
+    calls.push(body);
+    const answer = body.preferredRuntime === "codex" || !claudeUp ? limited : claude;
+    return new Response(JSON.stringify(answer), { status: 200 });
+  }));
+  return calls;
+}
+
+afterEach(() => { vi.unstubAllGlobals(); });
+
+describe("selectIntelligence", () => {
+  it("falls back from a limited preferred provider on Auto, and says why", async () => {
+    const calls = gateway();
+    const choice = await selectIntelligence({ ...base, preferredRuntime: "codex" });
+    expect(choice.runtime).toBe("claude");
+    expect(choice.reason).toMatch(/^Codex is at its usage limit until .+ · Connected provider order/);
+    expect(calls.map((c) => c.preferredRuntime)).toEqual(["codex", undefined]);
+  });
+  it("keeps a model picked by name strict", async () => {
+    const calls = gateway();
+    const choice = await selectIntelligence({ ...base, preferredRuntime: "codex", preferredModel: "gpt-5.6-sol" });
+    expect(choice.runtime).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+  it("reports the original reason when nothing else is up either", async () => {
+    gateway(false);
+    const choice = await selectIntelligence({ ...base, preferredRuntime: "codex" });
+    expect(choice).toMatchObject({ runtime: null, reason: limited.reason });
+  });
+});
+
+it("hands back the request it actually used, so the gateway's re-check agrees with the fallback", async () => {
+  gateway();
+  const { choice, request } = await resolveIntelligence({ ...base, preferredRuntime: "codex" });
+  expect(choice.runtime).toBe("claude");
+  expect(request.preferredRuntime).toBeUndefined();
+  const strict = await resolveIntelligence({ ...base, preferredRuntime: "codex", preferredModel: "gpt-5.6-sol" });
+  expect(strict.request.preferredRuntime).toBe("codex");
 });

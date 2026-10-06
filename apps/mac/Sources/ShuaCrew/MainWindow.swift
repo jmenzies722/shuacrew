@@ -23,6 +23,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
     var onBuddyEnabled: ((Bool) -> Void)?
     var onBuddyHotkey: ((String) -> Void)?
     var onShuaTalk: (() -> Void)?
+    var onShuaAsk: ((String) -> Void)?
     var onBuddyMessage: ((WKUserContentController, WKScriptMessage) -> Void)?
 
     init(gateway: Gateway) {
@@ -238,6 +239,11 @@ final class MainWindow: NSWindowController, NSWindowDelegate, WKNavigationDelega
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }
             onShuaTalk?()
+        case "shuaAsk":
+            let origin = message.frameInfo.securityOrigin
+            guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80),
+                  let text = body["text"] as? String else { return }
+            onShuaAsk?(text)
         case "buddyScreenAccess":
             let origin = message.frameInfo.securityOrigin
             guard message.frameInfo.isMainFrame, origin.host == gateway.base.host, origin.port == (gateway.base.port ?? 80) else { return }

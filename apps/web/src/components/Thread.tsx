@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import type { RunView } from "@shuacrew/core/projections";
 import { BookmarkPlus, Columns2, GitFork, Pencil, RotateCcw, Rows2, Sparkles, X } from "lucide-react";
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { parseAnsi } from "../lib/ansi";
 import { api, decideApproval, followUp } from "../lib/api";
@@ -35,10 +35,12 @@ import { CodeBlock, Markdown } from "./Markdown";
 import { KIND } from "../lib/kinds";
 import { useLive } from "../lib/live";
 import { ToolActivityCard } from "./ToolActivityCard";
+import { PlanCard, Receipt } from "./TurnCards";
 type ToolServer = { name: string; url?: string; command?: string; brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" } };
 
 /** What every card in a thread may need: the session it belongs to, and whether it's working. */
-const ThreadContext = createContext<{ run?: RunView; working: boolean; servers?: ToolServer[] }>({ working: false });
+/** `items` reads the thread's current items without re-rendering every row on each streamed word. */
+const ThreadContext = createContext<{ run?: RunView; working: boolean; servers?: ToolServer[]; items: () => Item[] }>({ working: false, items: () => [] });
 
 type Step = Extract<Item, { kind: "tool" | "files" | "check" | "subagent" | "denied" | "checkpoint" | "thought" }>;
 type Block = { kind: "item"; key: string; item: Item } | { kind: "work"; key: string; steps: Step[]; live: boolean };
@@ -65,7 +67,10 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
   const blocks = useMemo(() => toBlocks(items, working), [items, working]);
   const [servers, setServers] = useState<ToolServer[]>([]);
   useEffect(() => { let mounted = true; void api<ToolServer[]>("/api/mcp").then(value => { if (mounted) setServers(value); }).catch(() => {}); return () => { mounted = false; }; }, []);
-  const context = useMemo(() => ({ run, working, servers }), [run, working, servers]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const readItems = useCallback(() => itemsRef.current, []);
+  const context = useMemo(() => ({ run, working, servers, items: readItems }), [run, working, servers, readItems]);
   const parent = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
@@ -320,6 +325,8 @@ function signature(item: Item): string {
       return `f${item.seq}:${item.paths.length}`;
     case "finished":
       return `d${item.seq}:${item.lessons.length}`;
+    case "plan":
+      return `p${item.seq}:${item.steps.map((s) => `${s.status[0]}${s.text.length}`).join("")}:${item.note.length}`;
     default:
       return `${item.kind}${item.seq}`;
   }
@@ -346,10 +353,21 @@ export const Row = memo(function Row({ item }: { item: Item }) {
       return <div className={`text-[12.5px] ${item.tone === "bad" ? "text-bad" : item.tone === "live" ? "text-amber" : item.tone === "wait" ? "text-wait" : "text-fg-3"}`}>{item.text}</div>;
     case "finished":
       return <Finished item={item} />;
+    case "plan":
+      return <LivePlan item={item} />;
     default:
       return <StepRow step={item as Step} />;
   }
 }, (a, b) => signature(a.item) === signature(b.item));
+
+/** The plan is live only while its turn is the one running. */
+function LivePlan({ item }: { item: Extract<Item, { kind: "plan" }> }) {
+  const { working, items, run } = useContext(ThreadContext);
+  // By seq, not identity: a memoised row can hold an older copy of the same item.
+  const latest = items().findLast((i) => i.kind === "plan" || i.kind === "finished")?.seq === item.seq;
+  const state = !latest ? "idle" : working ? "live" : run?.pendingApprovals.length ? "waiting" : "idle";
+  return <PlanCard item={item} state={state} />;
+}
 
 /** What you asked — copy it, or edit it and send it again. */
 function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
@@ -524,7 +542,7 @@ function ProseActions({ text }: { text: string }) {
 }
 
 function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
-  const { run, working } = useContext(ThreadContext);
+  const { run, working, items } = useContext(ThreadContext);
   const navigate = useNavigate();
   const [lessons, setLessons] = useState<string[]>([]);
   const [showLessons, setShowLessons] = useState(false);
@@ -548,12 +566,14 @@ function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
     }
   };
   return (
+    <div data-turn-end>
+    <Receipt item={item} run={run} items={items} working={working} />
     <div className="turn-footer group">
-      <span className="turn-model">
+      {item.runtime && <span className="turn-model">
         <span className="h-1.5 w-1.5 rounded-full bg-amber" />
         {item.runtime === "claude" ? "Claude" : item.runtime === "codex" ? "Codex" : item.runtime}
         {item.model && <span className="mono text-fg-3">{item.model}</span>}
-      </span>
+      </span>}
       {item.durationMs !== undefined && <span>{fmtMs(item.durationMs)}</span>}
       {item.tokens !== undefined && <span className="mono">{formatTokens(item.tokens)} tok</span>}
       {item.commit && <span className="mono" title="The checkpoint this turn committed">⎇ {item.commit.slice(0, 7)}</span>}
@@ -581,6 +601,7 @@ function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
           </button>
         </span>
       )}
+    </div>
     </div>
   );
 }

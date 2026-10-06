@@ -16,6 +16,7 @@ it("uses the model's short title without rewriting it", () => {
 it("derives short task titles without filler or cut words", () => {
   expect(nameSession("Can you please fix Sable keyboard shortcuts? Also add tests.").title).toBe("Fix Sable keyboard shortcuts");
   expect(nameSession("Please help me improve the notch readability and animation timing while preserving the existing voice behavior").title).toBe("Improve the notch readability and animation timing");
+  expect(nameSession("Research three competitors to Shua Labs and their pricing").title).toBe("Research three competitors to Shua Labs");
   expect(nameSession("\n\n").title).toBe("New session");
   expect(nameSession("检查中文输入法的问题").title).toBe("检查中文输入法的问题");
 });

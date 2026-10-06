@@ -267,3 +267,25 @@ it("turns Bluetooth on and off instantly", () => {
   expect(producerMove("Can you turn on Bluetooth")).toEqual({ kind: "sys", what: "bluetooth", on: true });
   expect(producerMove("bluetooth off")).toEqual({ kind: "sys", what: "bluetooth", on: false });
 });
+
+import { factMove } from "./studio";
+describe("instant facts", () => {
+  it("answers the everyday questions without a model", () => {
+    expect(factMove("What time is it?")).toBe("time");
+    expect(factMove("hey shua, what's the date")).toBe("date");
+    expect(factMove("what day is it today")).toBe("date");
+    expect(factMove("When's my next meeting?")).toBe("next");
+    expect(factMove("what's on my calendar today")).toBe("next");
+    expect(factMove("how many cards are due")).toBe("cards");
+    expect(factMove("What's the crew doing?")).toBe("crew");
+    expect(factMove("does anything need me")).toBe("waiting");
+    expect(factMove("Brief me")).toBe("morning");
+    expect(factMove("good morning")).toBe("morning");
+    expect(producerMove("what time is it")).toEqual({ kind: "fact", what: "time" });
+  });
+  it("leaves real questions to the model", () => {
+    expect(factMove("what time does the Apple store close")).toBeNull();
+    expect(factMove("what's the date of the next AWS re:Invent")).toBeNull();
+    expect(factMove("why is the crew doing that")).toBeNull();
+  });
+});

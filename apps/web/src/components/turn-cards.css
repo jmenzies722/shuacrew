@@ -1,0 +1,53 @@
+/* The plan card and the turn receipt: legible work, honest verdicts. */
+
+.plan-card { border: 1px solid var(--line-strong); border-radius: 14px; padding: 12px 14px 10px; background: color-mix(in srgb, var(--raised) 55%, transparent); transition: border-color .25s, box-shadow .25s; }
+.plan-card.is-live { border-color: color-mix(in srgb, var(--amber) 38%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 7%, transparent); }
+.plan-card header { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.plan-card header strong { color: var(--text); font-weight: 600; }
+.plan-count { font-variant-numeric: tabular-nums; color: var(--text-3); }
+.plan-bar { flex: 1; max-width: 160px; height: 4px; margin-left: auto; border-radius: 2px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+.plan-bar b { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width .6s cubic-bezier(.22, 1, .36, 1); }
+.plan-card.is-live .plan-bar b { background: linear-gradient(90deg, var(--ok), var(--amber)); }
+.plan-note { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-3); }
+.plan-card ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.plan-card li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.plan-card li svg { flex: none; margin-top: 2px; }
+.plan-card li[data-status="done"] { color: var(--text-3); }
+.plan-card li[data-status="done"] svg { color: var(--ok); }
+.plan-card li[data-status="active"] { color: var(--text); font-weight: 500; }
+.plan-card li[data-status="active"] svg { color: var(--amber); }
+.plan-card li[data-status="pending"] svg { color: var(--text-3); opacity: .7; }
+.plan-card li { animation: plan-in .3s ease-out both; }
+@keyframes plan-in { from { opacity: .4; transform: translateY(2px); } }
+
+.receipt { margin: 2px 0 6px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--raised) 40%, transparent); animation: receipt-in .35s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes receipt-in { from { opacity: 0; transform: translateY(4px); } }
+.receipt.is-ok { border-color: color-mix(in srgb, var(--ok) 28%, var(--line)); }
+.receipt.is-wait { border-color: color-mix(in srgb, var(--wait) 34%, var(--line)); }
+.receipt.is-bad { border-color: color-mix(in srgb, var(--bad) 34%, var(--line)); }
+.receipt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12px; color: var(--text-3); }
+.receipt-verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.receipt.is-ok .receipt-verdict { color: var(--ok); }
+.receipt.is-wait .receipt-verdict { color: var(--wait); }
+.receipt.is-bad .receipt-verdict { color: var(--bad); }
+.receipt-verdict code { font: 400 11px var(--font-mono); color: var(--text-3); }
+.receipt-files { color: var(--text-2); text-decoration: underline dotted color-mix(in srgb, var(--text) 30%, transparent); text-underline-offset: 3px; }
+.receipt-files:hover { color: var(--text); }
+.receipt-plan { font-variant-numeric: tabular-nums; }
+.receipt-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+.receipt-actions button, .receipt-quiet button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; font-size: 11.5px; font-weight: 500; color: var(--text-2); background: transparent; transition: background .15s, color .15s, border-color .15s; }
+.receipt-actions button:hover:not(:disabled), .receipt-quiet button:hover:not(:disabled) { color: var(--text); background: color-mix(in srgb, var(--raised) 80%, transparent); }
+.receipt-actions button.is-primary { color: var(--ink, #0b0b0c); background: var(--text); border-color: var(--text); }
+.receipt-actions button.is-primary:hover:not(:disabled) { color: var(--ink, #0b0b0c); background: color-mix(in srgb, var(--text) 88%, transparent); }
+.receipt-actions button:disabled, .receipt-quiet button:disabled { opacity: .5; cursor: default; }
+.receipt-explain svg { color: var(--amber); }
+.receipt-paths { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.receipt-paths li { padding: 2px 7px; border-radius: 6px; font: 11px var(--font-mono); color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.receipt-left { margin: 7px 0 0; font-size: 12px; color: var(--text-2); }
+
+.receipt-quiet { display: flex; justify-content: flex-start; margin: -4px 0 2px; opacity: 0; transition: opacity .15s; }
+.receipt-quiet:focus-within, [data-turn-end]:hover .receipt-quiet { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) { .plan-card li, .receipt { animation: none; } .plan-bar b { transition: none; } }
+.plan-card.is-waiting { border-color: color-mix(in srgb, var(--wait) 40%, var(--line-strong)); }
+.plan-card.is-waiting li[data-status="active"] svg { color: var(--wait); }

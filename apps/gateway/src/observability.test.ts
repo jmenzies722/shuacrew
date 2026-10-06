@@ -47,8 +47,8 @@ it("reconciles token buckets and coverage, without pretending unknown cost is ze
   expect(report.coverage).toMatchObject({ usageRecords: 3, legacyRecords: 2, costRecords: 1, runsWithoutUsage: 0 });
   expect(report.providers.reduce((sum, p) => sum + p.inputTokens, 0)).toBe(230);
   expect(report.daily.reduce((sum, p) => sum + p.outputTokens, 0)).toBe(60);
-  expect(report.latency.firstResponse).toEqual({ meanMs: 1000, samples: 1 });
-  expect(report.latency.turnDuration).toEqual({ meanMs: 4000, samples: 1 });
+  expect(report.latency.firstResponse).toEqual({ meanMs: 1000, samples: 1, p50Ms: 1000, p90Ms: 1000 });
+  expect(report.latency.turnDuration).toEqual({ meanMs: 4000, samples: 1, p50Ms: 4000, p90Ms: 4000 });
   expect(report.statuses.failed).toBe(1);
   expect(JSON.stringify(report)).not.toMatch(/PRIVATE|SECRET/);
   const codex = observability(events, { now, days: 7, provider: "codex", venture: "v1" });
@@ -67,7 +67,7 @@ it("uses inclusive UTC day boundaries, excludes future events, and preserves emp
   const empty = observability(events, { now, days: 7, venture: "missing" });
   expect(empty.runs).toEqual([]);
   expect(empty.totals.reportedCostUsd).toBeNull();
-  expect(empty.latency.firstResponse).toEqual({ meanMs: null, samples: 0 });
+  expect(empty.latency.firstResponse).toEqual({ meanMs: null, samples: 0, p50Ms: null, p90Ms: null });
 });
 it("deduplicates repeated event sequences and bounds run/timeline results", () => {
   const { events, add } = fixture();
@@ -82,7 +82,7 @@ it("does not turn a later chunk into first-response latency when the first respo
   add("turn.started", { turn: 2, text: "private" }, boundary - 3000);
   add("agent.delta", { turn: 2, text: "private" }, boundary - 2000);
   add("agent.delta", { turn: 2, text: "private" }, boundary + 2000);
-  expect(observability(events, { now, days: 7 }).latency.firstResponse).toEqual({ meanMs: 1000, samples: 1 });
+  expect(observability(events, { now, days: 7 }).latency.firstResponse).toEqual({ meanMs: 1000, samples: 1, p50Ms: 1000, p90Ms: 1000 });
 });
 it("validates the read-only route and preserves origin protections", async () => {
   const store = new EventStore(":memory:"), runtimes = new Map(), supervisor = new Supervisor(store, runtimes, { workspace: "/tmp/shua-observability-test" });
@@ -105,4 +105,25 @@ it("does not label context-only ACP updates as measured zero usage", () => {
   expect(report.coverage).toMatchObject({ usageRecords: 0, contextOnlyRecords: 1, runsWithoutUsage: 1 });
   expect(report.runs[0]!.usageRecords).toBe(0);
   expect(report.totals.reportedCostUsd).toBeNull();
+});
+it("buckets usage by the hour, per provider, and reports latency percentiles", () => {
+  const { events, add } = fixture();
+  for (const [i, ms] of [200, 400, 600, 800, 10000].entries()) {
+    add("turn.started", { turn: 10 + i, text: "q" }, now - 60000 + i * 1000, "r2");
+    add("agent.delta", { turn: 10 + i, text: "hi" }, now - 60000 + i * 1000 + ms, "r2");
+  }
+  const report = observability(events, { now, days: 7 });
+  const hours = report.hourly!;
+  expect(hours.every((h) => h.at % 3600000 === 0)).toBe(true);
+  expect(hours.reduce((n, h) => n + h.inputTokens, 0)).toBe(report.totals.inputTokens);
+  const last = hours.at(-1)!;
+  expect(last.byProvider).toEqual({ codex: 230, claude: 60 });
+  // Six first responses (1000 from the fixture plus five here): the median ignores the 10 s outlier, p90 catches it.
+  expect(report.latency.firstResponse.p50Ms).toBe(600);
+  expect(report.latency.firstResponse.p90Ms).toBe(10000);
+});
+it("pages runs by tokens when asked, so the heaviest sessions are never cut off by recency", () => {
+  const { events } = fixture();
+  expect(observability(events, { now, days: 7 }).runs.map((r) => r.id)).toEqual(["r2", "r1"]);
+  expect(observability(events, { now, days: 7, sort: "tokens" }).runs.map((r) => r.id)).toEqual(["r1", "r2"]);
 });

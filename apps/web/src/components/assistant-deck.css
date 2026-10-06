@@ -13,7 +13,7 @@
 .assistant-tools-toggle{display:flex;align-items:center;gap:6px;border:0;background:none;padding:8px 0 0;font-size:10px!important;color:#99999f!important}
 .assistant-tools-toggle svg:last-child{transition:transform .18s}
 .assistant-tools-toggle[aria-expanded=true] svg:last-child{transform:rotate(90deg)}
-.shua-island-body:has(.assistant-deck){max-height:340px}
+.shua-island-body:has(.assistant-deck){max-height:440px}
 .shua-island-body:has(.assistant-permissions){max-height:420px}
 .buddy.is-docked .shua-island.is-open .shua-island-shape{border-radius:0 0 24px 24px;box-shadow:0 12px 30px -16px #0009}
 .shua-island.is-open::before,.shua-island.is-open::after{display:none}
@@ -22,3 +22,58 @@
 .shua-island.is-open .spark-nook-voice>span{display:none}
 .shua-island.is-open .spark-nook-next.is-starter{display:none}
 :root[data-native-notch-surface=true] .buddy.is-docked .shua-island.is-open .shua-island-shape{background:transparent;box-shadow:none}
+
+/* More (Oct 5): a Control Center for Shua. Four tiles that say their state, quick pills, and the brain that answers. */
+.deck-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.deck-tile { position: relative; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; text-align: left;
+  padding: 10px 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,.08); background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  transition: transform .18s cubic-bezier(.2,.9,.3,1.3), border-color .15s, background .15s; overflow: hidden; }
+.deck-tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background: radial-gradient(120px 60px at 20% 0%, color-mix(in srgb, var(--amber) 22%, transparent), transparent 70%); }
+.deck-tile:hover { border-color: color-mix(in srgb, var(--amber) 45%, rgba(255,255,255,.1)); transform: translateY(-1px); }
+.deck-tile:hover::after { opacity: 1; }
+.deck-tile:active { transform: scale(.97); }
+.deck-tile i { grid-row: 1 / 3; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent); }
+.deck-tile b { font-size: 12.5px; font-weight: 600; color: #f4f4f6; letter-spacing: -.01em; }
+.deck-tile small { font-size: 10.5px; color: #9a9aa2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-tile.is-off i { color: #9a9aa2; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.deck-tile.is-fresh small { color: #5ad08a; }
+.deck-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.deck-pills button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 11.5px !important;
+  border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04); color: #d9d9de !important; transition: background .15s, border-color .15s, transform .15s; }
+.deck-pills button svg { color: var(--amber); }
+.deck-pills button:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); }
+.deck-pills button:active { transform: scale(.96); }
+.deck-brain { display: flex; align-items: center; gap: 7px; margin: 2px 0 0; font-size: 11px; color: #a3a3aa; min-width: 0; }
+.deck-brain i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #5ad08a; box-shadow: 0 0 0 3px rgba(90,208,138,.15); }
+.deck-brain small { color: #77777e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-brain small::before { content: "·"; margin: 0 6px; }
+.deck-brain.is-fallback i { background: #ffb340; box-shadow: 0 0 0 3px rgba(255,179,64,.15); }
+@media (prefers-reduced-motion: reduce) { .deck-tile, .deck-pills button { transition: none; } }
+
+/* Room between tiles, pills and the brain line inside the notch. */
+.shua-island.is-open .assistant-deck:not(.assistant-permissions):not(.assistant-mission){display:grid;gap:10px}
+
+/* ── Live and fluid in the notch ───────────────────────────────────────────────────────────────────────
+   One status row on top (what's happening · which brain), tiles and chips cascade in when the deck opens, live chips
+   breathe. Transform/opacity only; rests with [data-idle]; none of it with Reduce motion. */
+.deck-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 0 2px 2px; }
+.deck-now { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 11.5px; color: #a7a7af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-now i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #5ad08a; box-shadow: 0 0 0 3px rgba(90, 208, 138, .16); }
+.deck-now.is-live i { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 20%, transparent); animation: deck-breathe 1.8s ease-in-out infinite; }
+.deck-status .deck-brain { flex: none; display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 3px 9px; border-radius: 99px; font-size: 11px; color: #c9c9d0;
+  background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.deck-status .deck-brain i { width: 6px; height: 6px; border-radius: 50%; background: #5ad08a; }
+.deck-status .deck-brain.is-fallback i { background: #f5b74e; }
+.deck-tiles > .deck-tile, .deck-pills > button { animation: deck-in .34s cubic-bezier(.2, .9, .3, 1.15) both; }
+.deck-tiles > .deck-tile:nth-child(2) { animation-delay: 40ms; } .deck-tiles > .deck-tile:nth-child(3) { animation-delay: 80ms; } .deck-tiles > .deck-tile:nth-child(4) { animation-delay: 120ms; }
+.deck-pills > button:nth-child(1) { animation-delay: 150ms; } .deck-pills > button:nth-child(2) { animation-delay: 180ms; } .deck-pills > button:nth-child(3) { animation-delay: 210ms; }
+@keyframes deck-in { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+.deck-pills > button.is-live { color: #f4f4f6; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+.deck-pills > button.is-live svg { color: var(--amber); animation: deck-breathe 1.8s ease-in-out infinite; }
+.deck-pills > button.is-music span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes deck-breathe { 50% { opacity: .5; transform: scale(.88); } }
+:root[data-idle] .deck-now.is-live i, :root[data-idle] .deck-pills > button.is-live svg { animation-play-state: paused; }
+:root[data-motion="reduced"] .deck-tiles > .deck-tile, :root[data-motion="reduced"] .deck-pills > button, :root[data-motion="reduced"] .deck-now.is-live i, :root[data-motion="reduced"] .deck-pills > button.is-live svg { animation: none; }
+@media (prefers-reduced-motion: reduce) { .deck-tiles > .deck-tile, .deck-pills > button, .deck-now.is-live i, .deck-pills > button.is-live svg { animation: none; } }

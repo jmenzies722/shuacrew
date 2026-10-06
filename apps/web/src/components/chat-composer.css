@@ -1,54 +1,146 @@
-/* Sessions and Shua use the same writing surface in the native workspace. */
-.composer-box.chat-composer,
-.buddy-input.chat-composer {
-  min-width: 0;
+/*
+ * The writing surface, one design for Sessions and for Shua. Proportions come from one scale: every control in the
+ * tool row is 32 px tall with a 10 px radius, the send button is a 34 px circle, and your words get the full width
+ * above the tools. Live touches: a soft glow wakes under the box while you write, a hint shows what Enter does and
+ * roughly what the message costs, and the agent's readiness dot breathes. All of it is opacity/transform only and
+ * rests with [data-idle] and Reduce motion. (Doubled class names out-rank the older palette layers without !important.)
+ */
+:root { --cmp-ctl: 32px; --cmp-radius: 22px; --cmp-gap: 6px; }
+
+/* ── Shared surface ─────────────────────────────────────────────────────────────────────────────────────── */
+.composer-box.chat-composer.chat-composer,
+.buddy-input.chat-composer.chat-composer {
+  position: relative; isolation: isolate; min-width: 0;
   border: 1px solid var(--line-strong);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--panel) 82%, var(--ink));
-  box-shadow: 0 4px 16px -12px #0004;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  border-radius: var(--cmp-radius) !important;
+  background: color-mix(in srgb, var(--panel) 86%, var(--ink));
+  box-shadow: inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .04)), 0 10px 30px -22px rgba(0, 0, 0, .7);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
+/* The glow under the box: present while you write, gone at rest. Only its opacity changes. */
+.composer-box.chat-composer::before,
+.buddy-input.chat-composer::before {
+  content: ""; position: absolute; z-index: -1; inset: 10% 6% -18px; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(60% 80% at 30% 100%, color-mix(in srgb, var(--amber) 34%, transparent), transparent 70%),
+    radial-gradient(50% 70% at 75% 100%, color-mix(in srgb, var(--accent-2, var(--amber)) 26%, transparent), transparent 70%);
+  filter: blur(18px); opacity: 0; transition: opacity 320ms ease;
+}
+.composer-box.chat-composer:focus-within::before,
+.buddy-input.chat-composer:focus-within::before,
+.composer-box.chat-composer.is-working::before { opacity: .9; }
 .composer-box.chat-composer:focus-within,
-.buddy-input.chat-composer:focus-within {
-  border-color: color-mix(in srgb, var(--amber) 55%, var(--line-strong));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 7%, transparent);
-}
+.buddy-input.chat-composer:focus-within { border-color: color-mix(in srgb, var(--amber) 50%, var(--line-strong)); }
 .chat-composer textarea,
 .chat-composer textarea:focus-visible {
-  min-width: 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  box-shadow: none;
-  -webkit-appearance: none;
-  background: transparent;
-  caret-color: var(--amber);
+  min-width: 0; border: 0; border-radius: 0; outline: none; box-shadow: none; -webkit-appearance: none;
+  background: transparent; caret-color: var(--amber);
 }
 .chat-composer textarea::placeholder { color: var(--text-3); opacity: 1; }
-.spk .buddy-input.chat-composer {
-  display: grid;
-  grid-template-columns: 32px 32px minmax(0, 1fr);
-  align-items: end;
-  gap: 8px 6px;
-  margin: 0 12px 12px;
-  padding: 12px;
+
+/* ── Sessions: words on top, one even row of tools ──────────────────────────────────────────────────────── */
+/* (:root plus a doubled class out-ranks the palette layers, e.g. Onyx's hero padding, without piling on !important.) */
+:root .composer-box.chat-composer.chat-composer { padding: 14px 12px 10px 18px; }
+:root .composer-box.chat-composer.chat-composer.is-hero { --cmp-radius: 24px; padding: 18px 14px 12px 22px; }
+:root .composer-box.chat-composer.chat-composer textarea { font-size: 14.5px; line-height: 1.55; min-height: 26px; padding: 2px 0 4px; }
+:root .composer-box.chat-composer.chat-composer.is-hero textarea { font-size: 15.5px; min-height: 76px; }
+:root .chat-composer.chat-composer .composer-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cmp-gap); margin-top: 10px; min-height: var(--cmp-ctl); }
+:root .chat-composer.chat-composer .composer-tools > :is(button, .composer-picks) { height: var(--cmp-ctl); min-height: var(--cmp-ctl); border-radius: 10px; }
+/* Icon-only buttons (they carry an aria-label) are square; labelled ones (Supervised, Options) keep their width. */
+:root .chat-composer.chat-composer .composer-tools > button[aria-label] { width: var(--cmp-ctl); padding: 0; }
+:root .chat-composer.chat-composer .composer-tools > button[aria-label] svg { width: 16px; height: 16px; }
+:root .chat-composer.chat-composer .composer-tools > button:not([aria-label]) { padding: 0 11px; gap: 6px; font-size: 12.5px; border-radius: 10px; }
+:root .chat-composer.chat-composer .composer-tools .composer-picks { padding: 0 12px; gap: 6px; }
+:root .chat-composer.chat-composer .composer-tools .composer-picks select { font-size: 12.5px; }
+:root .chat-composer.chat-composer .composer-tools > .ml-auto { gap: 10px; }
+:root .chat-composer.chat-composer .composer-tools .ml-auto > button { width: 34px; height: 34px; border-radius: 50%; }
+/* What Enter does and what the message roughly costs, only while there's something to send. */
+.composer-live { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; animation: cmp-in 220ms ease both; }
+.composer-live kbd { font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-2); }
+@keyframes cmp-in { from { opacity: 0; transform: translateY(2px); } }
+/* The agent that will pick this up: a breathing dot when it's ready, amber when it's resting on a limit. */
+.composer-ready { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 15%, transparent); animation: cmp-breathe 2.8s ease-in-out infinite; }
+.composer-ready.is-wait { background: var(--wait); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wait) 18%, transparent); animation: none; }
+.composer-ready.is-off { background: var(--text-3); box-shadow: none; animation: none; }
+@keyframes cmp-breathe { 50% { opacity: .45; transform: scale(.8); } }
+/* Under the box: where the work happens, set in from the box's own edge so it lines up with your words. */
+.chat-composer ~ .composer-meta { padding: 8px 0 0 20px; font-size: 12px; font-family: var(--font-ui, inherit); }
+.chat-composer ~ .composer-meta button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; margin-left: -8px; border-radius: 8px; font-family: inherit; }
+.chat-composer ~ .composer-meta input { font-family: inherit; font-size: 12px; }
+.chat-composer ~ .composer-meta button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.preset-row { padding-left: 4px; }
+
+/* ── Shua: words across the top, tools in a slim row beneath (eye · area … talk · send) ─────────────────── */
+.buddy-card.spk form.spk-input.chat-composer.chat-composer {
+  display: grid !important; flex-direction: unset;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "text text text text text" "see area . talk send";
+  align-items: center; gap: 6px 4px;
+  margin: 6px 12px 12px; padding: 12px 8px 8px 12px; min-height: 0;
+  --cmp-radius: 20px; background: var(--composer-fill, var(--sunken));
+  animation: none !important;
 }
-.spk .chat-composer textarea {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  width: 100%;
-  min-height: 52px;
-  max-height: min(180px, 25vh);
-  padding: 2px 3px 6px;
-  font-size: 14px;
-  line-height: 1.6;
+.buddy-card.spk form.spk-input.chat-composer > textarea {
+  grid-area: text; width: 100%; min-height: 24px; max-height: min(180px, 30vh); margin: 0; padding: 2px 4px 2px;
+  font-size: var(--chat-text, 14px); line-height: 1.5; resize: none; text-align: left;
 }
-.spk .chat-composer > button { grid-row: 2; width: 32px; height: 32px; }
-.spk .chat-composer .buddy-see { grid-column: 1; border-radius: 10px; }
-.spk .chat-composer .buddy-talk { grid-column: 2; border-radius: 10px; }
-.spk .chat-composer .buddy-send { grid-column: 3; justify-self: end; color: var(--on-accent); }
-.spk .chat-composer .buddy-send:disabled { opacity: 1; background: var(--raised); color: var(--text-3); }
-.chat-composer .composer-tools { gap: 8px; margin-top: 12px; }
-.chat-composer .composer-tools > button { min-height: 28px; }
-:root[data-motion="reduced"] .chat-composer { transition: none; }
-@media (prefers-reduced-motion: reduce) { .chat-composer { transition: none; } }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-see:not(.buddy-area) { grid-area: see; }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-area { grid-area: area; }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-talk { grid-area: talk; }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions { grid-area: send; display: inline-flex; gap: 4px; }
+.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk),
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > button {
+  flex: none; display: grid; place-items: center; width: var(--cmp-ctl); height: var(--cmp-ctl); margin: 0; padding: 0;
+  border-radius: 10px; transition: transform .15s, background .15s, color .15s;
+}
+.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk) svg { width: 16px; height: 16px; }
+.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk):active,
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > button:active { transform: scale(.92); }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send { width: 34px; height: 34px; border-radius: 50%; color: var(--on-accent, #fff); }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send:disabled { opacity: 1; background: var(--raised); color: var(--text-3); box-shadow: none; }
+.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send:not(:disabled):not(.is-stop) {
+  color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--spark-color, var(--amber)) 85%, #fff), var(--spark-color, var(--amber)));
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--spark-color, var(--amber)) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+/* The talk button is the call when Live is the voice: accent at rest, a calm red while you're on a call. */
+.buddy-card.spk form.spk-input.chat-composer > .buddy-talk.is-live { color: var(--accent-text, var(--spark-color)); }
+.buddy-card.spk form.spk-input.chat-composer > .buddy-talk.is-live.is-on { color: #ff8a8e; background: rgba(255, 90, 95, .14); }
+.spk.is-full .buddy-input.chat-composer { padding: 14px 10px 10px 16px; }
+
+/* ── Rest ───────────────────────────────────────────────────────────────────────────────────────────────── */
+:root[data-idle] .composer-ready { animation-play-state: paused; }
+:root[data-motion="reduced"] .chat-composer, :root[data-motion="reduced"] .chat-composer::before { transition: none; }
+:root[data-motion="reduced"] :is(.composer-ready, .composer-live) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .chat-composer, .chat-composer::before { transition: none; } .composer-ready, .composer-live { animation: none; } }
+
+/* ── The session, live, above your words ───────────────────────────────────────────────────────────────── */
+.live-strip { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; margin: -4px 0 10px; padding: 7px 11px; border-radius: 11px; overflow: hidden;
+  font-size: 12.5px; color: var(--text-2); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); animation: cmp-in 220ms ease both; }
+.live-strip > i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent); }
+.live-strip b { flex: none; font-weight: 600; color: var(--text); }
+.live-strip > span { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-strip small { flex: none; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.live-strip.is-live > i { animation: cmp-breathe 1.6s ease-in-out infinite; }
+/* A slow sweep of light across the strip while the crew works. */
+.live-strip.is-live::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--amber) 16%, transparent), transparent); transform: translateX(-100%); animation: strip-sweep 2.8s ease-in-out infinite; }
+@keyframes strip-sweep { to { transform: translateX(400%); } }
+.live-strip.is-wait { background: color-mix(in srgb, var(--wait) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 30%, transparent); }
+.live-strip.is-wait > i { background: var(--wait); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wait) 18%, transparent); }
+.live-strip.is-done { background: color-mix(in srgb, var(--ok) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 24%, transparent); }
+.live-strip.is-done > i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); }
+.composer-live em { font-style: normal; color: var(--ok); opacity: .8; }
+
+/* Context: a ring around send that fills as the session's context does (amber past 80%). */
+.composer-send-ring { position: relative; display: inline-grid; place-items: center; border-radius: 50%; }
+.composer-send-ring.has-ctx::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(color-mix(in srgb, var(--text) 45%, transparent) var(--ctx), color-mix(in srgb, var(--text) 8%, transparent) 0);
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); }
+.composer-send-ring.is-full::before { background: conic-gradient(var(--wait) var(--ctx), color-mix(in srgb, var(--text) 8%, transparent) 0); }
+
+:root[data-idle] .live-strip.is-live > i, :root[data-idle] .live-strip.is-live::after { animation-play-state: paused; }
+:root[data-motion="reduced"] .live-strip, :root[data-motion="reduced"] .live-strip.is-live > i, :root[data-motion="reduced"] .live-strip.is-live::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .live-strip, .live-strip.is-live > i, .live-strip.is-live::after { animation: none; } }
+/* Send never wraps: the hint gives way first (it shrinks, then ends in an ellipsis). */
+:root .chat-composer.chat-composer .composer-tools > .ml-auto { flex: 1 1 0; min-width: 0; justify-content: flex-end; }
+.composer-live { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.composer-send-ring { flex: none; }

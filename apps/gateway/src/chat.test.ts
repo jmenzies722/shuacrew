@@ -162,6 +162,24 @@ describe("attachments", () => {
   });
 });
 
+it("records what streamed as the reply when a runtime's final message comes back empty", async () => {
+  // Measured live: Codex streamed an act block, then ended the turn with an empty message — so nothing ran.
+  const store = new EventStore(":memory:");
+  const blank: Runtime = Object.assign(Object.create(new MockRuntime()), {
+    async *start() {
+      yield { type: "text", text: "On it.\n```act {\"type\":\"press\"," } as const;
+      yield { type: "text", text: "\"target\":\"#28\"}```" } as const;
+      yield { type: "done", text: "", durationMs: 1 } as const;
+    },
+  });
+  const supervisor = new Supervisor(store, new Map([["mock", blank]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-ws-")), roots: [] });
+  cleanups.push(() => (supervisor.shutdown(), store.close()));
+  const run = supervisor.launch({ ask: "Click it", runtime: "mock" });
+  await until(() => fold(store.read(0)).runs[run]?.status === "done");
+  const said = [...store.read(0)].filter((e) => e.kind === "agent.message" && e.run === run), final = said[said.length - 1]!;
+  expect((final.body as { text: string }).text).toBe("On it.\n```act {\"type\":\"press\",\"target\":\"#28\"}```");
+});
+
 describe("stopping a session", () => {
   it.each(["late completion", "quiet end"])("keeps cancellation terminal after a runtime's %s", async (ending) => {
     const store = new EventStore(":memory:");

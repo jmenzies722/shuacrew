@@ -1,0 +1,92 @@
+/* Tools & Skills in the Control Room language: connection cards with one status pill, a gallery you can filter. */
+.tk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.tk-grid.is-gallery { grid-template-columns: repeat(auto-fill, minmax(min(100%, 236px), 1fr)); gap: 10px; }
+
+/* Cards */
+.tk-card, .tk-conn { position: relative; display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 2.5%, var(--panel)); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03));
+  transition: box-shadow var(--t-fast, 120ms), transform var(--t-med, 220ms) var(--ease-out, ease); }
+.tk-card:hover { box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03)); transform: translateY(-1px); }
+.tk-card.is-added { background: color-mix(in srgb, var(--ok) 4%, var(--panel)); }
+.tk-card-top, .tk-conn > header { display: flex; align-items: flex-start; gap: 11px; min-width: 0; }
+.tk-conn > header { align-items: center; }
+.tk-card-text { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.tk-card-text b { font-size: 13.5px; font-weight: 600; color: var(--text); letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-card-text b small { font-weight: 450; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tk-card-text p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tk-card-text > small { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-card > footer, .tk-conn > footer { display: flex; align-items: center; gap: 6px; margin-top: auto; min-width: 0; }
+.tk-card > footer { justify-content: space-between; }
+.tk-spacer { flex: 1; }
+
+/* Icons: brand marks sit on a soft tile; tools without one get their initial on a colour of their own. */
+.tk-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.tk-icon .tool-brand img { width: 20px; height: 20px; }
+.tk-mono { display: grid; place-items: center; width: 100%; height: 100%; font-size: 15px; font-weight: 650; color: #fff;
+  background: linear-gradient(140deg, hsl(var(--h) 62% 58%), hsl(calc(var(--h) + 40) 58% 42%)); text-shadow: 0 1px 1px rgba(0, 0, 0, .25); }
+.tk-mono.is-skill { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); text-shadow: none; }
+
+/* Small text pieces */
+.tk-tag { display: inline-flex; align-items: center; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-added { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ok); }
+.tk-endpoint { display: block; min-width: 0; padding: 6px 9px; border-radius: 8px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--text-3); background: color-mix(in srgb, var(--text) 4%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-note { display: flex; align-items: center; gap: 7px; margin-top: 14px; }
+.tk-note b { color: var(--text-2); font-weight: 600; }
+.tk-fine { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--text-3); }
+.tk-fine code, .tk-tools code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; color: var(--text-2); }
+.tk-fine a { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.tk-lead { margin: -6px 0 14px; }
+.tk-error { margin: 0; font-size: 12px; color: var(--bad); }
+.tk-danger { color: var(--bad); }
+.tk-icon-btn { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: var(--text-3); cursor: pointer; transition: background var(--t-fast, 120ms), color var(--t-fast, 120ms); }
+.tk-icon-btn:hover:not(:disabled) { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.tk-icon-btn:disabled { opacity: .4; }
+
+/* Connection cards: the status colours the card's edge, nothing louder. */
+.tk-conn.is-ok { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 22%, var(--line)), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03)); }
+.tk-conn.is-wait { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 30%, var(--line)), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03)); }
+.tk-conn.is-bad { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 30%, var(--line)), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03)); }
+.tk-conn.is-open { grid-column: 1 / -1; }
+.tk-conn .cr-btn { height: 30px; padding: 0 10px; }
+
+/* Voice: a real switch, so "Shua may use this by voice" reads at a glance on every card. */
+.tk-voice { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 6px; border: 0; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--text-3); background: none; cursor: pointer; }
+.tk-voice:hover:not(:disabled) { color: var(--text-2); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.tk-voice i { position: relative; width: 26px; height: 16px; border-radius: 99px; background: color-mix(in srgb, var(--text) 16%, transparent); transition: background var(--t-fast, 120ms); }
+.tk-voice i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform var(--t-med, 220ms) var(--spring, ease); }
+.tk-voice.is-on { color: var(--text); }
+.tk-voice.is-on i { background: var(--amber); }
+.tk-voice.is-on i::after { transform: translateX(10px); }
+.tk-voice:disabled { opacity: .5; cursor: default; }
+.tk-confirm { display: grid; gap: 10px; padding: 12px; border-radius: 10px; font-size: 12.5px; color: var(--text-2); background: color-mix(in srgb, var(--amber) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 26%, transparent); }
+.tk-confirm p { margin: 0; line-height: 1.45; }
+.tk-confirm > div { display: flex; gap: 6px; }
+
+/* The tools a connection offers, when you open it. */
+.tk-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; margin: 2px 0 0; padding: 0; list-style: none; }
+.tk-tools li { padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, var(--text) 3.5%, transparent); }
+.tk-tools li > span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tk-tools em { font-style: normal; font-size: 10.5px; padding: 1px 6px; border-radius: 99px; color: var(--text-3); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.tk-tools em.is-bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.tk-tools p { margin: 4px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--text-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Finding a tool */
+.tk-search { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 8px; color: var(--text-3); background: color-mix(in srgb, var(--text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.tk-search:focus-within { box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 0 3px color-mix(in srgb, var(--amber) 16%, transparent); }
+.tk-search input { width: 170px; border: 0; outline: none; background: transparent; font: inherit; font-size: 12.5px; color: var(--text); }
+.tk-search.is-wide { display: flex; height: 36px; }
+.tk-search.is-wide input { width: 100%; }
+.tk-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 14px; }
+.tk-cats button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; color: var(--text-3); background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: color var(--t-fast, 120ms), background var(--t-fast, 120ms); }
+.tk-cats button:hover { color: var(--text-2); }
+.tk-cats button.is-on { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.tk-cats small { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tk-registry { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.tk-registry-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 4px 0; border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
+.tk-registry-toggle:hover { color: var(--text); }
+.tk-registry-body { display: grid; gap: 10px; margin-top: 12px; }
+.tk-registry-body .tk-fine { margin: 0; }
+
+:root[data-motion="reduced"] .tk-card, :root[data-motion="reduced"] .tk-voice i::after { transition: none; }
+@media (prefers-reduced-motion: reduce) { .tk-card, .tk-voice i::after { transition: none; } }
+@media (max-width: 720px) { .tk-search input { width: 120px; } }

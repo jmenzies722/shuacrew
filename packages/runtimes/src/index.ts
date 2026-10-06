@@ -8,3 +8,4 @@ export * from "./local.js";
 
 export * from "./teaching.js";
 export * from "./claude-accounts.js";
+export * from "./plan.js";

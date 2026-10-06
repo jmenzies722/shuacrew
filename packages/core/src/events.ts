@@ -107,6 +107,12 @@ export const bodies = {
   "subagent.started": z.object({ id: z.string(), name: z.string(), task: z.string() }),
   "subagent.finished": z.object({ id: z.string(), ok: z.boolean(), summary: z.string().default("") }),
   "checkpoint.created": z.object({ turn: z.number().int(), commit: z.string().optional(), note: z.string().default("") }),
+  /** The agent's own checklist for this turn, whole each time it changes (Codex plan updates, Claude's TodoWrite). */
+  "plan.updated": z.object({
+    turn: z.number().int(),
+    steps: z.array(z.object({ text: z.string(), status: z.enum(["pending", "active", "done"]) })),
+    note: z.string().default(""),
+  }),
 
   // governance
   "approval.requested": z.object({

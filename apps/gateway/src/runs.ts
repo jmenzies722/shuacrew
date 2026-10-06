@@ -25,6 +25,7 @@ import {
   standingRule,
   within,
   type AnyEvent,
+  type Decision,
   type Layer,
   type PolicyContext,
   type RunStatus,
@@ -33,6 +34,7 @@ import {
 import type { ApprovalAnswer, Runtime, RunSpec, RuntimeStatus } from "@shuacrew/runtimes";
 import type { EventStore } from "./store.js";
 import { Worktrees } from "./worktrees.js";
+import { workHabits } from "./work-habits.js";
 import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
@@ -40,6 +42,7 @@ import { selectIntelligence } from "./intelligence.js";
 import type { LatencyBook } from "./latency.js";
 import { inputDigest } from "./mobile/digest.js";
 
+const BACKLOG = "In your backlog: start it when you're ready";
 export interface LaunchSpec {
   baseCommit?: string;
   ask: string;
@@ -55,6 +58,8 @@ export interface LaunchSpec {
   incognito?: boolean;
   /** Record the run but never execute it (a task's parent: its steps do the work). */
   hold?: boolean;
+  /** Put it in the backlog: parked (paused, labelled "backlog") until you start it. Never started by the queue. */
+  later?: boolean;
   /** Work in the repo itself — spec drafts, not a branch. */
   inPlace?: boolean;
   forkOf?: { run: string; turn: number; commit?: string };
@@ -115,7 +120,7 @@ export class Supervisor {
   updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
   intelligence(request: IntelligenceRequest) {
     // Spark's Auto follows its brain order (Codex, then Claude), so the page and launch() never disagree on who answers.
-    if (request.purpose === "conversation" && request.mode === "auto" && !request.preferredRuntime && !request.preferredModel) {
+    if (request.purpose === "conversation" && request.mode === "auto" && !request.preferredRuntime && !request.preferredModel && request.speed !== "fastest") {
       const brain = this.assistantRuntime();
       if (brain) request = { ...request, preferredRuntime: brain };
     }
@@ -208,7 +213,7 @@ export class Supervisor {
         effort: spec.effort,
         parent: spec.parent,
         // "held" is part of the fact, so a restart knows never to execute this run itself.
-        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : []), ...(spec.inPlace ? ["in-place"] : [])],
+        labels: [...(spec.labels ?? []), ...(spec.hold ? ["held"] : []), ...(spec.later ? ["backlog"] : []), ...(spec.inPlace ? ["in-place"] : [])],
         incognito: spec.incognito ?? false,
         forkOf: spec.forkOf,
         member: member ? spec.member : undefined,
@@ -220,7 +225,8 @@ export class Supervisor {
       this.approveAll.add(id);
       this.rec("run.permission", { mode: "auto" }, { run: id });
     }
-    if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
+    if (spec.later) this.rec("run.status", { status: "paused", reason: BACKLOG }, { run: id });
+    else if (spec.hold) this.rec("run.status", { status: "planning" }, { run: id });
     else if (spec.forkOf) this.rec("run.status", { status: "done", reason: "forked — waiting for your first message" }, { run: id });
     else queueMicrotask(() => this.pump());
     return id;
@@ -303,6 +309,53 @@ export class Supervisor {
 
   // ── running ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * The parts of a turn that shape the agent's conversation (model, effort, tools): one definition, used by the turn
+   * itself and by prepare(), so a connection opened ahead of time always matches the turn it's for.
+   */
+  private threadShape(runId: string, spec: { labels: string[]; model?: string; effort?: string }, runtime: Runtime) {
+    const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
+    const selectedRoute = this.store.forRun(runId).findLast(e => e.kind === "run.routed" && e.body.effort !== undefined);
+    const effort = selectedRoute?.kind === "run.routed" ? selectedRoute.body.effort || undefined : spec.effort;
+    // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
+    const lean = spec.labels.includes("buddy");
+    return {
+      lean,
+      model,
+      effort,
+      disableNativeAgents: lean || spec.labels.includes("crew-room"),
+      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
+    };
+  }
+
+  /** Where the run's next turn will work, if that's already settled (no worktree is created here). */
+  private settledCwd(runId: string, spec: { labels: string[]; repo?: string; parent?: string }): string | undefined {
+    const parentTree = spec.parent ? this.store.forRun(spec.parent).find((e) => e.kind === "run.worktree") : undefined;
+    if (parentTree?.kind === "run.worktree") return parentTree.body.path;
+    if (spec.repo && spec.labels.includes("in-place")) return spec.repo;
+    const own = this.store.forRun(runId).find((e) => e.kind === "run.worktree");
+    if (own?.kind === "run.worktree") return own.body.path;
+    return spec.repo ? undefined : this.options.workspace;
+  }
+
+  /**
+   * Get a session's next turn ready while you're still typing: the agent started and its conversation reconnected,
+   * so the follow-up begins at once (Codex: ~5s to first word cold, ~2s prepared). False when there's nothing to do.
+   */
+  prepare(runId: string): boolean {
+    if (this.halted || this.active.has(runId)) return false;
+    const created = this.store.forRun(runId).find((e) => e.kind === "run.created");
+    if (created?.kind !== "run.created" || created.body.labels.includes("crew-room")) return false;
+    const spec = created.body;
+    const runtime = this.runtimes.get(this.currentRuntime(runId, spec.runtime));
+    const resume = runtime?.prepare ? this.backendSession(runId, runtime.id) : undefined;
+    const cwd = resume ? this.settledCwd(runId, spec) : undefined;
+    if (!runtime?.prepare || !resume || !cwd) return false;
+    const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(runId, spec, runtime);
+    runtime.prepare({ lean, id: runId, ask: "", cwd, model, effort, resume, disableNativeAgents, mcpServers, plugins: lean ? undefined : this.options.plugins?.(runtime.id) }, agentEnv(process.env, runtime.authMode));
+    return true;
+  }
+
   private async execute(runId: string): Promise<void> {
     const created = this.store.forRun(runId).find((e) => e.kind === "run.created");
     if (!created || created.kind !== "run.created") return;
@@ -375,11 +428,7 @@ export class Supervisor {
     // another agent starts a fresh conversation there, with a recap of the work so far.
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
-    const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
-    const selectedRoute = this.store.forRun(runId).findLast(e => e.kind === "run.routed" && e.body.effort !== undefined);
-    const effort = selectedRoute?.kind === "run.routed" ? selectedRoute.body.effort || undefined : spec.effort;
-    // Spark's turns are conversation, not engineering: lean, so it starts talking fast.
-    const lean = spec.labels.includes("buddy");
+    const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(runId, spec, runtime);
     const run: RunSpec = {
       lean,
       id: runId,
@@ -390,21 +439,28 @@ export class Supervisor {
       effort,
       resume,
       agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
-      disableNativeAgents: lean || spec.labels.includes("crew-room"),
+      disableNativeAgents,
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId)].filter(Boolean).join("\n\n") || undefined,
-      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
+      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined,
+      mcpServers,
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
     this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
 
     let ended = false;
     let buffered = "";
+    let thought = ""; // streamed reasoning, batched the same way
+    let said = ""; // everything streamed this turn: the reply if the runtime ends with an empty final message
     let firstWordAt = 0;
-    const flush = () => {
+    const flushText = () => {
       if (buffered) this.rec("agent.delta", { turn, text: buffered }, { run: runId });
       buffered = "";
     };
+    const flushThought = () => {
+      if (thought) this.rec("agent.thinking", { turn, text: thought }, { run: runId });
+      thought = "";
+    };
+    const flush = () => (flushThought(), flushText());
     const flusher = setInterval(flush, 25); // coalesce token deltas: one fact per 25ms, not per token (the page smooths the rest)
     try {
       for await (const event of runtime.start(run, {
@@ -414,18 +470,21 @@ export class Supervisor {
       })) {
         // A runtime can finish or deliver buffered tokens after abort. Stop remains terminal.
         if (controller.signal.aborted) break;
-        if (event.type !== "text" || event.final) flush();
-        else if (!firstWordAt) firstWordAt = Date.now();
+        // Each stream batches on its own; anything else lands after whatever was streamed before it.
+        if (event.type === "thinking" && event.delta) flushText();
+        else if (event.type === "text" && !event.final) { flushThought(); if (!firstWordAt) firstWordAt = Date.now(); }
+        else flush();
         switch (event.type) {
           case "session":
             this.rec("run.session", { runtime: runtime.id, id: event.id }, { run: runId });
             break;
           case "text":
             if (event.final) this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
-            else buffered += event.text;
+            else { buffered += event.text; said += event.text; }
             break;
           case "thinking":
-            this.rec("agent.thinking", { turn, text: event.text }, { run: runId });
+            if (event.delta) thought += event.text;
+            else this.rec("agent.thinking", { turn, text: event.text }, { run: runId });
             break;
           case "tool-call":
             this.rec("tool.called", { id: event.id, tool: event.tool, input: event.input, subagent: event.subagent }, { run: runId });
@@ -438,6 +497,9 @@ export class Supervisor {
             break;
           case "check":
             this.rec("check.ran", { command: event.command, exitCode: event.exitCode, output: (event.output ?? "").slice(0, 4000) }, { run: runId });
+            break;
+          case "plan":
+            this.rec("plan.updated", { turn, steps: event.steps, note: event.note ?? "" }, { run: runId });
             break;
           case "subagent-start":
             this.rec("subagent.started", { id: event.id, name: event.name, task: event.task }, { run: runId });
@@ -480,7 +542,9 @@ export class Supervisor {
           case "done":
             this.confirmRecovery(runtime.id, model, attemptSeq);
             if (lean && model && firstWordAt) this.options.latency?.record(runtime.id, model, firstWordAt - started);
-            this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
+            // Measured: Codex can end a turn with an empty trailing message after streaming the real reply (an act block),
+            // and an empty final reply means nothing it asked for runs. Keep what it actually said.
+            this.rec("agent.message", { turn, text: event.text?.trim() ? event.text : said.trim(), final: true }, { run: runId });
             this.rec(
               "turn.completed",
               { turn, route: { runtime: runtime.id, model, effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },
@@ -638,7 +702,7 @@ export class Supervisor {
       clearTimeout(this.resumeTimers.get(key)); this.resumeTimers.delete(key);
     }
     for (const run of this.projectRuns()) {
-      if (run.status !== "paused" || this.currentRuntime(run.id, run.runtime) !== runtime) continue;
+      if (run.status !== "paused" || this.currentRuntime(run.id, run.runtime) !== runtime || this.inBacklog(run.id)) continue;
       const wanted = this.modelFor(run.id, runtime, run.model);
       if (model && wanted !== model) continue;
       if (this.limitedUntil(runtime, wanted) > Date.now()) continue;
@@ -656,6 +720,29 @@ export class Supervisor {
     if (!stale.length) return;
     for (const l of stale) this.rec("runtime.restored", { runtime, model: l.model, limitSeq: l.seq });
     this.restore(runtime);
+  }
+
+  /**
+   * The provider itself reports usage left (a reset, a top-up, a bigger plan): limits recorded before are lifted
+   * outright, and runs paused on them go again. Oct 5: Codex was reset by hand but stayed "limited until Oct 11".
+   */
+  usageAvailable(runtime: string): void { this.accountsChanged(runtime); }
+
+  /** Still in the backlog: launched with later and not started since. */
+  inBacklog(id: string): boolean {
+    const run = this.projectRuns().find((r) => r.id === id);
+    if (!run || run.status !== "paused" || !run.labels.includes("backlog")) return false;
+    // Paused for the backlog, not for a usage window after it was started: the latest status says which.
+    const last = this.store.forRun(id).filter((e) => e.kind === "run.status").at(-1);
+    return last?.kind === "run.status" && last.body.reason === BACKLOG;
+  }
+
+  /** Start a backlog item: into the real queue, where it runs like any other session. */
+  startBacklog(id: string): boolean {
+    if (!this.inBacklog(id)) return false;
+    this.setStatus(id, "queued", "started from your backlog");
+    this.pump();
+    return true;
   }
 
   private isRetrying(seq: number): boolean {
@@ -837,6 +924,25 @@ export class Supervisor {
         },
       });
     });
+  }
+
+  /**
+   * "Why would this be allowed?": the exact engine, context and layers a real run uses (your protected folders and
+   * branches, every "always allow" you've given), decided twice: as a Supervised session and as an Autopilot one.
+   */
+  explain(tool: string, input: unknown, workspace?: string): { supervised: Decision; autopilot: Decision } {
+    const roots = this.options.roots ?? ["~/Developer"];
+    const where = workspace?.trim() || roots[0]!;
+    const policy = this.policyFor("explain", where), call = normalise(tool, input);
+    const global = policy.layers()[0]!;
+    return { supervised: decide(call, policy.ctx, [global]), autopilot: decide(call, policy.ctx, [global, { name: "run", rules: [allowAll()] }]) };
+  }
+
+  /** The guardrails a run works within right now, in plain lists (for Policy & Audit). */
+  guardrails(): { roots: string[]; protected: string[]; sensitive: string[]; protectedBranches: string[]; always: Array<{ id: string; description: string }> } {
+    const policy = this.policyFor("explain", (this.options.roots ?? ["~/Developer"])[0]!);
+    return { roots: policy.ctx.roots, protected: policy.ctx.protected, sensitive: policy.ctx.sensitive, protectedBranches: policy.ctx.protectedBranches,
+      always: [...new Map(this.standingRules().map((r) => [r.id, { id: r.id, description: r.description }])).values()] };
   }
 
   /** Cycle this session: ask stops for approval, auto lets those through. A deny still wins. */
@@ -1060,7 +1166,7 @@ export class Supervisor {
         this.setStatus(run.id, "queued", "gateway restarted — resuming from the last checkpoint");
         resumed.push(run.id);
       }
-      if (run.status === "paused") {
+      if (run.status === "paused" && !this.inBacklog(run.id)) { // a backlog item waits for you, restart or not
         const agent = this.currentRuntime(run.id, run.runtime);
         const limits = this.unresolvedLimits(agent);
         if (limits.length) for (const l of limits) this.scheduleResume(agent, l.until, l.model);

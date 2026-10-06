@@ -11,7 +11,7 @@ import { nowPlayingOnce } from "./bridge";
 import { perform as performAction } from "./actions";
 import { timerOp } from "../../lib/timers";
 
-const INSTANT = new Set(["player", "play", "browse", "settings", "folder", "music", "whatsong", "radio", "stop-radio", "scape", "focus", "timer", "sys"]);
+const INSTANT = new Set(["fact", "player", "play", "browse", "settings", "folder", "music", "whatsong", "radio", "stop-radio", "scape", "focus", "timer", "sys"]);
 export const isInstant = (move: ProducerMove | null): boolean => !!move && INSTANT.has(move.kind);
 
 /**
@@ -33,13 +33,14 @@ async function radioTo(cmd: "stop" | "pause" | "resume" | "play", playing: boole
 }
 
 /** Do it and say the result. */
-export async function runInstant(move: ProducerMove, onDone: (said: string) => void, deps: { setRadio: (r: RadioNow) => void; soundsVolume: number; requestId?: string; active?: () => boolean }): Promise<void> {
+export async function runInstant(move: ProducerMove, onDone: (said: string) => void, deps: { setRadio: (r: RadioNow) => void; soundsVolume: number; requestId?: string; active?: () => boolean; fact?: (what: Extract<ProducerMove, { kind: "fact" }>["what"]) => Promise<string> | string }): Promise<void> {
   const { setRadio } = deps;
   const active = deps.active ?? (() => true);
   const done = (text: string) => { if (active()) onDone(text); };
   let ordinal = 0;
   const perform = (action: Parameters<typeof performAction>[0]) => performAction(action, { active, requestId: deps.requestId ? `${deps.requestId}:${ordinal++}` : undefined });
   if (!active()) return;
+  if (move.kind === "fact") { done(deps.fact ? await deps.fact(move.what) : "I can't check that from here."); return; }
     const player = async () => {
       const [r, m] = await Promise.all([radioNow().catch(() => ({ playing: false } as Awaited<ReturnType<typeof radioNow>>)), nowPlayingOnce()]);
       return { radioOn: r.playing, media: m };

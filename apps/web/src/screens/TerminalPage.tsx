@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import "./terminal-page.css";
 
 const TerminalDrawer = lazy(() => import("../components/TerminalDrawer"));
 

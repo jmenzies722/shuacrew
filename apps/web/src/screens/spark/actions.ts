@@ -1,3 +1,4 @@
+import { pressInShuaCrew } from "../../lib/ui-bridge";
 /**
  * Every action Spark takes: settings it changes on itself, work it starts, and Mac actions (checked again by the app).
  * The panel plugs in the hooks that need it (asking before a command runs, sending results back to Spark).
@@ -111,6 +112,13 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   if (a.type.startsWith("crew_") && "ref" in a && !crewRef(a.ref, a.type === "crew_decide" ? "A" : "S"))
     return Promise.resolve({ ok: false, message: "That crew request is no longer listed. Ask about the session again." });
   if (a.type === "settings") { applyChanges(a.changes); return Promise.resolve({ ok: true, message: describeAction(a) }); }
+  if (a.type === "brief") return (async () => {
+    // Read from the gateway's recorded state; the full brief goes back to Shua (chat or voice) to summarize.
+    const since = a.since === "hour" ? Date.now() - 3_600_000 : a.since === "morning" ? new Date().setHours(6, 0, 0, 0) : undefined;
+    const b = await api<{ headline: string; text: string }>(`/api/brief${since ? `?since=${since}` : ""}`);
+    sparkHooks.onMacOutput?.("What's going on in ShuaCrew", b.text);
+    return { ok: true, message: b.headline };
+  })().catch((e: Error) => ({ ok: false, message: `Couldn't read ShuaCrew: ${e.message}` }));
   if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
   if (a.type === "learn" && a.course !== undefined) return (async () => {
     const courseId = a.course!;
@@ -193,6 +201,12 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   });
   if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: "Requested navigation" }); }
+  if (a.type === "ui") return (async () => {
+    const started = performance.now(), r = await pressInShuaCrew(a.press);
+    // In-app presses count toward Shua's measured accuracy too.
+    void api("/api/shua/journal", { body: { kind: "ui", how: "name", label: a.press, ok: r.ok, message: r.message, app: "ShuaCrew", ms: performance.now() - started } }).catch(() => {});
+    return r;
+  })();
   if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }

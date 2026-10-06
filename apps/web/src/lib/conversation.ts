@@ -20,6 +20,8 @@ export type Item =
   | { kind: "note"; seq: number; text: string; tone: "live" | "bad" | "idle" | "wait" }
   | { kind: "thought"; seq: number; turn: number; text: string; streaming: boolean }
   | { kind: "compacted"; seq: number; text: string }
+  /** The agent's own checklist for a turn: one card, updated in place as steps move. */
+  | { kind: "plan"; seq: number; turn: number; steps: PlanStep[]; note: string }
   | {
       kind: "finished";
       seq: number;
@@ -32,7 +34,44 @@ export type Item =
       commit?: string;
       /** Lesson ids this turn was given (the text comes from memory). */
       lessons: string[];
+      /** What the turn actually did, so "done" is never claimed on faith. */
+      receipt: Receipt;
     };
+
+export interface PlanStep { text: string; status: "pending" | "active" | "done" }
+
+/**
+ * A turn's receipt: what changed, whether anything proved it works, and what's left.
+ * `outcome` is the honest one-word verdict:
+ *  - "verified": files changed and the last check passed
+ *  - "unverified": files changed and nothing checked them
+ *  - "failing": the last check failed
+ *  - "answered": nothing changed (a reply, research, a question)
+ *  - "stopped": the run failed before finishing the turn (no failing check to blame)
+ */
+export interface Receipt {
+  files: string[];
+  checks: { passed: number; failed: number; last?: { command: string; passed: boolean } };
+  failedSteps: number;
+  plan?: { done: number; total: number; left: string[] };
+  outcome: "verified" | "unverified" | "failing" | "answered" | "stopped";
+}
+
+const EDIT_TOOL = /^(edit|multiedit|write|create|notebookedit|filechange|apply_patch|str_replace)/i;
+/** Plumbing, not work: loading deferred tools, and the checklist (it has a card of its own). */
+const HIDDEN_TOOL = new Set(["ToolSearch", "TodoWrite"]);
+
+function receiptOf(files: Set<string>, checks: Receipt["checks"], failedSteps: number, plan?: Extract<Item, { kind: "plan" }>, stopped = false): Receipt {
+  const left = plan ? plan.steps.filter((s) => s.status !== "done").map((s) => s.text) : [];
+  const outcome = checks.last && !checks.last.passed ? "failing" : stopped ? "stopped" : files.size === 0 ? "answered" : checks.last?.passed ? "verified" : "unverified";
+  return {
+    files: [...files],
+    checks,
+    failedSteps,
+    plan: plan && plan.steps.length ? { done: plan.steps.length - left.length, total: plan.steps.length, left } : undefined,
+    outcome,
+  };
+}
 
 export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINITY): Item[] {
   const items: Item[] = [];
@@ -45,6 +84,11 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
   let lessons: string[] = [];
   let tokens = 0;
   let commit: string | undefined;
+  // The receipt this turn is building.
+  let files = new Set<string>();
+  let checks: Receipt["checks"] = { passed: 0, failed: 0 };
+  let failedSteps = 0;
+  let plan: Extract<Item, { kind: "plan" }> | null = null;
   // The last ask, and whether anything answered it: a run moved to another model after a usage limit starts the same
   // ask again as a new turn, which used to show your message (and any cut-off partial answer) twice or more.
   let lastAsk: Extract<Item, { kind: "ask" }> | null = null;
@@ -64,7 +108,7 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         if (retry) {
           // Same ask, never answered: the earlier attempt's half-written prose and thoughts go; tool work stays (it happened).
           const from = items.indexOf(lastAsk!);
-          for (let i = items.length - 1; i > from; i--) { const it = items[i]!; if (it.kind === "prose" || it.kind === "thought") items.splice(i, 1); }
+          for (let i = items.length - 1; i > from; i--) { const it = items[i]!; if (it.kind === "prose" || it.kind === "thought" || it.kind === "plan") items.splice(i, 1); }
           lastAsk!.turn = e.body.turn;
         }
         turn = e.body.turn;
@@ -72,6 +116,10 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         tokens = 0;
         commit = undefined;
         answered = false;
+        files = new Set();
+        checks = { passed: 0, failed: 0 };
+        failedSteps = 0;
+        plan = null;
         if (!retry) { lastAsk = { kind: "ask", seq: e.seq, turn: e.body.turn, text: e.body.text, by: e.body.by, at: e.at }; items.push(lastAsk); }
         break;
       }
@@ -108,7 +156,12 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         break;
       }
       case "tool.called":
+        if (HIDDEN_TOOL.has(e.body.tool)) break;
         endProse();
+        if (EDIT_TOOL.test(e.body.tool)) {
+          const input = e.body.input as { file_path?: string; path?: string; changes?: Array<{ path?: string }> } | undefined;
+          for (const p of [input?.file_path, input?.path, ...(input?.changes ?? []).map((c) => c.path)]) if (p) files.add(p);
+        }
         tools.set(e.body.id, items.length);
         items.push({ kind: "tool", seq: e.seq, id: e.body.id, tool: e.body.tool, input: e.body.input, subagent: e.body.subagent, at: e.at });
         break;
@@ -117,6 +170,7 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
         const item = at === undefined ? undefined : items[at];
         if (item?.kind === "tool") {
           item.ok = e.body.ok;
+          if (!e.body.ok) failedSteps += 1;
           item.output = e.body.output;
           item.durationMs = e.body.durationMs ?? e.at - item.at;
         }
@@ -124,15 +178,24 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
       }
       case "file.changed": {
         endProse();
+        files.add(e.body.path);
         const last = items[items.length - 1];
         if (last?.kind === "files") {
           if (!last.paths.includes(e.body.path)) last.paths.push(e.body.path);
         } else items.push({ kind: "files", seq: e.seq, paths: [e.body.path] });
         break;
       }
-      case "check.ran":
+      case "check.ran": {
         endProse();
-        items.push({ kind: "check", seq: e.seq, command: e.body.command, passed: e.body.exitCode === 0, output: e.body.output });
+        const passed = e.body.exitCode === 0;
+        checks = { passed: checks.passed + (passed ? 1 : 0), failed: checks.failed + (passed ? 0 : 1), last: { command: e.body.command, passed } };
+        items.push({ kind: "check", seq: e.seq, command: e.body.command, passed, output: e.body.output });
+        break;
+      }
+      case "plan.updated":
+        // The newest copy wins, in the place the plan first appeared: one card that moves, not a stack of them.
+        if (plan && plan.turn === e.body.turn) Object.assign(plan, { steps: e.body.steps, note: e.body.note });
+        else { endProse(); plan = { kind: "plan", seq: e.seq, turn: e.body.turn, steps: e.body.steps, note: e.body.note }; items.push(plan); }
         break;
       case "subagent.started":
         endProse();
@@ -210,10 +273,17 @@ export function conversation(events: AnyEvent[], until = Number.POSITIVE_INFINIT
           tokens: tokens || undefined,
           commit,
           lessons: [...lessons],
+          receipt: receiptOf(files, checks, failedSteps, plan ?? undefined),
         });
         break;
       case "run.status":
         if (e.body.status === "cancelled") items.push({ kind: "note", seq: e.seq, text: e.body.reason ?? "Cancelled", tone: "idle" });
+        // A run that fails mid-turn never completes it: close the turn here, so what it did and what's left still show.
+        if (e.body.status === "failed" && lastAsk && !answered) {
+          endProse();
+          answered = true;
+          items.push({ kind: "finished", seq: e.seq, turn, route: "", lessons: [...lessons], tokens: tokens || undefined, commit, receipt: receiptOf(files, checks, failedSteps, plan ?? undefined, true) });
+        }
         break;
       default:
         break;

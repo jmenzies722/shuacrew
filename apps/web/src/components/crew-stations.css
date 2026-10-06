@@ -1,0 +1,64 @@
+/*
+ * Studio floor stations and the agent inspector. Motion is transform/opacity only, rests with [data-idle] and stops
+ * with Reduce motion.
+ */
+/* The agent you clicked. */
+.studio-inspector { position: absolute; right: 14px; top: 14px; bottom: 14px; z-index: 80; display: grid; align-content: start; gap: 8px; width: min(320px, 44%); padding: 14px; border-radius: 16px; overflow-y: auto;
+  background: color-mix(in srgb, var(--panel) 92%, transparent); box-shadow: 0 0 0 1px var(--line-strong), 0 30px 60px -30px rgba(0, 0, 0, .8); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); animation: studio-in .25s var(--ease-out, ease) both; }
+@keyframes studio-in { from { opacity: 0; transform: translateX(10px); } }
+.studio-inspector header { display: flex; align-items: center; gap: 10px; }
+.studio-inspector header button { margin-left: auto; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: none; color: var(--text-3); cursor: pointer; }
+.studio-inspector header button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.studio-inspector h4 { margin: 8px 0 0; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+.studio-run { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 8px; padding: 8px 10px; border-radius: 10px; text-decoration: none; color: inherit; background: color-mix(in srgb, var(--text) 3%, transparent); }
+.studio-run:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.studio-run b { font-size: 12.5px; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.studio-run small { grid-row: 2; font-size: 11px; color: var(--text-3); }
+.studio-run svg { grid-row: 1 / 3; grid-column: 2; align-self: center; color: var(--text-3); }
+.studio-actions { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.studio-actions li { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-2); }
+.studio-actions time { flex: none; font-size: 11px; color: var(--text-3); }
+.studio-muted { margin: 0; font-size: 12px; color: var(--text-3); }
+.studio-manage { margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); text-decoration: none; }
+
+/* Stations. */
+.stations { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 12px; }
+.station { position: relative; display: grid; gap: 10px; padding: 14px; border-radius: 16px; overflow: hidden; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03)); }
+.station::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, transparent, var(--c), transparent); opacity: .35; }
+.station.is-working { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, var(--line)), 0 18px 40px -30px var(--c); }
+.station.is-working::before { opacity: 1; animation: station-scan 2.4s ease-in-out infinite; }
+@keyframes station-scan { 0%, 100% { transform: translateX(-60%); } 50% { transform: translateX(60%); } }
+.station.is-waiting { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 45%, var(--line)); }
+.station header { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.station-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--c) 70%, #fff), var(--c) 60%, color-mix(in srgb, var(--c) 55%, #000)); }
+.station-avatar b { font-size: 14px; }
+.station-who { display: grid; min-width: 0; flex: 1; }
+.station-who b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.station-who small { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.station-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 99px; font-size: 11px; color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.station-pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.station-pill.is-working i { background: var(--c); animation: studio-breathe 1.4s ease-in-out infinite; } .station-pill.is-working { color: var(--text); }
+.station-pill.is-waiting i { background: var(--wait); } .station-pill.is-waiting { color: var(--wait); }
+.station-pill.is-failed i { background: var(--bad); } .station-pill.is-recent i { background: var(--ok); }
+.station-now { display: flex; align-items: center; gap: 7px; min-height: 18px; margin: 0; font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.station.is-working .station-now { color: var(--text); }
+.station-spin { flex: none; color: var(--c, var(--amber)); animation: studio-turn 1s linear infinite; }
+.station footer { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.station-beat { margin-left: auto; }
+.station-hand { display: flex; align-items: center; gap: 6px; padding: 3px 3px 3px 10px; border-radius: 10px; background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.station-hand:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, var(--line)); }
+.station-hand input { flex: 1; min-width: 0; height: 28px; border: 0; outline: none; background: transparent; font: inherit; font-size: 12.5px; color: var(--text); }
+.station-hand button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; color: #fff; background: var(--c); cursor: pointer; }
+.station-hand button:disabled { opacity: .35; cursor: default; }
+.station-note { margin: -4px 0 0; font-size: 11.5px; color: var(--text-3); }
+
+@keyframes studio-breathe { 50% { transform: scale(1.12); opacity: .6; } }
+@keyframes studio-turn { to { transform: rotate(360deg); } }
+
+:root[data-idle] .station, :root[data-idle] .station::before, :root[data-idle] .station-pill i, :root[data-idle] .station-spin { animation-play-state: paused; }
+:root[data-motion="reduced"] .station::before, :root[data-motion="reduced"] .station-pill i, :root[data-motion="reduced"] .station-spin, :root[data-motion="reduced"] .studio-inspector { animation: none; }
+@media (prefers-reduced-motion: reduce) { .station::before, .station-pill i, .station-spin, .studio-inspector { animation: none; } }
+@media (max-width: 760px) { .studio-inspector { width: auto; left: 14px; } }
+/* The page header already draws its own rule (the sweep of light); the floor's wrapper doesn't add a second one. */
+.workspace-frame .crew-floor .floor-head { border-bottom: 0; padding-bottom: 0; margin-bottom: 4px; }
+.crew-floor .floor-head .pane-header { margin-bottom: 8px; }

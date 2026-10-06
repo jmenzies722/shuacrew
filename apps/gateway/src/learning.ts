@@ -126,7 +126,8 @@ export function analyze(s: LearningState, now = Date.now()) {
   const tracks: TrackInsight[] = [...ids].map((id) => {
     const cards = s.cards.filter((c) => c.track === id), revs = s.reviews.filter((r) => r.track === id);
     const good = revs.filter((r) => r.grade !== "again").length, last = revs.length ? Math.max(...revs.map((r) => r.at)) : null;
-    const info = names.get(id) ?? { name: id, level: 2 };
+    // A track whose course was removed keeps its cards: name it after the course they came from, never its raw id.
+    const info = names.get(id) ?? { name: cards.find((c) => c.source?.title)?.source?.title?.split(" · ")[0] ?? "Your cards", level: 2 };
     return { id, name: info.name, level: info.level, cards: cards.length, due: cards.filter((c) => c.due <= now).length, reviews: revs.length, accuracy: revs.length ? good / revs.length : null, lapses: cards.reduce((n, c) => n + c.lapses, 0), lastPractice: last,
       // Stale = not practised for a week (new cards aren't stale until they've waited a week unreviewed).
       stale: cards.length > 0 && now - (last ?? Math.min(...cards.map((c) => c.created))) > 7 * 86_400_000 };

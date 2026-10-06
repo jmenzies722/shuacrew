@@ -1,10 +1,12 @@
 import "./session-chat.css";
 import { Recommendations } from "../components/Recommendations";
 import "../components/chat-composer.css";
+import "./home-hero.css";
 import { plain } from "../lib/plain";
 import type { RunView } from "@shuacrew/core/projections";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button, Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
+import { localDay } from "@shuacrew/core/projections";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -43,6 +45,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation } from "../lib/conversation";
+import { prepareTurn } from "../lib/prepare-turn";
 import { MessageQueue } from "../components/MessageQueue";
 import { shouldSend } from "../lib/composer-keys";
 import { canRemoveSession, removeSession } from "../lib/session-removal";
@@ -310,7 +313,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       <Thread items={items} working={working && scrub === null} run={run} />
       {!replay && !run.labels.includes("buddy") && !run.labels.includes("crew-room") && <div className="shrink-0 px-4"><div className="mx-auto max-w-[var(--chat-width,820px)]"><Recommendations ask={run.ask} /></div></div>}
       {!replay && <ReviewBar run={run} />}
-      {!replay && !run.labels.includes("crew-room") && <MessageQueue key={run.id} run={run.id} events={events ?? []} />}
+      {!replay && !run.labels.includes("crew-room") && <MessageQueue key={`queue-${run.id}`} run={run.id} events={events ?? []} />}
       {replay ? (
         <div className="shrink-0 px-4 pb-3 pt-1">
           <div className="mx-auto max-w-[var(--chat-width,820px)]">
@@ -320,7 +323,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       ) : run.labels.includes("crew-room") ? (
         <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This is a crew-room source conversation. <Link to="/rooms/$id" params={{ id: run.labels.find(label => label.startsWith("room:"))?.slice(5) ?? "" }}>Continue in the crew room →</Link></div>
       ) : (
-        <Composer key={run.id} run={run} />
+        <Composer key={`composer-${run.id}`} run={run} />
       )}
       {terminal && <Drawer run={run.id} onClose={() => setTerminal(false)} />}
     </section>
@@ -506,14 +509,16 @@ function NewSession() {
   const [terminal, setTerminal] = useTerminal();
   const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
   const ideas = [
-    { icon: CheckCircle2, label: "Review changes", text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
-    { icon: Bug, label: "Fix a failing test", text: "Find a failing test in one of my projects and fix it" },
-    { icon: Telescope, label: "Catch me up", text: "Summarise what changed in my repos today" },
-    { icon: Sparkles, label: "Plan what’s next", text: "Look at my most recent project and suggest the next three things to build" },
+    { icon: CheckCircle2, label: "Review changes", hint: "What's risky before you commit", text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
+    { icon: Bug, label: "Fix a failing test", hint: "Find one, fix it, prove it", text: "Find a failing test in one of my projects and fix it" },
+    { icon: Telescope, label: "Catch me up", hint: "What changed in your repos today", text: "Summarise what changed in my repos today" },
+    { icon: Sparkles, label: "Plan what’s next", hint: "Three things worth building", text: "Look at my most recent project and suggest the next three things to build" },
   ];
   return (
     <section className="sheet hero-sheet home-workbench flex min-h-0 min-w-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {/* Light behind the ask: three slow blooms in the accent's family. Transform-only; rests when ShuaCrew is idle. */}
+        <div className="hero-aurora" aria-hidden="true"><i /><i /><i /></div>
         <div className="hero-stack">
           <div className="hero-core">
           {/* A conversation first: the greeting, the box, a few ways in. What needs you, recent work and your day sit just below. */}
@@ -523,12 +528,13 @@ function NewSession() {
             </div>
             <h1 className="hero-title">{dayGreeting()}. What should the crew build?</h1>
             <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
+            <HeroPulse />
             <Composer seed={seed} hero />
             <div className="hero-ideas stagger">
-              {ideas.map(({ icon: Icon, text, label }) => (
+              {ideas.map(({ icon: Icon, text, label, hint }) => (
                 <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
-                  <i className="hero-idea-icon"><Icon size={14} /></i>
-                  <span className="line-clamp-2">{label}</span>
+                  <i className="hero-idea-icon"><Icon size={15} /></i>
+                  <span className="hero-idea-text"><b>{label}</b><small>{hint}</small></span>
                   <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
                 </button>
               ))}
@@ -582,11 +588,64 @@ const loadRuntimes = () => (runtimeCache ??= api<RuntimeInfo[]>("/api/runtimes")
 
 const presetTitle = (p: Preset) => [p.runtime || "Auto agent", p.model || "auto model", p.effort || "auto effort", p.autopilot ? "Autopilot" : "Supervised", p.task ? "Task" : ""].filter(Boolean).join(" · ");
 
+/**
+ * The session, live, right above your words: who's on it, what they're doing this second, how long the turn has run
+ * and what it has touched. While waiting on you it says so; when the turn ends it says how it went, then steps aside.
+ */
+export function LiveStrip({ run }: { run: RunView }) {
+  const working = WORKING.has(run.status), waiting = run.status === "awaiting_approval" || run.pendingApprovals.length > 0;
+  const [since, setSince] = useState<number | null>(null), [now, setNow] = useState(Date.now());
+  const [ended, setEnded] = useState<{ at: number; secs: number } | null>(null);
+  useEffect(() => {
+    if (working) { setSince((s) => s ?? Date.now()); setEnded(null); return; }
+    setSince((s) => { if (s) setEnded({ at: Date.now(), secs: Math.round((Date.now() - s) / 1000) }); return null; });
+  }, [working]);
+  useEffect(() => {
+    if (!working && !ended) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [working, ended]);
+  const who = FRIENDLY[run.runtime] ?? run.runtime;
+  const elapsed = since ? Math.max(0, Math.round((now - since) / 1000)) : 0;
+  const clock = (n: number) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  const doing = run.currentTool ? toolLine(run.currentTool) : run.ticker.replace(/\s+/g, " ").trim().slice(0, 90) || "thinking…";
+  const passed = run.checks.filter((c) => c.passed).length;
+  if (waiting) return <div className="live-strip is-wait" role="status"><i /><b>Waiting for your OK</b><span>{who} paused before a step that needs you</span></div>;
+  if (working) return <div className="live-strip is-live" role="status"><i /><b>{who}</b><span className="live-strip-doing">{doing}</span>
+    <small>{clock(elapsed)}{run.toolCalls ? ` · ${run.toolCalls} step${run.toolCalls === 1 ? "" : "s"}` : ""}{run.files.length ? ` · ${run.files.length} file${run.files.length === 1 ? "" : "s"}` : ""}{run.subagents.some((a) => !a.done) ? ` · ${run.subagents.filter((a) => !a.done).length} helper${run.subagents.filter((a) => !a.done).length === 1 ? "" : "s"}` : ""}</small></div>;
+  // Just finished: one line of how it went, for a few seconds.
+  if (ended && now - ended.at < 9000) return <div className="live-strip is-done" role="status"><i /><b>Done</b><span>{ended.secs ? `in ${clock(ended.secs)}` : ""}{run.files.length ? ` · ${run.files.length} file${run.files.length === 1 ? "" : "s"} changed` : ""}{run.checks.length ? ` · checks ${passed}/${run.checks.length}` : ""}</span></div>;
+  return null;
+}
+/** A tool call in words: "Reading Sessions.tsx", "Running npm test", "Searching the web". */
+export function toolLine(tool: string) {
+  const t = tool.replace(/^mcp__/, "").replaceAll("__", " · ");
+  return /^(Read|read_file)/i.test(t) ? "Reading files…" : /^(Edit|Write|apply_patch|MultiEdit)/i.test(t) ? "Editing files…" : /^(Bash|shell|exec)/i.test(t) ? "Running a command…"
+    : /^(Grep|Glob|search)/i.test(t) ? "Searching the code…" : /^Web/i.test(t) ? "Searching the web…" : /^Task/i.test(t) ? "Handing part of it to a helper…" : `Using ${t}…`;
+}
+
+/** What the empty box suggests, a few seconds each: real things this crew can do, starting with the plain ask. */
+const HERO_PROMPTS = [
+  "What do you want to build?  / for commands",
+  "Build a landing page for Shua Labs with pricing and a waitlist…",
+  "Find what slowed my gateway this week and fix it…",
+  "Draft three posts about building ShuaCrew in public…",
+  "Price a two-week AI platform audit for small teams…",
+  "Review my uncommitted changes and tell me what's risky…",
+];
+
 function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n: number }; hero?: boolean }) {
   const navigate = useNavigate();
   const sendShortcut = useLive((s) => s.appearance.sendShortcut);
+  // The empty hero box cycles its suggestion; it holds still once you type, in a session, or with Reduce motion.
+  const [prompt, setPrompt] = useState(0);
   const spellcheck = useLive((s) => s.appearance.spellcheck);
   const [text, setText] = useState("");
+  useEffect(() => {
+    if (!hero || run || text || document.documentElement.dataset.motion === "reduced") return;
+    const t = setInterval(() => { if (!document.hidden && !document.documentElement.hasAttribute("data-idle")) setPrompt((n) => n + 1); }, 4200);
+    return () => clearInterval(t);
+  }, [hero, run, text]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // A new session starts from Settings → Session defaults; a follow-up inside a run never does.
@@ -658,6 +717,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   }, []);
   const field = useRef<HTMLTextAreaElement>(null);
   const working = run ? WORKING.has(run.status) : false;
+  const ctxPct = run?.usage.contextLimit && run.usage.contextUsed !== undefined ? Math.min(100, Math.round((run.usage.contextUsed / run.usage.contextLimit) * 100)) : null;
 
   useEffect(() => {
     void loadRuntimes().then((list) => {
@@ -703,6 +763,19 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     el.style.height = "0px";
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [text]);
+  // Drafts: what you were writing waits for you when you come back to this session (or to a new one). Sending, or
+  // clearing the box, clears the draft, because every send path empties the text.
+  const draftKey = `shuacrew.draft.${run?.id ?? "new"}`;
+  const [draftSaved, setDraftSaved] = useState(false);
+  useEffect(() => {
+    try { const saved = localStorage.getItem(draftKey); if (saved) setText((t) => t || saved); } catch { /* drafts are a convenience */ }
+  }, [draftKey]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { if (text.trim()) { localStorage.setItem(draftKey, text); setDraftSaved(true); } else { localStorage.removeItem(draftKey); setDraftSaved(false); } } catch { /* ignore */ }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [text, draftKey]);
 
   // A new session: suggest the crew member whose triggers match what you're asking.
   useEffect(() => {
@@ -859,6 +932,15 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     }
   };
 
+  // Who picks this up, and whether they're ready: the dot beside the agent picker breathes when they are.
+  const readiness = (() => {
+    const now = Date.now(), resting = (r: RuntimeInfo) => !!r.limitedUntil && r.limitedUntil > now;
+    const chosenRt = runtime ? runtimes.find((r) => r.id === runtime) : undefined;
+    if (!runtimes.length) return { tone: "off", title: "No agent connected yet" };
+    if (chosenRt) return resting(chosenRt) ? { tone: "wait", title: `${friendly(chosenRt)} is resting on a usage limit` } : { tone: "", title: `${friendly(chosenRt)} is ready` };
+    return runtimes.some((r) => !resting(r)) ? { tone: "", title: "Ready: Auto sends this to the best available agent" } : { tone: "wait", title: "Every agent is resting on a usage limit" };
+  })();
+
   const chooseFolder = async () => {
     const path = await pickFolder();
     if (path) setRepo(path);
@@ -947,6 +1029,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               </div>
             );
           })()}
+          {run && <LiveStrip run={run} />}
           <textarea
             ref={field}
             spellCheck={spellcheck === "on"}
@@ -955,6 +1038,8 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               setText(e.target.value);
               setSlashIndex(0);
               setCommandsDismissed(false);
+              // A follow-up is on its way: get the agent ready while you finish typing.
+              if (run && !working && e.target.value.trim()) prepareTurn(run.id);
             }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
@@ -980,7 +1065,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               }
             }}
             {...({ writingsuggestions: "false" } as object)}
-            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "What do you want to build?  / for commands"}
+            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : hero ? HERO_PROMPTS[prompt % HERO_PROMPTS.length] : "What do you want to build?  / for commands"}
             className="block max-h-[240px] w-full resize-none bg-transparent text-[14px] leading-relaxed text-fg outline-none placeholder:text-fg-3"
             aria-label="Message"
             aria-controls={slash.length ? "session-commands" : undefined}
@@ -998,6 +1083,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             {/* Agent · model · effort, always in reach (they used to sit behind Options, twice). For an open session they
                 apply to your next message, and wait while a turn is running. */}
             <span className="composer-picks" title={run ? (working ? "Available when this turn finishes" : "Applies to your next message") : "For this new session"}>
+              <span className={`composer-ready${readiness.tone ? ` is-${readiness.tone}` : ""}`} title={readiness.title} aria-hidden="true" />
               <Select label="Agent" disabled={!!run && (working || busy)} value={runtime} onChange={(v) => { setRuntime(v); setModel(""); }}
                 options={[...(run ? [] : [{ value: "", label: "Auto agent" }]), ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]} />
               <i aria-hidden="true">·</i>
@@ -1008,7 +1094,9 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             </span>
             <button className="composer-options-toggle" aria-expanded={optionsOpen} aria-controls="session-options" onClick={() => setOptionsOpen(v => !v)}>Options{race || task ? " · active" : ""} <ChevronDown size={12} /></button>
             <div className="ml-auto flex items-center gap-2">
-
+              {text.trim() && <span className="composer-live" aria-hidden="true">{draftSaved && <em>Saved ·</em>}≈{Math.max(1, Math.round(text.trim().length / 4)).toLocaleString()} tokens{sendShortcut !== "button-only" && <> · <kbd>{sendShortcut === "enter" ? "↵" : "⌘↵"}</kbd> {working ? "queue" : "send"}</>}</span>}
+              <span className={`composer-send-ring${ctxPct !== null ? " has-ctx" : ""}${ctxPct !== null && ctxPct >= 80 ? " is-full" : ""}`} style={ctxPct !== null ? ({ "--ctx": `${ctxPct}%` } as React.CSSProperties) : undefined}
+                title={ctxPct !== null ? `${ctxPct}% of this session's context used${ctxPct >= 80 ? " · it will compact soon" : ""}` : undefined}>
               {working && !text.trim() && !files.length && run ? (
                 <button onClick={() => void cancelRun(run.id)} className="grid h-8 w-8 place-items-center rounded-full bg-raised text-fg hover:bg-line-strong" title="Stop" aria-label="Stop">
                   <CircleStop size={15} />
@@ -1024,6 +1112,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
                   <ArrowUp size={16} strokeWidth={2.5} />
                 </button>
               )}
+              </span>
             </div>
           </div>
         </div>
@@ -1233,6 +1322,20 @@ function Line({ label, value }: { label: string; value: string }) {
 // ── home: what needs you, and getting started ───────────────────────────────────────────────
 
 /** Gates and approvals waiting on you, one tap away — the first thing you see when you open the app. */
+/** One live line under the greeting: who's working, what's waiting, how much today, so the room reads at a glance. */
+function HeroPulse() {
+  const runs = useLive((s) => s.crew.runs), approvals = useLive((s) => s.crew.approvals), plays = useLive((s) => s.crew.plays);
+  const today = useLive((s) => s.crew.today), limited = useLive((s) => s.crew.limited), connection = useLive((s) => s.connection);
+  const working = Object.values(runs).filter((r) => r.status === "running" || r.status === "planning").length;
+  const waiting = Object.keys(approvals).length + Object.values(plays).filter((p) => p.status === "waiting").length;
+  const resting = Object.values(limited ?? {}).filter((w) => w.until > Date.now()).length;
+  const tokens = today.day === localDay() ? today.tokens : 0;
+  const tone = connection !== "live" ? "idle" : waiting ? "wait" : working ? "live" : "ok";
+  const parts = connection !== "live" ? ["Reconnecting to your crew…"]
+    : [working ? `${working} working now` : "Crew ready", waiting ? `${waiting} waiting on you` : "nothing waiting on you", resting ? `${resting} resting on a limit` : null, tokens ? `${formatTokens(tokens)} tokens today` : null].filter(Boolean);
+  return <p className={`hero-pulse is-${tone}`} role="status"><i aria-hidden="true" />{parts.join(" · ")}</p>;
+}
+
 function NeedsYou() {
   const plays = useLive((s) => s.crew.plays);
   const approvals = useLive((s) => s.crew.approvals);

@@ -176,10 +176,6 @@
 :root[data-design="onyx"] .side-fold, :root[data-design="onyx"] .rail-unfold { width: 26px; height: 26px; border-radius: 7px; }
 
 /* The slim rail. */
-:root[data-design="onyx"] .hub { width: 52px; padding: 8px 0 6px; border-radius: 10px; }
-:root[data-design="onyx"] .hub-on { border-radius: 10px; background: var(--active-bg) !important; box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight) !important; }
-:root[data-design="onyx"] .hub.is-on, :root[data-design="onyx"] .hub.is-on .hub-icon { color: var(--text); }
-:root[data-design="onyx"] .hub-label { font-size: 10px; font-weight: 500; }
 
 /* ── Hub tabs: an editor's tab strip ────────────────────────────────────────────────────────── */
 :root[data-design="onyx"] .hub-tabs { height: 40px; padding: 0 12px; gap: 1px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--sunken) 40%, var(--ink)); }

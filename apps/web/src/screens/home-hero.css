@@ -1,0 +1,52 @@
+/*
+ * The composer screen: light behind the ask, one live line about the crew, starters that say what they'll do.
+ * The aurora is three blurred blooms that only move by transform (the blur is rasterised once), resting when
+ * ShuaCrew is idle and gone with Reduce motion.
+ */
+.hero { position: relative; isolation: isolate; }
+.hero-aurora { position: absolute; inset: 0 0 auto 0; height: 820px; z-index: -1; pointer-events: none; overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 35%, transparent); mask-image: linear-gradient(#000 35%, transparent); }
+.hero-aurora i { position: absolute; border-radius: 50%; filter: blur(100px); opacity: .24; will-change: transform; }
+.hero-aurora i:nth-child(1) { left: 10%; top: -160px; width: 560px; height: 560px; background: color-mix(in srgb, var(--amber) 55%, transparent); animation: aurora-a 28s ease-in-out infinite alternate; }
+.hero-aurora i:nth-child(2) { right: 6%; top: -90px; width: 520px; height: 520px; background: color-mix(in srgb, var(--accent-2, var(--amber)) 50%, transparent); animation: aurora-b 34s ease-in-out infinite alternate; }
+.hero-aurora i:nth-child(3) { left: 36%; top: 170px; width: 440px; height: 440px; opacity: .16; background: color-mix(in srgb, var(--accent-3, var(--amber)) 50%, transparent); animation: aurora-c 40s ease-in-out infinite alternate; }
+@keyframes aurora-a { to { transform: translate3d(140px, 70px, 0) scale(1.18); } }
+@keyframes aurora-b { to { transform: translate3d(-160px, 40px, 0) scale(.9); } }
+@keyframes aurora-c { to { transform: translate3d(90px, -60px, 0) scale(1.12); } }
+:root[data-theme="light"] .hero-aurora i { opacity: .14; }
+:root[data-idle] .hero-aurora i { animation-play-state: paused; }
+:root[data-motion="reduced"] .hero-aurora i { animation: none; }
+@media (prefers-reduced-motion: reduce) { .hero-aurora i { animation: none; } }
+
+/* The live line under the greeting. */
+.hero-pulse { display: inline-flex; align-self: center; align-items: center; gap: 8px; margin: -12px auto 22px; padding: 5px 13px 5px 10px; border-radius: 99px;
+  font-size: 12.5px; color: var(--text-2); background: color-mix(in srgb, var(--panel) 70%, transparent); box-shadow: inset 0 0 0 1px var(--line);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.hero-pulse > i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); animation: pulse-breathe 2.8s ease-in-out infinite; }
+.hero-pulse.is-live > i { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent); }
+.hero-pulse.is-wait > i { background: var(--wait); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wait) 18%, transparent); }
+.hero-pulse.is-idle > i { background: var(--text-3); box-shadow: none; animation: none; }
+@keyframes pulse-breathe { 50% { opacity: .45; transform: scale(.8); } }
+:root[data-idle] .hero-pulse > i { animation-play-state: paused; }
+:root[data-motion="reduced"] .hero-pulse > i { animation: none; }
+
+/* Starters: four even tiles, each saying what it will do. (Onyx styles them as pills with !important, so these
+   rules carry the same weight and a little more specificity; html:root works with or without the Onyx design.) */
+html:root .home-workbench .hero-ideas.hero-ideas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+@media (max-width: 960px) { html:root .home-workbench .hero-ideas.hero-ideas { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+html:root .home-workbench .hero-ideas .hero-idea.hero-idea { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 11px; height: auto; min-height: 62px;
+  padding: 12px 14px 12px 12px !important; border: 0; border-radius: 14px !important; text-align: left;
+  background: color-mix(in srgb, var(--panel) 72%, transparent) !important; box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .03)) !important;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: box-shadow var(--t-fast, 120ms), transform var(--t-med, 220ms) var(--ease-out, ease), background var(--t-fast, 120ms); }
+html:root .home-workbench .hero-ideas .hero-idea.hero-idea:hover { background: color-mix(in srgb, var(--panel) 92%, transparent) !important; box-shadow: inset 0 0 0 1px var(--line-strong), 0 12px 30px -18px var(--accent-glow, rgba(0, 0, 0, .5)) !important; transform: translateY(-2px); }
+html:root .home-workbench .hero-ideas .hero-idea .hero-idea-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--accent-text, var(--amber)); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+html:root .home-workbench .hero-ideas .hero-idea > span.hero-idea-text { display: grid; gap: 2px; min-width: 0; white-space: normal; }
+.hero-idea-text b { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-idea-text small { font-size: 11.5px; line-height: 1.35; color: var(--text-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+html:root .home-workbench .hero-ideas .hero-idea .hero-idea-go { display: block; position: absolute; top: 9px; right: 9px; color: var(--text-3); opacity: 0; transform: none; transition: opacity var(--t-fast, 120ms); }
+html:root .home-workbench .hero-ideas .hero-idea:hover .hero-idea-go { opacity: .8; }
+:root[data-motion="reduced"] .home-workbench .hero-ideas .hero-idea.hero-idea:hover { transform: none; }
+
+/* The greeting sits on the same centre line as everything under it (an older rule set it flush left). */
+html:root .home-workbench .hero-title { text-align: center; text-wrap: balance; margin-inline: auto; max-width: 760px; }
+html:root .home-workbench .hero-mark { align-self: center; }

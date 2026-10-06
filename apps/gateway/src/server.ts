@@ -33,6 +33,9 @@ import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { execFile } from "node:child_process";
+import { registerPolicyAndUpdates, repoRootFrom } from "./policy-updates.js";
+import { registerBrief } from "./brief.js";
+import { registerShuaJournal } from "./shua-journal.js";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -40,7 +43,7 @@ import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { LiveVoice } from "./live.js";
-import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
+import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, localDay, normalise, type CrewState } from "@shuacrew/core";
 import { assistantMustAsk } from "./assistant-policy.js";
 import { ClaudeRuntime, type Runtime, type RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -121,6 +124,16 @@ const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
 export async function createServer(options: ServerOptions): Promise<{ app: FastifyInstance; hub: Hub; merges: MergeQueue; state: () => CrewState; briefing?: Briefing }> {
   const { store, supervisor } = options;
+  /**
+   * Codex's own usage reading, and what it means for limits we recorded: a real reading with usage left lifts them
+   * (a reset or top-up), so Shua never stays "limited until Oct 11" after the plan was reset. A failed read changes nothing.
+   */
+  const healCodex = async () => {
+    if (!options.live) return { usable: true };
+    const ready = await options.live.readiness() as { usable?: boolean; usedPercent?: number };
+    if (ready.usable && typeof ready.usedPercent === "number" && ready.usedPercent < 100) supervisor.usageAvailable("codex");
+    return ready;
+  };
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK.has(host) && !options.token) {
     throw new Error(`refusing to listen on ${host} without a token — set SHUACREW_TOKEN`);
@@ -255,7 +268,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   if (options.live) {
     const live = options.live;
     app.get("/ws/live", { websocket: true }, (socket) => live.attach(socket));
-    app.get("/api/live/ready", async () => live.readiness());
+    app.get("/api/live/ready", async () => healCodex());
   }
 
   if (options.uploads) {
@@ -570,6 +583,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     store.append("run.archived", { reason: "archived by you" }, { run: run.id });
     return { ok: true };
   });
+
+  // Backlog: start a parked session; it joins the queue and runs like any other.
+  app.post<{ Params: { id: string } }>("/api/runs/:id/start", async (request, reply) =>
+    supervisor.startBacklog(request.params.id) ? { ok: true } : reply.code(409).send({ error: "that session isn't waiting in your backlog" }));
+  // You're typing a follow-up: start its agent now, so the turn begins the moment you send it.
+  app.post<{ Params: { id: string } }>("/api/runs/:id/prepare", async (request) => ({ prepared: supervisor.prepare(request.params.id) }));
 
   app.post<{ Params: { id: string }; Body: { priority?: number } }>("/api/runs/:id/priority", async (request) => {
     store.append("run.priority", { priority: Number(request.body?.priority ?? 0) }, { run: request.params.id });
@@ -908,6 +927,10 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   const auto = options.autonomy;
+  // "What's going on?" for Shua to speak or show, from recorded state only.
+  registerBrief(app, { state, schedules: () => auto?.scheduler.list() ?? [] });
+  // Every step Shua takes on screen and whether it worked, so its accuracy is measured.
+  if (options.store.path !== ":memory:") registerShuaJournal(app, path.dirname(options.store.path));
   if (options.ventures) ideaRoutes(app, options.ventures, auto?.scheduler);
   if (auto) standupRoutes(app, auto.scheduler);
   if (auto) routineRoutes(app, auto.scheduler);
@@ -1025,11 +1048,14 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Body: { tool?: string; input?: unknown; workspace?: string } }>("/api/policy/explain", async (request) => {
     const b = request.body ?? {};
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
-    const decision = decide(call, defaultContext(b.workspace ?? process.cwd()), [{ name: "global", rules: defaultRules() }]);
-    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision) };
+    // The same engine, context and layers a real run uses (your protected folders and branches, your "always allow"s),
+    // decided as a Supervised session; Autopilot's answer rides along so the page can show both.
+    const { supervised: decision, autopilot } = supervisor.explain(call.tool, b.input ?? {}, b.workspace);
+    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision), autopilot, kind: call.kind, paths: call.paths };
   });
 
   app.get("/api/audit/verify", async () => store.verify());
+  registerPolicyAndUpdates(app, { repoRoot: repoRootFrom(options.webRoot), version: options.version ?? "0.1.0", build: webBuild, store, guardrails: () => supervisor.guardrails() });
 
   // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
   const statusCache = new Map<string, { at: number; value: Promise<RuntimeStatus> }>();
@@ -1064,6 +1090,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post("/api/intelligence/select", async (request, reply) => {
     const parsed = IntelligenceRequestSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
+    await healCodex().catch(() => undefined); // a reset plan is noticed on the very next pick (cached 30 s)
     await refreshIntelligence(parsed.data.mode);
     return supervisor.intelligence(parsed.data);
   });
@@ -1137,7 +1164,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       briefing: state.briefing ? { id: state.briefing.id, day: state.briefing.day, headline: state.briefing.headline } : null,
       // Settings → Menu bar: what the Mac shows beside its icon, and today's recorded tokens for "tokens".
       menuBar: options.settings?.get().menuBar ?? "attention",
-      tokensToday: state.today.day === new Date().toISOString().slice(0, 10) ? state.today.tokens : 0,
+      tokensToday: state.today.day === localDay() ? state.today.tokens : 0,
       now: (() => {
         const live = ["awaiting_approval", "running", "planning", "queued", "paused"];
         const rank: Record<string, number> = { awaiting_approval: 0, running: 1, planning: 2, queued: 3, paused: 4 };

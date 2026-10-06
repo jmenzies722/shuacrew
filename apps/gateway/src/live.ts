@@ -53,9 +53,11 @@ export function liveBackendInstructions(protectedPaths: string[], vocab = ""): s
     "Every message must begin at byte zero with [STATUS] and one space for meaningful progress, or [COMPLETE] and one space for the final result, a question, or a blocker. [ANALYSIS] is silent context. Never put the tag anywhere else.",
     "Keep [COMPLETE] short and speakable: one or two plain sentences, no markdown, no code, no long paths. Put detail the user should see (a command, a link) after the first sentence; it is shown, not read.",
     "You are on the user's Mac. Use the shell (open, osascript, shortcuts, mdfind, curl) and web search to get things done. Ask before anything destructive or that sends something on their behalf.",
+    "Research (news, prices, releases, docs, how-tos, comparisons — anything current or not on this Mac): use your web_search tool, live, never curl or memory. Search once or twice with sharp queries, then [COMPLETE] with the answer in one or two spoken sentences naming the source (\"per the Node.js blog\"), and the links after the first sentence so they're shown. Say plainly when sources disagree or nothing solid turned up.",
     "Your working directory is a private scratch folder, not theirs: \"my folder\" or \"this folder\" means the frontmost Finder window (osascript -e 'tell application \"Finder\" to get POSIX path of (target of front window as alias)'), and their files live under their home folder (find them with mdfind).",
     "For screen interaction (look, point, draw, click, type, scroll, guide) or teaching with an architecture diagram, call spark_screen with the user's own words. Its result determines availability: never claim screen access or a completed action before the tool confirms it. Respect screen-off, denied, failed, cancelled and unavailable results; do not bypass them with shell or other tools. Describe only the reported outcomes, and distinguish a dispatched overlay from independently verified placement.",
     "For ShuaCrew app questions, learning courses, selected lesson, visual workspace or navigation, call spark_screen with the request even when no screenshot is needed. It supplies fresh structured app data and can navigate via native app actions. Never substitute an old conversation summary for this check.",
+    "Websites: open them directly with spark_do [{\"type\":\"open_url\",\"url\":\"https://…\",\"app\":\"Google Chrome\"}] (app only when they name a browser) — one step, no screen. Apps: spark_do [{\"type\":\"open_app\",\"name\":\"…\"}]. Use spark_screen only for what is inside an app or page: reading it, clicking, typing, scrolling.",
     "A cancelled result ends that task: do not continue, retry, or perform its remaining actions. Wait for a fresh user request. For architecture teaching, use spark_screen even with screen access off: a text-only lesson does not need a screenshot.",
     vocab ? `For their calendar, reminders, notes, mail, music, timers, volume and other Mac controls, use the spark_do tool FIRST: it reads every account on this Mac (iCloud, Google, Exchange) natively and needs no approval. Other connectors and the shell only if spark_do can't. Its actions are the JSON objects shown inside these do blocks; pass them as \`actions\`:\n${vocab}` : "",
     protectedPaths.length ? `Never read, list, search, or touch these folders or anything inside them: ${protectedPaths.join(", ")}. If asked, say they're off limits.` : "",
@@ -112,7 +114,7 @@ export const touchesProtected = (text: string, protectedPaths: string[]) => {
 /** The one tool Live's hands get from ShuaCrew: Spark's native Mac actions, run by the notch page. */
 export const LIVE_TOOLS = [{
   name: "spark_do",
-  description: "Do things on the user's Mac natively through ShuaCrew (calendar, reminders, notes, mail drafts, music, timers, volume and system controls, apps, settings pages, the user's crew). Pass `actions`: an array of action objects, exactly the shapes in your instructions. Returns what happened and anything it read.",
+  description: "Do things on the user's Mac natively through ShuaCrew (calendar, reminders, notes, mail drafts, music, timers, volume and system controls, apps, settings pages, the user's crew, and a brief action for a live readout of everything going on in ShuaCrew — call it before answering any what's-going-on question). Pass `actions`: an array of action objects, exactly the shapes in your instructions. Returns what happened and anything it read.",
   inputSchema: { type: "object", properties: { actions: { type: "array", items: { type: "object" }, description: "Up to 5 action objects" } }, required: ["actions"], additionalProperties: false },
 }, {
   name: "spark_screen",
@@ -166,7 +168,7 @@ async function openCodexSession(options: LiveOptions, dir: string, vocab: string
     // Low reasoning effort: a call is a conversation, and the voice is waiting on every turn. A fresh thread per call:
     // a resumed one had grown to 115k input tokens and took 28 s to answer "what's on my calendar". Continuity comes
     // from the recent lines given to the voice instead.
-    const thread = { cwd: dir, approvalPolicy: "on-request", developerInstructions: liveBackendInstructions(protectedPaths, vocab), config: { model_reasoning_effort: "low", ...(mcp ? { mcp_servers: mcp } : {}) } };
+    const thread = { cwd: dir, approvalPolicy: "on-request", developerInstructions: liveBackendInstructions(protectedPaths, vocab), config: { model_reasoning_effort: "low", web_search: "live", ...(mcp ? { mcp_servers: mcp } : {}) } };
     const threadId = String((await peer.request("thread/start", thread)).thread?.id);
     return { child, peer, threadId, run, route, key: sessionKey(vocab, protectedPaths), at: Date.now() };
   } catch (error) { child.kill("SIGTERM"); throw error; }

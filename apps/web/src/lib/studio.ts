@@ -172,7 +172,22 @@ export function isStudioAsk(q: string): boolean {
   return /^(what('?s| is) going on|what('?s| is) (on|playing)|who('?s| is) (working|on|playing)|status of the crew|what needs me|what needs (you|us)|give me the (room|desk|brief))\b/i.test(q.trim());
 }
 
+export type FactWhat = "time" | "date" | "next" | "cards" | "crew" | "waiting" | "morning";
+/** A question answered from what's already known (clock, calendar, crew, cards): no model, so it's instant. */
+export function factMove(q: string): FactWhat | null {
+  const s = q.toLowerCase().replace(/^(hey |ok |okay )?(shua|spark)[,!]?\s+/, "").replace(/\b(please|real quick|quickly)\b/g, "").replace(/[?.!]+$/, "").replace(/\s+/g, " ").trim();
+  if (/^(what('?s| is) the time|what time is it( right now| now)?|time|got the time)$/.test(s)) return "time";
+  if (/^(what('?s| is) (the |today'?s )?date( today)?|what day is it( today)?|what'?s today)$/.test(s)) return "date";
+  if (/^(what'?s next( on my calendar| today)?|when'?s my next (meeting|call|event)|what'?s my next (meeting|call|event)|do i have (any )?(meetings|calls) today|what'?s on my calendar( today)?)$/.test(s)) return "next";
+  if (/^(how many )?(review )?cards( do i have)?( are)? due( today)?$|^what'?s due( today)?$|^how many cards (are )?due$/.test(s)) return "cards";
+  if (/^(what('?s| is) (the|my) crew (doing|working on|up to)|is (the|my) crew (working|busy)|crew status|status)$/.test(s)) return "crew";
+  if (/^((does |is )?anything (need|waiting on|waiting for) me|what needs (me|my (ok|okay|attention))|anything for me)$/.test(s)) return "waiting";
+  if (/^(brief me|morning brief|good morning|catch me up on (my|the) day|what'?s my day (look|looking) like|how'?s my day (look|looking))$/.test(s)) return "morning";
+  return null;
+}
+
 export type ProducerMove =
+  | { kind: "fact"; what: FactWhat }
   | { kind: "brief" }
   | { kind: "scape"; scape: Scape }
   | { kind: "stop-radio" }
@@ -246,6 +261,8 @@ export function producerMove(q: string): ProducerMove | null {
   if (/[,;]?\s+(?:and(?: then)?|then|also|plus|after that)\s+(?:remind|set|add|make|create|text|message|send|email|open|turn|tell|show|check|what|call|start|schedule|book|delete|remove|find|search|look|put|play)\b/i.test(t)) return null;
   const timer = timerMove(t);
   if (timer) return timer;
+  const fact = factMove(t);
+  if (fact) return { kind: "fact", what: fact };
   // Mac controls, instantly: "mute", "set the volume to 30", "lock my Mac", "take a screenshot", "turn off Wi-Fi".
   { const s = t.toLowerCase().replace(/[.!?]+$/, "").trim();
     const vol = /^(?:set (?:the )?(?:mac(?:'s)? )?volume (?:to )?|volume (?:to )?)(\d{1,3})(?:\s*%| percent)?$/.exec(s);

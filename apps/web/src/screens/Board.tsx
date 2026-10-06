@@ -11,6 +11,8 @@ import "./board.css";
 import { useNavigate } from "@tanstack/react-router";
 import { KanbanSquare } from "lucide-react";
 import { StatStrip } from "../components/StatStrip";
+import { BacklogAdd, StartBacklog } from "../components/BacklogAdd";
+import "./board-backlog.css";
 
 const EMPTY: Record<string, string> = { queued: "Nothing waiting to start", running: "No one is working", awaiting: "Nothing needs you", reviewing: "Nothing to review", done: "Nothing finished yet" };
 
@@ -34,7 +36,7 @@ export function Board() {
   return (
     <div className="flex h-full flex-col">
       <div className="mx-auto w-full max-w-[1440px] px-8 pt-8">
-        <PaneHeader children={<StatStrip stats={[{ value: all.filter((r) => ["running", "planning", "queued"].includes(r.status)).length, label: "in flight", live: all.some((r) => ["running", "planning"].includes(r.status)) }, { value: all.filter((r) => r.status === "awaiting_approval").length, label: "need you", tone: "wait" }, { value: all.filter((r) => ["done", "merged"].includes(r.status) && r.updatedAt > Date.now() - 7 * 86_400_000).length, label: "done this week", tone: "ok" }]} />} eyebrow="Plan" icon={KanbanSquare} title="Board" description="Every session by where it stands. Drag a queued card to the top to run it next; cards move on their own as the work changes."
+        <PaneHeader {...(() => { const need = all.filter((r) => r.status === "awaiting_approval").length, fly = all.filter((r) => ["running", "planning"].includes(r.status)).length; return need ? { status: `${need} session${need === 1 ? " is" : "s are"} waiting on you`, tone: "wait" as const } : fly ? { status: `${fly} in flight right now`, tone: "live" as const } : { status: "Nothing in flight. New sessions land in Queued and move on their own.", tone: "idle" as const }; })()} eyebrow="Plan" icon={KanbanSquare} title="Board"
           actions={runtimes.length > 1 ? <>
         <div className="flex items-center gap-1.5 text-[12px]" role="radiogroup" aria-label="Filter by runtime">
           {["all", ...runtimes].map((r) => (
@@ -74,6 +76,7 @@ export function Board() {
                   <span className="mono ml-auto text-[11px] text-fg-3">{cards.length}</span>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
+                  {column.id === "queued" && <BacklogAdd />}
                   {cards.length === 0 && (column.id === "queued" && all.length === 0
                     ? <div className="board-start"><strong>Start the board</strong><span>Every session you start lands here and moves right on its own: Running → Awaiting me → Reviewing → Done.</span><Button variant="primary" onClick={() => void navigate({ to: "/" })}>Start a session</Button></div>
                     : <div className="board-empty">{EMPTY[column.id] ?? "Nothing here"}</div>)}
@@ -85,6 +88,7 @@ export function Board() {
                       title={column.id === "queued" ? "Drag to the top to run it next" : undefined}
                     >
                       <AgentCard run={run} compact />
+                      {run.status === "paused" && run.labels?.includes("backlog") && run.statusReason?.startsWith("In your backlog") && <div className="bl-row"><StartBacklog id={run.id} /></div>}
                     </div>
                   ))}
                 </div>

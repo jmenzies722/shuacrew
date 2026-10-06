@@ -9,7 +9,7 @@ export const HUBS: Hub[] = [
   { id: "know", label: "Learn", hint: "Get measurably better, with Shua", tabs: [{ to: "/learn", label: "Learn", also: ["/teach"] }] },
   { id: "automations", label: "Automations", hint: "Teach once, reuse carefully", tabs: [{ to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/schedules", label: "Schedules" }] },
   { id: "library", label: "Library", hint: "Everything worth keeping", tabs: [{ to: "/library", label: "Artifacts & knowledge" }, { to: "/memory", label: "Memory" }] },
-  { id: "system", label: "All tools", hint: "Connections and controls", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/usage", "/developer", "/insights"] }, { to: "/terminal", label: "Terminal" }] },
+  { id: "system", label: "All tools", hint: "Connections and controls", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/developer", "/insights"] }, { to: "/usage", label: "Usage" }, { to: "/terminal", label: "Terminal" }] },
 ];
 export const PRIMARY_HUBS = HUBS.filter(hub => hub.id !== "system");
 

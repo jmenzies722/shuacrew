@@ -1,0 +1,36 @@
+/*
+ * The Terminal page in the Tools hub's language: pill tabs, controls on one 30 px scale, a command bar shaped like the
+ * composer. Scoped to the full page, so the terminal drawer elsewhere keeps its compact chrome; the terminal surface
+ * itself (xterm) is untouched.
+ */
+.terminal-page .terminal-bar { height: 46px; gap: 6px; padding: 0 10px 0 12px; }
+.terminal-page .terminal-tab { height: 30px; padding: 0 8px 0 11px; border-radius: 9px; font-size: 12.5px; box-shadow: none; transition: background var(--t-fast, 120ms), color var(--t-fast, 120ms); }
+.terminal-page .terminal-tab.is-active { background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), inset 0 1px 0 rgba(255, 255, 255, .05); }
+/* A shell that's alive breathes; an exited one is still. */
+.terminal-page .terminal-tab-dot:not(.is-off) { animation: tp-breathe 2.8s ease-in-out infinite; }
+@keyframes tp-breathe { 50% { opacity: .45; transform: scale(.8); } }
+.terminal-page .terminal-action { width: 30px; height: 30px; border-radius: 8px; }
+.terminal-page .term-status { height: 30px; gap: 10px; padding: 0 14px; }
+.terminal-page .term-chip { height: 22px; padding: 0 9px; }
+
+/* History and snippets */
+.terminal-page .term-side-tabs { margin: 10px 10px 0; padding: 3px; border-radius: 10px; }
+.terminal-page .term-side-tabs button { height: 28px; border-radius: 7px; }
+.terminal-page .term-side-tabs button.is-on { background: rgba(255, 255, 255, .09); box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .25); }
+.terminal-page .term-filter { height: 32px; margin: 10px 10px 4px; }
+.terminal-page .term-empty { margin: 10px; padding: 12px 14px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--term-line); }
+
+/* The command bar: the same shape and glow as the composer. */
+.terminal-page .terminal-ask-wrap { padding: 10px 12px 12px; }
+.terminal-page .terminal-ask { position: relative; isolation: isolate; height: 50px; gap: 10px; padding: 0 10px 0 8px; border-radius: 16px; }
+.terminal-page .terminal-ask::before { content: ""; position: absolute; z-index: -1; inset: 20% 8% -14px; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(60% 80% at 30% 100%, color-mix(in srgb, var(--amber) 30%, transparent), transparent 70%); filter: blur(16px); opacity: 0; transition: opacity 320ms ease; }
+.terminal-page .terminal-ask:focus-within::before { opacity: .8; }
+.terminal-page .terminal-ask input { font-size: 13.5px; }
+.terminal-page .term-mode { padding: 3px; border-radius: 10px; }
+.terminal-page .term-mode button { height: 30px; padding: 0 11px; border-radius: 8px; font-size: 12.5px; }
+
+:root[data-idle] .terminal-page .terminal-tab-dot { animation-play-state: paused; }
+:root[data-motion="reduced"] .terminal-page .terminal-tab-dot { animation: none; }
+:root[data-motion="reduced"] .terminal-page .terminal-ask::before { transition: none; }
+@media (prefers-reduced-motion: reduce) { .terminal-page .terminal-tab-dot { animation: none; } .terminal-page .terminal-ask::before { transition: none; } }

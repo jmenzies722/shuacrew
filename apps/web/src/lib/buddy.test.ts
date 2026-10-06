@@ -69,7 +69,8 @@ it("reads music/system/shortcut actions and act steps safely", () => {
   expect(speakable('Clicking.\n```act {"type":"click","x":0.1,"y":0.1}```')).toBe("Clicking.");
   expect(buddyPrompt("send the email", { width: 10, height: 10 }, { name: "Spark", tone: "direct", length: "brief", control: "auto" })).toContain("COMPUTER CONTROL");
   expect(buddyPrompt("send the email", null, { name: "Spark", tone: "direct", length: "brief", control: "off" })).not.toContain("COMPUTER CONTROL");
-  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("Next step as one act block containing exactly one action");
+  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("chain named presses, typing and keys back to back; a click or scroll by position goes alone");
+  expect(actFollowUp("Click “Send”", true, { width: 10, height: 10 }, 3, 25)).toContain("if a result isn't readable, say so instead of guessing");
 });
 it("lets you customize Spark by chatting, safely", () => {
   expect(parseActions('```do {"type":"settings","changes":{"name":"Nova","character":"kit","color":"purple","speed":1.2,"tone":"direct","talks":true,"control":"auto","bogus":1}}```'))
@@ -96,7 +97,9 @@ it("reads run commands and keeps music off the mouse", () => {
   expect(parseActions('```do [{"type":"run","command":"df -h ~"}]```')).toEqual([{ type: "run", command: "df -h ~" }]);
   expect(parseActions('```do [{"type":"run","command":""}]```')).toEqual([]);
   expect(buddyPrompt("play music", null)).toMatch(/never click a play button/i);
-  expect(buddyPrompt("put on some lofi", null)).toMatch(/ShuaCrew Radio .* use radio/);
+  // Oct 5: the lofi radio is retired; music is the user's Apple Music only.
+  expect(buddyPrompt("put on some lofi", null)).toMatch(/Apple Music only \(no radio, no lofi stations\)/);
+  expect(buddyPrompt("put on some lofi", null)).not.toMatch(/use radio/);
 });
 
 it("starts speaking at the first clause of a reply, but never chops a short opener", () => {
@@ -405,4 +408,90 @@ it("does not describe an accepted desktop action as verified task completion", (
   expect(followup).not.toContain("Step 1 done");
   expect(followup).toContain("dispatch is not proof");
   expect(followup).toContain("visible change");
+});
+
+describe("screen control runs all the way through", () => {
+  it("chains named steps back to back (Calculator: 9 × 9 =) and stops at a click by position", async () => {
+    const { chainOf } = await import("./buddy");
+    const press = (label: string) => ({ type: "press" as const, label });
+    expect(chainOf([press("9"), press("Multiply"), press("9"), press("Equals")]).run).toHaveLength(4);
+    const mixed = chainOf([press("Search"), { type: "type", label: "Search", text: "yc\n" }, { type: "click", x: 10, y: 20, label: "first result" }, press("Open")]);
+    expect(mixed.run.map((a) => a.type)).toEqual(["press", "type"]);
+    expect(mixed.later.map((a) => a.type)).toEqual(["click", "press"]); // reported back as NOT RUN, never assumed done
+  });
+  it("runs a click by position alone, because it needs a fresh look first", async () => {
+    const { chainOf } = await import("./buddy");
+    const r = chainOf([{ type: "click", x: 1, y: 2, label: "a" }, { type: "press", label: "b" }]);
+    expect(r.run).toHaveLength(1); expect(r.later).toHaveLength(1);
+  });
+  it("caps a chain at six and ignores done markers", async () => {
+    const { chainOf } = await import("./buddy");
+    const many = Array.from({ length: 9 }, (_, i) => ({ type: "key" as const, keys: "tab", label: `t${i}` }));
+    expect(chainOf([...many, { type: "done", summary: "x" }]).run).toHaveLength(6);
+  });
+  it("opens a website in the browser you named", async () => {
+    const { parseActions } = await import("./buddy");
+    expect(parseActions('```do [{"type":"open_url","url":"https://www.ycombinator.com","app":"Google Chrome"}]```')).toEqual([{ type: "open_url", url: "https://www.ycombinator.com", app: "Google Chrome" }]);
+    expect(parseActions('```do [{"type":"open_url","url":"javascript:alert(1)"}]```')).toEqual([]);
+  });
+});
+
+it("reads a brief, with an optional window", () => {
+  expect(parseActions('```do [{"type":"brief"}]```')).toEqual([{ type: "brief" }]);
+  expect(parseActions('```do [{"type":"brief","since":"hour"}]```')).toEqual([{ type: "brief", since: "hour" }]);
+  expect(parseActions('```do [{"type":"brief","since":"yesterday"}]```')).toEqual([{ type: "brief" }]);
+  expect(buddyPrompt("what's going on?", null)).toContain('{"type":"brief"}');
+});
+
+it("runs screen steps written inside a do block as the act they meant", async () => {
+  const { completedBlocks, slippedActs } = await import("./buddy");
+  // Measured: the model wrote a press inside a do block, so nothing ran.
+  const blocks = completedBlocks('On it.\n```do\n[{"type":"act","action":"press","target":"#28"}]\n```');
+  expect(blocks.map((b) => b.kind)).toEqual(["act"]);
+  expect(parseActs(blocks[0]!.raw)).toEqual([{ type: "press", label: "", target: "#28" }]);
+  // Mixed: the real do-action stays a do block, the screen step becomes an act.
+  const mixed = completedBlocks('```do [{"type":"open_app","name":"Safari"},{"type":"press","label":"Reload"}]```');
+  expect(mixed.map((b) => b.kind)).toEqual(["do", "act"]);
+  expect(parseActions(mixed[0]!.raw)).toEqual([{ type: "open_app", name: "Safari" }]);
+  expect(slippedActs('[{"type":"focus","minutes":25}]')).toBeNull();
+  expect(slippedActs("not json")).toBeNull();
+});
+
+it("catches a promised screen step that came with no block", () => {
+  // Measured mid-task: this reply had no block, and the task stopped there.
+  expect(claimsWithoutAction("I’ll bring ShuaCrew to the front.")).toBe(true);
+  expect(claimsWithoutAction("Let me click the Above button.")).toBe(true);
+  expect(claimsWithoutAction("Okay, I'll go to the Studio floor.")).toBe(true);
+  expect(claimsWithoutAction("I'll click it now.\n```act {\"type\":\"press\",\"label\":\"Above\"}```")).toBe(false);
+  expect(claimsWithoutAction("I can't click inside that window.")).toBe(false);
+  expect(claimsWithoutAction("I'll explain how the floor works: each desk is an agent.")).toBe(false);
+});
+
+it("reads a press inside ShuaCrew", () => {
+  expect(parseActions('```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"}]```')).toEqual([{ type: "go", path: "/floor" }, { type: "ui", press: "Above" }]);
+  expect(parseActions('```do [{"type":"ui","press":""}]```')).toEqual([]);
+});
+
+it("tells the follow-through what that reply already did after opening", () => {
+  const ask = followThroughAsk("ShuaCrew’s Studio floor page", "go to the floor, press Above, then tell me", ["Press “Above” in ShuaCrew (Pressed “Above” on Studio floor)"]);
+  expect(ask).toContain("already did: Press “Above” in ShuaCrew");
+  expect(ask).toContain("Don't repeat those.");
+  expect(followThroughAsk("x", "y")).not.toContain("already did");
+});
+
+it("after opening a ShuaCrew page, follows through with its controls instead of a screenshot", () => {
+  const ask = followThroughAsk("ShuaCrew’s Studio floor page", "press Above then Studio", [], "SHUACREW WINDOW NOW: “Studio floor” (/floor). Press its controls with ui by these exact names: Studio · Above.");
+  expect(ask).toContain("[shuacrew]");
+  expect(ask).toContain("never use act, point or the Dock");
+  expect(ask).not.toContain("screenshot is attached");
+});
+
+it("knows when an ask is about ShuaCrew's own window", async () => {
+  const { aboutShuaCrewWindow } = await import("./buddy");
+  expect(aboutShuaCrewWindow("Inside the ShuaCrew window: go to the Studio floor, click the Above camera button")).toBe(true);
+  expect(aboutShuaCrewWindow("open the agents page in shuacrew")).toBe(true);
+  expect(aboutShuaCrewWindow("what's on the studio floor?")).toBe(true);
+  expect(aboutShuaCrewWindow("open Settings and turn on Wi-Fi")).toBe(false);
+  expect(aboutShuaCrewWindow("what is shuacrew?")).toBe(false);
+  expect(aboutShuaCrewWindow("quit ShuaCrew")).toBe(false);
 });

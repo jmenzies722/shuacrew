@@ -286,7 +286,32 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// or leave; the page opens the nook and tucks it away. A light 10 Hz check, only while docked and closed.
     private var nookTimer: Timer?
     private var pointerInNook = false
+    /// The opened conversation, docked in the notch, goes back to rest once the pointer has been away from it for
+    /// 1.2 s (the page declines while you're typing). Polls only while it's open, like the hover watch.
+    private var leaveTimer: Timer?
+    private var pointerAwaySince: TimeInterval?
+    private func updateLeaveWatch() {
+        guard docked && isOpen else { leaveTimer?.invalidate(); leaveTimer = nil; pointerAwaySince = nil; return }
+        guard leaveTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.docked, self.isOpen else { return }
+                let near = self.panel.frame.insetBy(dx: -18, dy: -18).contains(NSEvent.mouseLocation)
+                let now = ProcessInfo.processInfo.systemUptime
+                if near || NSEvent.pressedMouseButtons != 0 { self.pointerAwaySince = nil; return }
+                if self.pointerAwaySince == nil { self.pointerAwaySince = now; return }
+                if now - self.pointerAwaySince! >= 1.2 {
+                    self.pointerAwaySince = now + 3600 // once per departure: come back to arm it again
+                    self.web.evaluateJavaScript("window.buddy && window.buddy.leave && window.buddy.leave()")
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        leaveTimer = timer
+    }
+
     private func updateNookWatch() {
+        updateLeaveWatch()
         let watch = docked && !isOpen
         guard watch else { nookTimer?.invalidate(); nookTimer = nil; pointerInNook = false; return }
         guard nookTimer == nil else { return }
@@ -376,6 +401,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         if !Self.enabled { setEnabled(true) }
         start()
         web.evaluateJavaScript("window.buddy && window.buddy.toggleVoice && window.buddy.toggleVoice()")
+    }
+
+    /// A page in the main window hands Shua a question (Studio: "pick an album for right now"); Shua answers in the notch.
+    func ask(_ text: String) {
+        let clean = String(text.prefix(4000))
+        guard !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: [clean]), let arg = String(data: data, encoding: .utf8) else { return }
+        if !Self.enabled { setEnabled(true) }
+        start()
+        web.evaluateJavaScript("window.buddy && window.buddy.notchAsk && window.buddy.notchAsk(\(arg)[0])")
     }
 
     private func fnSignal(_ signal: FnGesture.Signal) {
@@ -925,6 +960,37 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
                 Task { @MainActor [weak self] in self?.send("shuacrew:media", now, to: sender) }
             }
+        // Studio: your Apple Music library, album first (MusicLibrary). Each answers the page that asked.
+        case "buddyMusicLibrary":
+            let force = body["force"] as? Bool ?? false
+            SparkHands.musicQueue.async {
+                let reply: [String: Any]
+                do { reply = ["albums": try MusicLibrary.albums(force: force).map(\.json)] } catch { reply = ["albums": [], "error": "Couldn't read your Music library: \(error.localizedDescription)"] }
+                nonisolated(unsafe) let out = reply
+                Task { @MainActor [weak self] in self?.send("shuacrew:musicLibrary", out, to: sender) }
+            }
+        case "buddyMusicArt":
+            let ids = (body["ids"] as? [String] ?? []).filter { $0.count == 16 }
+            SparkHands.musicQueue.async {
+                nonisolated(unsafe) let out: [String: Any] = ["art": MusicLibrary.artwork(for: ids)]
+                Task { @MainActor [weak self] in self?.send("shuacrew:musicArt", out, to: sender) }
+            }
+        case "buddyMusicAlbum":
+            let id = body["id"] as? String ?? ""
+            SparkHands.musicQueue.async {
+                nonisolated(unsafe) let out: [String: Any] = ["id": id, "tracks": MusicLibrary.trackList(of: id)]
+                Task { @MainActor [weak self] in self?.send("shuacrew:musicAlbum", out, to: sender) }
+            }
+        case "buddyMusicPlay":
+            let album = body["album"] as? String ?? "", track = body["track"] as? String, shuffle = body["shuffle"] as? Bool ?? false
+            SparkHands.musicQueue.async {
+                let r = MusicLibrary.play(album: album, from: track, shuffle: shuffle)
+                nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
+                Task { @MainActor [weak self] in
+                    self?.send("shuacrew:musicResult", ["ok": r.ok, "message": r.message], to: sender)
+                    self?.send("shuacrew:media", now, to: sender)
+                }
+            }
         case "buddyAgenda":
             // Spark checks what's coming up (every minute), to give you a heads-up before it starts.
             DispatchQueue.global(qos: .utility).async {
@@ -937,6 +1003,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             panel.acceptsKeyboardInput = true
             if !NSApp.isActive { NSApp.activate() }
             if !panel.isKeyWindow { panel.makeKey() }
+            // Key window alone isn't enough: keys go to the first responder, and the field's DOM focus only takes once
+            // the page has window focus. So hand the web view the keyboard, then focus the island's field from here.
+            panel.makeFirstResponder(web)
+            web.evaluateJavaScript("setTimeout(() => document.querySelector('.isl-type textarea, .isl-type input, .spark-nook-ask textarea, .spark-nook-ask input')?.focus(), 0)")
         case "buddyFollow":
             following = body["on"] as? Bool ?? true
             UserDefaults.standard.set(following, forKey: "buddyFollowCursor")
@@ -1075,7 +1145,17 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// The last full-resolution look, for zooming into part of it.
     private let regionSelector = RegionSelector()
     private var lastFull: CGImage?
-    private func capture(to target: WKWebView? = nil, hires: Bool = false, requestID: String? = nil) async {
+    /// Right after Shua opens an app or a page, the front window is still arriving (a launch, a title that changes as the
+    /// page loads). Wait until the front app and its window title hold still for a beat, at most ~2 s.
+    private func settledIdentity() async {
+        var last = ScreenElements.identity(), steady = 0
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .milliseconds(250))
+            let now = ScreenElements.identity()
+            if now.pid == last.pid && now.window == last.window { steady += 1; if steady >= 2 { return } } else { steady = 0; last = now }
+        }
+    }
+    private func capture(to target: WKWebView? = nil, hires: Bool = false, requestID: String? = nil, attempt: Int = 0) async {
         let respond: ([String: Any]) -> Void = { [weak self] detail in
             var result = detail
             if let requestID { result["requestId"] = requestID }
@@ -1097,6 +1177,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             guard !SparkHands.offLimits.contains(app.bundleIdentifier ?? ""), !(app.bundleIdentifier ?? "").lowercased().contains("kiro") else {
                 respond(["error": "This app is protected from screen observation. Switch to the app you want Shua to control."]); return
             }
+            await settledIdentity()
             let startIdentity = ScreenElements.identity()
             let all = NSScreen.screens, home = panel.screen ?? NSScreen.main ?? all[0]
             let order = DisplayLayout.order(frames: all.map(\.frame), pointer: NSEvent.mouseLocation, fallback: all.firstIndex(of: home) ?? 0).map { all[$0] }
@@ -1190,7 +1271,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let endIdentity = ScreenElements.identity()
             guard CaptureConsistency.valid(startPID: startIdentity.pid, currentPID: endIdentity.pid, startWindow: startIdentity.window, currentWindow: endIdentity.window, observedAt: observedAt, now: Date().timeIntervalSince1970) else {
                 lastFull = nil
-                respond(["error": "The app or window changed while observing, or the capture took too long. Look again before acting."]); return
+                // Never act on a picture of a screen that was still changing — but don't give up either: let it settle and
+                // look again (a page finishing its load renames the window). Only if it never holds still is it an error.
+                if attempt < 2 {
+                    try? await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+                    await capture(to: target, hires: hires, requestID: requestID, attempt: attempt + 1); return
+                }
+                respond(["error": "The screen kept changing while I looked (three tries). Wait for it to finish loading, then ask again."]); return
             }
             shotScreen = screen; shotScreens = numbered
             respond(["observedAt": observedAt * 1000, "display": (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, "data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others])
@@ -1223,7 +1310,8 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// it) and after a spoken-style ask, saved as notch-rest.png / notch-open.png beside it. The page's own pixels, so
     /// it needs no screen recording and no synthetic pointer. Only whoever launches the app can set it.
     private func notchSnapshots(_ base: String) {
-        let steps: [(String, String, Double)] = [("rest", "", 4), ("open", "window.buddy && window.buddy.nook && window.buddy.nook(true)", 2), ("closed", "window.buddy && window.buddy.nook && window.buddy.nook(false)", 1.5)]
+        let more = "document.querySelector('.isl-btn[title^=\"Missions\"]')?.click()"
+        let steps: [(String, String, Double)] = [("rest", "", 4), ("open", "window.buddy && window.buddy.nook && window.buddy.nook(true)", 2), ("more", more, 1.5), ("closed", more + "; window.buddy && window.buddy.nook && window.buddy.nook(false)", 1.5)]
         func step(_ i: Int) {
             guard i < steps.count else { return }
             let (name, script, wait) = steps[i]
@@ -2278,6 +2366,12 @@ enum MacActions {
             return (true, "Opened \(url.deletingPathExtension().lastPathComponent)")
         case "open_url":
             guard let s = action["url"] as? String, let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return (false, "Only web links can be opened.") }
+            // "…in Chrome": the browser they named, when it's installed; otherwise their default.
+            if let name = (action["app"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty, let browser = Self.appURL(named: name) {
+                let config = NSWorkspace.OpenConfiguration(); config.activates = true
+                NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: config) { app, _ in Task { @MainActor in Self.bringToFront(app?.bundleIdentifier ?? Bundle(url: browser)?.bundleIdentifier) } }
+                return (true, "Opened \(url.host ?? "the link") in \(browser.deletingPathExtension().lastPathComponent)")
+            }
             open(url)
             return (true, "Opened \(url.host ?? "the link")")
         case "open_path":
@@ -2293,6 +2387,18 @@ enum MacActions {
         default:
             return (false, "Spark can't do that.")
         }
+    }
+
+    /// An installed app by the name people say ("Chrome", "Google Chrome", "Safari", "Arc").
+    static func appURL(named name: String) -> URL? {
+        let known = ["chrome": "com.google.Chrome", "google chrome": "com.google.Chrome", "safari": "com.apple.Safari", "arc": "company.thebrowser.Browser",
+                     "firefox": "org.mozilla.firefox", "edge": "com.microsoft.edgemac", "microsoft edge": "com.microsoft.edgemac", "brave": "com.brave.Browser", "brave browser": "com.brave.Browser"]
+        if let id = known[name.lowercased()], let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) { return url }
+        for dir in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
+            let candidate = URL(fileURLWithPath: dir).appendingPathComponent(name.hasSuffix(".app") ? name : name + ".app")
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
     }
 
     /// Open a link, file or folder in its app and bring that app to the front.

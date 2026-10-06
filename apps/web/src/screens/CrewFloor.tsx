@@ -13,7 +13,7 @@ import { describe } from "../shell/CommandPalette";
 import { Glyph } from "../lib/glyphs";
 import { CrewWorkspace } from "../components/CrewWorkspace";
 import { selectRooms } from "../lib/room-view";
-import { FloorStage } from "../components/FloorStage";
+import { CrewStudio3D } from "../components/CrewStudio3D";
 import { isTopLevelWork } from "../lib/crew";
 import { PaneHeader } from "../components/Pane";
 
@@ -107,7 +107,6 @@ export function CrewFloor() {
     if (run?.labels?.some((l) => l === "buddy" || l === "learning")) return false;
     return !scope || (e.run && runs[e.run]);
   }), [allActivity, allRuns, runs, scope]);
-  const today = useLive((s) => s.crew.today);
   const now = useNow();
 
   const onFloor = useMemo(
@@ -134,18 +133,15 @@ export function CrewFloor() {
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew Studio" description="Direct the work. Inspect the evidence. Keep your crew connected." actions={<div className="flex flex-wrap items-center gap-2">
-          <Stat value={working} label="working" live={working > 0} />
-          <Stat value={waiting} label="waiting on you" tone={waiting ? "wait" : undefined} />
-          <Stat value={perMinute} label="steps / min" />
-          <Stat value={formatTokens(today.tokens)} label="tokens today · all projects" />
-        </div>} />
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Studio floor"
+          status={waiting ? `${waiting} waiting on you${working ? ` · ${working} at work` : ""}` : working ? `${working} at work · ${perMinute} step${perMinute === 1 ? "" : "s"} in the last minute` : "Everyone's at their desk. Hand work over from Agents and watch it happen here."}
+          tone={waiting ? "wait" : working ? "live" : "idle"} />
       </header>
 
       <div className="floor-body">
         <section className="floor-pods" aria-label="Agents">
           {!!Object.keys(rooms).length && <div className="mb-5"><label className="text-[12px] text-fg-3">Room workspace <select className="ml-2 rounded-lg border border-line bg-panel px-3 py-2" value={roomId} onChange={e => setRoomId(e.target.value)}><option value="">All activity below</option>{Object.values(rooms).filter(room => !scope || room.repo === scope).map(room => <option key={room.id} value={room.id}>{room.title}</option>)}</select></label>{rooms[roomId] && <div className="mt-3 max-h-[520px] overflow-auto rounded-2xl border border-line"><CrewWorkspace room={rooms[roomId]} /></div>}</div>}
-          <FloorStage runs={runs} activity={activity} approvals={approvals} now={now} />
+          <CrewStudio3D runs={runs} activity={activity} approvals={approvals} now={now} />
           {onFloor.length === 0 ? null : (
             <div className="pods-grid">
               <AnimatePresence initial={false}>
@@ -165,14 +161,6 @@ export function CrewFloor() {
   );
 }
 
-function Stat({ value, label, live, tone }: { value: string | number; label: string; live?: boolean; tone?: "wait" }) {
-  return (
-    <span className={`floor-stat ${live ? "is-live" : ""} ${tone === "wait" ? "is-wait" : ""}`}>
-      <span className="mono text-[15px] font-semibold tabular-nums text-fg">{value}</span>
-      <span>{label}</span>
-    </span>
-  );
-}
 
 
 // ── a pod: one agent at work ────────────────────────────────────────────────────────────────

@@ -7,7 +7,8 @@ it("keeps the rail fixed and labelled: no hover expansion, every hub named", () 
   expect(shell).not.toContain("onMouseEnter={() => hover(true)}");
   expect(shell).not.toContain("open || labeled");
   expect(shell).toContain("<Sidebar />");
-  expect(shell).toMatch(/wide \? <HubSidebar \/> : <CompactRail \/>/);
+  expect(shell).toMatch(/return <CompactRail \/>;/);          // the rail is the only sidebar (Oct 5)
+  expect(shell).not.toContain("<HubSidebar />");
   expect(nav).toContain('className="hub-label"');            // the rail is labelled
   expect(nav).toMatch(/<span>\{tab\.label\}<\/span>/);      // every sidebar page is a named row
   expect(nav).not.toContain("side-tabs");                   // flat: no folding sub-sections

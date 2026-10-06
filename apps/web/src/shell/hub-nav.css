@@ -171,3 +171,60 @@
 .side .side-page[draggable="true"] { cursor: default; }
 .side .side-page.is-dragging { opacity: .4; }
 .side .side-page.is-over > .side-row { background: color-mix(in srgb, var(--hub, var(--amber)) 18%, transparent); transform: translateY(2px); transition: transform .15s, background-color .15s; }
+
+/* ── The rail is the sidebar (Oct 5) ───────────────────────────────────────────────────────────
+   Shua's orb on top, a pen for a new session, then the hubs. The selected hub gets a lit tile, an accent icon and a
+   bar on the window edge that slides between hubs. One accent, from the theme; motion is transform/opacity only. */
+.hub-rail { width: 72px; gap: 2px; padding: 10px 6px 12px; }
+.hub { width: 58px; padding: 8px 0 6px; border-radius: 12px; }
+.hub-on { border-radius: 12px; background: var(--active-bg, color-mix(in srgb, var(--text) 7%, transparent)) !important;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight, transparent) !important; }
+.hub.is-on { color: var(--text); } .hub.is-on .hub-icon { color: var(--amber); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--amber) 45%, transparent)); }
+.hub-label { font-size: 10.5px; font-weight: 520; color: inherit; }
+.hub:not(.is-on) .hub-label { color: var(--text-3); }
+.hub:hover .hub-label { color: var(--text-2, var(--text)); }
+.hub-bar { position: absolute; left: -7px; top: 50%; width: 3px; height: 22px; margin-top: -11px; border-radius: 0 3px 3px 0; background: var(--amber);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--amber) 70%, transparent); }
+
+.rail-shua { position: relative; display: grid; place-items: center; width: 46px; height: 46px; margin: 2px 0 4px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--amber) 26%, transparent), transparent 70%), var(--raised, rgba(255,255,255,.04));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, var(--line)), 0 6px 18px -8px color-mix(in srgb, var(--amber) 60%, transparent);
+  transition: transform .25s cubic-bezier(.2,.9,.3,1.4), box-shadow .2s; overflow: hidden; }
+.rail-shua:hover { transform: translateY(-1px) scale(1.04); }
+.rail-shua:active { transform: scale(.95); }
+.rail-shua.is-on { box-shadow: inset 0 0 0 1.5px var(--amber), 0 0 0 4px color-mix(in srgb, var(--amber) 16%, transparent), 0 8px 22px -8px color-mix(in srgb, var(--amber) 70%, transparent); }
+/* Something's happening: a slow ring turns around the orb; waiting on you, it's amber. */
+.rail-shua::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0; }
+.rail-shua.is-live::after, .rail-shua.is-wait::after { opacity: 1; background: conic-gradient(from 0deg, transparent 0 70%, var(--ring, var(--amber)) 90%, transparent);
+  -webkit-mask: radial-gradient(circle, transparent 20px, #000 21px); mask: radial-gradient(circle, transparent 20px, #000 21px); animation: rail-turn 2.4s linear infinite; }
+.rail-shua.is-wait { --ring: var(--wait, #ffb340); }
+@keyframes rail-turn { to { transform: rotate(360deg); } }
+.rail-new { display: grid; place-items: center; width: 40px; height: 32px; border-radius: 10px; color: var(--text-3); transition: color .15s, background .15s, transform .15s; }
+.rail-new:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.rail-new:active { transform: scale(.94); }
+.rail-sep { width: 28px; height: 1px; margin: 6px 0 4px; background: var(--line); flex: none; }
+:is(.rail-shua, .rail-new):focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+:root[data-idle] .rail-shua::after { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .rail-shua::after { animation: none; } }
+:root[data-motion="reduced"] .rail-shua::after { animation: none; }
+
+/* ── Icons only (Oct 5: "some of the text is long") ─────────────────────────────────────────────
+   The rail is a column of icons; each name is a tooltip pill that slides out to the right. */
+.hub-rail { width: 60px; padding: 10px 6px 12px; }
+.hub { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 13px; }
+.hub-on { border-radius: 13px; }
+.hub .hub-icon { width: 22px; height: 22px; }
+.hub-bar { left: -8px; }
+.hub-label { position: absolute; left: calc(100% + 12px); top: 50%; z-index: 60; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 9px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text) !important; background: var(--panel, #17171b); box-shadow: 0 10px 30px -10px rgba(0,0,0,.7), inset 0 0 0 1px var(--line);
+  opacity: 0; pointer-events: none; transform: translate(-6px, -50%); transition: opacity .14s ease, transform .18s cubic-bezier(.2,.9,.3,1.2); }
+.hub-label::before { content: ""; position: absolute; left: -4px; top: 50%; width: 8px; height: 8px; margin-top: -4px; background: inherit; transform: rotate(45deg); box-shadow: inset 1px -1px 0 0 var(--line); }
+.hub-label kbd { font: 600 10.5px var(--font-mono, ui-monospace); color: var(--text-3); }
+.hub:hover .hub-label, .hub:focus-visible .hub-label { opacity: 1; transform: translate(0, -50%); transition-delay: .25s, .25s; }
+.rail-shua { width: 42px; height: 42px; }
+.rail-new { width: 40px; height: 34px; }
+@media (prefers-reduced-motion: reduce) { .hub-label { transition: opacity .1s; transform: translate(0, -50%); } }
+/* Tooltips stick out of the rail: it must not clip them (nine icons fit any window height). */
+.hub-rail, .rail-wrap { overflow: visible; }
+/* The main panel is the rail's next sibling in the workspace grid and painted over its tooltips: lift the rail. */
+.rail-wrap { position: relative; z-index: 60; }

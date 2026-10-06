@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { api } from "./api";
 import { LiveCall, type LiveEvent, type LiveState } from "./live-voice";
 import { yesOrNo } from "./handsfree";
 import { copyForPaste, pasteTarget } from "./paste-hint";
@@ -142,6 +143,20 @@ export function checkLiveReady(): Promise<boolean> {
   }).catch(() => liveUsable()).finally(() => { readyCheck = undefined; });
   return readyCheck;
 }
+/**
+ * Whether Live can be the voice right now, kept current (checked on mount, then every 30 s). A plan at its limit
+ * (Oct 5: Codex until Sunday) must not leave every ask, button and fn press queued into a call that can't connect.
+ */
+export function useLiveUsable(): boolean {
+  const [ok, setOk] = useState(liveUsable);
+  useEffect(() => {
+    let alive = true;
+    void checkLiveReady().then((v) => alive && setOk(v));
+    const t = setInterval(() => setOk(liveUsable()), 30_000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+  return ok;
+}
 /** While Live is down, look again on launch, on focus and every 2 minutes: it comes back the moment Codex does. */
 export function watchLiveReady() {
   const look = () => { if (!liveUsable()) void checkLiveReady(); };
@@ -182,6 +197,7 @@ function onEvent(e: LiveEvent) {
     }
     return;
   }
+  if (e.type === "latency") { void api("/api/shua/voice", { body: { ms: e.ms, mode: "live" } }).catch(() => {}); return; }
   touch();
   if (e.type === "state") {
     if (e.state === "ended" || e.state === "error") {

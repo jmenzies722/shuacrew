@@ -127,6 +127,13 @@ describe('personal assistant brain: Codex first, Claude as backup', () => {
   store.append('runtime.limited',{runtime:'codex',until:Date.now()+60_000,message:'limited'});
   expect(created(store,supervisor.launch({ask:'Hello',labels:['buddy'],hold:true}))).toMatchObject({runtime:'claude'});
  });
+ it('goes back to Codex the moment Codex reports usage left (a reset plan), not when the old window ends',()=>{
+  const {store,supervisor}=world();
+  store.append('runtime.limited',{runtime:'codex',until:Date.now()+6*86_400_000,message:'limited until Sunday'});
+  expect(created(store,supervisor.launch({ask:'Hello',labels:['buddy'],hold:true}))).toMatchObject({runtime:'claude'});
+  supervisor.usageAvailable('codex');
+  expect(created(store,supervisor.launch({ask:'Hello again',labels:['buddy'],hold:true}))).toMatchObject({runtime:'codex'});
+ });
  it('finishes a turn on Claude when Codex breaks mid-turn',async()=>{
   const {store,supervisor}=world(async function*(){yield {type:'error',message:'Codex app-server exited unexpectedly'};});
   const id=supervisor.launch({ask:'what time is it',labels:['buddy']});
@@ -144,5 +151,27 @@ describe('personal assistant brain: Codex first, Claude as backup', () => {
   const id=supervisor.launch({ask:'hi',labels:['buddy']});
   await until(()=>fold(store.read(0)).runs[id]?.status==='failed');
   expect(store.forRun(id).filter(e=>e.kind==='run.routed')).toHaveLength(1);
+ });
+});
+
+describe('backlog: parked until you start it', () => {
+ const make=()=>{
+  const store=new EventStore(':memory:');
+  const mock=Object.assign(new MockRuntime({pace:0}),{id:'mock'});
+  const supervisor=new Supervisor(store,new Map<string,Runtime>([['mock',mock]]),{workspace:mkdtempSync(path.join(os.tmpdir(),'shua-backlog-')),roots:[]});
+  cleanups.push(()=>{supervisor.shutdown();store.close();});
+  return {store,supervisor};
+ };
+ const status=(store:EventStore,id:string)=>fold(store.read(0)).runs[id]?.status;
+ it('stays parked through pumps, provider restores and gateway restarts; starts only when asked',async()=>{
+  const {store,supervisor}=make();
+  const id=supervisor.launch({ask:'Write the pricing page copy',runtime:'mock',later:true});
+  supervisor.pump(); supervisor.restore('mock'); supervisor.recover();
+  await new Promise((r)=>setTimeout(r,30));
+  expect(status(store,id)).toBe('paused');
+  expect(supervisor.inBacklog(id)).toBe(true);
+  expect(supervisor.startBacklog(id)).toBe(true);
+  await until(()=>status(store,id)==='done');
+  expect(supervisor.startBacklog(id)).toBe(false); // already started
  });
 });

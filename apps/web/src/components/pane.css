@@ -22,3 +22,42 @@
 .pane-body-wide { max-width:1440px; }
 @media (max-width:700px) { .pane-body { padding:20px 16px 32px; } }
 .floor-head .pane-header { flex:1; margin-bottom:0; }
+
+/* Every page header in the Control Room language: the same title size as the Tools hub, a status line when the page has
+   something live to say, and the sweep of light (cr-trace) instead of a plain rule underneath. */
+.workspace-frame .pane-header.cr-head { border-bottom: 0; padding-bottom: 18px; margin-bottom: 22px; }
+:root .pane-header.cr-head h1, :root[data-design] .pane-header.cr-head h1 { font-size: 30px !important; line-height: 1.08; letter-spacing: -.028em; margin-bottom: 8px; }
+.pane-header.cr-head .cr-status { margin-top: 2px; }
+.pane-header.cr-head .pane-desc { margin: 6px 0 0; }
+.pane-header.cr-head .pane-desc.is-quiet { font-size: 12.5px; }
+.pane-header.cr-head .pane-actions { align-self: flex-end; }
+
+/* Header stats as a readout strip (Control Room): big tabular numbers over small labels, hairlines between, a live
+   dot that breathes. Onyx flattens .stat-chip with !important, so these carry the same weight inside page headers. */
+html:root .pane-header.cr-head .stat-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin-top: 16px; }
+html:root .pane-header.cr-head .stat-chip { position: relative; display: flex !important; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 0 20px !important; height: auto !important; border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; text-decoration: none; }
+html:root .pane-header.cr-head .stat-chip:first-child { padding-left: 0 !important; }
+html:root .pane-header.cr-head .stat-chip + .stat-chip::before { content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 1px; margin: 0; background: var(--line); }
+html:root .pane-header.cr-head .stat-chip strong { margin: 0; font-size: 22px; line-height: 1.05; font-weight: 620; letter-spacing: -.022em; font-variant-numeric: tabular-nums; color: var(--text); }
+/* A live figure gets its breathing dot just left of the number. */
+html:root .pane-header.cr-head .stat-chip > i { position: absolute; left: 20px; top: 9px; margin: 0; }
+html:root .pane-header.cr-head .stat-chip:has(> i) { padding-left: 34px !important; }
+html:root .pane-header.cr-head .stat-chip:first-child > i { left: 0; }
+html:root .pane-header.cr-head .stat-chip:first-child:has(> i) { padding-left: 14px !important; }
+html:root .pane-header.cr-head .stat-chip span { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+html:root .pane-header.cr-head .stat-chip.is-amber strong { color: var(--accent-text, var(--amber)); }
+html:root .pane-header.cr-head .stat-chip.is-wait strong { color: var(--wait); }
+html:root .pane-header.cr-head .stat-chip.is-ok strong { color: var(--ok); }
+html:root .pane-header.cr-head .stat-chip.is-bad strong { color: var(--bad); }
+html:root .pane-header.cr-head a.stat-chip:hover span { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Shua's chip on every page breathes while the crew works and turns amber while something waits on you. */
+.workspace-suggestion { position: relative; }
+.workspace-suggestion.is-live::after, .workspace-suggestion.is-wait::after { content: ""; position: absolute; left: 6px; top: 50%; width: 22px; height: 22px; margin-top: -11px; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 60%, transparent); animation: chip-ring 2.2s ease-out infinite; }
+.workspace-suggestion.is-wait::after { box-shadow: 0 0 0 2px color-mix(in srgb, var(--wait) 70%, transparent); }
+@keyframes chip-ring { 0% { transform: scale(.85); opacity: .9; } 100% { transform: scale(1.5); opacity: 0; } }
+:root[data-idle] .workspace-suggestion::after { animation-play-state: paused; }
+:root[data-motion="reduced"] .workspace-suggestion::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .workspace-suggestion::after { animation: none; } }

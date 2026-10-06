@@ -47,10 +47,13 @@ export interface RunContext {
 }
 
 /** What every runtime's output is mapped onto. */
+export interface PlanStep { text: string; status: "pending" | "active" | "done" }
+
 export type RuntimeEvent =
   | { type: "session"; id: string } // the runtime's own conversation id, for resume
   | { type: "text"; text: string; final?: boolean } // a delta, or a whole message when final
-  | { type: "thinking"; text: string }
+  /** Reasoning, whole — or a streamed piece of it (`delta`), which the gateway batches like text. */
+  | { type: "thinking"; text: string; delta?: boolean }
   | { type: "tool-call"; id: string; tool: string; input: unknown; subagent?: string }
   | { type: "tool-result"; id: string; ok: boolean; output: string; durationMs?: number }
   | { type: "file"; path: string; change?: "added" | "modified" | "deleted" }
@@ -59,6 +62,8 @@ export type RuntimeEvent =
   | { type: "subagent-end"; id: string; ok: boolean; summary?: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; cacheTokens?: number; costUsd?: number; contextUsed?: number; contextLimit?: number; accounting?: "codex-delta-v1" | "codex-last-v1" }
   | { type: "checkpoint"; note?: string }
+  /** The agent's checklist, whole, each time it changes. */
+  | { type: "plan"; steps: PlanStep[]; note?: string }
   /** The subscription's usage window is exhausted; `until` is when it lifts (ms since epoch). */
   | { type: "limited"; until: number; message: string; model?: string; credits?: boolean }
   | { type: "done"; text: string; durationMs?: number }
@@ -84,6 +89,11 @@ export interface Runtime {
   models: Array<{ id: string; label: string; tier: "fast" | "balanced" | "frontier" }>;
   start(run: RunSpec, ctx: RunContext): AsyncIterable<RuntimeEvent>;
   status(): Promise<RuntimeStatus>;
+  /**
+   * Optional: get the next turn of this conversation ready before it's sent (start the agent, reconnect the thread),
+   * so the turn itself begins at once. `run` is the turn as it will be, minus the ask. A no-op when it can't help.
+   */
+  prepare?(run: RunSpec, env: NodeJS.ProcessEnv): void;
 }
 
 /** Recognise a usage-window / rate-limit message and, when it says, when the window lifts. */

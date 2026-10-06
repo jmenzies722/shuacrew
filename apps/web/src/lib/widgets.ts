@@ -60,9 +60,12 @@ export function parseWidgets(value: unknown): WidgetPrefs {
 }
 
 /** The widgets shown in one place, in your order. */
+/** Widgets that no longer exist as a surface (the lofi radio moved out; music lives in Studio). Kept in saved
+ * preferences so nothing else shifts, but never shown or offered. */
+export const RETIRED: ReadonlySet<WidgetId> = new Set<WidgetId>(["playing"]);
 export function placed(prefs: WidgetPrefs, where: Placement): WidgetId[] {
   const on = new Set(prefs[where]);
-  return prefs.order.filter((id) => on.has(id));
+  return prefs.order.filter((id) => on.has(id) && !RETIRED.has(id));
 }
 
 export function moveWidget(order: WidgetId[], id: WidgetId, step: -1 | 1): WidgetId[] {

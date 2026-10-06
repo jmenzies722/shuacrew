@@ -2,7 +2,16 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, OctagonAlert } from "lucide-react";
 import { api } from "../lib/api";
 
-interface Alert { id: string; level: "warn" | "critical"; text: string }
+export interface Alert { id: string; level: "warn" | "critical"; text: string }
+/** The gateway's own health findings (memory, disk, voice engine, runtimes), refreshed every 30 s; null until read. */
+export function useHealthAlerts() {
+  const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  useEffect(() => {
+    const load = () => void api<{ alerts?: Alert[] }>("/api/status").then((s) => setAlerts(s.alerts ?? [])).catch(() => setAlerts(null));
+    load(); const t = setInterval(load, 30_000); return () => clearInterval(t);
+  }, []);
+  return alerts;
+}
 /** Health at a glance: real problems from the gateway's own measurements, or a plain "all clear". */
 export function HealthAlerts() {
   const [alerts, setAlerts] = useState<Alert[] | null>(null);

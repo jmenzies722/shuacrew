@@ -13,6 +13,7 @@ import { budgetUse, getWorkspace, saveWorkspace, useWorkspace } from "../lib/wor
 import { radioFollows, setRadioFollows, useNowPlaying } from "./NowPlaying";
 import type { WidgetCtx } from "./TopBarWidgets";
 import "./studio-desk.css";
+import { localDay } from "@shuacrew/core/projections";
 
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 
@@ -56,7 +57,7 @@ export function MixDesk({ ctx, compact: slim }: { ctx: WidgetCtx; compact?: bool
   const prefs = useMix();
   const workspace = useWorkspace();
   const channels = mixChannels(crew.members, crew.runs);
-  const today = crew.today.day === new Date().toISOString().slice(0, 10) ? crew.today : { tokens: 0, costUsd: null, runs: 0 };
+  const today = crew.today.day === localDay() ? crew.today : { tokens: 0, costUsd: null, runs: 0 };
   const master = masterLevel(today.tokens, workspace.dailyTokenBudget);
   const used = budgetUse(today.tokens, workspace.dailyTokenBudget);
   const [cue, setCue] = useState("");

@@ -1,0 +1,26 @@
+/* Library extras: the second-brain start, a page-wide drop target, and asking Shua from the search box. */
+.lx-brain { margin-top: 18px; padding: 24px; border-radius: 24px; border: 1px solid var(--line); background: radial-gradient(100% 140% at 0% 0%, color-mix(in srgb, var(--amber) 14%, transparent), transparent 60%), var(--raised, rgba(255,255,255,.03)); }
+.lx-brain-head { display: flex; gap: 16px; align-items: center; }
+.lx-brain-head > i { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); }
+.lx-brain h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.015em; color: var(--text); }
+.lx-brain p { margin: 4px 0 0; max-width: 640px; font-size: 13.5px; color: var(--text-2); }
+.lx-brain-ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+@media (max-width: 900px) { .lx-brain-ways { grid-template-columns: 1fr; } }
+.lx-brain-ways > * { display: grid; gap: 6px; justify-items: start; padding: 16px; border-radius: 16px; border: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; }
+.lx-brain-ways > * svg { color: var(--amber); }
+.lx-brain-ways strong { font-size: 14px; }
+.lx-brain-ways small { font-size: 12px; color: var(--text-3); }
+.lx-brain-ways button { cursor: pointer; transition: transform .18s cubic-bezier(.2,.9,.3,1.3), border-color .15s; }
+.lx-brain-ways button:hover:not(:disabled) { transform: translateY(-2px); border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); }
+.lx-brain-ways button:disabled { opacity: .5; cursor: default; }
+.lx-brain-drop { border-style: dashed !important; }
+.lx-drop { position: absolute; inset: 12px; z-index: 50; display: grid; place-items: center; border-radius: 24px; border: 2px dashed color-mix(in srgb, var(--amber) 70%, transparent);
+  background: color-mix(in srgb, var(--ink, #0b0b0d) 75%, transparent); backdrop-filter: blur(8px); pointer-events: none; animation: lx-in .15s ease both; }
+.lx-drop > div { display: grid; justify-items: center; gap: 6px; color: var(--text); text-align: center; }
+.lx-drop svg { color: var(--amber); }
+.lx-drop strong { font-size: 18px; }
+.lx-drop span { font-size: 13px; color: var(--text-2); }
+.lx-toast { position: fixed; bottom: 24px; left: 50%; z-index: 90; transform: translateX(-50%); padding: 10px 16px; border-radius: 99px; background: var(--panel, #17171b); color: var(--text); font-size: 13px;
+  box-shadow: 0 12px 30px -10px rgba(0,0,0,.7), inset 0 0 0 1px var(--line); animation: lx-in .2s ease both; }
+.lx-ask { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 99px; border: 0; background: var(--amber); color: var(--on-accent, #fff); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+@keyframes lx-in { from { opacity: 0; } }

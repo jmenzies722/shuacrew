@@ -1,5 +1,3 @@
-import { SparkToday } from "../components/SparkToday";
-import "./policy.css";
 import type { Decision } from "@shuacrew/core/policy-types";
 import { Button, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -38,53 +36,6 @@ function Starter({ items }: { items: Array<{ title: string; detail: string; onCl
 
 export { Integrations } from "./Integrations";
 
-const TRY = ["git push --force origin main", "rm -rf ~/Developer", "curl https://get.example.sh | sh", "cat .env", "npm install left-pad", "git commit -am wip"];
-export function Policy() {
-  const [verify, setVerify] = useState<{ ok: boolean; count: number; brokenAt?: number; why?: string } | null>(null);
-  const [command, setCommand] = useState(TRY[0]!);
-  const [explained, setExplained] = useState<Decision | null>(null);
-  const activity = useLive((s) => s.activity);
-  const explain = async (c = command) => { setCommand(c); setExplained(await api<Decision>("/api/policy/explain", { body: { tool: "Bash", input: { command: c } } })); };
-  useEffect(() => { void explain(); void api<typeof verify>("/api/audit/verify").then(setVerify).catch(() => {}); }, []);
-  // Real decisions, newest first: what the policy decided on its own, and what you decided when it asked.
-  const decisions = useMemo(() => activity.filter((e) => e.kind === "policy.decided" || e.kind === "approval.decided").slice(-40).reverse(), [activity]);
-  const asked = useMemo(() => new Map(activity.filter((e) => e.kind === "approval.requested").map((e) => { const b = e.body as { id: string; tool: string }; return [b.id, b.tool]; })), [activity]);
-  const counts = useMemo(() => { const c = { allow: 0, deny: 0, ask: 0 }; for (const e of activity) if (e.kind === "policy.decided") c[(e.body as { verdict: "allow" | "deny" | "ask" }).verdict]++; return c; }, [activity]);
-  const tone = (v?: string) => (v === "allow" ? "ok" : v === "deny" ? "bad" : "wait");
-  return (
-    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-[1440px] px-8 pb-12 pt-6">
-      <PaneHeader title="Policy & Audit" description="One policy for every runtime; the tightest rule wins; every decision says which rule made it."
-        actions={<span className={`pol-chain is-${verify ? (verify.ok ? "ok" : "bad") : "wait"}`}><StatusGlyph tone={verify ? (verify.ok ? "ok" : "bad") : "wait"} />{verify ? (verify.ok ? `Audit chain intact · ${verify.count.toLocaleString()} events` : `Chain broken at #${verify.brokenAt}`) : "Checking the chain…"}</span>} />
-      <SparkToday />
-      <section className="pol-tester">
-        <Eyebrow className="mb-3">Why would this be allowed?</Eyebrow>
-        <div className="flex gap-2">
-          <input value={command} onChange={(e) => setCommand(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void explain()} className="pol-input mono" aria-label="Command to explain" />
-          <Button variant="primary" onClick={() => void explain()}>Explain</Button>
-        </div>
-        <div className="pol-try">{TRY.map((t) => <button key={t} type="button" className={`mono ${t === command ? "is-on" : ""}`} onClick={() => void explain(t)}>{t}</button>)}</div>
-        {explained && <div className={`pol-verdict is-${tone(explained.verdict)}`}>
-          <strong>{explained.verdict}</strong>
-          <div><div>{explained.reason}</div><small>Rule <span className="mono">{explained.rule}</span> · <span className="mono">{explained.layer}</span> layer · risk {explained.risk}</small></div>
-        </div>}
-      </section>
-      <div className="pol-grid">
-        <section className="pol-card">
-          <header><Eyebrow>Decisions</Eyebrow><span className="pol-counts"><i className="is-ok">{counts.allow} allowed</i><i className="is-wait">{counts.ask} asked</i><i className="is-bad">{counts.deny} denied</i></span></header>
-          {decisions.length === 0 && <p className="pol-empty">Decisions appear here as your crew works: every tool call the policy allowed, asked about or blocked, and what you decided.</p>}
-          {decisions.map((e) => { const b = e.body as { tool?: string; verdict?: string; rule?: string; reason?: string; allow?: boolean; by?: string }; const v = e.kind === "approval.decided" ? (b.allow ? "allow" : "deny") : b.verdict;
-            return <div key={e.seq} className="pol-row"><StatusGlyph tone={tone(v)} /><span className="pol-row-main"><b>{e.kind === "approval.decided" ? `${b.by === "timeout" ? "Timed out:" : `${b.by?.startsWith("you") ? "You" : "Policy"} ${b.allow ? "allowed" : "denied"}`} ${toolPhrase(asked.get((b as { id?: string }).id ?? ""))}` : toolPhrase(b.tool)}</b><small>{e.kind === "approval.decided" ? (b.by === "timeout" ? "timed out" : `decided ${b.by?.includes("(") ? b.by.slice(b.by.indexOf("(") + 1, -1) : "in the app"}`) : `${b.rule} · ${b.reason}`}</small></span><span className="pol-when">{since(e.at)}</span></div>; })}
-        </section>
-        <section className="pol-card">
-          <header><Eyebrow>Audit chain</Eyebrow><Button onClick={async () => setVerify(await api("/api/audit/verify"))}>Verify now</Button></header>
-          <p className="pol-note">Every event is chained to the one before it with SHA-256. Changing, deleting or reordering any of them breaks the chain, and this says where.</p>
-          <div className="pol-chainlist">{activity.slice(-8).reverse().map((e) => <div key={e.seq} className="pol-link"><span className="mono">#{e.seq}</span><span className="pol-row-main"><b className="mono">{e.kind}</b></span><span className="pol-when">{since(e.at)}</span></div>)}</div>
-        </section>
-      </div>
-    </div></div>
-  );
-}
-
 interface RuntimeRow {
   id: string;
   label: string;
@@ -121,7 +72,6 @@ export function RuntimeSettings() {
   return (
       <Panel className="p-5">
         <div className="mb-3 flex items-center">
-          <Eyebrow>Runtimes</Eyebrow>
           <Button size="s" className="ml-auto" onClick={() => void test()} disabled={testing}>
             {testing ? "Testing…" : "Test connections"}
           </Button>
@@ -189,7 +139,6 @@ export function BackupsPanel() {
   return (
     <Panel className="p-5">
       <div className="mb-3 flex items-center gap-3">
-        <Eyebrow>Backups</Eyebrow>
         {last && <StatusGlyph tone={last.error ? "bad" : Date.now() - last.at < 36 * 3_600_000 ? "ok" : "wait"} />}
         <span className="text-[12.5px] text-fg-2">
           {!last ? "No backup yet — the first runs tonight at 2:30." : last.error ? `The last backup failed: ${last.error}` : `Last backup ${ago(last.at)} · ${mb(last.bytes)}`}
@@ -233,7 +182,6 @@ export function AlwaysOn() {
   return (
     <Panel className="p-5">
       <div className="mb-3 flex items-center gap-3">
-        <Eyebrow>Always on</Eyebrow>
         {health && <StatusGlyph tone={health.service ? "ok" : "wait"} />}
         <span className="text-[12.5px] text-fg-2">
           {!health ? "Checking…" : health.service ? `On — starts at login and restarts itself. Up ${since}.` : `Off — the gateway runs only while something started it (up ${since}).`}

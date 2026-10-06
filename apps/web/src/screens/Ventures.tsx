@@ -1,8 +1,10 @@
 import { Earnings } from "../components/Earnings";
 import { metricLabel, totalsByCurrency } from "../lib/venture-metrics";
 import "./ventures-pipe.css";
+import "./projects-home.css";
+import { FirstDollar, IdeaForge } from "../components/ProjectsHome";
 import type { PlayView, RunView, VentureStage, VentureView } from "@shuacrew/core/projections";
-import { Button, StatusGlyph, toneOf } from "@shuacrew/ui";
+import { Button, StatusGlyph, since, toneOf } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowRight, ArrowUp, Check, CreditCard, Globe, KeyRound, Pencil, Play, Plus, RefreshCw, Rocket, ShieldCheck, Target, Trash2, TrendingUp, Unplug, X } from "lucide-react";
 import { motion } from "motion/react";
@@ -45,36 +47,37 @@ const stageIndex = (s: VentureStage) => STAGES.findIndex((x) => x.id === s);
 export function Ventures() {
   const ventures = useLive((s) => s.crew.ventures), income = useLive((s) => s.crew.income);
   const [editing, setEditing] = useState<Partial<VentureView> | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null), [dropOn, setDropOn] = useState<VentureStage | null>(null);
   const list = useMemo(() => Object.values(ventures).sort((a, b) => b.updatedAt - a.updatedAt), [ventures]);
   const totals = totalsByCurrency(list);
   const open = list.filter((v) => v.stage !== "paused" && v.stage !== "stopped"), focus = open.length <= 3;
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader children={<StatStrip stats={[{ value: list.length, label: list.length === 1 ? "venture" : "ventures" }, { value: list.filter((v) => ["building", "launching", "earning"].includes(v.stage)).length, label: "past the idea stage", tone: "amber" }, { value: list.filter((v) => v.stage === "earning").length, label: "earning", tone: "ok" }]} />} eyebrow="Work" icon={Rocket} title="Projects"
-          description="What you're building and what it earns. The crew does the work; every dollar is tracked here."
+        <PaneHeader {...(() => { const earning = list.filter((v) => v.stage === "earning").length, moving = list.filter((v) => ["building", "launching"].includes(v.stage)).length; return earning ? { status: `${earning} earning · ${list.length} project${list.length === 1 ? "" : "s"} in all`, tone: "ok" as const } : moving ? { status: `${moving} being built or launched · none earning yet`, tone: "live" as const } : list.length ? { status: `${list.length} project${list.length === 1 ? "" : "s"} · none earning yet`, tone: "idle" as const } : { status: "No projects yet. Pick an idea below and the crew takes it from there.", tone: "idle" as const }; })()} eyebrow="Work" icon={Rocket} title="Projects"
           actions={<>
             <Button variant="quiet" onClick={() => setEditing({})}><Plus size={14} /> New project</Button>
           </>} />
         <Earnings ventures={list} income={income} />
-        {/* A handful of ventures: each gets the room to say where it is and what's next. More than that: the pipeline. */}
-        {focus ? <div className="vn-focus-list">
-          {open.map((v) => <FocusVenture key={v.id} venture={v} />)}
-          <button type="button" className="vn-new vn-new-row" onClick={() => setEditing({})}><Plus size={15} /><strong>New project</strong><span>Name the idea and who it's for. The crew validates it first.</span></button>
-        </div> :
+        <div className="ph-top"><FirstDollar onNew={() => setEditing({})} />{open.length < 3 && <IdeaForge onStart={(draft) => setEditing(draft)} />}</div>
+        {/* A handful of ventures get the room to say where they are; the pipeline always shows the whole road. */}
+        {focus && open.length > 0 && <div className="vn-focus-list">{open.map((v) => <FocusVenture key={v.id} venture={v} />)}</div>}
         <div className="vn-pipe" role="list" aria-label="Pipeline">
           {STAGES.map((stage, i) => {
             const here = list.filter((v) => v.stage === stage.id);
-            return <section key={stage.id} className={`vn-lane ${here.length ? "has-cards" : ""}`} role="listitem" aria-label={stage.label}>
+            // Drag a project onto the next stage to move it there (the move is logged with the project's history).
+            return <section key={stage.id} className={`vn-lane ${here.length ? "has-cards" : ""}${dropOn === stage.id ? " is-drop" : ""}`} role="listitem" aria-label={stage.label}
+              onDragOver={(e) => { if (dragging) { e.preventDefault(); setDropOn(stage.id); } }} onDragLeave={() => setDropOn((d) => (d === stage.id ? null : d))}
+              onDrop={(e) => { e.preventDefault(); setDropOn(null); const id = dragging; setDragging(null); if (id && ventures[id]?.stage !== stage.id) void api(`/api/ventures/${id}/stage`, { body: { stage: stage.id, note: "moved on the board" } }); }}>
               <header><span className="vn-lane-n">{i + 1}</span><div><strong>{stage.label}</strong><small>{stage.hint}</small></div><em>{here.length}</em></header>
               <div className="vn-lane-cards">
-                {here.map((v) => <VentureCard key={v.id} venture={v} />)}
+                {here.map((v) => <div key={v.id} draggable onDragStart={(e) => { setDragging(v.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDragging(null); setDropOn(null); }} className={dragging === v.id ? "vn-dragging" : ""}><VentureCard venture={v} /></div>)}
                 {stage.id === "idea" && <button type="button" className="vn-new" onClick={() => setEditing({})}><Plus size={15} /><strong>New project</strong><span>Name the idea and who it's for. The crew validates it first.</span></button>}
                 {stage.id !== "idea" && !here.length && <div className="vn-lane-empty"><span>Next move</span>{NEXT[STAGES[i - 1]!.id]?.label ?? stage.hint}</div>}
               </div>
             </section>;
           })}
-        </div>}
+        </div>
         {list.some((v) => v.stage === "paused" || v.stage === "stopped") && <section className="vn-shelf" aria-label="On the shelf">
           <h2>On the shelf</h2>
           <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">{list.filter((v) => v.stage === "paused" || v.stage === "stopped").map((v) => <VentureCard key={v.id} venture={v} />)}</div>
@@ -189,7 +192,7 @@ export function VenturePage() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1100px] px-6 py-6" style={{ "--venture": v.color } as React.CSSProperties}>
         <Link to="/ventures" className="text-[12px] text-fg-3 hover:text-fg">
-          ← Ventures
+          ← Projects
         </Link>
         <header className="mt-3 flex flex-wrap items-start gap-4">
           <span className="vn-emoji is-large">
@@ -245,7 +248,7 @@ export function VenturePage() {
                 <SyncButton id={v.id} />
               )}
             </div>
-            <small>{v.metrics ? `${metricLabel(v)} · ${new Date(v.metrics.at).toLocaleString()}` : "No measured revenue yet"}. Profit is unknown without complete costs.</small>
+            <small title={v.metrics ? `${new Date(v.metrics.at).toLocaleString()}. Profit is unknown without complete costs.` : undefined}>{v.metrics ? `${metricLabel(v)} · updated ${since(v.metrics.at)}` : "No measured revenue yet"}</small>
             {v.automation && v.automation.state !== "started" && <AutomationFailure venture={v} />}
             {v.syncError && <div className="mt-2 rounded-[8px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12px] text-bad">Last sync failed: {v.syncError}</div>}
             <div className="mt-4 grid grid-cols-3 gap-2.5">

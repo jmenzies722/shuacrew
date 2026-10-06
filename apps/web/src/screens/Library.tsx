@@ -14,6 +14,8 @@ import { SendMenu } from "../components/SendMenu";
 import { useLive } from "../lib/live";
 import { recentlyPlayed } from "../lib/studio";
 import { isMac, pickFolder } from "../lib/native";
+import { AskLibrary, DropLayer, SecondBrain, useDropToLearn } from "../components/LibraryExtras";
+import "./library-extras.css";
 import { Glyph } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
@@ -42,17 +44,20 @@ const bytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 10
 export function Library() {
   const artifacts = useLive((s) => s.crew.artifacts);
   const knowledge = useLive((s) => s.crew.knowledge);
-  const [tab, setTab] = useState<"made" | "known">("made");
+  const [picked, setTab] = useState<"made" | "known" | null>(null);
   const [kind, setKind] = useState<Kind | "all">("all");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [open, setOpen] = useState<{ type: "artifact" | "knowledge"; id: string; file?: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  const drop = useDropToLearn();
 
   const made = useMemo(() => Object.values(artifacts).sort((a, b) => b.updatedAt - a.updatedAt), [artifacts]);
   const crate = useMemo(() => recentlyPlayed(made, Date.now(), 8), [made]);
   const known = useMemo(() => Object.values(knowledge).sort((a, b) => b.addedAt - a.addedAt), [knowledge]);
   const shown = kind === "all" ? made : made.filter((a) => a.kind === kind);
+  // Open on whichever side has something in it, until you pick one.
+  const tab = picked ?? (!made.length && known.length ? "known" : "made");
 
   // Deep link from a chat card: /library#a_123
   useEffect(() => {
@@ -66,15 +71,18 @@ export function Library() {
     return () => clearTimeout(t);
   }, [query, artifacts, knowledge]);
 
+  const empty = !Object.keys(artifacts).length && !Object.keys(knowledge).length;
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto relative" {...drop.bind}>
+      <DropLayer over={drop.over} status={drop.status} />
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader children={<StatStrip stats={[{ value: Object.keys(artifacts).length, label: "made by the crew" }, { value: Object.keys(knowledge).length, label: "in your knowledge" }, { value: Object.values(artifacts).filter((a) => a.createdAt > Date.now() - 7 * 86_400_000).length, label: "saved this week", tone: "ok" }]} />} eyebrow="Your collected work" icon={LibraryBig} title="Library" description="What the crew made, and what you gave it to know. Agents search it before they start and save their deliverables here."
+        <PaneHeader {...(() => { const made = Object.keys(artifacts).length, known = Object.keys(knowledge).length; return made + known ? { status: [made && `${made} made by the crew`, known && `${known} you added`].filter(Boolean).join(" · "), tone: "ok" as const } : { status: "Empty for now. Everything the crew makes, and anything you add, lands here.", tone: "idle" as const }; })()} icon={LibraryBig} title="Library"
           actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
 
         <label className="lib-search">
           <Search size={15} className="text-fg-3" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search everything — reports, pages, your notes and docs…" aria-label="Search the library" />
+          <AskLibrary query={query} />
           {query && (
             <button onClick={() => setQuery("")} className="member-icon" aria-label="Clear search">
               <X size={13} />
@@ -82,9 +90,10 @@ export function Library() {
           )}
         </label>
 
+        {empty && !hits && <SecondBrain onWrite={() => setAdding(true)} onAdded={() => undefined} />}
         {hits ? (
           <SearchResults hits={hits} onOpen={(h) => setOpen({ type: h.type, id: h.id, file: h.type === "knowledge" && h.where !== "note" ? h.where : undefined })} />
-        ) : (
+        ) : empty ? null : (
           <>
             <div className="mb-4 mt-5 flex flex-wrap items-center gap-2">
               <div className="seg" role="tablist">
@@ -198,7 +207,7 @@ function SourceRow({ source: k, onOpen }: { source: KnowledgeView; onOpen: () =>
         </span>
         <span className="hidden shrink-0 text-right text-[11.5px] text-fg-3 sm:block">
           {k.source === "folder" ? `${k.files} files · ` : ""}
-          {k.chunks} passages · {bytes(k.size)}
+          {k.chunks} passage{k.chunks === 1 ? "" : "s"} · {bytes(k.size)}
           <br />
           added {ago(k.addedAt)}
         </span>

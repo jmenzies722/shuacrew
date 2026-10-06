@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { CaptionLine } from "../lib/buddy-voice";
+import { prose } from "../lib/plain";
 
 const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced";
 /**
@@ -62,13 +63,62 @@ export function NotchCaption({ line, lines = 3 }: { line: CaptionLine | null; li
     if (!same) setShown(0);
     timers.current.forEach(clearTimeout);
     const elapsed = performance.now() - start;
-    timers.current = fitTimes(revealTimes(line.text, line.speed), line.text, line.speed, line.durationMs)
+    const said = prose(line.text); // timed on the words actually shown
+    timers.current = fitTimes(revealTimes(said, line.speed), said, line.speed, line.durationMs)
       .map((at, i) => setTimeout(() => setShown((s) => Math.max(s, i + 1)), Math.max(0, at - elapsed)));
   }, [line]);
   if (!chain.length) return null;
-  const current = chain.at(-1)!, words = current.text.split(/\s+/).filter(Boolean);
+  const current = chain.at(-1)!, words = prose(current.text).split(/\s+/).filter(Boolean);
   return <Rolling className="notch-caption" lines={lines}>
-    {chain.slice(0, -1).map((s) => <span key={s.key} className="is-past">{s.text} </span>)}
+    {chain.slice(0, -1).map((s) => <span key={s.key} className="is-past">{prose(s.text)} </span>)}
     <span key={current.key}>{words.map((w, i) => <span key={i} className={i < shown ? "is-said" : "is-next"}>{w} </span>)}</span>
+  </Rolling>;
+}
+
+const norm = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+/** Where a spoken sentence starts among the reply's words, at or after `from` (first two words must match). */
+export function sentenceStart(words: string[], sentence: string[], from: number): number {
+  const a = norm(sentence[0] ?? ""), b = norm(sentence[1] ?? "");
+  if (!a) return -1;
+  for (let i = Math.max(0, from); i < words.length; i++) {
+    if (norm(words[i]!) === a && (!b || i + 1 >= words.length || norm(words[i + 1]!) === b)) return i;
+  }
+  return -1;
+}
+
+/**
+ * The reply in the notch as ONE continuous surface. It streams in as it's written; when Shua starts speaking, nothing
+ * is swapped out — the words already said brighten in place and the rest wait, softly, a few words ahead. (It used
+ * to replace the streamed paragraph with a fresh word-by-word caption of sentence one: the text you were reading
+ * vanished and started over.) A spoken line that isn't part of this reply falls back to the plain caption.
+ */
+export function SpokenReply({ text, line, streaming = false, lines = 3 }: { text: string; line: CaptionLine | null; streaming?: boolean; lines?: number }) {
+  const words = prose(text).split(/\s+/).filter(Boolean);
+  const [said, setSaid] = useState(0);
+  const starts = useRef(new Map<number, { word: number; at: number }>()), timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const [lost, setLost] = useState(false);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  useEffect(() => {
+    timers.current.forEach(clearTimeout); timers.current = [];
+    if (!line) return;
+    const spoken = prose(line.text), sentence = spoken.split(/\s+/).filter(Boolean);
+    // The same sentence again means its real length just arrived: keep its place and its start, re-time what's left.
+    let mark = starts.current.get(line.key);
+    if (!mark) { mark = { word: sentenceStart(words, sentence, Math.max(0, said - 3)), at: performance.now() }; starts.current.set(line.key, mark); }
+    const { word: start, at: began } = mark;
+    if (start < 0) { setLost(true); return; }
+    setLost(false);
+    setSaid((s) => Math.max(s, start));
+    timers.current = fitTimes(revealTimes(spoken, line.speed), spoken, line.speed, line.durationMs)
+      .map((at, i) => setTimeout(() => setSaid((s) => Math.max(s, start + i + 1)), Math.max(0, at - (performance.now() - began))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line]);
+  if (line && lost) return <NotchCaption line={line} lines={lines} />;
+  const speaking = !!line;
+  // Speaking: the view follows the voice (what's been said, and a dozen words ahead). Otherwise: everything so far.
+  const shown = speaking ? words.slice(0, Math.min(words.length, said + 12)) : words;
+  return <Rolling className="notch-caption is-reply" lines={lines}>
+    {shown.map((w, i) => <span key={i} className={!speaking || i < said ? "is-said" : "is-next"}>{w} </span>)}
+    {streaming && <i className="notch-caret" />}
   </Rolling>;
 }

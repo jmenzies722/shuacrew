@@ -15,6 +15,18 @@ import { Buddy } from "./screens/Buddy";
 import { protectKeyboardDelivery } from "./lib/keyboard-delivery";
 
 if (document.documentElement.dataset.shell === "mac") protectKeyboardDelivery(window);
+// A page that breaks quietly (the notch: buttons, voice and hands all dead at once) must say so: every uncaught error
+// goes to ~/.shuacrew/spark-selftest.log through the Mac app, at most 20 a load so a loop can't flood it.
+{
+  const handler = (window as unknown as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew;
+  let sent = 0;
+  const report = (kind: string, message: string, stack?: string) => {
+    if (!handler || sent++ >= 20) return;
+    try { handler.postMessage({ type: "buddySelfTest", ok: false, message: `JS ${kind} ${location.pathname}: ${message}`.slice(0, 400), output: (stack ?? "").slice(0, 1200) }); } catch { /* the bridge itself is gone */ }
+  };
+  window.addEventListener("error", (e) => report("error", e.message || String(e.error), (e.error as Error | undefined)?.stack));
+  window.addEventListener("unhandledrejection", (e) => { const r = e.reason as Error | undefined; report("rejection", r?.message ?? String(e.reason), r?.stack); });
+}
 
 applyTheme(useLive.getState().theme);
 // While ShuaCrew isn't the app in front, its purely decorative motion rests (see alive.css); it resumes on return.

@@ -6,7 +6,8 @@ import { Markdown } from "../components/Markdown";
 import { api } from "../lib/api";
 import { isMac, pickFolder } from "../lib/native";
 import { BrandIcon } from "../components/ToolActivityCard";
-import { PaneHeader } from "../components/Pane";
+import { ControlHeader, Seg, type Tone } from "../components/ControlRoom";
+import "./tools-skills.css";
 import { commandArguments } from "../lib/integration-setup";
 
 interface Server {
@@ -72,24 +73,20 @@ interface CatalogSkill {
 }
 
 const CATEGORIES = ["Build", "Ship", "Business", "Work", "Research"];
+type Summary = { text: string; tone: Tone };
 
-/** Tools (MCP servers) and skills — what your agents can reach, and what they know how to do. */
+/** Tools (MCP servers) and skills: what your agents can reach, and what they know how to do. */
 export function Integrations() {
   const [tab, setTab] = useState<"tools" | "skills">(() => (location.hash === "#skills" ? "skills" : "tools"));
+  const [summary, setSummary] = useState<Summary>({ text: "Reading your connections…", tone: "idle" });
   useEffect(() => history.replaceState(null, "", `#${tab}`), [tab]);
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader eyebrow="Brain" icon={Cable} title="Tools & Skills" description="Configure real MCP services and install task instructions. Check each server to discover its tools. New sessions receive your configuration; your active policy still governs execution." actions={
-          <div className="seg" role="tablist">
-            <button role="tab" aria-selected={tab === "tools"} className={tab === "tools" ? "is-on" : ""} onClick={() => setTab("tools")}>
-              <Plug size={13} /> Tools
-            </button>
-            <button role="tab" aria-selected={tab === "skills"} className={tab === "skills" ? "is-on" : ""} onClick={() => setTab("skills")}>
-              <Sparkles size={13} /> Skills
-            </button>
-          </div>} />
-        {tab === "tools" ? <Tools /> : <SkillsTab />}
+    <div className="cr-scroll">
+      <div className="cr-page tk">
+        <ControlHeader title="Tools & Skills" kicker={<><Cable size={13} /> Tools</>} status={summary.text} tone={summary.tone}>
+          <Seg label="Show" value={tab} onChange={(v) => { setTab(v); setSummary({ text: "Reading…", tone: "idle" }); }} options={[["tools", "Tools"], ["skills", "Skills"]] as const} />
+        </ControlHeader>
+        {tab === "tools" ? <Tools onSummary={setSummary} /> : <SkillsTab onSummary={setSummary} />}
       </div>
     </div>
   );
@@ -97,19 +94,33 @@ export function Integrations() {
 
 // ── tools ────────────────────────────────────────────────────────────────────────────────
 
-function Tools() {
+function Tools({ onSummary }: { onSummary: (s: Summary) => void }) {
   const [servers, setServers] = useState<Server[]>([]);
   const [featured, setFeatured] = useState<Featured[]>([]);
   const [known, setKnown] = useState<Record<string, Connection>>({});
   const [error, setError] = useState("");
   const [custom, setCustom] = useState(false);
+  const [category, setCategory] = useState("All");
+  const [query, setQuery] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const load = async () => {
     const [s, f, k] = await Promise.all([api<Server[]>("/api/mcp"), api<Featured[]>("/api/mcp/featured"), api<Record<string, Connection>>("/api/mcp/tools")]);
     setServers(s);
     setFeatured(f);
     setKnown(k);
+    setLoaded(true);
   };
   useEffect(() => void load().catch((e: Error) => setError(e.message)), []);
+  useEffect(() => {
+    if (error && !loaded) return onSummary({ text: `Couldn't read your connections: ${error}`, tone: "bad" });
+    if (!loaded) return;
+    const waiting = servers.filter((s) => s.auth === "oauth" && !s.signedIn).length, broken = servers.filter((s) => known[s.id] && !known[s.id]!.ok).length;
+    const voice = servers.filter((s) => s.spark).length, tools = servers.reduce((n, s) => n + (known[s.id]?.ok ? known[s.id]!.tools.length : 0), 0);
+    onSummary(!servers.length ? { text: "Nothing connected yet. Add a tool below and your agents can reach it.", tone: "idle" }
+      : broken ? { text: `${broken} connection${broken === 1 ? " is" : "s are"} failing its last check.`, tone: "bad" }
+      : waiting ? { text: `${waiting} connection${waiting === 1 ? " needs" : "s need"} you to sign in.`, tone: "wait" }
+      : { text: [`${servers.length} connection${servers.length === 1 ? "" : "s"}`, tools ? `${tools} tools found at last check` : null, voice ? `Shua can use ${voice} by voice` : null].filter(Boolean).join(" · "), tone: "ok" });
+  }, [loaded, servers, known, error, onSummary]);
 
   const add = async (f: Featured) => {
     setError("");
@@ -127,46 +138,38 @@ function Tools() {
       await load().catch(() => undefined);
     }
   };
+  const categories = ["All", ...CATEGORIES.filter((c) => featured.some((f) => f.category === c))];
+  const q = query.trim().toLowerCase();
+  const shown = featured.filter((f) => (category === "All" || f.category === category) && (!q || `${f.title} ${f.blurb} ${f.name}`.toLowerCase().includes(q)));
 
   return (
     <>
-      {error && <div className="mb-4 rounded-[10px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12.5px] text-bad">{error}</div>}
-      <section>
-        <div className="mb-2.5 flex items-center gap-2">
-          <h2 className="pb-eyebrow !mb-0">Configured servers</h2>
-          <span className="text-[11.5px] text-fg-3">{servers.length ? `${servers.length} saved · connection checks run only when requested` : ""}</span>
-          <span className="flex-1" />
-          <Button size="s" variant="ghost" onClick={() => setCustom(true)}>
-            <Plus size={12} /> Add your own
-          </Button>
-        </div>
-        {servers.length ? (
-          <div className="flex flex-col gap-2">
+      {error && <p className="cr-error" role="alert">{error}</p>}
+      <section className="cr-sheet">
+        <header className="cr-sheet-head">
+          <h2>Your connections</h2><small>{servers.length ? "checks run only when you ask" : ""}</small>
+          <div className="cr-sheet-actions"><button type="button" className="cr-btn" onClick={() => setCustom(true)}><Plus size={13} /> Add your own</button></div>
+        </header>
+        {servers.length ? <>
+          <div className="tk-grid">
             {servers.map((s) => (
               <ServerRow key={s.id} server={s} initial={known[s.id]} onChange={() => void load().catch((e: Error) => setError(e.message))} />
             ))}
           </div>
-        ) : (
-          <div className="tl-empty">No servers configured. Choose a service below or add your own, then check its connection to discover available tools.</div>
-        )}
+          <p className="cr-muted tk-note"><Sparkles size={12} /> Shua may use a connection marked <b>Voice</b> by voice without asking. Crew sessions get every connection, and your policy still decides what runs.</p>
+        </> : <p className="cr-muted">{loaded ? "No connections yet. Pick a tool below or add your own, then check it to see what it can do." : "Reading…"}</p>}
       </section>
 
-      <Registry onAdded={() => void load().catch((e: Error) => setError(e.message))} installed={new Set(servers.map((s) => s.name))} />
-
-      {CATEGORIES.map((cat) => {
-        const items = featured.filter((f) => f.category === cat);
-        if (!items.length) return null;
-        return (
-          <section key={cat} className="mt-7">
-            <h2 className="pb-eyebrow">{cat}</h2>
-            <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
-              {items.map((f) => (
-                <FeaturedCard key={f.id} item={f} onAdd={() => add(f)} />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      <section className="cr-sheet">
+        <header className="cr-sheet-head">
+          <h2>Add a tool</h2><small>{shown.length} of {featured.length}</small>
+          <div className="cr-sheet-actions"><label className="tk-search"><Search size={13} /><input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a tool…" aria-label="Find a tool" /></label></div>
+        </header>
+        <div className="tk-cats" role="group" aria-label="Category">{categories.map((c) => <button key={c} type="button" aria-pressed={category === c} className={category === c ? "is-on" : ""} onClick={() => setCategory(c)}>{c}<small>{c === "All" ? featured.length : featured.filter((f) => f.category === c).length}</small></button>)}</div>
+        {shown.length ? <div className="tk-grid is-gallery">{shown.map((f) => <FeaturedCard key={f.id} item={f} onAdd={() => add(f)} />)}</div>
+          : <p className="cr-muted">{featured.length ? "Nothing here matches. Try the registry below." : "Reading the catalog…"}</p>}
+        <Registry onAdded={() => void load().catch((e: Error) => setError(e.message))} installed={new Set(servers.map((s) => s.name))} />
+      </section>
 
       {custom && <CustomServer onClose={() => setCustom(false)} onAdded={() => void load().catch((e: Error) => setError(e.message))} />}
     </>
@@ -174,39 +177,37 @@ function Tools() {
 }
 
 function monogram(name: string) {
-  return name.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "M";
+  return name.replace(/[^a-z0-9]/gi, "").slice(0, 1).toUpperCase() || "M";
+}
+/** A tile for tools without a brand mark: its initial on a colour of its own, so the gallery isn't grey squares. */
+function Monogram({ name }: { name: string }) {
+  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 17);
+  return <span className="tk-mono" style={{ ["--h" as string]: hue }}>{monogram(name)}</span>;
 }
 
 function FeaturedCard({ item, onAdd }: { item: Featured; onAdd: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className={`tl-card ${item.added ? "is-added" : ""}`}>
-      <div className="flex items-start gap-3">
-        <BrandIcon assetId={item.brand?.assetId} fallback={<span className="tl-mono">{monogram(item.title)}</span>} />
-        <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold text-fg">{item.title}</div>
-          <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-fg-3">{item.blurb}</div>
-        </div>
+    <article className={`tk-card ${item.added ? "is-added" : ""}`}>
+      <div className="tk-card-top">
+        <span className="tk-icon"><BrandIcon assetId={item.brand?.assetId} fallback={<Monogram name={item.title} />} /></span>
+        <div className="tk-card-text"><b>{item.title}</b><p>{item.blurb}</p></div>
       </div>
-      <div className="mt-3 flex items-center gap-2">
-        <span className="tl-tag">
-          {item.auth === "oauth" ? <KeyRound size={10} /> : item.url ? <Cloud size={10} /> : <Terminal size={10} />}
-          {item.auth === "oauth" ? "Sign in" : item.url ? "Hosted" : "Runs locally"}
+      <footer>
+        <span className="tk-tag">
+          {item.auth === "oauth" ? <KeyRound size={11} /> : item.url ? <Cloud size={11} /> : <Terminal size={11} />}
+          {item.auth === "oauth" ? "Sign in" : item.url ? "Hosted" : "Runs on this Mac"}
         </span>
-        <span className="flex-1" />
-        {item.added ? (
-          <span className="flex items-center gap-1 text-[12px] text-ok">
-            <Check size={13} /> Added
-          </span>
-        ) : (
-          <Button size="s" disabled={busy} onClick={() => (setBusy(true), void onAdd().finally(() => setBusy(false)))}>
+        {item.added ? <span className="tk-added"><Check size={13} /> Added</span>
+          : <button type="button" className="cr-btn" disabled={busy} onClick={() => (setBusy(true), void onAdd().finally(() => setBusy(false)))}>
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {busy && item.auth === "oauth" ? "Signing in…" : "Add"}
-          </Button>
-        )}
-      </div>
-    </div>
+          </button>}
+      </footer>
+    </article>
   );
 }
+
+const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60_000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 
 function ServerRow({ server, initial, onChange }: { server: Server; initial?: Connection; onChange: () => void }) {
   const [conn, setConn] = useState<Connection | undefined>(initial);
@@ -237,87 +238,57 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
   // Discovery may launch a local process or contact a server. Only an explicit
   // connection check may do that; merely viewing saved integrations must not.
   const needsSignIn = server.auth === "oauth" && (!server.signedIn || conn?.error === "needs sign-in");
+  const state: { text: string; tone: Tone } = testing ? { text: "Connecting…", tone: "live" } : needsSignIn ? { text: "Needs sign-in", tone: "wait" }
+    : conn?.ok ? { text: `${conn.tools.length} tool${conn.tools.length === 1 ? "" : "s"}`, tone: "ok" } : conn ? { text: "Can't connect", tone: "bad" } : { text: "Not checked", tone: "idle" };
+  const trust = server.brand?.publisher === "official" ? "Official endpoint" : server.brand?.publisher === "community" ? "Community connector" : "Unverified publisher";
+  const access = server.auth === "none" ? "no sign-in" : server.signedIn ? "signed in" : "not signed in";
   return (
-    <div className="tl-row">
-      <div className="flex items-center gap-3">
-        <BrandIcon assetId={server.brand?.assetId} />
-        <button className="min-w-0 flex-1 text-left" onClick={() => conn?.ok && setOpen((v) => !v)}>
-          <span className="flex items-center gap-2">
-            <span className="text-[13.5px] font-semibold text-fg">{server.name}</span>
-            {conn?.server && <span className="mono text-[11px] text-fg-3">v{conn.server.version}</span>}
-          </span>
-          <span className="mono block truncate text-[11px] text-fg-3">{server.url ?? [server.command, ...server.args].join(" ")}</span>
-          <span className="block text-[11px] text-fg-3">{server.brand?.publisher === "community" ? "Community connector" : server.brand?.publisher === "official" ? "Recognized publisher endpoint" : "Publisher unverified"} · {server.auth === "none" ? "No sign-in required" : server.signedIn ? "Credential saved · not a live connection check" : "Not signed in"}{conn ? ` · Last checked ${new Date(conn.at).toLocaleString()}` : " · Connection not checked"}</span>
-        </button>
-        {testing ? (
-          <span className="tl-status">
-            <Loader2 size={12} className="animate-spin" /> Connecting…
-          </span>
-        ) : needsSignIn ? (
-          <span className="tl-status is-wait">
-            <Lock size={11} /> Needs sign-in
-          </span>
-        ) : conn?.ok ? (
-          <button className="tl-status is-ok" onClick={() => setOpen((v) => !v)}>
-            <Wrench size={11} /> {conn.tools.length} tool{conn.tools.length === 1 ? "" : "s"} at last check
-            <ChevronDown size={11} className={`transition ${open ? "rotate-180" : ""}`} />
-          </button>
-        ) : conn ? (
-          <span className="tl-status is-bad" title={conn.error}>
-            <X size={11} /> {conn.error?.slice(0, 48) ?? "Can't connect"}
-          </span>
-        ) : <span className="tl-status">Not checked</span>}
-        <button className={`tl-status ${server.spark ? "is-ok" : ""}`} aria-pressed={!!server.spark}
-          title={server.spark ? "Shua can use these tools by voice, without asking. Click to stop." : "Let Shua (the notch) use these tools by voice, without asking. Each server adds a little to Shua's first word."}
-          disabled={busy || testing}
-          onClick={() => server.spark ? void act(() => api(`/api/mcp/${server.id}/spark`, { body: { on: false } })) : setSparkConfirm(true)}>
-          <Sparkles size={11} /> {server.spark ? "In Shua" : "Use in Shua"}
-        </button>
+    <article className={`tk-conn is-${state.tone}${open ? " is-open" : ""}`}>
+      <header>
+        <span className="tk-icon"><BrandIcon assetId={server.brand?.assetId} fallback={<Monogram name={server.name} />} /></span>
+        <div className="tk-card-text"><b>{server.name}{conn?.server && <small> v{conn.server.version}</small>}</b><small>{trust} · {access}{conn ? ` · checked ${ago(conn.at)}` : ""}</small></div>
+        <span className={`cr-pill is-${state.tone}`} title={conn && !conn.ok ? conn.error : undefined}>{state.text}</span>
+      </header>
+      <code className="tk-endpoint" title={server.url ?? [server.command, ...server.args].join(" ")}>{server.url ?? [server.command, ...server.args].join(" ")}</code>
+      <footer>
         {needsSignIn ? (
-          <Button size="s" variant="primary" disabled={busy || testing} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/signin`, { body: {} }); await test(); })}>
-            {busy ? "Working…" : "Sign in"}
-          </Button>
+          <button type="button" className="cr-btn is-primary" disabled={busy || testing} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/signin`, { body: {} }); await test(); })}><KeyRound size={13} /> {busy ? "Working…" : "Sign in"}</button>
         ) : (
-          <Button size="s" disabled={busy || testing} onClick={() => void test()}><RefreshCw size={13} /> Check connection</Button>
+          <button type="button" className="cr-btn" disabled={busy || testing} onClick={() => void test()}><RefreshCw size={13} className={testing ? "animate-spin" : ""} /> Check</button>
         )}
-        {confirm ? (
-          <Button size="s" variant="danger" disabled={busy || testing} onClick={() => void act(() => api(`/api/mcp/${server.id}`, { method: "DELETE" }))}>
-            Remove
-          </Button>
-        ) : (
-          <button className="member-icon" title="Remove" aria-label={`Remove ${server.name}`} onClick={() => setConfirm(true)}>
-            <Trash2 size={13} />
-          </button>
-        )}
-      </div>
-      {error && <p role="alert" className="mt-2 text-[12px] text-bad">{error}</p>}
-      {server.spark && <p className="mt-2 text-[11px] text-fg-3">Shua voice access is enabled for this server, without asking before use.</p>}
-      {sparkConfirm && <div className="mt-3 rounded-lg border border-line p-3 text-[12px]">
-        <p>Allow Shua to use this server’s tools by voice without asking? This is separate from adding tools to crew sessions.</p>
-        <div className="mt-2 flex gap-2"><Button size="s" disabled={busy} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/spark`, { body: { on: true } }); setSparkConfirm(false); })}>Enable Shua access</Button><Button size="s" variant="ghost" disabled={busy} onClick={() => setSparkConfirm(false)}>Cancel</Button></div>
+        {conn?.ok && conn.tools.length > 0 && <button type="button" className="cr-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}><Wrench size={13} /> Tools <ChevronDown size={12} className={`transition ${open ? "rotate-180" : ""}`} /></button>}
+        <button type="button" className={`tk-voice${server.spark ? " is-on" : ""}`} role="switch" aria-checked={!!server.spark} disabled={busy || testing}
+          title={server.spark ? "Shua can use these tools by voice, without asking. Click to stop." : "Let Shua (the notch) use these tools by voice, without asking. Each one adds a little to Shua's first word."}
+          onClick={() => server.spark ? void act(() => api(`/api/mcp/${server.id}/spark`, { body: { on: false } })) : setSparkConfirm(true)}>
+          <i aria-hidden="true" /> Voice
+        </button>
+        <span className="tk-spacer" />
+        {confirm ? <>
+          <button type="button" className="cr-btn tk-danger" disabled={busy || testing} onClick={() => void act(() => api(`/api/mcp/${server.id}`, { method: "DELETE" }))}>Remove</button>
+          <button type="button" className="cr-btn" onClick={() => setConfirm(false)}>Keep</button>
+        </> : <button type="button" className="tk-icon-btn" title="Remove" aria-label={`Remove ${server.name}`} onClick={() => setConfirm(true)}><Trash2 size={14} /></button>}
+      </footer>
+      {error && <p role="alert" className="tk-error">{error}</p>}
+      {sparkConfirm && <div className="tk-confirm">
+        <p>Let Shua use {server.name}’s tools by voice without asking? This is separate from what crew sessions can use.</p>
+        <div><button type="button" className="cr-btn is-primary" disabled={busy} onClick={() => void act(async () => { await api(`/api/mcp/${server.id}/spark`, { body: { on: true } }); setSparkConfirm(false); })}>Allow</button><button type="button" className="cr-btn" disabled={busy} onClick={() => setSparkConfirm(false)}>Cancel</button></div>
       </div>}
       <AnimatePresence initial={false}>
         {open && conn?.ok && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="tl-tools">
+            <ul className="tk-tools">
               {conn.tools.map((t) => (
-                <div key={t.name} className="tl-tool">
-                  <div className="flex items-center gap-2">
-                    <span className="mono text-[12px] font-medium text-fg">{t.name}</span>
-                    {t.readOnly && <span className="tl-pill" title="Server-provided hint, not a permission guarantee">read-only hint</span>}
-                    {t.destructive && <span className="tl-pill is-bad" title="Server-provided hint; policy still applies">destructive hint</span>}
-                  </div>
-                  {t.description && <div className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-fg-3">{t.description}</div>}
-                </div>
+                <li key={t.name}>
+                  <span><code>{t.name}</code>{t.readOnly && <em title="Server-provided hint, not a permission guarantee">read-only</em>}{t.destructive && <em className="is-bad" title="Server-provided hint; policy still applies">destructive</em>}</span>
+                  {t.description && <p>{t.description}</p>}
+                </li>
               ))}
-            </div>
-            <div className="mt-2 text-[11px] text-fg-3">
-              Agents call these as <span className="mono">mcp__{server.name}__…</span>. Server hints are advisory. Your active policy and exact approval requests govern execution.
-            </div>
+            </ul>
+            <p className="tk-fine">Agents call these as <code>mcp__{server.name}__…</code>. Server hints are advisory; your policy and approvals decide what runs.</p>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </article>
   );
 }
 
@@ -351,48 +322,43 @@ function Registry({ onAdded, installed }: { onAdded: () => void; installed: Set<
     }
   };
   return (
-    <section className="mt-8">
-      <button className="flex items-center gap-2 text-[12.5px] text-fg-2 hover:text-fg" onClick={() => setOpen((v) => !v)}>
-        <Globe size={13} /> Search the MCP registry
+    <div className="tk-registry">
+      <button type="button" className="tk-registry-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Globe size={13} /> Not here? Search the MCP registry
         <ChevronDown size={12} className={`transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="mt-3">
-          <label className="lib-search">
-            <Search size={15} className="text-fg-3" />
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the registry — github, postgres, slack…" aria-label="Search the MCP registry" />
+        <div className="tk-registry-body">
+          <label className="tk-search is-wide">
+            <Search size={14} />
+            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the registry: github, postgres, slack…" aria-label="Search the MCP registry" />
           </label>
-          {error && <div className="mt-2 text-[12px] text-bad">{error}</div>}
-          {loading && <p className="mt-2 text-[12px] text-fg-3">Searching registry…</p>}
-          {!loading && !error && !cards.length && <p className="mt-2 text-[12px] text-fg-3">No matching setup entries returned. Try another search or add your own server.</p>}
-          <p className="mt-2 text-[11.5px] text-fg-3">Results are a limited selection from the registry, not verified connections. Some servers need extra configuration. Review the endpoint or command before adding, then check the connection.</p>
-          <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+          {error && <p className="tk-error">{error}</p>}
+          {loading && <p className="cr-muted">Searching the registry…</p>}
+          {!loading && !error && !cards.length && <p className="cr-muted">Nothing matched. Try another word, or add your own server.</p>}
+          <p className="tk-fine">Registry results aren't verified connections and some need extra setup. Read the endpoint or command before you add one, then check it.</p>
+          <div className="tk-grid is-gallery">
             {!loading && cards.map((c) => {
               const name = c.title.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
               return (
-                <div key={c.id} className="tl-card">
-                  <div className="text-[13px] font-semibold text-fg">{c.title}</div>
-                  <div className="mono truncate text-[10.5px] text-fg-3">{c.id}</div>
-                  <div className="mt-1 line-clamp-2 text-[12px] leading-snug text-fg-3">{c.description}</div>
-                  <div className="mono mt-2 break-all text-[10.5px] text-fg-3">{c.url ?? [c.command, ...c.args].join(" ")}</div>
-                  <div className="mt-2.5 flex items-center">
-                    <span className="tl-tag">{c.kind === "remote" ? "Sign in" : "npx"}</span>
-                    <span className="flex-1" />
-                    {installed.has(name) ? (
-                      <span className="text-[12px] text-ok">Added</span>
-                    ) : (
-                      <Button size="s" disabled={!!busy} onClick={() => void add(c)}>
-                        {busy === c.id ? "Adding…" : "Add"}
-                      </Button>
-                    )}
+                <article key={c.id} className="tk-card">
+                  <div className="tk-card-top">
+                    <span className="tk-icon"><Monogram name={c.title} /></span>
+                    <div className="tk-card-text"><b>{c.title}</b><p>{c.description}</p></div>
                   </div>
-                </div>
+                  <code className="tk-endpoint">{c.url ?? [c.command, ...c.args].join(" ")}</code>
+                  <footer>
+                    <span className="tk-tag">{c.kind === "remote" ? <><KeyRound size={11} /> Sign in</> : <><Terminal size={11} /> npx</>}</span>
+                    {installed.has(name) ? <span className="tk-added"><Check size={13} /> Added</span>
+                      : <button type="button" className="cr-btn" disabled={!!busy} onClick={() => void add(c)}>{busy === c.id ? "Adding…" : <><Plus size={12} /> Add</>}</button>}
+                  </footer>
+                </article>
               );
             })}
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -464,7 +430,7 @@ function CustomServer({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
 // ── skills ───────────────────────────────────────────────────────────────────────────────
 
-function SkillsTab() {
+function SkillsTab({ onSummary }: { onSummary: (s: Summary) => void }) {
   const [mine, setMine] = useState<SkillInfo[]>([]);
   const [catalog, setCatalog] = useState<CatalogSkill[] | null>(null);
   const [error, setError] = useState("");
@@ -478,6 +444,12 @@ function SkillsTab() {
     void api<CatalogSkill[]>("/api/skills/catalog").then(setCatalog).catch((e: Error) => (setCatalog([]), setError(e.message)));
   };
   useEffect(load, []);
+  useEffect(() => {
+    if (catalog === null) return onSummary({ text: "Reading your skills…", tone: "idle" });
+    const fresh = catalog.filter((c) => !mine.some((m) => m.name === c.name)).length;
+    onSummary(mine.length ? { text: `${mine.length} skill${mine.length === 1 ? "" : "s"} installed · ${fresh} more in Anthropic's catalog · agents load one when a task matches it`, tone: "ok" }
+      : { text: "No skills yet. Install one below or write your own.", tone: "idle" });
+  }, [mine, catalog, onSummary]);
   const install = async (name: string) => {
     setBusy(name);
     setError("");
@@ -499,82 +471,57 @@ function SkillsTab() {
     catch (failure) { setError((failure as Error).message); }
     finally { setBusy(""); }
   };
+  const sourceLabel = (src: SkillInfo["source"]) => (src === "catalog" ? "Anthropic" : src === "learned" ? "Learned" : "Yours");
   return (
     <>
-      {error && <div className="mb-4 rounded-[10px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12.5px] text-bad">{error}</div>}
-      <label className="lib-search mb-4"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search installed and catalog skills" aria-label="Search skills" /></label>
-      <section>
-        <div className="mb-2.5 flex items-center gap-2">
-          <h2 className="pb-eyebrow !mb-0">Installed</h2>
-          <span className="text-[11.5px] text-fg-3">{mine.length ? "Claude loads skill folders; Codex receives selected instruction excerpts" : ""}</span>
-          <span className="flex-1" />
-          <Button size="s" variant="ghost" onClick={() => setWriting(true)}>
-            <PenLine size={12} /> Write a skill
-          </Button>
-        </div>
+      {error && <p className="cr-error" role="alert">{error}</p>}
+      <section className="cr-sheet">
+        <header className="cr-sheet-head">
+          <h2>Your skills</h2><small>{mine.length ? "Claude loads the whole folder; Codex gets the matching instructions" : ""}</small>
+          <div className="cr-sheet-actions">
+            <label className="tk-search"><Search size={13} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a skill…" aria-label="Search skills" /></label>
+            <button type="button" className="cr-btn" onClick={() => setWriting(true)}><PenLine size={13} /> Write a skill</button>
+          </div>
+        </header>
         {mine.length ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-2.5">
+          <div className="tk-grid">
             {mine.filter(matches).map((s) => (
-              <div key={s.name} className="tl-card">
-                <div className="flex items-start gap-3">
-                  <span className="tl-mono is-skill">
-                    <Sparkles size={15} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="mono text-[13px] font-semibold text-fg">{s.name}</span>
-                      <span className="tl-pill">{s.source === "catalog" ? "Anthropic catalog" : s.source === "learned" ? "accepted learning" : "yours"}</span>
-                    </div>
-                    <div className="mt-1 line-clamp-3 text-[12px] leading-snug text-fg-3">{s.description}</div>
-                  </div>
+              <article key={s.name} className="tk-card">
+                <div className="tk-card-top">
+                  <span className="tk-icon"><span className="tk-mono is-skill"><Sparkles size={15} /></span></span>
+                  <div className="tk-card-text"><b>{s.name}</b><p>{s.description}</p></div>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-[11px] text-fg-3">
-                  {s.files} file{s.files === 1 ? "" : "s"} · {(s.bytes / 1024).toFixed(s.bytes < 10240 ? 1 : 0)} KB
-                  <span className="flex-1" />
-                  <button className="member-icon" title="View" aria-label={`View ${s.name}`} onClick={() => setViewing(s.name)}>
-                    <Eye size={13} />
-                  </button>
-                  <button className="member-icon" disabled={!!busy} title="Remove" aria-label={`Remove ${s.name}`} onClick={() => setRemoving(s.name)}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                {removing === s.name && <div className="mt-3 text-[12px]"><p>Remove this skill and its installed files?</p><div className="mt-2 flex gap-2"><Button size="s" variant="danger" disabled={!!busy} onClick={() => void remove(s.name)}>{busy === s.name ? "Removing…" : "Remove skill"}</Button><Button size="s" variant="ghost" disabled={!!busy} onClick={() => setRemoving(null)}>Cancel</Button></div></div>}
-              </div>
+                <footer>
+                  <span className="tk-tag">{sourceLabel(s.source)} · {s.files} file{s.files === 1 ? "" : "s"} · {(s.bytes / 1024).toFixed(s.bytes < 10240 ? 1 : 0)} KB</span>
+                  <span className="tk-spacer" />
+                  <button type="button" className="tk-icon-btn" title="Read it" aria-label={`View ${s.name}`} onClick={() => setViewing(s.name)}><Eye size={14} /></button>
+                  <button type="button" className="tk-icon-btn" disabled={!!busy} title="Remove" aria-label={`Remove ${s.name}`} onClick={() => setRemoving(s.name)}><Trash2 size={14} /></button>
+                </footer>
+                {removing === s.name && <div className="tk-confirm"><p>Remove this skill and its installed files?</p><div><button type="button" className="cr-btn tk-danger" disabled={!!busy} onClick={() => void remove(s.name)}>{busy === s.name ? "Removing…" : "Remove skill"}</button><button type="button" className="cr-btn" disabled={!!busy} onClick={() => setRemoving(null)}>Cancel</button></div></div>}
+              </article>
             ))}
           </div>
         ) : (
-          <div className="tl-empty">No skills yet. Install one of Anthropic's below, or write your own — a skill is instructions (and optional scripts) the agent loads when a task matches its description.</div>
+          <p className="cr-muted">No skills yet. A skill is instructions (and optional scripts) an agent loads when a task matches its description. Install one of Anthropic's below or write your own.</p>
         )}
       </section>
-      <section className="mt-7">
-        <h2 className="pb-eyebrow">From Anthropic</h2>
-        <p className="mb-3 text-[12px] text-fg-3">Downloads real skill folders from <a href="https://github.com/anthropics/skills" target="_blank" rel="noreferrer" className="underline">anthropics/skills</a>. Instructions may refer to separate tools or credentials; installing a skill does not grant that access.</p>
-        {catalog === null ? (
-          <div className="tl-empty">
-            <Loader2 size={13} className="inline animate-spin" /> Loading the skills catalog…
-          </div>
-        ) : (
-          <div className="stagger grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-2.5">
+      <section className="cr-sheet">
+        <header className="cr-sheet-head"><h2>From Anthropic</h2><small>real skill folders from anthropics/skills</small></header>
+        <p className="tk-fine tk-lead">Downloads from <a href="https://github.com/anthropics/skills" target="_blank" rel="noreferrer">anthropics/skills</a>. A skill may mention tools or credentials; installing it doesn't grant that access.</p>
+        {catalog === null ? <p className="cr-muted"><Loader2 size={13} className="inline animate-spin" /> Loading the catalog…</p> : (
+          <div className="tk-grid is-gallery">
             {catalog.filter(matches).map((c) => (
-              <div key={c.name} className={`tl-card ${installedNames.has(c.name) ? "is-added" : ""}`}>
-                <div className="mono text-[13px] font-semibold text-fg">{c.name}</div>
-                <div className="mt-1 line-clamp-3 min-h-[3.3em] text-[12px] leading-snug text-fg-3">{c.description}</div>
-                <div className="mt-3 flex items-center">
-                  <span className="text-[11px] text-fg-3">
-                    {c.files} file{c.files === 1 ? "" : "s"}
-                  </span>
-                  <span className="flex-1" />
-                  {installedNames.has(c.name) ? (
-                    <span className="flex items-center gap-1 text-[12px] text-ok">
-                      <Check size={13} /> Installed
-                    </span>
-                  ) : (
-                    <Button size="s" disabled={!!busy} onClick={() => void install(c.name)}>
-                      {busy === c.name ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {busy === c.name ? "Installing…" : "Install"}
-                    </Button>
-                  )}
+              <article key={c.name} className={`tk-card ${installedNames.has(c.name) ? "is-added" : ""}`}>
+                <div className="tk-card-top">
+                  <span className="tk-icon"><Monogram name={c.name} /></span>
+                  <div className="tk-card-text"><b>{c.name}</b><p>{c.description}</p></div>
                 </div>
-              </div>
+                <footer>
+                  <span className="tk-tag">{c.files} file{c.files === 1 ? "" : "s"}</span>
+                  {installedNames.has(c.name) ? <span className="tk-added"><Check size={13} /> Installed</span>
+                    : <button type="button" className="cr-btn" disabled={!!busy} onClick={() => void install(c.name)}>{busy === c.name ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {busy === c.name ? "Installing…" : "Install"}</button>}
+                </footer>
+              </article>
             ))}
           </div>
         )}

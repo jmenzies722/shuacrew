@@ -32,7 +32,7 @@ import { SparkCharacter } from "../components/SparkCharacter";
 import { useCompanion } from "../lib/companion";
 import { sparkVars } from "../lib/spark-color";
 import { CompactRail, HubSidebar, HubTabs, setSidebarWide, useSidebarWide } from "./HubNav";
-import { Welcome, welcomed } from "../components/Welcome";
+import { Welcome, setupSnoozed, welcomed } from "../components/Welcome";
 import { Buddy } from "../screens/Buddy";
 import { setSparkFull, setSparkPanel, toggleSparkFull, toggleSparkPanel, useSparkFull, useSparkPanel } from "../lib/spark-panel";
 import { WorkspaceSpark } from "../components/WorkspaceSpark";
@@ -44,27 +44,28 @@ import "../components/surfaces.css";
 import "../alive.css"; // the accent gradient and the touches that make it feel lit
 import "../onyx.css"; // last: the Onyx design language (Onyx and Porcelain palettes)
 import "../lib/look";
+import { installUiBridge } from "../lib/ui-bridge";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
-  { to: "/studio", label: "Studio", hint: "Now playing, mix, tonight's set", icon: Disc3, key: "j", group: "Work" },
-  { to: "/ventures", label: "Ventures", hint: "Your startups, idea → revenue", icon: Rocket, key: "v", group: "Work" },
+  { to: "/studio", label: "Creative studio", hint: "Your Apple Music, album first", icon: Disc3, key: "j", group: "Work" },
+  { to: "/ventures", label: "Projects", hint: "What you build and what it earns", icon: Rocket, key: "v", group: "Work" },
   { to: "/crew", label: "Crew", hint: "Your standing team", icon: Users, key: "r", group: "Work" },
-  { to: "/rooms", label: "Crew rooms", hint: "Shared conversation and real delegation", icon: MessagesSquare, key: "g", group: "Work" },
-  { to: "/floor", label: "Crew floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
+  { to: "/rooms", label: "Rooms", hint: "Shared conversation and real delegation", icon: MessagesSquare, key: "g", group: "Work" },
+  { to: "/floor", label: "Studio floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
   { to: "/terminal", label: "Terminal", hint: "Your shells + ask the crew", icon: SquareTerminal, key: "t", group: "Work" },
   { to: "/playbooks", label: "Playbooks", hint: "Idea → shipped, in phases", icon: ListChecks, key: "w", group: "Plan" },
   { to: "/specs", label: "Specs", hint: "Requirements → tasks", icon: FileText, key: "p", group: "Plan" },
   { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
   { to: "/activity", label: "Today", hint: "Everything at a glance", icon: Radar, key: "m", group: "Plan" },
   { to: "/library", label: "Library", hint: "What the crew made + knows", icon: LibraryBig, key: "l", group: "Brain" },
-  { to: "/learn", label: "Learning", hint: "Skill up from your own work", icon: GraduationCap, key: "e", group: "Brain" },
+  { to: "/learn", label: "Learn", hint: "Get measurably better, with Shua", icon: GraduationCap, key: "e", group: "Brain" },
   { to: "/memory", label: "Memory", hint: "Lessons and skills", icon: BookOpen, key: "y", group: "Brain" },
   { to: "/schedules", label: "Schedules", hint: "Runs while you're away", icon: CalendarClock, key: "c", group: "Brain" },
   { to: "/integrations", label: "Tools & Skills", hint: "MCP servers and skills", icon: Cable, key: "i", group: "Brain" },
   { to: "/policy", label: "Policy & Audit", hint: "What agents may do", icon: ShieldCheck, key: "a", group: "System" },
-  { to: "/observability", label: "Observability", hint: "Health, latency and recorded activity", icon: Activity, key: "o", group: "System" },
-  { to: "/usage", label: "Usage", hint: "Recorded tokens and honest coverage", icon: BarChart3, key: "u", group: "System" },
+  { to: "/observability", label: "Insights", hint: "Health, speed and what needs you", icon: Activity, key: "o", group: "System" },
+  { to: "/usage", label: "Usage", hint: "Tokens, speed and limits", icon: BarChart3, key: "u", group: "System" },
   { to: "/developer", label: "Developer", hint: "Gateway diagnostics and audit integrity", icon: SquareTerminal, key: "d", group: "System" },
   { to: "/guide", label: "Guide", hint: "Everything ShuaCrew can do", icon: BookOpen, key: "h", group: "System" },
   { to: "/settings", label: "Settings", hint: "Agents, look, data", icon: Settings, key: ",", group: "System" },
@@ -84,8 +85,13 @@ export function Shell() {
   }, [workspacePath]);
   const motionPreference = useLive((s) => s.appearance.motion);
   useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
+  // The main window answers Shua's "press X in ShuaCrew" from the notch (the notch itself never does).
+  useEffect(() => (location.pathname.startsWith("/buddy") ? undefined : installUiBridge()), []);
   const { flow } = usePower();
   const home = useRouterState({ select: s => s.location.pathname === "/" });
+  // Home and an open session share one layout: the page strip above it pushed the session panel and thread ~38 pt
+  // lower than on Home, so the Sessions title jumped when you opened one.
+  const chat = useRouterState({ select: s => s.location.pathname === "/" || s.location.pathname.startsWith("/sessions") });
   // Each section has its own light, so every place reads as itself (Settings does the same per section).
   const hub = locate(workspacePath)?.hub.id ?? "other";
   useGlobalKeys();
@@ -105,7 +111,7 @@ export function Shell() {
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
-        {!flow && !home && <WorkspaceSpark section={section} />}
+        {!flow && !chat && <WorkspaceSpark section={section} />}
         <motion.div key={section} className="workspace-scene min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
@@ -133,6 +139,7 @@ export function Shell() {
 
 /** Spark inside the app: the same assistant and conversation as on the desktop, as a side panel. ⌘J. */
 function SparkSide() {
+  const page = useRouterState({ select: (st) => st.location.pathname });
   const open = useSparkPanel(), full = useSparkFull();
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -143,7 +150,7 @@ function SparkSide() {
   }, [full]);
   return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Shua"
     initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
-    <div className="spark-side-inner"><Buddy embedded full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
+    <div className="spark-side-inner"><Buddy embedded page={page} full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
   </motion.aside>}</AnimatePresence>;
 }
 
@@ -319,17 +326,12 @@ function SparkButton() {
 /** The welcome tour, once (and again after a big release, or from Settings → Spark). */
 function FirstRun() {
   const [show, setShow] = useState(false);
-  useEffect(() => { let alive=true; void api<{completedAt:number|null}>("/api/personal-setup").then(p=>{if(alive)setShow(!p.completedAt);}).catch(()=>{if(alive)setShow(!welcomed());}); return()=>{alive=false;}; }, []);
+  useEffect(() => { let alive=true; void api<{completedAt:number|null}>("/api/personal-setup").then(p=>{if(alive)setShow(!p.completedAt&&!setupSnoozed());}).catch(()=>{if(alive)setShow(!welcomed());}); return()=>{alive=false;}; }, []);
   useEffect(() => { const on = () => setShow(true); window.addEventListener("shuacrew:welcome", on); return () => window.removeEventListener("shuacrew:welcome", on); }, []);
   return show ? <Welcome onDone={() => setShow(false)} /> : null;
 }
 
-/** The full sidebar or the slim rail; ⌘\\ switches between them. */
+/** The sidebar is the rail: icons with labels, live badges, ⌘1–⌘5. */
 function Sidebar() {
-  const wide = useSidebarWide();
-  useEffect(() => {
-    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSidebarWide(!wide); } };
-    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
-  }, [wide]);
-  return wide ? <HubSidebar /> : <CompactRail />;
+  return <CompactRail />;
 }

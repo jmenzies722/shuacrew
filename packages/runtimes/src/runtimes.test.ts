@@ -64,6 +64,14 @@ describe("usage-window messages", () => {
 });
 
 describe("Codex's stream", () => {
+  it("keeps the reply when a turn ends with an empty trailing message", () => {
+    // Measured live: the act block streamed, then an empty agentMessage completed and blanked the final reply.
+    const t = new CodexTranslator();
+    t.translate("item/agentMessage/delta", { itemId: "m1", delta: "```act {\"type\":\"press\",\"target\":\"#28\"}```" });
+    t.translate("item/completed", { item: { id: "m1", type: "agentMessage", text: "```act {\"type\":\"press\",\"target\":\"#28\"}```" } });
+    expect(t.translate("item/completed", { item: { id: "m2", type: "agentMessage", text: "" } })).toEqual([]);
+    expect(t.translate("turn/completed", { turn: { status: "completed", durationMs: 5 } }).at(-1)).toMatchObject({ type: "done", text: "```act {\"type\":\"press\",\"target\":\"#28\"}```" });
+  });
   it.each([null, -1, "120", NaN, Infinity])("omits an invalid duration %s instead of failing event validation", (durationMs) => {
     const translator = new CodexTranslator();
     const result = translator.translate("item/completed", { item: { id: "duration", type: "commandExecution", status: "completed", exitCode: 0, durationMs } });

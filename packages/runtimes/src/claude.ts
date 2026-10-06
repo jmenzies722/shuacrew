@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import type { AuthMode, Runtime, RunContext, RunSpec, RuntimeEvent, RuntimeStatus } from "./runtime.js";
 import { isCheck, limitFrom, overridingKeys, textOf } from "./shared.js";
 import { ClaudeAccounts } from "./claude-accounts.js";
+import { todoPlan } from "./plan.js";
 
 const exec = promisify(execFile);
 const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -117,6 +118,9 @@ export class ClaudeTranslator {
           if (block.type === "tool_use") {
             this.calls.set(block.id, { tool: block.name, input: block.input ?? {}, subagent });
             out.push({ type: "tool-call", id: block.id, tool: block.name, input: block.input ?? {}, subagent });
+            // The main agent's checklist becomes the turn's plan (a subagent's own todos stay inside its work).
+            const plan = block.name === "TodoWrite" && !subagent ? todoPlan(block.input) : null;
+            if (plan) out.push({ type: "plan", steps: plan.steps });
           } else if (block.type === "text" && !subagent && !this.streamed && block.text?.trim()) {
             out.push({ type: "text", text: `${block.text}\n` });
           }

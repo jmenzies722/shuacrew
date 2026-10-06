@@ -241,9 +241,12 @@ export function sessionTitle(title: string, ask: string): string {
   return `${whole || t}…`;
 }
 
-function dayOf(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
+/** The calendar day on this Mac (YYYY-MM-DD): "today" starts at your midnight, the same day Usage and the budget count. */
+export function localDay(ms: number = Date.now()): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+const dayOf = localDay;
 
 const ACTIVE: RunStatus[] = ["planning", "running", "awaiting_approval"];
 

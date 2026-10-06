@@ -27,7 +27,8 @@ export function shouldRecap(lastDay: string | null, now: Date): boolean {
  */
 export function named(title: string, max = 56): string {
   let t = title.trim().replace(/[.\s]+$/, "");
-  if (t.length <= 32 && !/[.!?:]\s/.test(t)) return t;
+  // A question or exclamation is a quote, not a noun: "finished “How do I grow what I earn?”", never "…earn?."
+  if (t.length <= 32 && !/[.!?:]\s/.test(t) && !/[?!]$/.test(t)) return t;
   if (t.length > max) t = t.slice(0, max).replace(/\s+\S*$/, "").replace(/[\s,;:–—-]+$/, "") + "…";
   return `“${t}”`;
 }
@@ -55,7 +56,7 @@ export function morningBrief(i: MorningInput): string {
   if (i.meetings?.length) parts.push(i.meetings.length === 1 ? `One meeting today: ${i.meetings[0]!.title} at ${i.meetings[0]!.time}.` : `${i.meetings.length} meetings today; the first is ${i.meetings[0]!.title} at ${i.meetings[0]!.time}.`);
   if (i.running) parts.push(`${i.running} session${i.running === 1 ? " is" : "s are"} working right now.`);
   if (i.waiting) parts.push(`${i.waiting} decision${i.waiting === 1 ? " is" : "s are"} waiting on you.`);
-  if (i.due) parts.push(`You have ${i.due} review card${i.due === 1 ? "" : "s"} due${i.goal ? ` on the road to ${i.goal}` : ""}.`);
+  if (i.due) parts.push(`You have ${i.due} review card${i.due === 1 ? "" : "s"} due${i.goal?.trim() ? ` on the road to ${i.goal.trim()}` : ""}.`);
   const venture = i.ventures.find((v) => v.stage !== "earning" && v.stage !== "stopped");
   if (venture) parts.push(`${venture.name} is ${venture.stage === "idea" ? "still an idea" : `in ${venture.stage}`}.`);
   const next = i.waiting ? "Want to clear the decisions first?" : i.due ? "Want a five-minute review to warm up?" : venture ? `Want me to push ${venture.name} forward?` : "What should we build today?";

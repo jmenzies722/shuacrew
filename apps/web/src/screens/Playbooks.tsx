@@ -2,7 +2,7 @@ import { plain } from "../lib/plain";
 import type { PhaseView, PlayView } from "@shuacrew/core/projections";
 import { Button } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowRight, ArrowUp, Check, ChevronDown, CircleSlash, Copy, Hand, Loader2, Pencil, Play, Plus, RotateCcw, SkipForward, Trash2, X, Zap, ListChecks } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Check, ChevronDown, CircleSlash, Copy, Hand, Loader2, Pencil, Play, Plus, RotateCcw, SkipForward, Trash2, X, Zap, ListChecks, Eye } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "../components/Markdown";
@@ -11,6 +11,7 @@ import { useLive } from "../lib/live";
 import { KIND } from "../lib/kinds";
 import { Glyph, IconPicker } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
+import "./playbook-steps.css";
 import { StatStrip } from "../components/StatStrip";
 
 interface Phase {
@@ -53,10 +54,14 @@ export function Playbooks() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader children={<StatStrip stats={[{ value: books.length, label: "playbooks" }, { value: Object.values(plays).filter((p) => p.status === "running").length, label: "running", live: Object.values(plays).some((p) => p.status === "running") }, { value: Object.values(plays).filter((p) => p.status === "waiting").length, label: "waiting for you", tone: "wait" }, { value: Object.values(plays).filter((p) => p.status === "done" && p.updatedAt > Date.now() - 7 * 86_400_000).length, label: "finished this week", tone: "ok" }]} />} eyebrow="Plan" icon={ListChecks} title="Automations" description="Repeatable work in phases. Each phase goes to the right crew member, builds on the last, saves its output to the Library, and waits for you where it matters."
+        <PaneHeader {...(() => { const all = Object.values(plays), waiting = all.filter((p) => p.status === "waiting").length, running = all.filter((p) => p.status === "running").length; return waiting ? { status: `${waiting} playbook${waiting === 1 ? " is" : "s are"} waiting for you`, tone: "wait" as const } : running ? { status: `${running} running now`, tone: "live" as const } : books.length ? { status: `${books.length} playbook${books.length === 1 ? "" : "s"} ready to run`, tone: "ok" as const } : { status: "No playbooks yet. Teach one once and reuse it.", tone: "idle" as const }; })()} eyebrow="Plan" icon={ListChecks} title="Playbooks"
           actions={<Button onClick={() => setEditing({ emoji: "workflow", inputs: [{ key: "goal", label: "Goal", long: true }], phases: [{ id: "phase-1", name: "", prompt: "", gate: "approve" }] })}><Plus size={14} /> New playbook</Button>} />
 
-        <div className="automation-intro"><div><span className="studio-eyebrow">01 / DEMONSTRATE</span><h2>Teach your Mac workflow.</h2><p>Use Watch me in the notch, demonstrate a task, then finish and review the captured steps. Missing steps stay marked for help.</p></div><div><span className="studio-eyebrow">02 / ORCHESTRATE</span><h2>Give the crew a playbook.</h2><p>Run repeatable work with explicit inputs and approval gates. Outputs stay linked to the Library.</p></div><div><span className="studio-eyebrow">03 / REPEAT</span><h2>Put it on your schedule.</h2><p>Inspect the outcome of each run before relying on a routine.</p><Link to="/schedules">Manage schedules →</Link></div></div>
+        <ol className="pb-steps" aria-label="How automation works">
+          <li><i><Eye size={14} /></i><div><b>Show it once</b><span>Say “watch me” in the notch and do the task. Shua records the steps.</span></div></li>
+          <li><i><ListChecks size={14} /></i><div><b>Make it a playbook</b><span>Inputs, phases and review gates. Outputs land in your Library.</span></div></li>
+          <li><i><Zap size={14} /></i><div><b>Put it on autopilot</b><span>Run it on a schedule once you trust it. <Link to="/schedules">Schedules →</Link></span></div></li>
+        </ol>
         {active.length > 0 && (
           <section className="mb-8">
             <h2 className="pb-eyebrow">In progress</h2>
