@@ -86,6 +86,9 @@ export function Shell() {
   useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
   const { flow } = usePower();
   const home = useRouterState({ select: s => s.location.pathname === "/" });
+  // Home and an open session share one layout: the page strip above it pushed the session panel and thread ~38 pt
+  // lower than on Home, so the Sessions title jumped when you opened one.
+  const chat = useRouterState({ select: s => s.location.pathname === "/" || s.location.pathname.startsWith("/sessions") });
   // Each section has its own light, so every place reads as itself (Settings does the same per section).
   const hub = locate(workspacePath)?.hub.id ?? "other";
   useGlobalKeys();
@@ -105,7 +108,7 @@ export function Shell() {
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
         <HubTabs />
-        {!flow && !home && <WorkspaceSpark section={section} />}
+        {!flow && !chat && <WorkspaceSpark section={section} />}
         <motion.div key={section} className="workspace-scene min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
         </motion.div>
