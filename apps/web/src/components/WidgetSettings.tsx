@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Monitor, Sparkles } from "lucide-react";
-import { moveWidget, saveWidgets, toggleWidget, useWidgets, WIDGET_INFO, DEFAULT_WIDGETS, type WidgetId } from "../lib/widgets";
+import { moveWidget, saveWidgets, toggleWidget, useWidgets, WIDGET_INFO, DEFAULT_WIDGETS, RETIRED, type WidgetId } from "../lib/widgets";
 import { WidgetTile } from "./TopBarWidgets";
 import { Switch } from "./SettingControls";
 import { useNavigate } from "@tanstack/react-router";
@@ -11,7 +11,7 @@ export function WidgetSettings() {
   const ctx = { go: (path: string) => void navigate({ to: path }) };
   return <div className="settings-card wgs">
     <p className="power-hint" style={{ padding: "0 0 8px" }}>All widgets use real data from this Mac and your crew. Changes reach the top bar and Shua instantly.</p>
-    <ol className="wgs-list">{prefs.order.map((id: WidgetId, i) => {
+    <ol className="wgs-list">{prefs.order.filter((id) => !RETIRED.has(id)).map((id: WidgetId, i) => {
       const top = prefs.topbar.includes(id), spark = prefs.spark.includes(id);
       return <li key={id} className={top || spark ? "is-on" : ""}>
         <div className="wgs-order">

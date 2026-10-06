@@ -1,3 +1,4 @@
+import { StatStrip } from "../components/StatStrip";
 import { plain } from "../lib/plain";
 import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
@@ -134,12 +135,7 @@ export function CrewFloor() {
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew Studio" description="Direct the work. Inspect the evidence. Keep your crew connected." actions={<div className="flex flex-wrap items-center gap-2">
-          <Stat value={working} label="working" live={working > 0} />
-          <Stat value={waiting} label="waiting on you" tone={waiting ? "wait" : undefined} />
-          <Stat value={perMinute} label="steps / min" />
-          <Stat value={formatTokens(today.tokens)} label="tokens today · all projects" />
-        </div>} />
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew Studio" description="Direct the work. Inspect the evidence. Keep your crew connected." actions={<StatStrip stats={[{ value: working, label: "working", live: working > 0 }, { value: waiting, label: "waiting on you", tone: "wait" }, { value: perMinute, label: "steps / min" }, { value: formatTokens(today.tokens), label: "tokens today" }]} />} />
       </header>
 
       <div className="floor-body">
@@ -165,14 +161,6 @@ export function CrewFloor() {
   );
 }
 
-function Stat({ value, label, live, tone }: { value: string | number; label: string; live?: boolean; tone?: "wait" }) {
-  return (
-    <span className={`floor-stat ${live ? "is-live" : ""} ${tone === "wait" ? "is-wait" : ""}`}>
-      <span className="mono text-[15px] font-semibold tabular-nums text-fg">{value}</span>
-      <span>{label}</span>
-    </span>
-  );
-}
 
 
 // ── a pod: one agent at work ────────────────────────────────────────────────────────────────
