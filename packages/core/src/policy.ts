@@ -178,7 +178,19 @@ export function segments(command: string): string[] {
     .filter(Boolean);
 }
 
-const shell = (call: ToolCall) => (call.kind === "shell" ? (call.command ?? "") : "");
+/**
+ * The command inside a shell wrapper: Codex runs everything as `/bin/zsh -lc "…"`, which hid the real command from
+ * every rule (a plain `rg --files` always asked). Only a whole command that is exactly one wrapper is unwrapped —
+ * anything after the closing quote keeps it as written — and the inside is then judged segment by segment like any
+ * other command, so unwrapping can only reveal more to check, never less.
+ */
+export function unwrapShell(command: string): string {
+  const m = /^\s*(?:\/usr)?(?:\/bin\/)?(?:zsh|bash|sh)\s+-l?c\s+(['"])([\s\S]*)\1\s*$/.exec(command);
+  return m ? m[2]! : command;
+}
+const shell = (call: ToolCall) => (call.kind === "shell" ? unwrapShell(call.command ?? "") : "");
+/** Runs another command inside this one (`$(…)`, backticks, `<(…)`): never "just looking", whatever the outer command. */
+const nestsCommand = (segment: string) => /\$\(|`|[<>]\(/.test(segment);
 const anySegment = (call: ToolCall, pattern: RegExp) => segments(shell(call)).some((s) => pattern.test(s));
 
 /** Destructive or exfiltrating commands. Deny beats any approval. */
@@ -346,7 +358,7 @@ export function defaultRules(): Rule[] {
         return (
           call.kind === "shell" &&
           parts.length > 0 &&
-          parts.every((s) => (SAFE.test(bareCommand(s)) && !redirectsToFile(s)) || isCdInto(s, ctx))
+          parts.every((s) => (SAFE.test(bareCommand(s)) && !redirectsToFile(s) && !nestsCommand(s)) || isCdInto(s, ctx))
         );
       },
     },
