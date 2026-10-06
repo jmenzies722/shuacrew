@@ -85,3 +85,8 @@
 :root[data-idle] .today .td-m { animation: none; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .today * { animation: none !important; } }
 :root[data-motion="reduced"] .today * { animation: none !important; }
+
+/* The sun's path runs across the right of the sky, so it never crosses the headline; on a narrow window it steps aside. */
+.td-arc { left: 56%; right: 3%; bottom: -70%; height: 160%; }
+@media (max-width: 900px) { .td-arc { display: none; } }
+.td-numbers .is-zero strong { color: var(--text-3); }

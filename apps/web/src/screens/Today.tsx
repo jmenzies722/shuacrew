@@ -115,12 +115,13 @@ export function Today() {
         {cards.length ? cards.map((c) => <button key={c.key} type="button" className={`td-card is-${c.tone}`} onClick={c.go}>
           <i><c.icon size={16} /></i><strong>{c.title}</strong><span>{c.sub}</span>
         </button>) : <div className="td-card is-clear"><i><Sparkles size={16} /></i><strong>Nothing needs you</strong><span>Your crew is idle and you're caught up. Good time to build.</span></div>}
-        <div className="td-numbers" aria-label="Today in numbers">
-          <div><strong>{finishedToday.length}</strong><span>shipped</span></div>
-          <div><strong>{reviewedToday}</strong><span>reviewed</span></div>
-          <div><strong>{focusToday}<small>m</small></strong><span><Timer size={11} /> focus</span></div>
-          <div><strong>{learnStreak}</strong><span><Flame size={11} /> streak</span></div>
-        </div>
+        {/* Four zeros say nothing: the numbers appear once there is one, and a zero beside real numbers stays quiet. */}
+        {finishedToday.length + reviewedToday + focusToday + learnStreak > 0 && <div className="td-numbers" aria-label="Today in numbers">
+          <div className={finishedToday.length ? "" : "is-zero"}><strong>{finishedToday.length}</strong><span>shipped</span></div>
+          <div className={reviewedToday ? "" : "is-zero"}><strong>{reviewedToday}</strong><span>reviewed</span></div>
+          <div className={focusToday ? "" : "is-zero"}><strong>{focusToday}<small>m</small></strong><span><Timer size={11} /> focus</span></div>
+          <div className={learnStreak ? "" : "is-zero"}><strong>{learnStreak}</strong><span><Flame size={11} /> streak</span></div>
+        </div>}
       </aside>
     </div>
   </div>;

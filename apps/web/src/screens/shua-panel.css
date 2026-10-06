@@ -1,0 +1,19 @@
+/*
+ * Shua's panel: Shua's colour washing in from the top, a halo that breathes behind Shua, a gradient greeting, and
+ * starters as one even column of cards. Breathing is transform/opacity only and rests with [data-idle].
+ */
+.buddy.is-embedded .buddy-card.spk { background-image: radial-gradient(120% 38% at 50% -6%, color-mix(in srgb, var(--spark-color, var(--amber)) 13%, transparent), transparent 72%); }
+.buddy-card.spk .spk-hello { position: relative; isolation: isolate; }
+.buddy-card.spk .spk-hello::before { content: ""; position: absolute; z-index: -1; top: -34px; left: 50%; width: 240px; height: 240px; margin-left: -120px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--spark-color, var(--amber)) 34%, transparent), transparent); animation: shua-halo 5.5s ease-in-out infinite; }
+@keyframes shua-halo { 50% { transform: scale(1.12); opacity: .7; } }
+.buddy-card.spk .spk-hello h2 { font-size: 24px; letter-spacing: -.035em; background: linear-gradient(180deg, var(--text) 30%, color-mix(in srgb, var(--text) 62%, var(--spark-color, var(--amber)))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.buddy-card.spk .spk-starters.spk-starters { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; max-width: 360px; margin: 14px auto 4px; }
+.buddy-card.spk .spk-starters.spk-starters > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; height: 42px; padding: 0 14px; border-radius: 12px; text-align: left; font-size: 13px; color: var(--text-2);
+  background: color-mix(in srgb, var(--text) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.buddy-card.spk .spk-starters.spk-starters > button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 40%, var(--line)); }
+.buddy-card.spk .spk-starters.spk-starters > button > svg { flex: none; opacity: .55; transform: rotate(45deg); }
+.buddy-card.spk .spk-starters.spk-starters > button.is-agent { justify-content: flex-start; gap: 6px; color: var(--text-3); background: transparent; box-shadow: inset 0 0 0 1px var(--line); border-style: dashed; }
+:root[data-idle] .buddy-card.spk .spk-hello::before { animation-play-state: paused; }
+:root[data-motion="reduced"] .buddy-card.spk .spk-hello::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { .buddy-card.spk .spk-hello::before { animation: none; } }

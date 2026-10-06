@@ -19,38 +19,43 @@ const HUBS: HubSection[] = [
     { title: "Your day, in one place", where: "Home › Today", to: "/activity", body: <>A morning brief with the weather, a plan and your meetings (if you connect your calendar). <b>Start my day</b> turns on Flow and the radio and shows the first thing that needs you.</>,
       points: ["Approve or deny crew requests right there", "From 6pm, an evening recap (“Your day, wrapped”) that becomes your journal", "Streaks and achievements, counted only from real work"] },
   ] },
-  { id: "crew", hub: "Hub 2 · ⌘2", title: "Crew: your team, live", intro: "A crew is a set of standing team members, each with its own persona, specialty, ongoing conversation and lessons learned. ShuaCrew sends each request to the member best suited to it.", features: [
-    { title: "Hire and review", where: "Crew › Team", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
-    { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
-    { title: "Crew HQ", where: "Crew › Crew HQ", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
-    { title: "Studio", where: "Crew › Studio", to: "/studio", body: "Your Apple Music, album first: what's playing big, lit by its cover; your albums on shelves (full albums, recently added, on repeat, rediscover); search across your whole library; one tap plays a whole record. Ask Shua to pick an album for right now, or tell you the story behind one." },
+  { id: "build", hub: "Hub 2 · ⌘2", title: "Projects: what you build and what it earns", features: [
+    { title: "Idea to revenue", where: "Projects › Projects", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
+    { title: "The Board", where: "Projects › Board", to: "/board", body: "Five lanes covering all your runs. Each run has a detail page, a review cockpit with inline comments sent back to the agent, a merge queue and a replay of what the terminal did." },
+    { title: "Specs", where: "Projects › Specs", to: "/specs", body: "Write down what you want built before anyone starts, so the crew builds against your spec instead of guessing." },
+    { title: "Studio", where: "Projects › Creative studio", to: "/studio", body: "Your Apple Music, album first: what's playing big, lit by its cover; your albums on shelves (full albums, recently added, on repeat, rediscover); search across your whole library; one tap plays a whole record. Ask Shua to pick an album for right now, or tell you the story behind one." },
   ] },
-  { id: "build", hub: "Hub 3 · ⌘3", title: "Build: ventures, plans and the board", features: [
-    { title: "Idea to revenue", where: "Build › Ventures", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
-    { title: "Multi-phase work", where: "Build › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
-    { title: "Specs", where: "Build › Specs", to: "/specs", body: "Write down what you want built before anyone starts, so the crew builds against your spec instead of guessing." },
-    { title: "The Board", where: "Build › Board", to: "/board", body: "Five lanes covering all your runs. Each run has a detail page, a review cockpit with inline comments sent back to the agent, a merge queue and a replay of what the terminal did." },
-    { title: "Schedules & routines", where: "Build › Schedules", to: "/schedules", body: "Recurring work you switch on once:",
+  { id: "crew", hub: "Hub 3 · ⌘3", title: "Crew: your team, live", intro: "A crew is a set of standing team members, each with its own persona, specialty, ongoing conversation and lessons learned. ShuaCrew sends each request to the member best suited to it.", features: [
+    { title: "Crew HQ", where: "Crew › Studio floor", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
+    { title: "Hire and review", where: "Crew › Agents", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
+    { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
+  ] },
+  { id: "know", hub: "Hub 4 · ⌘4", title: "Learn: get measurably better, with Shua", features: [
+    { title: "Learn from your own work", where: "Learn › Today", to: "/learn", body: "Lessons drawn from your real sessions, a daily drill and spaced-repetition review. It also includes a career coach: roadmaps, resume review and interview prep." },
+    { title: "Visual teaching", where: "Learn › Explain", to: "/teach", body: "Give it a screenshot, PDF, image or code and it turns it into an editable diagram lesson. Guided practice watches the screen you're practicing on and tells you whether you got it right, with hints. It only watches after you press Start." },
+  ] },
+  { id: "automations", hub: "Hub 5 · ⌘5", title: "Automations: teach once, reuse carefully", features: [
+    { title: "Multi-phase work", where: "Automations › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
+    { title: "Schedules & routines", where: "Automations › Schedules", to: "/schedules", body: "Recurring work you switch on once:",
       points: ["Weekday 8:30 crew standup", "Weekly growth review, competitor watch, personal wiki", "Nightly scoring of new ideas", "Webhooks, heartbeats and script-only jobs"] },
   ] },
-  { id: "know", hub: "Hub 4 · ⌘4", title: "Know: library, memory, learning", features: [
-    { title: "Library", where: "Know › Library", to: "/library", body: "Everything the crew makes, plus the knowledge you add, all searchable by you and by every agent. Documents preview their own pages. It's stored privately on your Mac." },
-    { title: "Memory", where: "Know › Memory", to: "/memory", body: "Lessons stay only if they keep proving useful. The crew suggests new skills and you approve them. A recall check keeps memory accurate." },
-    { title: "Learn from your own work", where: "Know › Learning", to: "/learn", body: "Lessons drawn from your real sessions, a daily drill and spaced-repetition review. It also includes a career coach: roadmaps, resume review and interview prep." },
-    { title: "Visual teaching", where: "Know › Visual teaching", to: "/teach", body: "Give it a screenshot, PDF, image or code and it turns it into an editable diagram lesson. Guided practice watches the screen you're practicing on and tells you whether you got it right, with hints. It only watches after you press Start." },
+  { id: "library", hub: "Hub 6 · ⌘6", title: "Library: everything worth keeping", features: [
+    { title: "Library", where: "Library › Artifacts & knowledge", to: "/library", body: "Everything the crew makes, plus the knowledge you add, all searchable by you and by every agent. Documents preview their own pages. It's stored privately on your Mac." },
+    { title: "Memory", where: "Library › Memory", to: "/memory", body: "Lessons stay only if they keep proving useful. The crew suggests new skills and you approve them. A recall check keeps memory accurate." },
   ] },
-  { id: "system", hub: "Hub 5 · ⌘5", title: "System: tools, policy, insights", features: [
-    { title: "Tools & skills", where: "System › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
-    { title: "Policy & audit", where: "System › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
-    { title: "Insights", where: "System › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
-    { title: "Terminal", where: "System › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
+  { id: "system", hub: "Tools", title: "Tools: connections, guardrails and the numbers", features: [
+    { title: "Tools & skills", where: "Tools › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
+    { title: "Policy & audit", where: "Tools › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
+    { title: "Insights", where: "Tools › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
+    { title: "Usage", where: "Tools › Usage", to: "/usage", body: "How many tokens, carried by which plan, when you work and where it went: a week you can scrub day by day, today against your own usual day, and a map of your heaviest sessions. Recorded numbers only; subscriptions have no per-token bill." },
+    { title: "Terminal", where: "Tools › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
       points: ["Save commands you use often as snippets, then run or insert them in one click", "Open a new terminal in Home, a project or a recent folder", "Filter your history; copy any command's output; hand a failure to the crew to fix", <><kbd>⌘T</kbd> new terminal, <kbd>⌘D</kbd> split, <kbd>⌘⇧H</kbd> history and snippets</>] },
   ] },
 ];
 
 const TOC: Array<{ group: string; items: Array<[id: string, label: string]> }> = [
   { group: "Start", items: [["what", "What it is"], ["start", "Getting started"], ["spark", "Spark"], ["chrome", "Spark for Chrome"]] },
-  { group: "The five hubs", items: HUBS.map((h) => [h.id, h.title.split(":")[0]!] as [string, string]) },
+  { group: "The hubs", items: HUBS.map((h) => [h.id, h.title.split(":")[0]!] as [string, string]) },
   { group: "Reference", items: [["engines", "Engines"], ["privacy", "Privacy & safety"], ["keys", "Shortcuts & commands"], ["settings", "Make it yours"], ["status", "Where things stand"]] },
 ];
 
@@ -230,7 +235,7 @@ export function Guide() {
               <tr><td><kbd>⌘</kbd> <kbd>J</kbd></td><td>Opens your companion in a side panel in the app</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>K</kbd></td><td>Search and jump anywhere</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>N</kbd></td><td>Starts a new session</td></tr>
-              <tr><td><kbd>⌘</kbd> <kbd>1</kbd>–<kbd>5</kbd></td><td>Switches between the five hubs. Each one reopens where you left it.</td></tr>
+              <tr><td><kbd>⌘</kbd> <kbd>1</kbd>–<kbd>6</kbd></td><td>Switches between the six hubs. Each one reopens where you left it.</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>\</kbd></td><td>Collapses the sidebar to a thin rail</td></tr>
               <tr><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>F</kbd></td><td>Flow mode: hides everything but the work</td></tr>
               <tr><td>Hold <kbd>Space</kbd></td><td>Push-to-talk. The mic turns off as soon as your words are sent.</td></tr>

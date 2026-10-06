@@ -1,10 +1,12 @@
 import "./session-chat.css";
 import { Recommendations } from "../components/Recommendations";
 import "../components/chat-composer.css";
+import "./home-hero.css";
 import { plain } from "../lib/plain";
 import type { RunView } from "@shuacrew/core/projections";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button, Chip, StatusGlyph, StatusPill, formatTokens } from "@shuacrew/ui";
+import { localDay } from "@shuacrew/core/projections";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -506,14 +508,16 @@ function NewSession() {
   const [terminal, setTerminal] = useTerminal();
   const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
   const ideas = [
-    { icon: CheckCircle2, label: "Review changes", text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
-    { icon: Bug, label: "Fix a failing test", text: "Find a failing test in one of my projects and fix it" },
-    { icon: Telescope, label: "Catch me up", text: "Summarise what changed in my repos today" },
-    { icon: Sparkles, label: "Plan what’s next", text: "Look at my most recent project and suggest the next three things to build" },
+    { icon: CheckCircle2, label: "Review changes", hint: "What's risky before you commit", text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
+    { icon: Bug, label: "Fix a failing test", hint: "Find one, fix it, prove it", text: "Find a failing test in one of my projects and fix it" },
+    { icon: Telescope, label: "Catch me up", hint: "What changed in your repos today", text: "Summarise what changed in my repos today" },
+    { icon: Sparkles, label: "Plan what’s next", hint: "Three things worth building", text: "Look at my most recent project and suggest the next three things to build" },
   ];
   return (
     <section className="sheet hero-sheet home-workbench flex min-h-0 min-w-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {/* Light behind the ask: three slow blooms in the accent's family. Transform-only; rests when ShuaCrew is idle. */}
+        <div className="hero-aurora" aria-hidden="true"><i /><i /><i /></div>
         <div className="hero-stack">
           <div className="hero-core">
           {/* A conversation first: the greeting, the box, a few ways in. What needs you, recent work and your day sit just below. */}
@@ -523,12 +527,13 @@ function NewSession() {
             </div>
             <h1 className="hero-title">{dayGreeting()}. What should the crew build?</h1>
             <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
+            <HeroPulse />
             <Composer seed={seed} hero />
             <div className="hero-ideas stagger">
-              {ideas.map(({ icon: Icon, text, label }) => (
+              {ideas.map(({ icon: Icon, text, label, hint }) => (
                 <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
-                  <i className="hero-idea-icon"><Icon size={14} /></i>
-                  <span className="line-clamp-2">{label}</span>
+                  <i className="hero-idea-icon"><Icon size={15} /></i>
+                  <span className="hero-idea-text"><b>{label}</b><small>{hint}</small></span>
                   <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
                 </button>
               ))}
@@ -582,11 +587,28 @@ const loadRuntimes = () => (runtimeCache ??= api<RuntimeInfo[]>("/api/runtimes")
 
 const presetTitle = (p: Preset) => [p.runtime || "Auto agent", p.model || "auto model", p.effort || "auto effort", p.autopilot ? "Autopilot" : "Supervised", p.task ? "Task" : ""].filter(Boolean).join(" · ");
 
+/** What the empty box suggests, a few seconds each: real things this crew can do, starting with the plain ask. */
+const HERO_PROMPTS = [
+  "What do you want to build?  / for commands",
+  "Build a landing page for Shua Labs with pricing and a waitlist…",
+  "Find what slowed my gateway this week and fix it…",
+  "Draft three posts about building ShuaCrew in public…",
+  "Price a two-week AI platform audit for small teams…",
+  "Review my uncommitted changes and tell me what's risky…",
+];
+
 function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n: number }; hero?: boolean }) {
   const navigate = useNavigate();
   const sendShortcut = useLive((s) => s.appearance.sendShortcut);
+  // The empty hero box cycles its suggestion; it holds still once you type, in a session, or with Reduce motion.
+  const [prompt, setPrompt] = useState(0);
   const spellcheck = useLive((s) => s.appearance.spellcheck);
   const [text, setText] = useState("");
+  useEffect(() => {
+    if (!hero || run || text || document.documentElement.dataset.motion === "reduced") return;
+    const t = setInterval(() => { if (!document.hidden && !document.documentElement.hasAttribute("data-idle")) setPrompt((n) => n + 1); }, 4200);
+    return () => clearInterval(t);
+  }, [hero, run, text]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // A new session starts from Settings → Session defaults; a follow-up inside a run never does.
@@ -989,7 +1011,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               }
             }}
             {...({ writingsuggestions: "false" } as object)}
-            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : "What do you want to build?  / for commands"}
+            placeholder={run ? (working ? "Add to the queue — it's answered when this turn ends…" : "Reply, or ask for the next thing…") : hero ? HERO_PROMPTS[prompt % HERO_PROMPTS.length] : "What do you want to build?  / for commands"}
             className="block max-h-[240px] w-full resize-none bg-transparent text-[14px] leading-relaxed text-fg outline-none placeholder:text-fg-3"
             aria-label="Message"
             aria-controls={slash.length ? "session-commands" : undefined}
@@ -1243,6 +1265,20 @@ function Line({ label, value }: { label: string; value: string }) {
 // ── home: what needs you, and getting started ───────────────────────────────────────────────
 
 /** Gates and approvals waiting on you, one tap away — the first thing you see when you open the app. */
+/** One live line under the greeting: who's working, what's waiting, how much today, so the room reads at a glance. */
+function HeroPulse() {
+  const runs = useLive((s) => s.crew.runs), approvals = useLive((s) => s.crew.approvals), plays = useLive((s) => s.crew.plays);
+  const today = useLive((s) => s.crew.today), limited = useLive((s) => s.crew.limited), connection = useLive((s) => s.connection);
+  const working = Object.values(runs).filter((r) => r.status === "running" || r.status === "planning").length;
+  const waiting = Object.keys(approvals).length + Object.values(plays).filter((p) => p.status === "waiting").length;
+  const resting = Object.values(limited ?? {}).filter((w) => w.until > Date.now()).length;
+  const tokens = today.day === localDay() ? today.tokens : 0;
+  const tone = connection !== "live" ? "idle" : waiting ? "wait" : working ? "live" : "ok";
+  const parts = connection !== "live" ? ["Reconnecting to your crew…"]
+    : [working ? `${working} working now` : "Crew ready", waiting ? `${waiting} waiting on you` : "nothing waiting on you", resting ? `${resting} resting on a limit` : null, tokens ? `${formatTokens(tokens)} tokens today` : null].filter(Boolean);
+  return <p className={`hero-pulse is-${tone}`} role="status"><i aria-hidden="true" />{parts.join(" · ")}</p>;
+}
+
 function NeedsYou() {
   const plays = useLive((s) => s.crew.plays);
   const approvals = useLive((s) => s.crew.approvals);

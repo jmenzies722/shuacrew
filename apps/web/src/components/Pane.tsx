@@ -2,14 +2,23 @@ import type { ComponentType, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { appRoute, paneAnnouncement, type PaneStateKind } from "../lib/pane-model";
 import "./pane.css";
+import "./control-room.css";
 
 /** The one page header: eyebrow (the rail group it lives in), title, what the page is for, and its actions. */
-export function PaneHeader({ title, description, actions, eyebrow, icon: Icon, children }: {
+/**
+ * The one page header, in the same language as the Tools hub (Control Room): eyebrow, title, an optional live status
+ * line (what's true right now, with a tone dot), what the page is for, its actions, and one sweep of light underneath.
+ */
+export function PaneHeader({ title, description, actions, eyebrow, icon: Icon, children, status, tone = "ok" }: {
   title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: string; icon?: ComponentType<{ size?: number }>; children?: ReactNode;
+  status?: ReactNode; tone?: "ok" | "wait" | "bad" | "idle" | "live";
 }) {
   // The hub strip already says where you are; an eyebrow that only repeats the group name is noise. Dates and real context stay.
   const showEyebrow = eyebrow && !/^(work|plan|brain|system|build|know|crew|home|your workspace|the evidence behind your crew)$/i.test(eyebrow.trim());
-  return <header className="pane-header"><div>{showEyebrow && <span className="pane-eyebrow">{Icon && <Icon size={12} />}{eyebrow}</span>}<h1>{title}</h1>{description && <p>{description}</p>}{children}</div>{actions && <div className="pane-actions">{actions}</div>}</header>;
+  return <header className="pane-header cr-head"><div className="cr-head-main">{showEyebrow && <span className="pane-eyebrow">{Icon && <Icon size={12} />}{eyebrow}</span>}<h1>{title}</h1>
+    {status && <p className={`cr-status is-${tone}`} role="status"><i aria-hidden="true" />{status}</p>}
+    {description && <p className={status ? "pane-desc is-quiet" : "pane-desc"}>{description}</p>}{children}</div>
+    {actions && <div className="pane-actions">{actions}</div>}<span className="cr-trace" aria-hidden="true" /></header>;
 }
 /** The one page frame: scrolls, centres and pads every standard pane the same way. */
 export function PaneLayout({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
