@@ -46,3 +46,7 @@ html:root .home-workbench .hero-ideas .hero-idea > span.hero-idea-text { display
 html:root .home-workbench .hero-ideas .hero-idea .hero-idea-go { display: block; position: absolute; top: 9px; right: 9px; color: var(--text-3); opacity: 0; transform: none; transition: opacity var(--t-fast, 120ms); }
 html:root .home-workbench .hero-ideas .hero-idea:hover .hero-idea-go { opacity: .8; }
 :root[data-motion="reduced"] .home-workbench .hero-ideas .hero-idea.hero-idea:hover { transform: none; }
+
+/* The greeting sits on the same centre line as everything under it (an older rule set it flush left). */
+html:root .home-workbench .hero-title { text-align: center; text-wrap: balance; margin-inline: auto; max-width: 760px; }
+html:root .home-workbench .hero-mark { align-self: center; }
