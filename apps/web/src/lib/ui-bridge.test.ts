@@ -22,3 +22,9 @@ it("refuses what's missing, ambiguous, or risky", () => {
   for (const n of ["Studio", "Above", "Open session", "Insights", "Reset the view"]) expect(risky(n)).toBe(false);
   expect(pickPressable(page, "")).toEqual({ error: "Say which control to press." });
 });
+
+it("describes ShuaCrew's window for Shua: the page and what it can press", async () => {
+  const { shuacrewPageText } = await import("./ui-bridge");
+  expect(shuacrewPageText({ title: "Studio floor", path: "/floor", controls: ["Studio", "Above", "Close"] })).toBe("SHUACREW WINDOW NOW: “Studio floor” (/floor). Press its controls with ui by these exact names: Studio · Above · Close.");
+  expect(shuacrewPageText({ title: "", path: "/x", controls: [] })).toContain("“/x” (/x)");
+});

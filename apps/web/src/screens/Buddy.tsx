@@ -9,6 +9,7 @@ import { useWorkflows, workflowBusy, workflowCommand, workflowContext, workflowR
 import { AssistantMission } from "../components/AssistantMission";
 import { prepareFreshAction } from "../lib/fresh-action";
 import { journalStep } from "../lib/shua-journal";
+import { listShuaCrew, shuacrewPageText } from "../lib/ui-bridge";
 import { AssistantDeck } from "../components/AssistantDeck";
 import { AssistantAccess } from "../components/AssistantAccess";
 import { beginAssistant, reduceAssistant, type AssistantPhase } from "../lib/assistant-state";
@@ -732,7 +733,11 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           if (!failed.length && opened && needsFollowThrough(q, text) && !looked.current.has(key)) {
             looked.current.add(key);
             // Give the page time to load, and let Spark finish its sentence first: a new turn stops the voice.
-            const go = () => { if (turn) turn.pending++; setTimeout(() => { if (turn) turn.pending--; if (active()) speech.current.whenQuiet(() => { if (active()) void askRef.current(followThroughAsk(opened, q, already), { look: true, ...(turn ? { origin: "live", signal: turn.request.signal } : {}) }); }); }, 3200); };
+            const inApp = actions[openedAt]?.type === "go";
+            const go = () => { if (turn) turn.pending++; setTimeout(() => { if (turn) turn.pending--; if (active()) speech.current.whenQuiet(() => { if (!active()) return;
+              // Inside ShuaCrew: its own controls instead of a screenshot of the app behind it.
+              void (inApp ? listShuaCrew() : Promise.resolve(null)).then((page) => { if (active()) void askRef.current(followThroughAsk(opened, q, already, page ? shuacrewPageText(page) : ""), { look: !page, ...(turn ? { origin: "live", signal: turn.request.signal } : {}) }); });
+            }); }, inApp ? 900 : 3200); };
             if (finished.current.has(key)) go(); else carryOn.current.set(key, go);
           }
         }).catch(e => { if (active()) setError((e as Error).message); if (turn) turn.error = (e as Error).message; }).finally(() => { if (turn) turn.pending--; notifyLiveTurn(); });

@@ -478,3 +478,10 @@ it("tells the follow-through what that reply already did after opening", () => {
   expect(ask).toContain("Don't repeat those.");
   expect(followThroughAsk("x", "y")).not.toContain("already did");
 });
+
+it("after opening a ShuaCrew page, follows through with its controls instead of a screenshot", () => {
+  const ask = followThroughAsk("ShuaCrew’s Studio floor page", "press Above then Studio", [], "SHUACREW WINDOW NOW: “Studio floor” (/floor). Press its controls with ui by these exact names: Studio · Above.");
+  expect(ask).toContain("[shuacrew]");
+  expect(ask).toContain("never use act, point or the Dock");
+  expect(ask).not.toContain("screenshot is attached");
+});

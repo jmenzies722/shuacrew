@@ -817,9 +817,11 @@ export function needsFollowThrough(q: string, reply: string): boolean {
 }
 
 /** The turn that finishes the job: what opened, the original ask, and a fresh look to do the rest from. */
-export function followThroughAsk(opened: string, q: string, already: string[] = []) {
+export function followThroughAsk(opened: string, q: string, already: string[] = [], shuacrewPage = "") {
   // What else that reply already did after opening (measured: without this it pressed "Above" a second time).
   const did = already.length ? ` After opening it, that same reply already did: ${already.join("; ")}. Don't repeat those.` : "";
+  // Inside ShuaCrew there's nothing to see in a screenshot (it shows the app behind): give it the page's own controls.
+  if (shuacrewPage) return `Carry on.\n\n[shuacrew] You just opened ${opened} as the first step of: “${q.slice(0, 400)}”.${did}\n${shuacrewPage}\nThis is ShuaCrew's own window: your screen view can't show it, so never use act, point or the Dock here. Do the REST with ui presses by the exact names above, and brief or the crew actions for questions about the crew. If it's all done, say so in a sentence and answer what was asked.`;
   return `Carry on.\n\n[screen] You just opened ${opened} as the first step of: “${q.slice(0, 400)}”.${did} A fresh screenshot is attached. Now do the REST of that request on what's open — point, draw, highlight, underline, guide or act as it asks, or answer with the specifics (numbers, names, times) if it was a question. Don't open anything else unless the page is wrong for the ask; don't just describe the page.`;
 }
 

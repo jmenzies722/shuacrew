@@ -46,6 +46,12 @@ export function installUiBridge(): () => void {
   if (typeof BroadcastChannel === "undefined") return () => {};
   const channel = new BroadcastChannel(CHANNEL);
   channel.onmessage = async (e: MessageEvent<{ type: string; id: string; press: string }>) => {
+    if (e.data?.type === "list") {
+      await new Promise((r) => setTimeout(r, 350)); // a page that just opened finishes drawing first
+      const names = [...new Set(pressables(document).map((c) => c.name).filter((n) => !risky(n)))].slice(0, 80);
+      channel.postMessage({ type: "listed", id: e.data.id, page: { title: document.title.replace(/\s*[·|–-]\s*ShuaCrew\s*$/i, ""), path: location.pathname, controls: names } });
+      return;
+    }
     if (e.data?.type !== "press") return;
     let result: UiResult = { ok: false, message: "" };
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -75,4 +81,21 @@ export function pressInShuaCrew(press: string, timeout = 2500): Promise<UiResult
     channel.onmessage = (e: MessageEvent<{ type: string; id: string } & UiResult>) => { if (e.data?.type === "pressed" && e.data.id === id) done({ ok: e.data.ok, message: e.data.message }); };
     channel.postMessage({ type: "press", id, press });
   });
+}
+
+export interface ShuaCrewPage { title: string; path: string; controls: string[] }
+/** From the notch: what ShuaCrew's main window is showing and what can be pressed there, or null if it didn't answer. */
+export function listShuaCrew(timeout = 1500): Promise<ShuaCrewPage | null> {
+  if (typeof BroadcastChannel === "undefined") return Promise.resolve(null);
+  const channel = new BroadcastChannel(CHANNEL), id = Math.random().toString(36).slice(2);
+  return new Promise((resolve) => {
+    const done = (p: ShuaCrewPage | null) => { clearTimeout(timer); channel.close(); resolve(p); };
+    const timer = setTimeout(() => done(null), timeout);
+    channel.onmessage = (e: MessageEvent<{ type: string; id: string; page: ShuaCrewPage }>) => { if (e.data?.type === "listed" && e.data.id === id) done(e.data.page); };
+    channel.postMessage({ type: "list", id });
+  });
+}
+/** ShuaCrew's window, in words for Shua: the page and the exact names it can press there. */
+export function shuacrewPageText(p: ShuaCrewPage): string {
+  return `SHUACREW WINDOW NOW: “${p.title || p.path}” (${p.path}). Press its controls with ui by these exact names: ${p.controls.length ? p.controls.join(" · ") : "(none visible)"}.`;
 }
