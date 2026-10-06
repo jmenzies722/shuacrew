@@ -405,6 +405,7 @@ export class Supervisor {
 
     let ended = false;
     let buffered = "";
+    let said = ""; // everything streamed this turn: the reply if the runtime ends with an empty final message
     let firstWordAt = 0;
     const flush = () => {
       if (buffered) this.rec("agent.delta", { turn, text: buffered }, { run: runId });
@@ -427,7 +428,7 @@ export class Supervisor {
             break;
           case "text":
             if (event.final) this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
-            else buffered += event.text;
+            else { buffered += event.text; said += event.text; }
             break;
           case "thinking":
             this.rec("agent.thinking", { turn, text: event.text }, { run: runId });
@@ -485,7 +486,9 @@ export class Supervisor {
           case "done":
             this.confirmRecovery(runtime.id, model, attemptSeq);
             if (lean && model && firstWordAt) this.options.latency?.record(runtime.id, model, firstWordAt - started);
-            this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
+            // Measured: Codex can end a turn with an empty trailing message after streaming the real reply (an act block),
+            // and an empty final reply means nothing it asked for runs. Keep what it actually said.
+            this.rec("agent.message", { turn, text: event.text?.trim() ? event.text : said.trim(), final: true }, { run: runId });
             this.rec(
               "turn.completed",
               { turn, route: { runtime: runtime.id, model, effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },

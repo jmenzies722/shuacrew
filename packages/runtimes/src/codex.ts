@@ -150,9 +150,12 @@ export class CodexTranslator {
         this.items.set(item.id, { ...started, ...item });
         switch (item.type) {
           case "agentMessage": {
-            this.lastMessage = String(item.text ?? "");
-            if (this.streamed.has(item.id) || !this.lastMessage.trim()) return [];
-            return [{ type: "text", text: `${this.lastMessage}\n` }];
+            // An empty trailing message never replaces the reply that came before it.
+            const text = String(item.text ?? "");
+            if (!text.trim()) return [];
+            this.lastMessage = text;
+            if (this.streamed.has(item.id)) return [];
+            return [{ type: "text", text: `${text}\n` }];
           }
           case "reasoning": {
             const text = [...(item.summary ?? [])].join("\n").trim();
