@@ -19,7 +19,6 @@ import { commandAnnouncement } from "../lib/command-narration";
 import { scheduleNotchClose } from "../lib/notch-hover";
 import { CompanionApproval } from "../components/CompanionApproval";
 import { notchActivity } from "../lib/notch-activity";
-import { dayGreeting } from "../lib/greeting";
 import { notchPreviewWanted, notchReplyText } from "../lib/notch-presentation";
 import { requestPointer } from "../lib/pointer-feedback";
 import { SelectedAreaPreview } from "../components/SelectedAreaPreview";
@@ -107,6 +106,10 @@ import { saveSee, screenAllowed, useScreenAccess } from "../lib/screen-access";
 import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
 import { classicCaptureWanted } from "../lib/live-preferences";
 import { voiceTrace } from "../lib/voice-trace";
+import { notchFocus, useLearningFocus } from "../lib/notch-focus";
+
+/** The idle island's small label: what kind of thing the line is, readable at a glance. */
+const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", learn: "Get better" };
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -1475,6 +1478,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Up late?" : hour < 12 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
   const workingNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
+  const learningFocus = useLearningFocus();
+  const justFinished = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && r.status === "done" && Date.now() - r.updatedAt < 2 * 3600_000 && !r.labels?.includes("buddy"))
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const idleFocus = notchFocus({ approvals, working: workingNow, justFinished: justFinished ? { id: justFinished.id, title: justFinished.title } : null, ...learningFocus, hour });
   const now$ = [
     approvals ? { key: "ok", tone: "wait", text: `${approvals} waiting for your OK`, ask: "What needs my OK right now?" } : null,
     activeMissions.length ? { key: "missions", tone: "live", text: `${activeMissions.length} mission${activeMissions.length === 1 ? "" : "s"} in progress`, ask: "How are my missions going?" } : null,
@@ -1703,15 +1710,15 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const nookStarters = !messages.length && !working && !busy ? starters.slice(0, 3) : [];
   // The island's one line: what it hears, says or does right now; else what needs you, the last reply, or the day.
   const lastReply = lastSpark ? speakable(messages.at(-1)!.text).replace(/```[\s\S]*$/, "").trim() : "";
-  const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean } =
+  const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string } =
     (fnHeld || hearingNow) && heard ? { text: heard, live: true }
     : streamingNow ? { text: visibleStream, live: true }
     : speaking && caption ? { text: caption.text, live: true }
     : processing || working || !!busy ? { text: fnSent && heard ? heard : "Working on it", live: true, shimmer: true }
     : lastReply ? { text: lastReply }
-    : { text: dayGreeting(new Date()), sub: [workingNow && `${workingNow} working`, approvals && `${approvals} waiting on you`].filter(Boolean).join(" · ") || "Talk, type, or let me look" };
+    : { text: idleFocus.text, sub: idleFocus.sub, tone: idleFocus.tone };
   const callOwnsIsland = call.active && call.mode !== "silent";
-  const islandChip = !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback ? (nextMoves[0] ?? nookStarters[0] ?? null) : null;
+  const islandChip = !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback ? (nextMoves[0] ?? (!messages.length ? idleFocus.ask : undefined) ?? nookStarters[0] ?? null) : null;
   const quick = nextMoves.length ? nextMoves : lastSpark && !working && !busy ? ["Tell me more", "Make it shorter", ...(see ? ["Show me on screen"] : []), ...(prefs.control !== "off" && see ? ["Do it for me"] : [])] : [];
   const close = () => { setNook(false); setMini(false); if (embedded) onClose?.(); else setOpen(false); };
   // Doze after 15 quiet minutes with nothing running; anything happening wakes it.
@@ -1881,6 +1888,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
               : workingNow > 0 ? <em className="is-live" aria-label={`${workingNow} crew sessions working`}>{workingNow}</em>
               : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em>
               : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em>
+              : idleFocus.tone === "done" ? <em className="is-done" aria-label={idleFocus.text}><Check size={11} strokeWidth={3} /></em>
+              : idleFocus.tone === "learn" ? <em className="is-learn" aria-label={`${idleFocus.text} · ${idleFocus.sub ?? ""}`} title={idleFocus.sub}><b aria-hidden />{learningFocus.due}</em>
               : <i className="shua-island-dot" aria-label="Ready" />}
             {islandOpen && <button type="button" className="shua-island-expand" onClick={openChat} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
@@ -1901,7 +1910,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p> : null)}</div>
         <div className={`shua-island-body${islandMore || workflowsOpen || accessOpen || missionOpen ? " is-more" : ""}`} ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
           {/* One line, not a text box: what Shua is hearing, saying or doing right now — or your day at a glance. */}
-          {!callOwnsIsland && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}`} onClick={openChat} title="Open the conversation">
+          {!callOwnsIsland && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}${islandHero.tone ? ` is-tone-${islandHero.tone}` : ""}`} onClick={openChat} title="Open the conversation">
+            {islandHero.tone && islandHero.tone !== "calm" && <span className="isl-kicker"><i />{FOCUS_KICKER[islandHero.tone]}</span>}
             <span className="isl-hero-text">{islandHero.text}</span>{islandHero.sub && <small>{islandHero.sub}</small>}
           </button>}
           {selectedArea && <SelectedAreaPreview {...selectedArea} onClear={() => setSelectedArea(null)} />}
@@ -1930,12 +1940,12 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
           <div className={`isl-dock${islandTyping ? " is-typing" : ""}`}>
             {islandTyping ? <>
             <form className="spark-nook-ask isl-type" onSubmit={(e) => { e.preventDefault(); const d = getCompanionDraft(); if (!d.trim()) return; void ask(d); }}>
-              <DraftInput autoFocus tabIndex={islandOpen ? 0 : -1} onFocus={() => { nookFocus.current = true; macContext.prefetch(); post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (busy || working || speaking) void interrupt(); else { nookFocus.current = false; e.currentTarget.blur(); setIslandTyping(false); } } }} placeholder={`Ask ${companionName(prefs)}…`} aria-label={`Ask ${companionName(prefs)}`} />
+              <DraftInput autoFocus tabIndex={islandOpen ? 0 : -1} onPointerDown={() => post({ type: "buddyNookFocus" })} onFocus={() => { nookFocus.current = true; macContext.prefetch(); post({ type: "buddyNookFocus" }); }} onBlur={() => { nookFocus.current = false; }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (busy || working || speaking) void interrupt(); else { nookFocus.current = false; e.currentTarget.blur(); setIslandTyping(false); } } }} placeholder={`Ask ${companionName(prefs)}…`} aria-label={`Ask ${companionName(prefs)}`} />
               <ComposerActions compact active={!!busy || working || speaking} onStop={() => void interrupt()} tabIndex={islandOpen ? 0 : -1} />
             </form>
             </> : <>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn is-talk${talkEnabled ? " is-on" : ""}`} aria-pressed={talkEnabled} onClick={toggleTalk} title={talkEnabled ? "End the conversation" : "Talk"} aria-label={talkEnabled ? "End call" : "Talk"}>{talkEnabled ? <Square size={13} /> : <Mic size={15} />}</button>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn" onClick={() => setIslandTyping(true)} title="Type" aria-label="Type"><Keyboard size={15} /></button>
+              <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn" onClick={() => { setIslandTyping(true); post({ type: "buddyNookFocus" }); }} title="Type" aria-label="Type"><Keyboard size={15} /></button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${see || liveOn ? " is-on" : ""}`} aria-pressed={see || liveOn} onClick={() => { if (see || liveOn) void interrupt(); if (liveOn) post({ type: "buddyLive", on: false }); saveSee(!(see || liveOn)); }} title={see || liveOn ? "Stop looking at the screen" : "Look at my screen"} aria-label="Screen"><Eye size={15} /></button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${islandMore ? " is-on" : ""}`} aria-pressed={islandMore} onClick={() => setIslandMore(v => !v)} title="Missions, workflows, access" aria-label="More"><Ellipsis size={15} /></button>
               {islandChip && <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-chip" onClick={() => void ask(islandChip)} title={islandChip}><Sparkles size={12} /><span>{islandChip}</span></button>}

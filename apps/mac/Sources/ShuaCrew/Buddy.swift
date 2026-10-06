@@ -937,6 +937,10 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             panel.acceptsKeyboardInput = true
             if !NSApp.isActive { NSApp.activate() }
             if !panel.isKeyWindow { panel.makeKey() }
+            // Key window alone isn't enough: keys go to the first responder, and the field's DOM focus only takes once
+            // the page has window focus. So hand the web view the keyboard, then focus the island's field from here.
+            panel.makeFirstResponder(web)
+            web.evaluateJavaScript("setTimeout(() => document.querySelector('.isl-type textarea, .isl-type input, .spark-nook-ask textarea, .spark-nook-ask input')?.focus(), 0)")
         case "buddyFollow":
             following = body["on"] as? Bool ?? true
             UserDefaults.standard.set(following, forKey: "buddyFollowCursor")

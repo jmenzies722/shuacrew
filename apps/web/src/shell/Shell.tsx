@@ -32,7 +32,7 @@ import { SparkCharacter } from "../components/SparkCharacter";
 import { useCompanion } from "../lib/companion";
 import { sparkVars } from "../lib/spark-color";
 import { CompactRail, HubSidebar, HubTabs, setSidebarWide, useSidebarWide } from "./HubNav";
-import { Welcome, welcomed } from "../components/Welcome";
+import { Welcome, setupSnoozed, welcomed } from "../components/Welcome";
 import { Buddy } from "../screens/Buddy";
 import { setSparkFull, setSparkPanel, toggleSparkFull, toggleSparkPanel, useSparkFull, useSparkPanel } from "../lib/spark-panel";
 import { WorkspaceSpark } from "../components/WorkspaceSpark";
@@ -319,17 +319,12 @@ function SparkButton() {
 /** The welcome tour, once (and again after a big release, or from Settings → Spark). */
 function FirstRun() {
   const [show, setShow] = useState(false);
-  useEffect(() => { let alive=true; void api<{completedAt:number|null}>("/api/personal-setup").then(p=>{if(alive)setShow(!p.completedAt);}).catch(()=>{if(alive)setShow(!welcomed());}); return()=>{alive=false;}; }, []);
+  useEffect(() => { let alive=true; void api<{completedAt:number|null}>("/api/personal-setup").then(p=>{if(alive)setShow(!p.completedAt&&!setupSnoozed());}).catch(()=>{if(alive)setShow(!welcomed());}); return()=>{alive=false;}; }, []);
   useEffect(() => { const on = () => setShow(true); window.addEventListener("shuacrew:welcome", on); return () => window.removeEventListener("shuacrew:welcome", on); }, []);
   return show ? <Welcome onDone={() => setShow(false)} /> : null;
 }
 
-/** The full sidebar or the slim rail; ⌘\\ switches between them. */
+/** The sidebar is the rail: icons with labels, live badges, ⌘1–⌘5. */
 function Sidebar() {
-  const wide = useSidebarWide();
-  useEffect(() => {
-    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSidebarWide(!wide); } };
-    window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
-  }, [wide]);
-  return wide ? <HubSidebar /> : <CompactRail />;
+  return <CompactRail />;
 }

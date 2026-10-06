@@ -43,6 +43,7 @@ export function HubRail() {
   const here = locate(path)?.hub.id ?? (path.startsWith("/settings") ? "settings" : path.startsWith("/guide") ? "guide" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
+  const prefs = useCompanion(), sparkOpen = useSparkPanel(), name = companionName(prefs);
   useRemember(path);
   const go = (hub: Hub) => void navigate({ to: hub.id === here ? hub.tabs[0]!.to : hubEntry(hub, readLast()) });
   useEffect(() => {
@@ -60,11 +61,18 @@ export function HubRail() {
     const on = here === id;
     return <button key={id} type="button" className={`hub ${on ? "is-on" : ""}`} aria-current={on ? "page" : undefined} onClick={onClick} title={title}>
       {on && <motion.span layoutId="hub-on" className="hub-on" transition={{ type: "spring", stiffness: 560, damping: 40 }} />}
+      {on && <motion.span layoutId="hub-bar" className="hub-bar" aria-hidden transition={{ type: "spring", stiffness: 520, damping: 36 }} />}
       <span className="hub-icon"><Icon size={19} strokeWidth={1.75} />{b && <em className={`hub-badge is-${b.tone}`}>{b.n}</em>}</span>
       <span className="hub-label">{label}</span>
     </button>;
   };
   return <nav className="hub-rail" aria-label="Hubs">
+    {/* Everything starts with Shua: the orb opens it (⌘J); the pen starts a fresh session (⌘N). */}
+    <button type="button" className={`rail-shua${sparkOpen ? " is-on" : ""}${waiting ? " is-wait" : working ? " is-live" : ""}`} style={sparkVars(prefs.color)} onClick={toggleSparkPanel} title={`Ask ${name} anything  ⌘J`} aria-label={`Ask ${name}`} aria-pressed={sparkOpen}>
+      <SparkCharacter preferences={prefs} size={30} crop="portrait" />
+    </button>
+    <button type="button" className="rail-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))} title="New session  ⌘N" aria-label="New session"><SquarePen size={16} strokeWidth={1.8} /></button>
+    <span className="rail-sep" aria-hidden />
     {PRIMARY_HUBS.map((hub, i) => item(hub.id, hub.label, ICON[hub.id], () => go(hub), `${hub.label} — ${hub.hint}  ⌘${i + 1}`, badge(hub.id)))}
     {item("system", "Tools", Cpu, () => go(HUBS.find(h => h.id === "system")!), "All tools")}
     <span className="hub-spacer" />
@@ -79,7 +87,8 @@ export function HubTabs() {
   const at = locate(path), sidebarWide = useSidebarWide();
   const strip = useRef<HTMLDivElement>(null), [ready, setReady] = useState(false);
   useEffect(() => { setReady(true); }, []);
-  if (!at || sidebarWide) return null;
+  // One tab is just the rail repeated ("Learn | Learn"): the page's own heading says where you are.
+  if (!at || sidebarWide || at.hub.tabs.length < 2) return null;
   return <div className="hub-tabs" aria-label={at.hub.label} ref={strip}>
     <span className="hub-title">{at.hub.label}</span>
     <span className="hub-sep" aria-hidden="true" />
@@ -95,9 +104,11 @@ export function HubTabs() {
 
 // ── The sidebar: the whole platform in one column ─────────────────────────────────────────────
 const WIDE = "shuacrew.sidebar";
-let wide = (() => { try { return localStorage.getItem(WIDE) !== "0"; } catch { return true; } })();
+// The rail is the sidebar now (the full column stays in code, unused): every screen gets its tabs across the top.
+let wide = false;
+void WIDE;
 const wideListeners = new Set<() => void>();
-export function setSidebarWide(next: boolean) { wide = next; try { localStorage.setItem(WIDE, next ? "1" : "0"); } catch { /* ignore */ } wideListeners.forEach((l) => l()); }
+export function setSidebarWide(_next: boolean) { wide = false; wideListeners.forEach((l) => l()); }
 export function useSidebarWide() { const [, force] = useState(0); useEffect(() => { const l = () => force((n) => n + 1); wideListeners.add(l); return () => { wideListeners.delete(l); }; }, []); return wide; }
 
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
@@ -251,7 +262,7 @@ function SessionRow({ run, on }: { run: SideRun; on: boolean }) {
   </Dialog.Root>;
 }
 
-/** The slim rail, with a way back to the full sidebar. */
+/** The sidebar: one slim rail. */
 export function CompactRail() {
-  return <div className="rail-wrap"><HubRail /><button type="button" className="rail-unfold" onClick={() => setSidebarWide(true)} title="Expand sidebar  ⌘\\" aria-label="Expand sidebar"><PanelLeftOpen size={15} /></button></div>;
+  return <div className="rail-wrap"><HubRail /></div>;
 }

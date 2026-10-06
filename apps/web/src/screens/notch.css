@@ -86,6 +86,10 @@
 .shua-island-ear em.is-live { color: var(--on-accent, #fff); background: var(--amber); background-image: none; --n-ping: var(--amber); animation: n-pop .5s var(--n-spring) both, n-ping 1.8s var(--n-settle) .5s infinite; }
 .shua-island-ear em.is-timer, .shua-island-ear em.is-focus { color: #0a0a0a; background: var(--n-text); }
 @keyframes n-pop { from { transform: scale(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Calm states at rest: something just landed (a green check), or cards are due (your accent's diamond and the count). */
+.shua-island-ear em.is-done { display: grid; place-items: center; color: #06240f; background: var(--ok, #3fd18b); }
+.shua-island-ear em.is-learn { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px 0 6px; color: var(--n-text); background: color-mix(in srgb, var(--amber) 22%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+.shua-island-ear em.is-learn b { width: 6px; height: 6px; border-radius: 1.5px; background: var(--amber); transform: rotate(45deg); }
 /* Album art sits like a tiny record sleeve, gently lit. */
 .shua-island-art { border-radius: 6px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .12), 0 0 12px -2px rgba(255, 255, 255, .25); animation: n-pop .5s var(--n-spring) both; }
 
@@ -157,7 +161,11 @@
 .notch-wave i { background: linear-gradient(180deg, #fff, color-mix(in srgb, #fff 55%, var(--amber))); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 60%, transparent); }
 
 /* ── Rest and Reduce motion ─────────────────────────────────────────────────────────────────────────── */
-:root[data-idle] .buddy :is(.shua-island-shape, .shua-island-dot, .shua-island-ear em, .shua-island-face, .spark-nook-voice) { animation-play-state: paused !important; }
+:root[data-idle] .buddy :is(.shua-island-shape, .shua-island-dot, .shua-island-face, .spark-nook-voice) { animation-play-state: paused !important; }
+/* The notch is looked at while ShuaCrew is in the background, so its signals must still arrive: a badge gets its
+   one-shot pop (0.5 s, then nothing) instead of a frozen first frame at opacity 0; only the endless pings rest. */
+:root[data-idle] .buddy .shua-island-ear em { animation: n-pop .5s var(--n-spring) both !important; }
+:root[data-idle] .buddy :is(.isl-kicker i, .isl-kicker i::after) { animation: none !important; }
 :root[data-idle] .buddy .shua-island-shape::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion="full"]) .buddy :is(.shua-island-shape, .shua-island-dot, .shua-island-ear em, .shua-island-face, .shua-island-body > *, .spark-nook-voice, .spark-nook-ask button, .shua-island-live) { animation: none !important; }
@@ -173,6 +181,23 @@
 .isl-hero-text { font-size: 15px; line-height: 1.38; font-weight: 520; letter-spacing: -.01em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .isl-hero small { font-size: 12px; color: var(--n-text-2); }
 .isl-hero:hover .isl-hero-text { color: #fff; }
+/* Idle focus: a small kicker says what kind of line this is. One accent, tinted per tone; motion is transform/opacity only. */
+.isl-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 640; letter-spacing: .08em; text-transform: uppercase; color: var(--k, var(--amber)); }
+.isl-kicker i { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--k, var(--amber)); }
+.isl-hero.is-tone-needs { --k: #ffb347; }
+.isl-hero.is-tone-done { --k: #5ad08a; }
+.isl-hero.is-tone-learn, .isl-hero.is-tone-live { --k: var(--amber); }
+.isl-hero.is-tone-needs .isl-kicker i { animation: isl-k-pulse 1.6s ease-in-out infinite; }
+.isl-hero.is-tone-needs .isl-kicker i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: isl-k-ring 1.6s ease-out infinite; }
+.isl-hero.is-tone-live .isl-kicker i { background: none; border: 1.5px solid color-mix(in srgb, var(--k) 30%, transparent); border-top-color: var(--k); animation: isl-k-spin .9s linear infinite; }
+.isl-hero.is-tone-done .isl-kicker i { background: none; width: 9px; height: 5px; border-radius: 0; border-left: 2px solid var(--k); border-bottom: 2px solid var(--k); transform: rotate(-45deg) translate(1px, -1px); animation: isl-k-pop .5s cubic-bezier(.2,1.6,.4,1) both; }
+.isl-hero.is-tone-learn .isl-kicker i { border-radius: 2px; transform: rotate(45deg); animation: isl-k-breathe 2.8s ease-in-out infinite; }
+.isl-hero[class*="is-tone-"]:not(.is-tone-calm) .isl-hero-text { font-size: 16px; font-weight: 600; }
+@keyframes isl-k-pulse { 50% { transform: scale(.8); } }
+@keyframes isl-k-ring { from { transform: scale(1); opacity: .6; } to { transform: scale(2.8); opacity: 0; } }
+@keyframes isl-k-spin { to { transform: rotate(360deg); } }
+@keyframes isl-k-pop { from { transform: rotate(-45deg) scale(0); } }
+@keyframes isl-k-breathe { 50% { transform: rotate(45deg) scale(.72); opacity: .7; } }
 /* Working: the words carry a sheen that sweeps across them, the way Codex and Cursor say "busy" without a spinner. */
 .isl-hero.is-shimmer .isl-hero-text {
   color: transparent;
@@ -213,7 +238,7 @@
 .isl-more { display: grid; gap: 8px; }
 
 :root[data-idle] .buddy :is(.isl-hero-text, .isl-btn) { animation-play-state: paused !important; }
-@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .buddy :is(.isl-hero-text, .isl-btn) { animation: none !important; } }
-:root[data-motion="reduced"] .buddy :is(.isl-hero-text, .isl-btn) { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .buddy :is(.isl-hero-text, .isl-btn, .isl-kicker i, .isl-kicker i::after) { animation: none !important; } }
+:root[data-motion="reduced"] .buddy :is(.isl-hero-text, .isl-btn, .isl-kicker i, .isl-kicker i::after) { animation: none !important; }
 /* More is a mode: the line, the deck, the dock. Live cards step aside until you close it. */
 .shua-island-body.is-more > :not(.isl-hero, .isl-more, .isl-dock) { display: none; }
