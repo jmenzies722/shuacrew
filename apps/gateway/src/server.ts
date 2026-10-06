@@ -33,6 +33,7 @@ import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { execFile } from "node:child_process";
+import { registerPolicyAndUpdates, repoRootFrom } from "./policy-updates.js";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -1044,6 +1045,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   app.get("/api/audit/verify", async () => store.verify());
+  registerPolicyAndUpdates(app, { repoRoot: repoRootFrom(options.webRoot), version: options.version ?? "0.1.0", build: webBuild });
 
   // Checking sign-in runs each CLI (~200ms); the answer holds for 30s unless asked fresh.
   const statusCache = new Map<string, { at: number; value: Promise<RuntimeStatus> }>();

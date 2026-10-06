@@ -60,3 +60,24 @@
 @media (prefers-reduced-motion: reduce) { .pol-verdict, .pol-path li, .pol-chain.is-verifying .pol-blocks li { animation: none; } }
 .pol .spark-today-memory { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: 12px; color: var(--text-3); }
 .pol .spark-today-memory svg { flex: none; transform: translateY(2px); }
+
+/* What each layer said, under the verdict. */
+.pol-trail { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.pol-trail li { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 9px; border-radius: 8px; font-size: 11.5px; color: var(--text-2); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.pol-trail li b { font-weight: 600; color: var(--text); text-transform: capitalize; }
+.pol-trail li span { text-transform: capitalize; } .pol-trail li.is-bad span { color: var(--bad); } .pol-trail li.is-ok span { color: var(--ok); } .pol-trail li.is-wait span { color: var(--wait); }
+.pol-trail li small { font-family: var(--font-mono, ui-monospace, monospace); font-size: 10.5px; color: var(--text-3); }
+
+/* The rules: three columns, the tightest first. */
+.pol-rule-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1000px) { .pol-rule-cols { grid-template-columns: minmax(0, 1fr); } }
+.pol-rule-col { --c: var(--text-3); min-width: 0; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--c) 5%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 18%, var(--line)); }
+.pol-rule-col.is-bad { --c: var(--bad); } .pol-rule-col.is-wait { --c: var(--wait); } .pol-rule-col.is-ok { --c: var(--ok); }
+.pol-rule-col h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.pol-rule-col h3 em { font-style: normal; font-size: 11.5px; color: var(--c); }
+.pol-rule-col ul { display: grid; gap: 2px; max-height: 300px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.pol-rule-col li { display: grid; gap: 2px; padding: 7px 8px; border-radius: 8px; }
+.pol-rule-col li:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.pol-rule-col li span { font-size: 12.5px; color: var(--text); }
+.pol-rule-col li small { font-size: 11px; color: var(--text-3); }
+.pol-rule-col li code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 10.5px; }

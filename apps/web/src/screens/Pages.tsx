@@ -55,7 +55,8 @@ export function Policy() {
     catch { /* the badge keeps the last result */ }
     finally { setVerifying(false); }
   };
-  useEffect(() => { void explain(); void api<typeof verify>("/api/audit/verify").then(setVerify).catch(() => {}); }, []);
+  const [rules, setRules] = useState<Array<{ id: string; description: string; verdict: "allow" | "ask" | "deny"; risk: string }> | null>(null), [ruleFilter, setRuleFilter] = useState("");
+  useEffect(() => { void explain(); void api<typeof verify>("/api/audit/verify").then(setVerify).catch(() => {}); void api<NonNullable<typeof rules>>("/api/policy/rules").then(setRules).catch(() => setRules([])); }, []);
   // Real decisions, newest first: what the policy decided on its own, and what you decided when it asked.
   const decisions = useMemo(() => activity.filter((e) => e.kind === "policy.decided" || e.kind === "approval.decided").slice(-40).reverse(), [activity]);
   const asked = useMemo(() => new Map(activity.filter((e) => e.kind === "approval.requested").map((e) => { const b = e.body as { id: string; tool: string }; return [b.id, b.tool]; })), [activity]);
@@ -93,6 +94,7 @@ export function Policy() {
               <li className="is-verdict"><small>Verdict</small><b>{explained.verdict}</b></li>
             </ol>
             <p>{explained.reason}<span> · risk {explained.risk}</span></p>
+            {explained.trail.length > 1 && <ul className="pol-trail" aria-label="What each layer said">{explained.trail.map((t) => <li key={`${t.layer}-${t.rule}`} className={`is-${tone(t.verdict)}`}><b>{t.layer}</b><span>{t.verdict}</span><small>{t.rule}</small></li>)}</ul>}
           </div>}
         </section>
         <section className={`cr-sheet pol-chain${verifying ? " is-verifying" : ""}${verify && !verifying ? (verify.ok ? " is-ok" : " is-bad") : ""}`}>
@@ -115,6 +117,16 @@ export function Policy() {
         </section>
         <SparkToday />
       </div>
+      <section className="cr-sheet pol-rules">
+        <header className="cr-sheet-head"><h2>The rules</h2><small>{rules ? `${rules.length} rules · the tightest one wins, and every decision names it` : "reading…"}</small>
+          <div className="cr-sheet-actions"><input className="cr-search" type="search" placeholder="Filter rules…" aria-label="Filter rules" value={ruleFilter} onChange={(e) => setRuleFilter(e.target.value)} /></div></header>
+        {rules && !rules.length ? <p className="cr-muted">Couldn't read the rules from the gateway.</p> : <div className="pol-rule-cols">
+          {(["deny", "ask", "allow"] as const).map((v) => { const list = (rules ?? []).filter((r) => r.verdict === v && `${r.id} ${r.description}`.toLowerCase().includes(ruleFilter.trim().toLowerCase()));
+            return <div key={v} className={`pol-rule-col is-${tone(v)}`}><h3>{v === "deny" ? "Blocks" : v === "ask" ? "Asks you first" : "Allows"}<em>{list.length}</em></h3>
+              {list.length ? <ul>{list.map((r) => <li key={r.id}><span>{r.description.replace(/^./, (c) => c.toUpperCase())}</span><small><code>{r.id}</code> · {r.risk} risk</small></li>)}</ul> : <p className="cr-muted">None{ruleFilter ? " match" : ""}.</p>}
+            </div>; })}
+        </div>}
+      </section>
     </div></div>
   );
 }
