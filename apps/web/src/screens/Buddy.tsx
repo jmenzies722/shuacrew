@@ -1129,13 +1129,14 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         // Shua does every step itself — in web pages through the page's own elements (ShuaWeb), no browser extension.
         if (!screenAllowed(readSee(), liveScreen.current)) throw new Error("Screen access is off. Enable it before desktop actions.");
         const before = screenFacts(), started = performance.now();
-        let r: { ok: boolean; message: string };
+        let r: { ok: boolean; message: string }, sent: Act = a;
         try {
           const checked = await prepareFreshAction(a, before, async () => {
             const fresh = await capture();
             return { display: fresh.display, context: fresh.context, text: fresh.text, aspect: fresh.width / fresh.height };
           }, active);
           if (!active()) return;
+          sent = checked;
           r = await perform({ ...checked, color: accentOf(prefs.color) }, {requestId:`${receiptKey}:step:${step}:${i}`,active});
         } catch (e) {
           // A target that moved, vanished or became ambiguous is a failed step Shua can re-aim from a fresh look —
@@ -1144,10 +1145,12 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           r = { ok: false, message: (e as Error).message };
         }
         if (!active()) return;
-        journalStep(a, r, before?.context?.app, performance.now() - started);
-        liveTurn.current?.outcomes.push({ description: describeAct(a), ok: r.ok, message: r.message });
-        setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
-        said.push(`${describeAct(a)}${r.ok ? (r.message && r.message !== describeAct(a) ? ` (${r.message})` : "") : ` — FAILED: ${r.message}`}`);
+        journalStep({ ...a, ...("label" in sent && sent.label ? { label: sent.label } : {}) } as Act, r, before?.context?.app, performance.now() - started);
+        // Reported as what it really was: a press by number names the control it found.
+        const what = describeAct("label" in sent && sent.label && "label" in a && !a.label ? { ...a, label: sent.label } as Act : a);
+        liveTurn.current?.outcomes.push({ description: what, ok: r.ok, message: r.message });
+        setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: what, ...r }] }; });
+        said.push(`${what}${r.ok ? (r.message && r.message !== what ? ` (${r.message})` : "") : ` — FAILED: ${r.message}`}`);
         ran = i + 1;
         if (!r.ok) { ok = false; break; }
         if (i < list.length - 1) await new Promise((go) => setTimeout(go, a.type === "type" || a.type === "key" ? 250 : 450)); // let the app keep up

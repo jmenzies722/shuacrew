@@ -10,7 +10,7 @@ import type { ScreenContext, ScreenLine } from "./buddy";
  * the Mac side. Mixing centre and top-left once shifted every highlight by half its size.
  */
 export type RegionShape = "circle" | "pill" | "rounded";
-export interface Region { x: number; y: number; w: number; h: number; shape: RegionShape; exact: boolean }
+export interface Region { x: number; y: number; w: number; h: number; shape: RegionShape; exact: boolean; /** What it is, when re-identified. */ name?: string }
 export interface Aim { x: number; y: number; w: number; h: number; label: string; target?: string }
 export interface ScreenFacts { text?: ScreenLine[]; context?: ScreenContext; aspect?: number }
 type Candidate = { x: number; y: number; w: number; h: number; name: string; role?: string };
@@ -107,5 +107,5 @@ export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenF
   const ax = matching(controls), matches = ax.length ? ax : matching(all.filter(c => !c.role));
   const c = matches.length === 1 ? matches[0]! : nearest(matches, original ?? (aimed ? aim : null));
   if (!c) return null;
-  return { x:c.x, y:c.y, w:c.w, h:c.h, shape:shapeOf(c,current.aspect), exact:true };
+  return { x:c.x, y:c.y, w:c.w, h:c.h, shape:shapeOf(c,current.aspect), exact:true, name:c.name };
 }

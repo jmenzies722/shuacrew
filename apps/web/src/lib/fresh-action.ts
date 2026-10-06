@@ -11,7 +11,8 @@ export function freshAction(action: Act, before: (ScreenFacts & { display?: numb
   const aim = action.type === "press" ? {label:action.label,x:0,y:0,w:.03,h:.03,...(action.target ? {target:action.target} : {})} : {...action,w:.03,h:.03};
   const target = reacquire(aim, before, current, action.type === "click" && !action.target);
   if (!target) throw new Error("The click target is missing or ambiguous. No click was sent; look again.");
-  return { ...action, type:"click", x: target.x, y: target.y };
+  // By number, the step carries the control's own name, so what ran is reported as what it was ("Clicked “ShuaCrew”").
+  return { ...action, type:"click", x: target.x, y: target.y, label: action.label || target.name || "" };
 }
 export async function prepareFreshAction(action: Act, before: (ScreenFacts & { display?: number }) | null, capture: () => Promise<ScreenFacts & { display?: number }>, active: () => boolean): Promise<Act> {
   if (!active()) throw new Error("Stopped before observing.");

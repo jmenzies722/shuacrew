@@ -604,8 +604,11 @@ export function claimsWithoutAction(text: string): boolean {
   if (/```(do|act|guide|point|draw)\b/i.test(text)) return false;
   const said = speakable(text).toLowerCase();
   if (/\b(can'?t|cannot|couldn'?t|unable|not able|won'?t|isn'?t possible|don'?t have)\b/.test(said)) return false;
-  return /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)
+  const claimed = /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)
     && /^(ok|okay|sure|done|got it|on it|alright|all set|there you go|switched|opened|opening|paused|playing|turned|toggled|enabled|disabled|i'?ve|i have|i'?m|i )/.test(said.trim());
+  // Measured: mid-task, "I'll bring ShuaCrew to the front." with no block — and the task just stopped there.
+  const promised = /^(ok(ay)?[,.]? |sure[,.]? |on it[,.]? |now )?(i['’]?ll|i will|let me|i['’]?m going to)\b[^.?!]{0,40}\b(bring|click|press|tap|select|switch to|go to|head to|navigate|open|focus|scroll|type|close|move|drag)\b/.test(said.trim());
+  return claimed || promised;
 }
 
 /**

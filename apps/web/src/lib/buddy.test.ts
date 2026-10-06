@@ -456,3 +456,13 @@ it("runs screen steps written inside a do block as the act they meant", async ()
   expect(slippedActs('[{"type":"focus","minutes":25}]')).toBeNull();
   expect(slippedActs("not json")).toBeNull();
 });
+
+it("catches a promised screen step that came with no block", () => {
+  // Measured mid-task: this reply had no block, and the task stopped there.
+  expect(claimsWithoutAction("I’ll bring ShuaCrew to the front.")).toBe(true);
+  expect(claimsWithoutAction("Let me click the Above button.")).toBe(true);
+  expect(claimsWithoutAction("Okay, I'll go to the Studio floor.")).toBe(true);
+  expect(claimsWithoutAction("I'll click it now.\n```act {\"type\":\"press\",\"label\":\"Above\"}```")).toBe(false);
+  expect(claimsWithoutAction("I can't click inside that window.")).toBe(false);
+  expect(claimsWithoutAction("I'll explain how the floor works: each desk is an agent.")).toBe(false);
+});

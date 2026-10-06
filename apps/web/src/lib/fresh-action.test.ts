@@ -43,3 +43,7 @@ it("clicks and presses a numbered control at its fresh frame", async () => {
   expect(() => freshAction({ type: "click", x: .5, y: .5, label: "", target: "#9" }, before, moved)).toThrow("missing or ambiguous");
   expect(parseActs('```act {"type":"click","target":"T4"}```')).toEqual([]);
 });
+it("names a control pressed by its number", () => {
+  expect(freshAction({ type: "press", label: "", target: "#1" }, before, before)).toMatchObject({ type: "click", label: "Play" });
+  expect(freshAction({ type: "press", label: "Play it", target: "#1" }, before, before)).toMatchObject({ label: "Play it" });
+});
