@@ -165,3 +165,78 @@
 @keyframes atmo-drift { to { background-position: 100% 0; } }
 .atmo-corner { width: 70%; background: color-mix(in srgb, var(--text) 10%, #0b0b0d); }
 .atmo-row { grid-template-columns: 90px repeat(4, minmax(0, 1fr)); }
+
+/* ── Settings, redesigned (Control Room) ──────────────────────────────────────────────────────────────
+   Three columns on a wide window: the sections (with a live system corner), the settings, and an "On this page" guide
+   that lights the group you're reading. Every section opens with one live line saying what it's set to now. */
+.settings-page { scroll-padding-top: 20px; }
+.settings-layout { grid-template-columns: 224px minmax(0, 1fr); max-width: 1180px; gap: 40px; }
+.settings-layout.has-toc { grid-template-columns: 224px minmax(0, 1fr) 176px; max-width: 1400px; }
+@media (max-width: 1240px) { .settings-layout.has-toc { grid-template-columns: 224px minmax(0, 1fr); } .settings-toc { display: none; } }
+.settings-sidebar { display: grid; gap: 14px; top: 8px; }
+.settings-search { position: relative; }
+.settings-search kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); padding: 1px 6px; border-radius: 5px; font: 11px var(--font-mono, ui-monospace, monospace); color: var(--text-3); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.settings-sidebar nav { gap: 1px; margin-top: 0; }
+.settings-sidebar nav button { position: relative; padding: 8px 10px; border-radius: 9px; font-size: 13px; transition: background var(--t-fast, 120ms), color var(--t-fast, 120ms); }
+.settings-sidebar nav button[aria-current] { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.settings-sidebar nav button[aria-current] .settings-ico { color: var(--accent-text, var(--amber)); }
+.settings-nav-label { margin: 12px 10px 4px; font-size: 11.5px; color: var(--text-3); }
+.settings-nav-dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--wait); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wait) 18%, transparent); }
+.settings-nav-dot.is-bad { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }
+
+/* The live corner of the sidebar. */
+.settings-pulse { display: grid; padding: 6px; border-radius: 12px; background: var(--panel); box-shadow: var(--edge, inset 0 0 0 1px var(--line)); }
+.settings-pulse button { display: grid; grid-template-columns: 8px auto 1fr 12px; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 12px; text-align: left; color: var(--text-3); cursor: pointer; }
+.settings-pulse button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text-2); }
+.settings-pulse i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.settings-pulse i.is-ok { background: var(--ok); } .settings-pulse i.is-wait { background: var(--wait); } .settings-pulse i.is-bad { background: var(--bad); }
+.settings-pulse b { justify-self: end; font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.settings-pulse svg { opacity: 0; transition: opacity .15s; } .settings-pulse button:hover svg { opacity: .7; }
+
+/* Section head and the groups under it. */
+.settings-content .cr-head { margin-bottom: 4px; }
+.settings-lede { margin: 0 0 22px; max-width: 70ch; font-size: 13px; line-height: 1.55; color: var(--text-3); }
+.settings-group { scroll-margin-top: 20px; margin-bottom: 30px; }
+.settings-group > h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 14px; font-weight: 600; letter-spacing: -.01em; text-transform: none; color: var(--text); }
+.settings-group > h3::before { display: none; }
+.settings-link { display: grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; border: 0; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.settings-group:hover .settings-link, .settings-link:focus-visible { opacity: 1; }
+.settings-link:hover { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); }
+
+/* On this page. */
+.settings-toc { position: sticky; top: 24px; align-self: start; display: grid; gap: 1px; padding-left: 14px; border-left: 1px solid var(--line); }
+.settings-toc > span { margin-bottom: 8px; font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.settings-toc button { position: relative; padding: 5px 0; border: 0; background: none; font: inherit; font-size: 12.5px; line-height: 1.35; text-align: left; color: var(--text-3); cursor: pointer; transition: color .15s; }
+.settings-toc button:hover { color: var(--text-2); }
+.settings-toc button.is-on { color: var(--text); }
+.settings-toc button.is-on::before { content: ""; position: absolute; left: -15px; top: 4px; bottom: 4px; width: 2px; border-radius: 2px; background: var(--accent-text, var(--amber)); }
+
+/* Overview: one tile per section, each saying what it's set to right now. */
+.settings-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 10px; margin: 6px 0 22px; }
+.settings-tile { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; column-gap: 12px; row-gap: 3px; padding: 15px 16px; border: 0; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--panel); box-shadow: var(--edge, inset 0 0 0 1px var(--line)); transition: box-shadow .15s, transform .2s var(--ease-out, ease); }
+.settings-tile:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--line-strong), 0 14px 30px -22px rgba(0, 0, 0, .6); }
+.settings-tile .settings-ico { grid-row: 1 / 3; width: 34px; height: 34px; border-radius: 10px; }
+.settings-tile b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.settings-tile small { font-size: 12px; line-height: 1.4; color: var(--text-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.settings-tile.is-wait small { color: var(--wait); } .settings-tile.is-bad small { color: var(--bad); }
+.settings-tile-go { position: absolute; top: 12px; right: 12px; color: var(--text-3); opacity: 0; transition: opacity .15s; }
+.settings-tile:hover .settings-tile-go { opacity: .8; }
+
+/* Updates. */
+.upd { display: grid; gap: 14px; }
+.upd-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.upd-head > div { display: grid; gap: 3px; flex: 1; min-width: 200px; }
+.upd-head strong { font-size: 14px; font-weight: 600; color: var(--text); }
+.upd-head small { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.upd-ok { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+.upd-ok i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); }
+.upd-log { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.upd-log li { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: baseline; gap: 12px; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; }
+.upd-log li:nth-child(odd) { background: color-mix(in srgb, var(--text) 2.5%, transparent); }
+.upd-log code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; color: var(--accent-text, var(--amber)); }
+.upd-log span { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upd-log time { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+:root[data-motion="reduced"] .settings-tile:hover { transform: none; }
+@media (max-width: 850px) { .settings-pulse { display: none; } }
+.settings-card.upd { padding: 18px 20px; border-radius: 14px; }
