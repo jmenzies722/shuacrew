@@ -1,3 +1,4 @@
+import { pressInShuaCrew } from "../../lib/ui-bridge";
 /**
  * Every action Spark takes: settings it changes on itself, work it starts, and Mac actions (checked again by the app).
  * The panel plugs in the hooks that need it (asking before a command runs, sending results back to Spark).
@@ -200,6 +201,7 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   });
   if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: "Requested navigation" }); }
+  if (a.type === "ui") return pressInShuaCrew(a.press);
   if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));
   if (a.type === "remember") return api("/api/memory/lessons", { body: { text: a.text } }).then(() => { window.dispatchEvent(new Event("shuacrew:memory")); return { ok: true, message: "Remembered — every agent will know" }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "focus") { setFocus(startFocus(a.minutes)); return Promise.resolve({ ok: true, message: `${a.minutes}-minute focus started` }); }

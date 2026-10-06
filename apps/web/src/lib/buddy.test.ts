@@ -466,3 +466,8 @@ it("catches a promised screen step that came with no block", () => {
   expect(claimsWithoutAction("I can't click inside that window.")).toBe(false);
   expect(claimsWithoutAction("I'll explain how the floor works: each desk is an agent.")).toBe(false);
 });
+
+it("reads a press inside ShuaCrew", () => {
+  expect(parseActions('```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"}]```')).toEqual([{ type: "go", path: "/floor" }, { type: "ui", press: "Above" }]);
+  expect(parseActions('```do [{"type":"ui","press":""}]```')).toEqual([]);
+});

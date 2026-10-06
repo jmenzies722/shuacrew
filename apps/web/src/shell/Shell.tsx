@@ -44,6 +44,7 @@ import "../components/surfaces.css";
 import "../alive.css"; // the accent gradient and the touches that make it feel lit
 import "../onyx.css"; // last: the Onyx design language (Onyx and Porcelain palettes)
 import "../lib/look";
+import { installUiBridge } from "../lib/ui-bridge";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
@@ -84,6 +85,8 @@ export function Shell() {
   }, [workspacePath]);
   const motionPreference = useLive((s) => s.appearance.motion);
   useEffect(() => { listenForCommands(); startDj(); }, []); // the app window owns the radio player (and its DJ)
+  // The main window answers Shua's "press X in ShuaCrew" from the notch (the notch itself never does).
+  useEffect(() => (location.pathname.startsWith("/buddy") ? undefined : installUiBridge()), []);
   const { flow } = usePower();
   const home = useRouterState({ select: s => s.location.pathname === "/" });
   // Home and an open session share one layout: the page strip above it pushed the session panel and thread ~38 pt
