@@ -13,6 +13,9 @@ import { SHUA_PERSONA, type MemberVoice } from "@shuacrew/core/voice";
 import { VoiceCastPicker } from "../components/VoiceCastPicker";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
+import { CrewDispatch } from "../components/CrewDispatch";
+import { bestMember } from "../lib/crew-match";
+import "./crew-hq.css";
 
 interface Runtime {
   id: string;
@@ -30,6 +33,8 @@ export function CrewPage() {
   const [lessons, setLessons] = useState<Record<string, number>>({});
   const [runtimes, setRuntimes] = useState<Runtime[]>([]);
   const list = Object.values(members);
+  const [ask, setAsk] = useState(""), [picked, setPicked] = useState<string | null>(null);
+  const match = useMemo(() => bestMember(ask, list), [ask, list]);
 
   useEffect(() => {
     void api<Runtime[]>("/api/runtimes").then(setRuntimes).catch(() => undefined);
@@ -52,13 +57,15 @@ export function CrewPage() {
           <Button variant="ghost" onClick={() => setEditing({ role: "Personal assistant", persona: SHUA_PERSONA, color: "#56d4dd", emoji: "audio-lines", triggers: [], voice: { voiceId: "michael", speed: 1, personality: "calm" } })}>Start from Shua</Button>
         </>} />
 
+        {list.length > 0 && <CrewDispatch members={list} text={ask} setText={setAsk} picked={picked} setPicked={setPicked} match={match} />}
         {list.length === 0 ? (
           <StarterCta />
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+          <div className="crew-roster grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
             <AnimatePresence initial={false}>
               {list.map((m) => (
-                <motion.div key={m.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}>
+                <motion.div key={m.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+                  className={(picked ? picked === m.id : match?.id === m.id) ? "is-picked" : ask.trim() ? "is-dim" : undefined}>
                   <MemberCard member={m} runs={runs} lessons={lessons[m.id] ?? 0} onEdit={() => setEditing(m)} />
                 </motion.div>
               ))}
