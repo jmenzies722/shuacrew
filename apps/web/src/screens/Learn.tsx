@@ -13,6 +13,7 @@ import { Learning, type Tab as LibraryTab } from "./Learning";
 import { Teaching } from "./Teaching";
 import { LearningProjects } from "../components/LearningProjects";
 import "./learn.css";
+import { ControlHeader, Readouts, Seg } from "../components/ControlRoom";
 import "./learn-today.css";
 
 type Mode = "today" | "explain" | "library";
@@ -91,16 +92,18 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
   const [first, ...then] = plan;
 
   return <div className="pane-scroll learn"><div className="pane-body pane-body-wide">
-    <header className="learn-head">
-      <div><span className="learn-kicker"><GraduationCap size={13} /> Learn with {name}</span><h1>{mode === "today" ? headline || "Learn" : mode === "explain" ? "What do you want to understand?" : "Your library"}</h1></div>
-      <nav className="learn-modes" role="tablist" aria-label="Learn">
-        {([["today", "Today", Flame], ["explain", "Explain", Presentation], ["library", "Library", Library]] as const).map(([id, label, Icon]) =>
-          <button key={id} type="button" role="tab" aria-selected={mode === id} className={mode === id ? "is-on" : ""} onClick={() => { setMode(id); if (id === "library") setLibraryTab(undefined); }}><Icon size={14} />{label}</button>)}
-      </nav>
-    </header>
+    <ControlHeader title={mode === "today" ? headline || "Learn" : mode === "explain" ? "What do you want to understand?" : "Your library"} kicker={<><GraduationCap size={13} /> Learn with {name}</>}
+      status={!insights ? "Reading where you stand…" : statLine} tone={!insights ? "idle" : insights.due ? "live" : "ok"}>
+      <Seg label="Learn" value={mode} onChange={(id) => { setMode(id); if (id === "library") setLibraryTab(undefined); }} options={[["today", "Today"], ["explain", "Explain"], ["library", "Library"]] as const} />
+    </ControlHeader>
     {error && <p className="lx-error" role="alert">{error}</p>}
     {mode === "today" && <div className="lt">
-      {statLine && <p className="lt-stat">{statLine}</p>}
+      {insights && <Readouts className="lt-readouts" items={[
+        { label: "Due now", value: insights.due, tone: insights.due ? "live" : undefined, dim: !insights.due, sub: insights.due ? `about ${Math.max(1, Math.round(insights.due * 0.4))} min` : "all caught up" },
+        { label: "Reviewed this week", value: insights.week.reviews, dim: !insights.week.reviews, sub: insights.week.change ? `${insights.week.change > 0 ? "+" : ""}${insights.week.change} on last week` : "answers you graded" },
+        { label: "Right this week", value: pct(insights.week.accuracy), dim: insights.week.accuracy === null, tone: insights.week.accuracy === null ? undefined : insights.week.accuracy >= 0.8 ? "ok" : insights.week.accuracy < 0.6 ? "wait" : undefined, sub: "of graded answers" },
+        { label: "Skills tracked", value: insights.tracks.length, dim: !insights.tracks.length, sub: insights.stale.length ? `${insights.stale.length} going stale` : "from your own work" },
+      ]} />}
       {first && <section className="lt-next" aria-label="Next up">
         <span className="lt-kicker">Next up</span>
         <div className="lt-next-row">

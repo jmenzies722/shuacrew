@@ -14,6 +14,9 @@ import { skyAt, todayMoments, type Moment } from "../lib/today";
 import { useLearningNow, useWeatherNow } from "../components/TopBarWidgets";
 import { native, post } from "./spark/bridge";
 import "./today-live.css";
+import { Readouts } from "../components/ControlRoom";
+import { formatTokens } from "@shuacrew/ui";
+import { localDay as dayKey } from "@shuacrew/core/projections";
 
 type Reminder = { id: string; title: string; due: number; hasTime: boolean };
 const hhmm = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -49,6 +52,8 @@ export function Today() {
   const focusToday = focusMinutes(1, new Date(now))[0]?.minutes ?? 0;
   const learnStreak = streak(new Set((learn?.days ?? []).filter((d) => d.reviews > 0).map((d) => d.day)), new Date(now));
   const sky = skyAt(now), w = weather ? describe(weather.code, weather.day) : null;
+  const startedToday = runs.filter((r) => localDay(new Date(r.createdAt)) === localDay(new Date(now))).length; // every session, Shua chats included, so it matches the tokens beside it
+  const tokensToday = crew.today.day === dayKey(now) ? crew.today.tokens : 0;
 
   const brief = morningBrief({ now: new Date(now), goal: learn?.profile?.goal, finished: finishedToday.map((r) => r.title), waiting: approvals.length, due,
     ventures: Object.values(crew.ventures ?? {}).map((v) => ({ name: (v as { name: string }).name, stage: (v as { stage: string }).stage })), running: running.length,
@@ -92,9 +97,18 @@ export function Today() {
       </div>
     </section>
 
+    <Readouts className="td-readouts" items={[
+      { label: "Sessions today", value: startedToday, dim: !startedToday, tone: running.length ? "live" : undefined, sub: running.length ? `${running.length} working now` : "started since midnight" },
+      { label: "Shipped", value: finishedToday.length, dim: !finishedToday.length, tone: finishedToday.length ? "ok" : undefined, sub: "finished today" },
+      { label: "Tokens", value: formatTokens(tokensToday), dim: !tokensToday, sub: "used since midnight" },
+      { label: "Focus", value: <>{focusToday}<small>m</small></>, dim: !focusToday, sub: "in Flow today" },
+      { label: "Learning streak", value: <>{learnStreak}<small>{learnStreak === 1 ? "day" : "days"}</small></>, dim: !learnStreak, sub: reviewedToday ? `${reviewedToday} reviewed today` : "review to keep it going" },
+    ]} />
+
     <div className="td-body">
       <section className="td-line" aria-label="Your day">
         <header><h2>Your day</h2><small>{moments.length ? `${moments.filter((m) => m.at <= now).length} so far · ${moments.filter((m) => m.at > now).length} ahead` : "Nothing on the clock yet"}</small></header>
+        <DayRibbon now={now} moments={moments} />
         {!cal.state?.authorized && cal.available && <button type="button" className="td-connect" onClick={cal.connect}><CalendarDays size={14} />Show my calendar here</button>}
         <ol>
           {moments.map((m, i) => <li key={m.id} className={`td-m is-${m.tone} is-${m.kind}`}>
@@ -115,13 +129,7 @@ export function Today() {
         {cards.length ? cards.map((c) => <button key={c.key} type="button" className={`td-card is-${c.tone}`} onClick={c.go}>
           <i><c.icon size={16} /></i><strong>{c.title}</strong><span>{c.sub}</span>
         </button>) : <div className="td-card is-clear"><i><Sparkles size={16} /></i><strong>Nothing needs you</strong><span>Your crew is idle and you're caught up. Good time to build.</span></div>}
-        {/* Four zeros say nothing: the numbers appear once there is one, and a zero beside real numbers stays quiet. */}
-        {finishedToday.length + reviewedToday + focusToday + learnStreak > 0 && <div className="td-numbers" aria-label="Today in numbers">
-          <div className={finishedToday.length ? "" : "is-zero"}><strong>{finishedToday.length}</strong><span>shipped</span></div>
-          <div className={reviewedToday ? "" : "is-zero"}><strong>{reviewedToday}</strong><span>reviewed</span></div>
-          <div className={focusToday ? "" : "is-zero"}><strong>{focusToday}<small>m</small></strong><span><Timer size={11} /> focus</span></div>
-          <div className={learnStreak ? "" : "is-zero"}><strong>{learnStreak}</strong><span><Flame size={11} /> streak</span></div>
-        </div>}
+
       </aside>
     </div>
   </div>;
@@ -129,4 +137,23 @@ export function Today() {
 
 function NowLine({ now }: { now: number }) {
   return <div className="td-now" aria-label={`Now, ${hhmm(now)}`}><span>Now · {hhmm(now)}</span></div>;
+}
+
+/** The day at a glance: 6 am to midnight, every moment where it happened or will, and a needle that moves with now. */
+function DayRibbon({ now, moments }: { now: number; moments: Moment[] }) {
+  const from = new Date(now); from.setHours(6, 0, 0, 0);
+  const to = new Date(now); to.setHours(24, 0, 0, 0);
+  const span = to.getTime() - from.getTime(), at = (t: number) => Math.max(0, Math.min(100, ((t - from.getTime()) / span) * 100));
+  const hours = [6, 9, 12, 15, 18, 21];
+  const label = (h: number) => (h === 12 ? "noon" : `${h % 12 || 12}${h < 12 ? "a" : "p"}`);
+  return <div className="td-ribbon" aria-hidden="true">
+    <div className="td-ribbon-track">
+      <i className="td-ribbon-past" style={{ width: `${at(now)}%` }} />
+      {hours.slice(1).map((h) => <i key={h} className="td-ribbon-tick" style={{ left: `${((h - 6) / 18) * 100}%` }} />)}
+      {moments.map((m) => <b key={m.id} className={`td-ribbon-mark is-${m.tone} is-${m.kind}`} title={`${hhmm(m.at)} · ${m.title}`}
+        style={{ left: `${at(m.at)}%`, ...(m.end ? { width: `${Math.max(0.8, at(m.end) - at(m.at))}%` } : {}) }} />)}
+      <em className="td-ribbon-now" style={{ left: `${at(now)}%` }}><span>{hhmm(now)}</span></em>
+    </div>
+    <div className="td-ribbon-hours">{hours.map((h) => <span key={h} style={{ left: `${((h - 6) / 18) * 100}%` }}>{label(h)}</span>)}<span style={{ left: "100%" }}>12a</span></div>
+  </div>;
 }

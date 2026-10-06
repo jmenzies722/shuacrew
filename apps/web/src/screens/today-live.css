@@ -90,3 +90,37 @@
 .td-arc { left: 56%; right: 3%; bottom: -70%; height: 160%; }
 @media (max-width: 900px) { .td-arc { display: none; } }
 .td-numbers .is-zero strong { color: var(--text-3); }
+
+/* ── Lively Today ────────────────────────────────────────────────────────────────────────────────
+   The sky drifts, stars twinkle at night, "today so far" is a readout strip, and the day is a ribbon with a needle
+   at now. All motion is transform/opacity, rests with [data-idle] and stops with Reduce motion. */
+.td-sky { isolation: isolate; }
+.td-sky::after { content: ""; position: absolute; z-index: -1; inset: -30% -10% auto 30%; height: 160%; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .16), transparent 70%); animation: td-drift 22s ease-in-out infinite alternate; }
+@keyframes td-drift { to { transform: translate3d(-18%, 8%, 0) scale(1.15); } }
+.td-sky.is-night::before, .td-sky.is-dusk::before { animation: td-twinkle 4.5s ease-in-out infinite alternate; }
+@keyframes td-twinkle { to { opacity: .45; } }
+.today .td-readouts { margin: 18px 0 4px; }
+.today .td-readouts dd small { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+
+.td-ribbon { position: relative; margin: 6px 0 22px; padding-top: 30px; }
+.td-ribbon-track { position: relative; height: 12px; border-radius: 99px; background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.td-ribbon-past { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 8%, transparent), color-mix(in srgb, var(--amber) 32%, transparent)); }
+.td-ribbon-tick { position: absolute; top: 3px; bottom: 3px; width: 1px; background: var(--line-strong); }
+.td-ribbon-mark { position: absolute; top: 2px; bottom: 2px; min-width: 8px; margin-left: -4px; border-radius: 99px; background: var(--text-3); box-shadow: 0 0 0 2px var(--panel); }
+.td-ribbon-mark.is-done { background: var(--ok); }
+.td-ribbon-mark.is-live { background: var(--amber); }
+.td-ribbon-mark.is-meeting { background: #7aa2ff; margin-left: 0; }
+.td-ribbon-mark.is-learn { background: #c084fc; }
+.td-ribbon-now { position: absolute; top: -6px; bottom: -6px; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 12px 2px color-mix(in srgb, var(--amber) 55%, transparent); font-style: normal; }
+.td-ribbon-now::after { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--amber); animation: td-now 2.4s ease-out infinite; }
+@keyframes td-now { 0% { transform: scale(.6); opacity: .8; } 100% { transform: scale(2.6); opacity: 0; } }
+.td-ribbon-now span { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; color: var(--on-accent, #fff); background: var(--amber); }
+.td-ribbon-hours { position: relative; height: 18px; margin-top: 6px; }
+.td-ribbon-hours span { position: absolute; transform: translateX(-50%); font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.td-ribbon-hours span:first-child { transform: none; }
+.td-ribbon-hours span:last-child { transform: translateX(-100%); }
+
+:root[data-idle] .td-sky::after, :root[data-idle] .td-sky::before, :root[data-idle] .td-ribbon-now::after { animation-play-state: paused; }
+:root[data-motion="reduced"] .td-sky::after, :root[data-motion="reduced"] .td-sky::before, :root[data-motion="reduced"] .td-ribbon-now::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .td-sky::after, .td-sky::before, .td-ribbon-now::after { animation: none; } }
