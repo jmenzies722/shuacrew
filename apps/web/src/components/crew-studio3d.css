@@ -1,0 +1,179 @@
+/*
+ * The Studio floor in 3D. A tilted floor plane (preserve-3d) holds solid desks, your platform and the agents. Agents
+ * and labels are billboards: counter-rotated by the camera's own --spin/--tilt so they always face you. The camera's
+ * angles are registered properties, so the room and every billboard ease together when the view changes. Motion is
+ * transform/opacity only, rests with [data-idle] and stops with Reduce motion.
+ */
+@property --spin { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+@property --tilt { syntax: "<angle>"; inherits: true; initial-value: 56deg; }
+
+.studio3d-wrap { display: grid; gap: 16px; }
+.studio3d { position: relative; isolation: isolate; height: clamp(470px, 60vh, 680px); border-radius: 22px; overflow: hidden; cursor: grab; touch-action: pan-y; user-select: none;
+  background: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .04)), 0 30px 80px -50px rgba(0, 0, 0, .8); }
+.studio3d.is-dragging { cursor: grabbing; }
+.studio3d:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.studio3d-wrap.is-stale .studio3d { filter: saturate(.45) brightness(.92); }
+.s3-sky { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 70%),
+    radial-gradient(120% 80% at 50% 110%, color-mix(in srgb, #7aa2f7 9%, transparent), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 70%, #0b0d13), color-mix(in srgb, var(--ink) 90%, #000)); }
+
+.s3-camera { position: absolute; inset: 0; perspective: 1700px; perspective-origin: 50% 18%; transform-origin: 50% 56%; transition: transform .35s var(--ease-out, ease); }
+.s3-world { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; transform: rotateX(var(--tilt)) rotateZ(var(--spin)); transition: --spin .7s cubic-bezier(.2, .8, .2, 1), --tilt .7s cubic-bezier(.2, .8, .2, 1); }
+.studio3d.is-dragging .s3-world { transition: none; }
+.s3-world * { box-sizing: border-box; }
+
+/* The floor: a lit slab with a fine grid, warm where you stand. */
+.s3-floor { position: absolute; inset: 0; border-radius: 8px; transform-style: preserve-3d;
+  background: radial-gradient(42% 34% at 50% 82%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 75%),
+    linear-gradient(color-mix(in srgb, var(--text) 6%, transparent) 1px, transparent 1px) 0 0 / 50px 50px,
+    linear-gradient(90deg, color-mix(in srgb, var(--text) 6%, transparent) 1px, transparent 1px) 0 0 / 50px 50px,
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 85%, #1a1f2b), color-mix(in srgb, var(--panel) 70%, #10131a));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent), 0 80px 140px -60px rgba(0, 0, 0, .9); }
+.s3-floor::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 26px; transform-origin: top; transform: rotateX(-90deg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 55%, #07080c), #06070a); border-radius: 0 0 8px 8px; }
+.s3-paths { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transform: translateZ(1px); pointer-events: none; }
+.s3-path { fill: none; stroke: color-mix(in srgb, var(--c) 22%, transparent); stroke-width: 2; stroke-dasharray: 2 10; stroke-linecap: round; }
+.s3-path.is-live { stroke: color-mix(in srgb, var(--c) 70%, transparent); stroke-width: 3; animation: s3-flow 1s linear infinite; }
+.s3-path.is-wait { stroke: color-mix(in srgb, var(--wait) 60%, transparent); stroke-dasharray: 6 8; }
+@keyframes s3-flow { to { stroke-dashoffset: -12; } }
+
+/* A desk: five faces of a box, a screen standing on it facing you, and a pool of light on the floor while it works. */
+.s3-desk { position: absolute; width: 132px; height: 64px; transform-style: preserve-3d; --h: 36px; }
+.s3-face { position: absolute; display: block; }
+.s3-top-face { inset: 0; border-radius: 5px; transform: translateZ(var(--h));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--panel) 60%, #39414f), color-mix(in srgb, var(--panel) 70%, #232834));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), inset 0 -3px 0 color-mix(in srgb, var(--c) 35%, transparent); }
+.s3-front, .s3-back { left: 0; right: 0; height: var(--h); transform-origin: top; transform: translateZ(var(--h)) rotateX(-90deg); }
+.s3-front { top: 100%; display: grid; place-items: center; background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 50%, #1d222c), color-mix(in srgb, var(--panel) 40%, #12151c));
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--c) 55%, transparent); }
+.s3-front span { font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--text) 55%, transparent); white-space: nowrap; overflow: hidden; max-width: 90%; text-overflow: ellipsis; }
+.s3-back { top: 0; background: color-mix(in srgb, var(--panel) 40%, #12151c); }
+.s3-left, .s3-right { top: 0; bottom: 0; width: var(--h); transform-origin: left; transform: translateZ(var(--h)) rotateY(90deg); background: color-mix(in srgb, var(--panel) 45%, #171b23); }
+.s3-left { left: 0; } .s3-right { left: 100%; }
+.s3-screen { position: absolute; left: 20px; top: -40px; width: 92px; height: 54px; transform-origin: 50% 100%; transform: translateZ(var(--h)) rotateX(-90deg); transform-style: preserve-3d; }
+.s3-screen-glass { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 1px; padding: 4px 6px; border-radius: 5px; overflow: hidden;
+  background: linear-gradient(180deg, #0c1018, #121826); border: 2px solid color-mix(in srgb, var(--panel) 40%, #2c3240); color: color-mix(in srgb, var(--text) 50%, transparent); text-align: center; }
+.s3-screen-glass b { font-size: 10px; font-weight: 700; color: var(--c); }
+.s3-screen-glass small { max-width: 100%; font-size: 8.5px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s3-desk.is-working .s3-screen-glass { border-color: color-mix(in srgb, var(--c) 60%, #2c3240); color: color-mix(in srgb, var(--text) 85%, transparent); box-shadow: 0 0 26px -2px color-mix(in srgb, var(--c) 70%, transparent), inset 0 0 18px -6px var(--c); }
+.s3-desk.is-waiting .s3-screen-glass b { color: var(--wait); }
+.s3-desk.is-failed .s3-screen-glass { border-color: color-mix(in srgb, var(--bad) 60%, #2c3240); } .s3-desk.is-failed .s3-screen-glass b { color: var(--bad); }
+.s3-scan { position: absolute; left: 2px; right: 2px; top: 2px; height: 30%; border-radius: 4px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--c) 30%, transparent), transparent); animation: s3-scan 1.8s ease-in-out infinite; pointer-events: none; }
+@keyframes s3-scan { 0% { transform: translateY(-10%); } 100% { transform: translateY(240%); } }
+.s3-lamp { position: absolute; inset: -46px -40px; border-radius: 50%; transform: translateZ(.5px); opacity: 0; transition: opacity .6s;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c) 30%, transparent), transparent); }
+.s3-desk.is-working .s3-lamp { opacity: 1; animation: s3-breathe 3s ease-in-out infinite; }
+
+/* Your platform. */
+.s3-hub { position: absolute; width: 184px; height: 184px; transform-style: preserve-3d; }
+.s3-hub > i { position: absolute; border-radius: 50%; display: block; }
+.s3-hub-disc { inset: 0; transform: translateZ(2px); background: radial-gradient(circle, color-mix(in srgb, var(--amber) 16%, #1b1f29), color-mix(in srgb, var(--panel) 60%, #12151d) 72%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent), 0 0 70px -12px color-mix(in srgb, var(--amber) 45%, transparent); }
+.s3-hub-top { inset: 40px; transform: translateZ(12px); background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--amber) 70%, #fff 12%), color-mix(in srgb, var(--amber) 28%, #1b1f29));
+  box-shadow: 0 0 44px color-mix(in srgb, var(--amber) 45%, transparent), inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.s3-hub-pulse { inset: 0; transform: translateZ(3px); border: 2px solid color-mix(in srgb, var(--amber) 55%, transparent); opacity: 0; animation: s3-pulse 3.2s ease-out infinite; }
+.s3-hub-pulse:nth-child(2) { animation-delay: 1.6s; }
+.s3-hub.is-wait .s3-hub-pulse { border-color: var(--wait); animation-duration: 1.6s; }
+.s3-hub.is-wait .s3-hub-disc { box-shadow: 0 0 0 1px color-mix(in srgb, var(--wait) 55%, transparent), 0 0 80px -8px color-mix(in srgb, var(--wait) 55%, transparent); }
+@keyframes s3-pulse { 0% { transform: translateZ(3px) scale(.62); opacity: .9; } 100% { transform: translateZ(3px) scale(1.55); opacity: 0; } }
+.s3-hub > .s3-bill.s3-you { left: calc(50% - 80px); bottom: 50%; width: 160px; gap: 0; transform: translateZ(14px) rotateZ(calc(var(--spin) * -1)) rotateX(calc(var(--tilt) * -1)); }
+.s3-you b { padding: 6px 16px 2px; font-size: 17px; font-weight: 750; letter-spacing: -.01em; color: var(--text); text-shadow: 0 2px 14px color-mix(in srgb, var(--amber) 60%, transparent); }
+.s3-you small { padding: 2px 10px; border-radius: 99px; font-size: 11px; color: var(--text-2); background: color-mix(in srgb, var(--panel) 85%, transparent); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.s3-hub.is-wait .s3-you small { color: var(--wait); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 45%, transparent); }
+
+/* Work in flight, along the floor to you. */
+.s3-packet { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 14px 4px color-mix(in srgb, var(--c) 70%, transparent);
+  opacity: 0; animation: s3-packet 1.8s cubic-bezier(.45, 0, .55, 1) infinite; pointer-events: none; }
+@keyframes s3-packet { 0% { transform: translate3d(var(--x1), var(--y1), 8px); opacity: 0; } 15%, 85% { opacity: 1; } 100% { transform: translate3d(var(--x2), var(--y2), 8px); opacity: 0; } }
+
+/* An agent: a point on the floor that walks, a shadow and a state ring on the floor, and a billboard that faces you. */
+.s3-spot { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; transition: transform 1.8s cubic-bezier(.45, .05, .35, 1); will-change: transform; }
+.s3-shadow { position: absolute; left: -26px; top: -12px; width: 52px; height: 24px; border-radius: 50%; transform: translateZ(1px); background: radial-gradient(closest-side, rgba(0, 0, 0, .55), transparent); }
+.s3-halo { position: absolute; left: -32px; top: -32px; width: 64px; height: 64px; border-radius: 50%; transform: translateZ(1.5px); opacity: 0; transition: opacity .4s; }
+.s3-spot.is-working .s3-halo { opacity: 1; background: conic-gradient(from 0deg, var(--c), transparent 35%, transparent 60%, var(--c));
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); mask: radial-gradient(closest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); animation: s3-turn 1.8s linear infinite; }
+.s3-spot.is-waiting .s3-halo { opacity: 1; box-shadow: 0 0 0 3px var(--wait), 0 0 22px var(--wait); animation: s3-ping 1.5s ease-out infinite; }
+.s3-spot.is-recent .s3-halo { opacity: 1; box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 80%, transparent), 0 0 18px color-mix(in srgb, var(--ok) 60%, transparent); }
+.s3-spot.is-failed .s3-halo { opacity: 1; box-shadow: 0 0 0 2px var(--bad), 0 0 18px color-mix(in srgb, var(--bad) 60%, transparent); }
+@keyframes s3-turn { to { transform: translateZ(1.5px) rotate(360deg); } }
+@keyframes s3-ping { 0% { transform: translateZ(1.5px) scale(.85); opacity: 1; } 100% { transform: translateZ(1.5px) scale(1.5); opacity: 0; } }
+
+.s3-bill { position: absolute; left: -90px; bottom: 0; width: 180px; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
+  transform-origin: 50% 100%; transform: rotateZ(calc(var(--spin) * -1)) rotateX(calc(var(--tilt) * -1)); }
+.s3-bill > * { pointer-events: auto; }
+.s3-bubble { display: inline-flex; align-items: center; gap: 5px; max-width: 176px; padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 520; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text); background: color-mix(in srgb, var(--panel) 92%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, var(--line)), 0 10px 22px -12px rgba(0, 0, 0, .7); }
+.s3-bubble svg { flex: none; }
+.s3-spot.is-waiting .s3-bubble { color: var(--wait); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 55%, transparent), 0 0 20px -6px var(--wait); }
+.s3-spot.is-recent .s3-bubble { color: var(--ok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 50%, transparent); }
+.s3-spot.is-failed .s3-bubble { color: var(--bad); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 50%, transparent); }
+.s3-spot.is-queued .s3-bubble, .s3-spot.is-idle .s3-bubble { color: var(--text-3); }
+
+.s3-figure { position: relative; display: grid; justify-items: center; padding: 0; border: 0; background: none; color: #fff; font: inherit; cursor: pointer; transform-origin: 50% 100%; transition: transform .2s var(--ease-out, ease); }
+.s3-figure:hover { transform: translateY(-3px) scale(1.06); }
+.s3-figure:focus-visible { outline: none; }
+.s3-figure:focus-visible .s3-head, .s3-spot.is-selected .s3-head { outline: 2px solid var(--c); outline-offset: 4px; }
+.s3-head { position: relative; z-index: 1; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--c) 68%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 55%, #000));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent), inset 0 2px 0 rgba(255, 255, 255, .25), 0 8px 18px -8px color-mix(in srgb, var(--c) 80%, transparent); }
+.s3-head b { font-size: 15px; font-weight: 750; }
+.s3-body { position: relative; width: 46px; height: 34px; margin-top: -5px; border-radius: 20px 20px 10px 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 78%, #000 8%), color-mix(in srgb, var(--c) 42%, #000)); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .18); }
+.s3-body i { position: absolute; top: 7px; width: 10px; height: 21px; border-radius: 6px; transform-origin: 50% 3px; background: color-mix(in srgb, var(--c) 52%, #000); }
+.s3-body i:first-child { left: -6px; } .s3-body i:last-child { right: -6px; }
+.s3-name { font-size: 11.5px; font-weight: 650; color: var(--text); text-shadow: 0 1px 8px var(--ink), 0 0 2px var(--ink); white-space: nowrap; }
+.s3-spot.is-idle .s3-figure, .s3-spot.is-queued .s3-figure { filter: saturate(.75) brightness(.9); }
+.s3-spot.is-queued .s3-figure { opacity: .8; }
+.s3-spot.is-failed .s3-head { box-shadow: 0 0 0 2px var(--bad), inset 0 2px 0 rgba(255, 255, 255, .25); }
+
+/* What they're doing, in body language: typing at the desk, a hop when they need you, a step when they walk. */
+.s3-spot.is-working:not(.is-walking) .s3-body i { animation: s3-tap .26s ease-in-out infinite alternate; }
+.s3-spot.is-working:not(.is-walking) .s3-body i:last-child { animation-delay: .13s; }
+.s3-spot.is-working:not(.is-walking) .s3-figure { animation: s3-lean 2.4s ease-in-out infinite; }
+.s3-spot.is-waiting:not(.is-walking) .s3-figure { animation: s3-hop 1.6s ease-in-out infinite; }
+.s3-spot.is-idle:not(.is-walking) .s3-figure, .s3-spot.is-recent:not(.is-walking) .s3-figure { animation: s3-breathe-y 4s ease-in-out infinite; }
+.s3-spot.is-walking .s3-figure { animation: s3-step .32s ease-in-out infinite alternate; }
+.s3-spot.is-walking .s3-body i:first-child { animation: s3-swing .32s ease-in-out infinite alternate; }
+.s3-spot.is-walking .s3-body i:last-child { animation: s3-swing .32s ease-in-out infinite alternate-reverse; }
+@keyframes s3-tap { from { transform: rotate(-16deg); } to { transform: rotate(4deg); } }
+@keyframes s3-lean { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(1px) rotate(-1.5deg); } }
+@keyframes s3-hop { 0%, 60%, 100% { transform: translateY(0); } 25% { transform: translateY(-7px); } 40% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes s3-breathe-y { 50% { transform: translateY(-1.5px) scale(1.015); } }
+@keyframes s3-step { from { transform: translateY(0) rotate(-3deg); } to { transform: translateY(-5px) rotate(3deg); } }
+@keyframes s3-swing { from { transform: rotate(-28deg); } to { transform: rotate(28deg); } }
+@keyframes s3-breathe { 50% { opacity: .65; } }
+
+/* Overlays. */
+.s3-ui { position: absolute; z-index: 5; }
+.s3-top { left: 16px; top: 14px; display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: var(--text-3); }
+.s3-live, .s3-count { display: inline-flex; align-items: center; gap: 6px; }
+.studio3d-wrap:not(.is-stale) .s3-live svg { color: var(--ok); }
+.s3-count { color: var(--text-2); } .s3-count svg { color: var(--wait); }
+.s3-views { right: 14px; top: 12px; display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: color-mix(in srgb, var(--panel) 82%, transparent); box-shadow: inset 0 0 0 1px var(--line); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.s3-views button { display: grid; place-items: center; height: 26px; min-width: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 11.5px; color: var(--text-2); cursor: pointer; }
+.s3-views button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.s3-views button.is-on { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+.s3-views button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.s3-hint { left: 50%; bottom: 12px; transform: translateX(-50%); margin: 0; font-size: 11px; color: var(--text-3); pointer-events: none; white-space: nowrap; }
+.s3-empty { left: 50%; top: 22%; transform: translateX(-50%); margin: 0; padding: 8px 14px; border-radius: 12px; font-size: 13px; color: var(--text-2); background: color-mix(in srgb, var(--panel) 85%, transparent); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.s3-empty a { color: var(--amber); text-decoration: none; }
+
+/* Light: a bright studio. */
+:root[data-theme="light"] .s3-sky { background: radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--amber) 12%, transparent), transparent 70%), linear-gradient(180deg, #f7f8fb, #e9ecf2); }
+:root[data-theme="light"] .s3-floor { background: radial-gradient(42% 34% at 50% 82%, color-mix(in srgb, var(--amber) 16%, transparent), transparent 75%),
+    linear-gradient(rgba(20, 24, 40, .06) 1px, transparent 1px) 0 0 / 50px 50px, linear-gradient(90deg, rgba(20, 24, 40, .06) 1px, transparent 1px) 0 0 / 50px 50px, linear-gradient(180deg, #ffffff, #eef1f6); }
+:root[data-theme="light"] .s3-floor::after { background: linear-gradient(180deg, #d9dde6, #c9ced9); }
+:root[data-theme="light"] .s3-top-face { background: linear-gradient(160deg, #ffffff, #eceff4); box-shadow: inset 0 0 0 1px rgba(20, 24, 40, .08), inset 0 -3px 0 color-mix(in srgb, var(--c) 45%, transparent); }
+:root[data-theme="light"] .s3-front { background: linear-gradient(180deg, #e6e9f0, #d8dce5); }
+:root[data-theme="light"] .s3-front span { color: rgba(20, 24, 40, .5); }
+:root[data-theme="light"] :is(.s3-left, .s3-right, .s3-back) { background: #dfe3ea; }
+:root[data-theme="light"] .s3-hub-disc { background: radial-gradient(circle, color-mix(in srgb, var(--amber) 20%, #fff), #f1f3f7 72%); }
+:root[data-theme="light"] .s3-shadow { background: radial-gradient(closest-side, rgba(20, 24, 40, .22), transparent); }
+
+/* Rest when idle; still when motion is reduced (agents then step to their spot without walking). */
+:root[data-idle] .studio3d *, :root[data-idle] .studio3d *::before, :root[data-idle] .studio3d *::after { animation-play-state: paused !important; }
+:root[data-motion="reduced"] .studio3d *, :root[data-motion="reduced"] .studio3d *::before, :root[data-motion="reduced"] .studio3d *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .studio3d *, .studio3d *::before, .studio3d *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 760px) { .s3-hint { display: none; } .s3-views button:not(:last-child) { padding: 0 7px; } }

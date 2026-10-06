@@ -13,7 +13,7 @@ import { describe } from "../shell/CommandPalette";
 import { Glyph } from "../lib/glyphs";
 import { CrewWorkspace } from "../components/CrewWorkspace";
 import { selectRooms } from "../lib/room-view";
-import { CrewOrbit } from "../components/CrewOrbit";
+import { CrewStudio3D } from "../components/CrewStudio3D";
 import { isTopLevelWork } from "../lib/crew";
 import { PaneHeader } from "../components/Pane";
 
@@ -141,7 +141,7 @@ export function CrewFloor() {
       <div className="floor-body">
         <section className="floor-pods" aria-label="Agents">
           {!!Object.keys(rooms).length && <div className="mb-5"><label className="text-[12px] text-fg-3">Room workspace <select className="ml-2 rounded-lg border border-line bg-panel px-3 py-2" value={roomId} onChange={e => setRoomId(e.target.value)}><option value="">All activity below</option>{Object.values(rooms).filter(room => !scope || room.repo === scope).map(room => <option key={room.id} value={room.id}>{room.title}</option>)}</select></label>{rooms[roomId] && <div className="mt-3 max-h-[520px] overflow-auto rounded-2xl border border-line"><CrewWorkspace room={rooms[roomId]} /></div>}</div>}
-          <CrewOrbit runs={runs} activity={activity} approvals={approvals} now={now} />
+          <CrewStudio3D runs={runs} activity={activity} approvals={approvals} now={now} />
           {onFloor.length === 0 ? null : (
             <div className="pods-grid">
               <AnimatePresence initial={false}>
