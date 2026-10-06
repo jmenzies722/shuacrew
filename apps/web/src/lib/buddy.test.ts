@@ -485,3 +485,13 @@ it("after opening a ShuaCrew page, follows through with its controls instead of 
   expect(ask).toContain("never use act, point or the Dock");
   expect(ask).not.toContain("screenshot is attached");
 });
+
+it("knows when an ask is about ShuaCrew's own window", async () => {
+  const { aboutShuaCrewWindow } = await import("./buddy");
+  expect(aboutShuaCrewWindow("Inside the ShuaCrew window: go to the Studio floor, click the Above camera button")).toBe(true);
+  expect(aboutShuaCrewWindow("open the agents page in shuacrew")).toBe(true);
+  expect(aboutShuaCrewWindow("what's on the studio floor?")).toBe(true);
+  expect(aboutShuaCrewWindow("open Settings and turn on Wi-Fi")).toBe(false);
+  expect(aboutShuaCrewWindow("what is shuacrew?")).toBe(false);
+  expect(aboutShuaCrewWindow("quit ShuaCrew")).toBe(false);
+});

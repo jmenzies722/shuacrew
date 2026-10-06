@@ -816,6 +816,17 @@ export function needsFollowThrough(q: string, reply: string): boolean {
   return more || promised || looksForAnswer(q);
 }
 
+/**
+ * An ask about ShuaCrew's own window ("inside ShuaCrew, go to the Studio floor and press Above"): a screenshot can't
+ * help (it shows the app behind ShuaCrew), and with one Shua went for the Dock and other apps' windows. Narrow on
+ * purpose: ShuaCrew named with something to do there, or the Studio floor — never a generic "Settings" or "Agents".
+ */
+export function aboutShuaCrewWindow(q: string): boolean {
+  const t = q.toLowerCase();
+  const verb = /\b(go to|open|click|press|tap|switch|select|show|turn|scroll|navigate|change)\b/.test(t);
+  return (/\bshua ?crew\b/.test(t) && verb && !/\b(quit|close|restart|update|install)\b[^.]{0,20}\bshua ?crew\b/.test(t)) || /\bstudio floor\b/.test(t);
+}
+
 /** The turn that finishes the job: what opened, the original ask, and a fresh look to do the rest from. */
 export function followThroughAsk(opened: string, q: string, already: string[] = [], shuacrewPage = "") {
   // What else that reply already did after opening (measured: without this it pressed "Above" a second time).
