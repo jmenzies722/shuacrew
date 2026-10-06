@@ -1,49 +1,67 @@
 import SwiftUI
 
-/// Shua on your iPhone: the character first, one line of what's happening, then only what needs you and what's moving.
+/// Shua on your iPhone: your own character first, what it's saying or doing in one line, a conversation with the
+/// Mac's Shua (it does what you ask there), then only what needs you and what's moving.
 struct SparkHomeView: View {
     @Environment(SparkLink.self) private var link
     @State private var tilt = SparkTilt()
+    @State private var listen = ShuaListen()
     @State private var ask = ""
     @State private var pairing = false
     @State private var docked = false
+    @State private var bump = 0
     @FocusState private var typing: Bool
+    private var voice: ShuaVoice { .shared }
+
+    private static let quick: [(String, String)] = [
+        ("What's going on?", "sparkles"), ("What needs me?", "hand.raised"), ("Start a 25-minute focus", "timer"),
+        ("Play some focus music", "music.note"), ("Plan my day", "sun.max"), ("Hand the crew a task", "person.3"),
+    ]
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                SparkFace(mood: mood, tilt: tilt.gaze)
-                    .frame(height: 230)
-                    .padding(.top, 8)
-                VStack(spacing: 6) {
-                    Text(caption.title).font(.title3.weight(.semibold)).multilineTextAlignment(.center).contentTransition(.opacity)
-                    if let sub = caption.sub { Text(sub).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                }
-                .animation(.smooth, value: caption.title)
-                .padding(.horizontal)
-
-                if link.state == .unpaired {
-                    Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal)
-                } else {
-                    ForEach(link.approvals) { approval in ApprovalCard(approval: approval) }
-                    if !link.activeRuns.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Working now").font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(.secondary)
-                            ForEach(link.activeRuns) { run in RunRow(run: run) }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(spacing: 16) {
+                    ShuaCharacter(mood: mood, tilt: tilt.gaze)
+                        .frame(height: 240)
+                        .padding(.top, 4)
+                        .scaleEffect(bump % 2 == 1 ? 1.04 : 1)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.5), value: bump)
+                        .onTapGesture { bump += 1; UIImpactFeedbackGenerator(style: .soft).impactOccurred() }
+                    VStack(spacing: 6) {
+                        Text(caption.title).font(.title3.weight(.semibold)).multilineTextAlignment(.center).contentTransition(.opacity)
+                        if let sub = caption.sub { Text(sub).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                     }
+                    .animation(.smooth, value: caption.title)
+                    .padding(.horizontal)
+
+                    if link.state == .unpaired {
+                        Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }
+                            .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal)
+                    } else {
+                        if !link.chat.isEmpty { Conversation(lines: Array(link.chat.suffix(8))) }
+                        QuickAsks(items: Self.quick) { send($0) }
+                        ForEach(link.approvals) { approval in ApprovalCard(approval: approval) }
+                        if !link.activeRuns.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Working now").font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(.secondary)
+                                ForEach(link.activeRuns) { run in RunRow(run: run) }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                        }
+                    }
+                    Color.clear.frame(height: 1).id("end")
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 100)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 90)
+            .onChange(of: link.chat.last?.text) { _, _ in withAnimation(.smooth) { scroll.scrollTo("end", anchor: .bottom) } }
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Glow(mood: mood).ignoresSafeArea())
+        .background(Glow(mood: mood, accent: link.look?.accentColor ?? .shuaPurple).ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { if link.state != .unpaired { askBar } }
-        .navigationTitle("Shua")
+        .navigationTitle(link.look?.name ?? "Shua")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button { docked = true } label: { Image(systemName: "rectangle.landscape.rotate") }.accessibilityLabel("Desk mode") }
@@ -53,28 +71,103 @@ struct SparkHomeView: View {
         .fullScreenCover(isPresented: $docked) { DockView(tilt: tilt) }
         .onAppear { tilt.start(); link.start() }
         .onDisappear { tilt.stop() }
-        .alert("Shua", isPresented: Binding(get: { link.error != nil }, set: { if !$0 { link.error = nil } })) { Button("OK") {} } message: { Text(link.error ?? "") }
+        .alert("Shua", isPresented: Binding(get: { link.error != nil || listen.problem != nil }, set: { if !$0 { link.error = nil; listen.problem = nil } })) { Button("OK") {} } message: { Text(link.error ?? listen.problem ?? "") }
+    }
+
+    private func send(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        ask = ""; typing = false
+        Task { await link.ask(t) }
     }
 
     private var askBar: some View {
         HStack(spacing: 10) {
-            TextField("Ask the crew…", text: $ask, axis: .vertical)
+            TextField(listen.listening ? "Listening…" : "Ask \(link.look?.name ?? "Shua")…", text: listen.listening ? .constant(listen.heard) : $ask, axis: .vertical)
                 .lineLimit(1...4).focused($typing)
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            Button {
-                let text = ask
-                Task { if await link.start(ask: text) { ask = ""; typing = false } }
-            } label: { Image(systemName: "arrow.up").font(.headline).frame(width: 40, height: 40) }
-                .buttonStyle(.borderedProminent).clipShape(Circle())
-                .disabled(ask.trimmingCharacters(in: .whitespaces).isEmpty)
+                .onSubmit { send(ask) }
+            if ask.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Hold to talk: let go and Shua gets it.
+                Image(systemName: listen.listening ? "waveform" : "mic.fill")
+                    .font(.headline).symbolEffect(.variableColor.iterative, isActive: listen.listening)
+                    .frame(width: 44, height: 44)
+                    .background(listen.listening ? AnyShapeStyle(link.look?.accentColor ?? .shuaPurple) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
+                    .scaleEffect(listen.listening ? 1.12 : 1).animation(.spring(response: 0.3), value: listen.listening)
+                    .gesture(DragGesture(minimumDistance: 0)
+                        .onChanged { _ in if !listen.listening { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); Task { await listen.start() } } }
+                        .onEnded { _ in Task { let said = await listen.stop(); send(said) } })
+                    .accessibilityLabel("Hold to talk to Shua")
+            } else {
+                Button { send(ask) } label: { Image(systemName: "arrow.up").font(.headline).frame(width: 44, height: 44) }
+                    .buttonStyle(.borderedProminent).clipShape(Circle())
+                    .disabled(link.asking)
+            }
         }
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)
     }
 
-    private var mood: SparkMood { link.mood }
-    private var caption: (title: String, sub: String?) { link.caption }
+    private var mood: SparkMood {
+        if voice.speaking { return .speaking }
+        if listen.listening || link.asking { return .thinking }
+        return link.mood
+    }
+    private var caption: (title: String, sub: String?) {
+        if listen.listening { return (listen.heard.isEmpty ? "I'm listening…" : listen.heard, nil) }
+        return link.caption
+    }
+}
+
+/// The phone's conversation with Shua: your words on the right, Shua's on the left, its reply streaming in.
+private struct Conversation: View {
+    @Environment(SparkLink.self) private var link
+    let lines: [ShuaLine]
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(lines) { line in
+                HStack {
+                    if line.role == .you { Spacer(minLength: 48) }
+                    Group {
+                        if line.pending && line.text.isEmpty {
+                            HStack(spacing: 5) { ForEach(0..<3) { i in Circle().frame(width: 6, height: 6).phaseAnimator([0.3, 1]) { c, p in c.opacity(p) } animation: { _ in .easeInOut(duration: 0.5).delay(Double(i) * 0.15) } } }
+                                .foregroundStyle(.secondary).padding(.vertical, 4)
+                        } else {
+                            Text(line.text).font(.callout).textSelection(.enabled)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .foregroundStyle(line.role == .you ? Color.white : (line.failed ? Color.orange : Color.primary))
+                    .background(line.role == .you ? AnyShapeStyle((link.look?.accentColor ?? .shuaPurple).gradient) : AnyShapeStyle(.thinMaterial),
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    if line.role == .shua { Spacer(minLength: 48) }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal)
+        .animation(.smooth, value: lines)
+    }
+}
+
+/// One tap for the things you ask most.
+private struct QuickAsks: View {
+    @Environment(SparkLink.self) private var link
+    let items: [(String, String)]
+    let send: (String) -> Void
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items, id: \.0) { item in
+                    Button { send(item.0) } label: { Label(item.0, systemImage: item.1).font(.subheadline.weight(.medium)) }
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(link.look?.accentColor ?? .shuaPurple)
+                        .disabled(link.asking)
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
 }
 
 extension SparkLink {
@@ -164,13 +257,14 @@ private struct StatusDot: View {
 /// The light behind Shua: warm and slow at rest, amber when something needs you, green when something lands.
 struct Glow: View {
     let mood: SparkMood
+    var accent: Color = .shuaPurple
     var body: some View {
         let tint: Color = switch mood {
         case .concerned: .orange
         case .happy: .green
-        case .thinking, .speaking: .cyan
+        case .thinking, .speaking: accent
         case .sleepy: .indigo
-        case .idle: .purple
+        case .idle: accent
         }
         ZStack {
             Color.black

@@ -23,6 +23,29 @@ struct CrewRun: Identifiable, Hashable, Sendable {
     var finished: Bool { ["done", "merged"].contains(status) }
 }
 
+/// "What's going on", from the Mac's brief: the headline, then its plain lines (waiting on you, working, finished…).
+struct ShuaBrief: Equatable, Sendable {
+    let headline: String
+    let lines: [String]
+    let waiting: Int
+    let working: Int
+    let finished: Int
+}
+
+/// One line of this phone's conversation with Shua.
+struct ShuaLine: Identifiable, Equatable, Sendable {
+    enum Role: Sendable { case you, shua }
+    let id = UUID()
+    let role: Role
+    var text: String
+    var pending = false
+    var failed = false
+    let at = Date()
+}
+
+/// What the gateway said when it refused (its own words), so the phone can say it plainly.
+struct LinkError: LocalizedError { let code: Int; let message: String?; var errorDescription: String? { message } }
+
 struct CrewApproval: Identifiable, Hashable, Sendable {
     let id: String
     let run: String?
@@ -49,6 +72,15 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     /// A run that just finished well: Spark celebrates it.
     private(set) var celebrating: CrewRun?
     var error: String?
+    /// Your Shua as the Mac draws it, cached between launches.
+    private(set) var look: ShuaLook? = ShuaLook.cached()
+    private(set) var brief: ShuaBrief?
+    /// This phone's conversation with the Mac's Shua: your asks and its replies, newest last.
+    private(set) var chat: [ShuaLine] = []
+    /// Waiting on Shua's reply to something asked here.
+    private(set) var asking = false
+    @ObservationIgnored private var lookAt = Date.distantPast
+    @ObservationIgnored private var briefAt = Date.distantPast
 
     private var socket: URLSessionWebSocketTask?
     private var loop: Task<Void, Never>?
@@ -174,7 +206,111 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         runs = next
         approvals = waiting
         todayRuns = ((snapshot["today"] as? [String: Any])?["runs"] as? Int) ?? 0
+        Task { [weak self] in await self?.refreshExtras() }
         return (snapshot["head"] as? Int) ?? 0
+    }
+
+    /// The look (every few minutes: it rarely changes) and the brief (at most every 15 s).
+    private func refreshExtras() async {
+        if Date.now.timeIntervalSince(lookAt) > 300, let data = try? await request("GET", "/phone/api/shua/look"),
+           let next = try? JSONDecoder().decode(ShuaLook.self, from: data) {
+            lookAt = .now
+            if next != look { look = next; next.cache() }
+        }
+        if Date.now.timeIntervalSince(briefAt) > 15, let data = try? await request("GET", "/phone/api/brief"),
+           let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            briefAt = .now
+            let text = (j["text"] as? String) ?? ""
+            brief = ShuaBrief(headline: (j["headline"] as? String) ?? "", lines: text.split(separator: "\n").map(String.init).filter { !$0.hasPrefix("HEADLINE") },
+                              waiting: (j["waiting"] as? [Any])?.count ?? 0, working: (j["working"] as? [Any])?.count ?? 0, finished: (j["finished"] as? [Any])?.count ?? 0)
+        }
+    }
+
+    /// Pull to refresh: the snapshot and the brief now.
+    func reload() async { briefAt = .distantPast; _ = try? await refresh() }
+
+    // MARK: Shua
+
+    /// Ask the Mac's own Shua. It does it there (open apps, music, the crew, a brief…) and its reply streams back here.
+    func ask(_ raw: String) async {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !asking else { return }
+        asking = true
+        defer { asking = false }
+        chat.append(ShuaLine(role: .you, text: text))
+        chat.append(ShuaLine(role: .shua, text: "", pending: true))
+        if chat.count > 40 { chat.removeFirst(chat.count - 40) }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        do {
+            let head = try await refresh() // only what happens after this moment is part of the answer
+            let posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text])
+            guard let id = (try? JSONSerialization.jsonObject(with: posted) as? [String: Any])?["id"] as? String else { throw URLError(.cannotParseResponse) }
+            var run: String?
+            for _ in 0..<40 where run == nil {
+                try await Task.sleep(for: .milliseconds(500))
+                let state = try await request("GET", "/phone/api/shua/remote/\(id)")
+                run = (try? JSONSerialization.jsonObject(with: state) as? [String: Any])?["run"] as? String
+            }
+            guard let run else { return reply("Shua on your Mac didn't pick that up. Is ShuaCrew open there?", failed: true) }
+            try await follow(run: run, after: head, asked: text)
+        } catch {
+            let said = (error as? LinkError)?.message ?? "That didn't reach your Mac. Check the connection and try again."
+            reply(said, failed: true)
+        }
+    }
+
+    /// Follow Shua's turns on this ask: the one that starts with your words, and any it takes after (it may look,
+    /// act, and look again). Done when a turn ends and no new one starts for a few seconds.
+    private func follow(run: String, after head: Int, asked: String) async throws {
+        var cursor = head, mine: Int?, latest = "", texts: [Int: String] = [:], quietSince: Date?
+        let marker = "From my iPhone: " + asked.prefix(40)
+        let deadline = Date.now.addingTimeInterval(150)
+        while Date.now < deadline {
+            let data = try await request("GET", "/phone/api/runs/\(run)/events?after=\(cursor)")
+            let events = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+            for e in events {
+                cursor = max(cursor, (e["seq"] as? Int) ?? cursor)
+                let body = (e["body"] as? [String: Any]) ?? [:], turn = (body["turn"] as? Int) ?? 0
+                switch e["kind"] as? String {
+                case "turn.started":
+                    if mine == nil, ((body["text"] as? String) ?? "").contains(marker) { mine = turn }
+                    if let m = mine, turn >= m { quietSince = nil }
+                case "agent.delta":
+                    guard let m = mine, turn >= m else { continue }
+                    texts[turn, default: ""] += (body["text"] as? String) ?? ""
+                    latest = texts[turn] ?? latest
+                    update(Self.clean(latest), pending: true)
+                case "agent.message":
+                    guard let m = mine, turn >= m, body["final"] as? Bool == true else { continue }
+                    if let t = body["text"] as? String, !t.isEmpty { latest = t }
+                    update(Self.clean(latest), pending: true)
+                    quietSince = .now
+                default: break
+                }
+            }
+            if let q = quietSince, Date.now.timeIntervalSince(q) > 3 { break }
+            try await Task.sleep(for: .milliseconds(400))
+        }
+        let final = Self.clean(latest)
+        reply(final.isEmpty ? "Done." : final)
+        ShuaVoice.shared.say(final)
+    }
+
+    private func update(_ text: String, pending: Bool) {
+        guard let i = chat.lastIndex(where: { $0.role == .shua }) else { return }
+        chat[i].text = text; chat[i].pending = pending
+    }
+    private func reply(_ text: String, failed: Bool = false) {
+        guard let i = chat.lastIndex(where: { $0.role == .shua }) else { return }
+        chat[i].text = text; chat[i].pending = false; chat[i].failed = failed
+        UINotificationFeedbackGenerator().notificationOccurred(failed ? .error : .success)
+    }
+
+    /// What a person reads: Shua's words without its machine blocks (```do …```) or bracketed notes.
+    static func clean(_ text: String) -> String {
+        var t = text.replacingOccurrences(of: "```[\\s\\S]*?(```|$)", with: "", options: .regularExpression)
+        t = t.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("[") }.joined(separator: "\n")
+        return t.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: Actions
@@ -225,7 +361,7 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         let (data, response) = try await session.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401 { throw URLError(.userAuthenticationRequired) }
-        guard (200..<300).contains(code) else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(code) else { throw LinkError(code: code, message: (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String) }
         return data
     }
 

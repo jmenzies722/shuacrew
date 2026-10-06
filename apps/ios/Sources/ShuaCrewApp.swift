@@ -14,11 +14,12 @@ private struct PhoneRoot: View {
             TabView {
                 // Shua first: everything goes through Shua. Today keeps the iCloud-synced view (usage, request history).
                 Tab("Shua", systemImage: "sparkle") { NavigationStack { SparkHomeView() } }
-                Tab("Today", systemImage: "sun.max") { NavigationStack { TodayView() } }
-                Tab("Crew", systemImage: "person.3.sequence") { NavigationStack { CrewView() } }
-                Tab("Settings", systemImage: "slider.horizontal.3") { NavigationStack { SettingsView() } }
+                // Paired: the live views from your Mac. Not yet: the iCloud-synced ones, as before.
+                Tab("Today", systemImage: "sun.max") { NavigationStack { if link.pairing != nil { ShuaTodayView() } else { TodayView() } } }
+                Tab("Crew", systemImage: "person.3.sequence") { NavigationStack { if link.pairing != nil { ShuaCrewView() } else { CrewView() } } }
+                Tab("Settings", systemImage: "slider.horizontal.3") { NavigationStack { ShuaSettingsView() } }
             }
-            .tint(Color(red: 0.557, green: 0.282, blue: 1.0)) // ShuaCrew accent #8e48ff
+            .tint(link.look?.accentColor ?? .shuaPurple) // your accent from the Mac (ShuaCrew purple until it's shared)
             .environment(link)
             .preferredColorScheme(.dark) // Onyx: the phone is black like the Mac
             .environmentObject(model)
