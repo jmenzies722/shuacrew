@@ -136,6 +136,7 @@ export function Shell() {
 
 /** Spark inside the app: the same assistant and conversation as on the desktop, as a side panel. ⌘J. */
 function SparkSide() {
+  const page = useRouterState({ select: (st) => st.location.pathname });
   const open = useSparkPanel(), full = useSparkFull();
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -146,7 +147,7 @@ function SparkSide() {
   }, [full]);
   return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Shua"
     initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
-    <div className="spark-side-inner"><Buddy embedded full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
+    <div className="spark-side-inner"><Buddy embedded page={page} full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
   </motion.aside>}</AnimatePresence>;
 }
 

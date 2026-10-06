@@ -30,6 +30,7 @@ import { companionControl, completionClaim, focusContext, loadFocus, saveFocus, 
 import { Teaching } from "./Teaching";
 import "../components/chat-composer.css";
 import "./shua-panel.css";
+import { pageContext } from "../components/WorkspaceSpark";
 import { useTeaching, pausePractice } from "../lib/teaching";
 import { CompanionModelPicker, modelPreference } from "../components/CompanionModelPicker";
 import { setSparkFull, takeSparkSuggestion, watchSparkSuggestion } from "../lib/spark-panel";
@@ -150,7 +151,7 @@ function DraftInput(props: Omit<React.InputHTMLAttributes<HTMLInputElement>, "va
   return <input {...props} value={value} onChange={(e) => set(e.target.value)} />;
 }
 
-export function Buddy({ embedded = false, full = false, onClose }: { embedded?: boolean; full?: boolean; onClose?: () => void } = {}) {
+export function Buddy({ embedded = false, full = false, onClose, page }: { embedded?: boolean; full?: boolean; onClose?: () => void; page?: string } = {}) {
   const lesson = useTeaching().document, practicing = !!lesson?.practice.active;
   const reduceMotion = useReducedMotion();
   // The draft is read when it's sent, never subscribed to here: typing re-renders only the text box and send button.
@@ -1575,6 +1576,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     activeMissions.length ? { key: "missions", tone: "live", text: `${activeMissions.length} mission${activeMissions.length === 1 ? "" : "s"} in progress`, ask: "How are my missions going?" } : null,
     workingNow ? { key: "crew", tone: "live", text: `${workingNow} crew session${workingNow === 1 ? "" : "s"} working`, ask: "What is the crew working on?" } : null,
   ].filter(Boolean) as Array<{ key: string; tone: string; text: string; ask: string }>;
+  const here = embedded && page ? pageContext(page) : null;
   const starters = [
     approvals ? "What needs my OK?" : null,
     hour < 11 ? "Start my day" : hour >= 17 ? "Wrap up my day" : "What should I focus on next?",
@@ -1838,7 +1840,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   }}>
       <header className="spk-head">
         <span className={`spk-avatar is-${speaking ? "speaking" : phase === "hearing" ? "hearing" : working || busy ? "thinking" : "idle"}`}><SparkCharacter preferences={prefs} mood={mood} size={38} crop="portrait" /></span>
-        <div className="spk-who"><strong>{companionName(prefs)}</strong><span role="status" className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? <VoiceWaveform compact state={buddyState} readLevel={readVoiceLevel} /> : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
+        <div className="spk-who"><strong>{companionName(prefs)}</strong><span role="status" title={`${statusLabel} · ${displayProvider}`} className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? <VoiceWaveform compact state={buddyState} readLevel={readVoiceLevel} /> : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
         <button type="button" aria-label="Visual teaching" title="Visual teaching" aria-pressed={tab === "teach"} onClick={() => setTab(tab === "teach" ? "chat" : "teach")}><BookOpen size={15} /></button>
         <button type="button" aria-label={tab === "chat" ? "Open widgets" : "Back to chat"} title={tab === "chat" ? "Widgets & approvals" : "Back to chat"} aria-pressed={tab === "widgets"} onClick={() => setTab(tab === "chat" ? "widgets" : "chat")} className="spk-widget-toggle">{tab === "chat" ? <LayoutGrid size={15} /> : <MessageCircle size={15} />}{approvals > 0 && <i />}</button>
         <details className="spk-options" ref={optionsPanel} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
@@ -1884,6 +1886,8 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
             <div className="spk-now" aria-label="Right now">{now$.length
               ? now$.map((n, k) => <motion.button key={n.key} type="button" className={`is-${n.tone}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 + k * 0.05 }} onClick={() => void ask(n.ask)}><i />{n.text}</motion.button>)
               : <span className="is-quiet"><i />All quiet. Nothing needs you.</span>}</div>
+            {here && <motion.button type="button" className="spk-here" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} onClick={() => void ask(`I'm in ${here.name}. ${here.prompt}`)} title={here.prompt}>
+              <small>On {here.name}</small><b>{here.action}</b><ArrowUp size={13} /></motion.button>}
             <div className="spk-starters">{starters.map((s, k) => <motion.button key={s} type="button" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 + k * 0.05 }} onClick={() => void ask(s)}>{s}<ArrowUp size={12} /></motion.button>)}
               <motion.button type="button" className="is-agent" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 + starters.length * 0.05 }} onClick={() => { setDraft("agent: "); input.current?.focus(); }}><b>agent:</b> give me a task to finish for you</motion.button></div>
             <p className="buddy-tip">Type, talk, tap fn, or ask for a diagram.</p>

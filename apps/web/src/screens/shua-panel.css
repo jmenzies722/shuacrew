@@ -17,3 +17,16 @@
 :root[data-idle] .buddy-card.spk .spk-hello::before { animation-play-state: paused; }
 :root[data-motion="reduced"] .buddy-card.spk .spk-hello::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { .buddy-card.spk .spk-hello::before { animation: none; } }
+
+/* Shua knows the page you're on: its offer for this page leads, as one bright card. */
+.buddy-card.spk .spk-here { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; column-gap: 10px; width: 100%; max-width: 360px; margin: 14px auto 0; padding: 11px 14px;
+  border: 0; border-radius: 13px; text-align: left; font: inherit; cursor: pointer; color: var(--text);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--spark-color, var(--amber)) 18%, transparent), color-mix(in srgb, var(--spark-color, var(--amber)) 6%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color, var(--amber)) 40%, transparent); transition: transform .2s var(--ease-out, ease), box-shadow .15s; }
+.buddy-card.spk .spk-here:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--spark-color, var(--amber)), 0 12px 28px -18px var(--spark-color, var(--amber)); }
+.buddy-card.spk .spk-here small { grid-column: 1; font-size: 11px; color: var(--text-3); }
+.buddy-card.spk .spk-here b { grid-column: 1; font-size: 13.5px; font-weight: 600; }
+.buddy-card.spk .spk-here svg { grid-column: 2; grid-row: 1 / 3; transform: rotate(45deg); color: var(--spark-color, var(--amber)); }
+.buddy-card.spk .spk-here + .spk-starters { margin-top: 8px; }
+/* In the narrow side panel the header says only how Shua is (Ready, Thinking…); which model is in the tooltip and Options. */
+.buddy.is-embedded:not(.is-full) .buddy-card.spk .spk-head .spk-provider { display: none; }
