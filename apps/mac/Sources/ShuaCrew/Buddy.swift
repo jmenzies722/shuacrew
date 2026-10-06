@@ -403,6 +403,16 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         web.evaluateJavaScript("window.buddy && window.buddy.toggleVoice && window.buddy.toggleVoice()")
     }
 
+    /// A page in the main window hands Shua a question (Studio: "pick an album for right now"); Shua answers in the notch.
+    func ask(_ text: String) {
+        let clean = String(text.prefix(4000))
+        guard !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: [clean]), let arg = String(data: data, encoding: .utf8) else { return }
+        if !Self.enabled { setEnabled(true) }
+        start()
+        web.evaluateJavaScript("window.buddy && window.buddy.notchAsk && window.buddy.notchAsk(\(arg)[0])")
+    }
+
     private func fnSignal(_ signal: FnGesture.Signal) {
         guard signal != .none else { return }
         Self.appendSelfTest("FN \(signal) at=\(ProcessInfo.processInfo.systemUptime)\n")
@@ -949,6 +959,37 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             SparkHands.musicQueue.async {
                 nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
                 Task { @MainActor [weak self] in self?.send("shuacrew:media", now, to: sender) }
+            }
+        // Studio: your Apple Music library, album first (MusicLibrary). Each answers the page that asked.
+        case "buddyMusicLibrary":
+            let force = body["force"] as? Bool ?? false
+            SparkHands.musicQueue.async {
+                let reply: [String: Any]
+                do { reply = ["albums": try MusicLibrary.albums(force: force).map(\.json)] } catch { reply = ["albums": [], "error": "Couldn't read your Music library: \(error.localizedDescription)"] }
+                nonisolated(unsafe) let out = reply
+                Task { @MainActor [weak self] in self?.send("shuacrew:musicLibrary", out, to: sender) }
+            }
+        case "buddyMusicArt":
+            let ids = (body["ids"] as? [String] ?? []).filter { $0.count == 16 }
+            SparkHands.musicQueue.async {
+                nonisolated(unsafe) let out: [String: Any] = ["art": MusicLibrary.artwork(for: ids)]
+                Task { @MainActor [weak self] in self?.send("shuacrew:musicArt", out, to: sender) }
+            }
+        case "buddyMusicAlbum":
+            let id = body["id"] as? String ?? ""
+            SparkHands.musicQueue.async {
+                nonisolated(unsafe) let out: [String: Any] = ["id": id, "tracks": MusicLibrary.trackList(of: id)]
+                Task { @MainActor [weak self] in self?.send("shuacrew:musicAlbum", out, to: sender) }
+            }
+        case "buddyMusicPlay":
+            let album = body["album"] as? String ?? "", track = body["track"] as? String, shuffle = body["shuffle"] as? Bool ?? false
+            SparkHands.musicQueue.async {
+                let r = MusicLibrary.play(album: album, from: track, shuffle: shuffle)
+                nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
+                Task { @MainActor [weak self] in
+                    self?.send("shuacrew:musicResult", ["ok": r.ok, "message": r.message], to: sender)
+                    self?.send("shuacrew:media", now, to: sender)
+                }
             }
         case "buddyAgenda":
             // Spark checks what's coming up (every minute), to give you a heads-up before it starts.

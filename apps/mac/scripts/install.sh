@@ -39,6 +39,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocationUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
   <key>NSLocationWhenInUseUsageDescription</key><string>Only for the weather in the top bar, and only if you turn it on. Rounded to about a kilometre.</string>
+  <key>NSAppleMusicUsageDescription</key><string>So Studio can show your Apple Music albums and covers and play a whole album. Read on this Mac only; nothing is uploaded or copied.</string>
   <key>NSAppleEventsUsageDescription</key><string>So Spark can play and pause your music, change appearance and run tasks you ask for. Only when you ask.</string>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>ShuaCrew link</string><key>CFBundleURLSchemes</key><array><string>shuacrew</string></array></dict></array>
   <key>NSCalendarsFullAccessUsageDescription</key><string>So Today can plan around your meetings. Read on this Mac only — titles and times, never sent anywhere.</string>

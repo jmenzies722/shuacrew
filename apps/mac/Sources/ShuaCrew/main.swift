@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.onBuddyHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
         buddy.onHotkey = { [weak self] combo in self?.bindBuddyKey(combo) }
         window.onShuaTalk = { [weak self] in self?.buddy.talk() }
+        window.onShuaAsk = { [weak self] text in self?.buddy.ask(text) }
         window.onBuddyMessage = { [weak self] controller, message in self?.buddy.userContentController(controller, didReceive: message) }
         buddy.appWeb = window.web
         NSApp.mainMenu = mainMenu()

@@ -23,7 +23,7 @@ const HUBS: HubSection[] = [
     { title: "Hire and review", where: "Crew › Team", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
     { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
     { title: "Crew HQ", where: "Crew › Crew HQ", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
-    { title: "Studio & Radio", where: "Crew › Studio", to: "/studio", body: "A focus room with a timer, Flow mode, rain sounds and ShuaCrew Radio: a lofi station with a spinning-record player, built from your own music folders or official YouTube live streams. Music quiets down while you talk to Shua. Shua can even DJ." },
+    { title: "Studio", where: "Crew › Studio", to: "/studio", body: "Your Apple Music, album first: what's playing big, lit by its cover; your albums on shelves (full albums, recently added, on repeat, rediscover); search across your whole library; one tap plays a whole record. Ask Shua to pick an album for right now, or tell you the story behind one." },
   ] },
   { id: "build", hub: "Hub 3 · ⌘3", title: "Build: ventures, plans and the board", features: [
     { title: "Idea to revenue", where: "Build › Ventures", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
@@ -138,7 +138,7 @@ export function Guide() {
                 ["“What was that error I saw earlier?”", "Recalls it from screen memory, if you've turned it on."],
                 ["“idea: a bot that summarizes city council meetings”", "Files it as a new venture. The crew scores it overnight."],
                 ["“Explain this.”", "Reads the text you've selected, explains it and adds a quiz card."],
-                ["“Put on some lofi and start my day.”", "Starts the radio and Flow, then shows the first thing that needs you."]].map(([said, does]) =>
+                ["“Put on an album and start my day.”", "Plays something from your Apple Music, starts Flow, then shows the first thing that needs you."]].map(([said, does]) =>
                 <div key={said}><small>You say</small><b>{said}</b><span>{does}</span></div>)}
             </div>
           </div>

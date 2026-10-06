@@ -96,7 +96,9 @@ it("reads run commands and keeps music off the mouse", () => {
   expect(parseActions('```do [{"type":"run","command":"df -h ~"}]```')).toEqual([{ type: "run", command: "df -h ~" }]);
   expect(parseActions('```do [{"type":"run","command":""}]```')).toEqual([]);
   expect(buddyPrompt("play music", null)).toMatch(/never click a play button/i);
-  expect(buddyPrompt("put on some lofi", null)).toMatch(/ShuaCrew Radio .* use radio/);
+  // Oct 5: the lofi radio is retired; music is the user's Apple Music only.
+  expect(buddyPrompt("put on some lofi", null)).toMatch(/Apple Music only \(no radio, no lofi stations\)/);
+  expect(buddyPrompt("put on some lofi", null)).not.toMatch(/use radio/);
 });
 
 it("starts speaking at the first clause of a reply, but never chops a short opener", () => {
