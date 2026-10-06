@@ -13,7 +13,7 @@ import { describe } from "../lib/weather";
 import { skyAt, todayMoments, type Moment } from "../lib/today";
 import { useLearningNow, useWeatherNow } from "../components/TopBarWidgets";
 import { native, post } from "./spark/bridge";
-import "./today.css";
+import "./today-live.css";
 
 type Reminder = { id: string; title: string; due: number; hasTime: boolean };
 const hhmm = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
