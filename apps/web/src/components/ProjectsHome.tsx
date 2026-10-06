@@ -31,7 +31,7 @@ export function FirstDollar({ onNew }: { onNew: () => void }) {
     earned: Object.keys(income).length > 0 || list.some((v) => (v.metrics?.revenue30d ?? 0) > 0 || (v.metrics?.mrr ?? 0) > 0),
   });
   const done = steps.filter((s) => s.done).length;
-  if (done === steps.length) return null;
+  if (steps.at(-1)!.done) return null; // the quest is the first dollar: once it lands, it is over
   const next = steps.find((s) => !s.done)!;
   return <section className="ph-quest" aria-label="First dollar">
     <header><span className="ph-kicker"><Flame size={13} /> Quest</span><h2>Your first dollar</h2><small>{done} of {steps.length}</small></header>

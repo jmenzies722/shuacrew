@@ -8,6 +8,8 @@ export function nameSession(ask: string, suggested?: string): { title: string; t
   for (let pass = 0; pass < 4; pass++) topic = topic.replace(/^(?:(?:hey|hi|ok|okay)[,\s]+|(?:can|could|would) you\s+|(?:please|help me|i want you to|i need you to)\s+)/i, "");
   const words = topic.split(/\s+/).filter(Boolean).slice(0, 7);
   while (words.join(" ").length > 64 && words.length > 1) words.pop();
+  // A cut mid-phrase shouldn't leave a dangling "and", "to the" or "for".
+  while (words.length > 1 && /^(?:and|or|but|so|the|a|an|to|for|of|with|in|on|at|by|from|into|my|your|our|their|while|that|which)$/i.test(words.at(-1)!)) words.pop();
   const title = words.join(" ").replace(/[,;:—–-]+$/, "").trim();
   return { title: title ? title[0]!.toLocaleUpperCase() + title.slice(1) : "New session", titleSource: "derived" };
 }

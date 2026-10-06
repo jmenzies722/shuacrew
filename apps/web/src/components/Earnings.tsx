@@ -63,9 +63,10 @@ export function Earnings({ ventures, income }: { ventures: VentureView[]; income
   return <section className={`earn${empty ? " is-empty" : ""}`} aria-label="Earnings">
     {empty ? <p className="earn-empty"><b>$0 so far.</b> Your first dollar shows up here the moment it's logged, with Stripe synced per project.</p> : <div className="earn-figures">
       <div className="earn-lead"><span>This month</span><strong>{usd(thisMonth)}</strong>
-        {goal > 0 && <div className="earn-goal" title={`${usd(mrr)} of ${usd(goal)} goal MRR`}><i style={{ width: `${Math.min(100, (mrr / goal) * 100)}%` }} /><small>{Math.round((mrr / goal) * 100)}% of {usd(goal)} goal</small></div>}
       </div>
-      <div><span>MRR</span><strong>{usd(mrr)}</strong></div>
+      <div><span>MRR</span><strong>{usd(mrr)}</strong>
+        {goal > 0 && <div className="earn-goal" title={`${usd(mrr)} of a ${usd(goal)}/mo goal`}><i style={{ width: `${Math.min(100, (mrr / goal) * 100)}%` }} /><small>{Math.round((mrr / goal) * 100)}% of {usd(goal)}/mo goal</small></div>}
+      </div>
       <div><span>Last 30 days</span><strong>{usd(subs30 + logged30)}</strong></div>
       <div className="earn-chart" aria-label="Logged income, last six months">
         {months.map((m) => <span key={m.label} title={`${m.label}: ${usd(m.total)}`}><i style={{ height: `${Math.max(4, (m.total / peak) * 100)}%` }} className={m.total ? "is-on" : ""} /><small>{m.label}</small></span>)}

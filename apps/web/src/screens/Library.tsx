@@ -44,7 +44,7 @@ const bytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 10
 export function Library() {
   const artifacts = useLive((s) => s.crew.artifacts);
   const knowledge = useLive((s) => s.crew.knowledge);
-  const [tab, setTab] = useState<"made" | "known">("made");
+  const [picked, setTab] = useState<"made" | "known" | null>(null);
   const [kind, setKind] = useState<Kind | "all">("all");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
@@ -56,6 +56,8 @@ export function Library() {
   const crate = useMemo(() => recentlyPlayed(made, Date.now(), 8), [made]);
   const known = useMemo(() => Object.values(knowledge).sort((a, b) => b.addedAt - a.addedAt), [knowledge]);
   const shown = kind === "all" ? made : made.filter((a) => a.kind === kind);
+  // Open on whichever side has something in it, until you pick one.
+  const tab = picked ?? (!made.length && known.length ? "known" : "made");
 
   // Deep link from a chat card: /library#a_123
   useEffect(() => {
@@ -74,7 +76,7 @@ export function Library() {
     <div className="h-full overflow-y-auto relative" {...drop.bind}>
       <DropLayer over={drop.over} status={drop.status} />
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
-        <PaneHeader {...(() => { const made = Object.keys(artifacts).length, known = Object.keys(knowledge).length; return made + known ? { status: `${made} made by the crew · ${known} you gave it to know`, tone: "ok" as const } : { status: "Empty for now. Everything the crew makes, and anything you add, lands here.", tone: "idle" as const }; })()} icon={LibraryBig} title="Library"
+        <PaneHeader {...(() => { const made = Object.keys(artifacts).length, known = Object.keys(knowledge).length; return made + known ? { status: [made && `${made} made by the crew`, known && `${known} you added`].filter(Boolean).join(" · "), tone: "ok" as const } : { status: "Empty for now. Everything the crew makes, and anything you add, lands here.", tone: "idle" as const }; })()} icon={LibraryBig} title="Library"
           actions={<Button onClick={() => setAdding(true)}><Plus size={14} /> Add knowledge</Button>} />
 
         <label className="lib-search">
@@ -205,7 +207,7 @@ function SourceRow({ source: k, onOpen }: { source: KnowledgeView; onOpen: () =>
         </span>
         <span className="hidden shrink-0 text-right text-[11.5px] text-fg-3 sm:block">
           {k.source === "folder" ? `${k.files} files · ` : ""}
-          {k.chunks} passages · {bytes(k.size)}
+          {k.chunks} passage{k.chunks === 1 ? "" : "s"} · {bytes(k.size)}
           <br />
           added {ago(k.addedAt)}
         </span>

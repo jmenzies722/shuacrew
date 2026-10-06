@@ -4,7 +4,7 @@ import "./ventures-pipe.css";
 import "./projects-home.css";
 import { FirstDollar, IdeaForge } from "../components/ProjectsHome";
 import type { PlayView, RunView, VentureStage, VentureView } from "@shuacrew/core/projections";
-import { Button, StatusGlyph, toneOf } from "@shuacrew/ui";
+import { Button, StatusGlyph, since, toneOf } from "@shuacrew/ui";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowRight, ArrowUp, Check, CreditCard, Globe, KeyRound, Pencil, Play, Plus, RefreshCw, Rocket, ShieldCheck, Target, Trash2, TrendingUp, Unplug, X } from "lucide-react";
 import { motion } from "motion/react";
@@ -192,7 +192,7 @@ export function VenturePage() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1100px] px-6 py-6" style={{ "--venture": v.color } as React.CSSProperties}>
         <Link to="/ventures" className="text-[12px] text-fg-3 hover:text-fg">
-          ← Ventures
+          ← Projects
         </Link>
         <header className="mt-3 flex flex-wrap items-start gap-4">
           <span className="vn-emoji is-large">
@@ -248,7 +248,7 @@ export function VenturePage() {
                 <SyncButton id={v.id} />
               )}
             </div>
-            <small>{v.metrics ? `${metricLabel(v)} · ${new Date(v.metrics.at).toLocaleString()}` : "No measured revenue yet"}. Profit is unknown without complete costs.</small>
+            <small title={v.metrics ? `${new Date(v.metrics.at).toLocaleString()}. Profit is unknown without complete costs.` : undefined}>{v.metrics ? `${metricLabel(v)} · updated ${since(v.metrics.at)}` : "No measured revenue yet"}</small>
             {v.automation && v.automation.state !== "started" && <AutomationFailure venture={v} />}
             {v.syncError && <div className="mt-2 rounded-[8px] bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] px-3 py-2 text-[12px] text-bad">Last sync failed: {v.syncError}</div>}
             <div className="mt-4 grid grid-cols-3 gap-2.5">

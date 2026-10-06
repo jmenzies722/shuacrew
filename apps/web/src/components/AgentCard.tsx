@@ -71,13 +71,13 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
               {run.checks[run.checks.length - 1]?.passed ? <Check size={11} className="inline" /> : <X size={11} className="inline" />} checks
             </Chip>
           )}
-          {run.files.length > 0 && <Chip mono>{run.files.length} files</Chip>}
+          {run.files.length > 0 && <Chip mono>{run.files.length} file{run.files.length === 1 ? "" : "s"}</Chip>}
           <span className={`flex items-center whitespace-nowrap ${compact ? "w-full justify-between gap-2 [&_[role=meter]]:w-10" : "ml-auto gap-3"}`}>
             <Gauge used={run.usage.contextUsed} limit={run.usage.contextLimit} />
-            <span className="mono text-[11px] tabular-nums text-fg-2" title="Tokens used by this run">
+            {(tokens > 0 || run.usage.costUsd != null) && <span className="mono text-[11px] tabular-nums text-fg-2" title="Tokens used by this run">
               {formatTokens(tokens)}
               {run.usage.costUsd != null && <> · ${run.usage.costUsd.toFixed(2)} reported</>}
-            </span>
+            </span>}
             <span className="text-[11px] text-fg-3">{since(run.updatedAt)}</span>
           </span>
         </div>
