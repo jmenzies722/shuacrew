@@ -143,7 +143,7 @@ export class PhoneDoor {
       const key = readPhoneKey(home);
       const given = Buffer.from(String(request.headers["x-shuacrew-key"] ?? ""));
       if (!key || given.length !== Buffer.byteLength(key) || !timingSafeEqual(given, Buffer.from(key))) {
-        return reply.code(401).send({ error: "this iPhone isn't paired: scan the code in ShuaCrew → Settings → iPhone" });
+        return reply.code(401).send({ error: "this iPhone isn't paired: scan the code in ShuaCrew → Settings → Mobile on your Mac" });
       }
     });
     door.get("/phone/hello", async () => ({ ok: true, name: os.hostname().replace(/\.local$/, "") }));

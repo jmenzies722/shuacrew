@@ -247,7 +247,7 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
 
 /// The pairing key lives in the Keychain, this device only: it never syncs to iCloud or lands in a backup.
 private enum Keychain {
-    static let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "dev.shuacrew.spark-link", kSecAttrAccount as String: "pairing"]
+    static var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "dev.shuacrew.spark-link", kSecAttrAccount as String: "pairing"] }
     static func save(_ pairing: SparkPairing) throws {
         clear()
         var item = query

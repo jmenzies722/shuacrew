@@ -8,13 +8,19 @@ import SwiftUI
 private struct PhoneRoot: View {
     @ObservedObject var model: MobileModel
     @Environment(\.scenePhase) private var scenePhase
+    /// The live line to Shua on the Mac (pairing, runs, approvals). One per app, shared by every tab.
+    @State private var link = SparkLink()
     var body: some View {
             TabView {
+                // Shua first: everything goes through Shua. Today keeps the iCloud-synced view (usage, request history).
+                Tab("Shua", systemImage: "sparkle") { NavigationStack { SparkHomeView() } }
                 Tab("Today", systemImage: "sun.max") { NavigationStack { TodayView() } }
                 Tab("Crew", systemImage: "person.3.sequence") { NavigationStack { CrewView() } }
                 Tab("Settings", systemImage: "slider.horizontal.3") { NavigationStack { SettingsView() } }
             }
-            .tint(.teal)
+            .tint(Color(red: 0.557, green: 0.282, blue: 1.0)) // ShuaCrew accent #8e48ff
+            .environment(link)
+            .preferredColorScheme(.dark) // Onyx: the phone is black like the Mac
             .environmentObject(model)
             .task { await model.setForeground(scenePhase == .active) }
             .onChange(of: scenePhase) { _, phase in Task { await model.setForeground(phase == .active) } }
