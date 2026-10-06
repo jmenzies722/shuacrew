@@ -1,4 +1,3 @@
-import { StatStrip } from "../components/StatStrip";
 import { plain } from "../lib/plain";
 import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
@@ -108,7 +107,6 @@ export function CrewFloor() {
     if (run?.labels?.some((l) => l === "buddy" || l === "learning")) return false;
     return !scope || (e.run && runs[e.run]);
   }), [allActivity, allRuns, runs, scope]);
-  const today = useLive((s) => s.crew.today);
   const now = useNow();
 
   const onFloor = useMemo(
@@ -135,7 +133,9 @@ export function CrewFloor() {
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Crew" icon={Layers3} title="Crew Studio" description="Direct the work. Inspect the evidence. Keep your crew connected." actions={<StatStrip stats={[{ value: working, label: "working", live: working > 0 }, { value: waiting, label: "waiting on you", tone: "wait" }, { value: perMinute, label: "steps / min" }, { value: formatTokens(today.tokens), label: "tokens today" }]} />} />
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Studio floor"
+          status={waiting ? `${waiting} waiting on you${working ? ` · ${working} at work` : ""}` : working ? `${working} at work · ${perMinute} step${perMinute === 1 ? "" : "s"} in the last minute` : "Everyone's at their desk. Hand work over from Agents and watch it happen here."}
+          tone={waiting ? "wait" : working ? "live" : "idle"} />
       </header>
 
       <div className="floor-body">

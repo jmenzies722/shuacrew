@@ -49,7 +49,7 @@ export function Specs() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader {...(() => { const waiting = specs.filter((x) => !x.approved.includes(x.phase)).length; return waiting ? { status: `${waiting} waiting for your approval`, tone: "wait" as const } : specs.length ? { status: `${specs.length} spec${specs.length === 1 ? "" : "s"}, all approved`, tone: "ok" as const } : { status: "No specs yet. Ask a session to write one and approve it here.", tone: "idle" as const }; })()} eyebrow="Plan" icon={FileText} title="Specs"
-          actions={<Button onClick={() => (setStarting(true), setOpen(null))}>Start a spec</Button>} />
+          actions={specs.length ? <Button onClick={() => (setStarting(true), setOpen(null))}>Start a spec</Button> : undefined} />
 
         {starting && (
           <Start

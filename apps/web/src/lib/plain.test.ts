@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { plain, prose } from "./plain";
+import { plain, prose, skillDescription } from "./plain";
 it("turns an agent's markdown line into plain words", () => {
   expect(plain("**Scope:** Spark and study chats excluded")).toBe("Scope: Spark and study chats excluded");
   expect(plain("- Ran `pnpm test` and see [the log](http://x)")).toBe("Ran pnpm test and see the log");
@@ -19,3 +19,10 @@ it("never shows half-typed marks while a reply streams in", () => {
   expect(prose("snake_case_name stays")).toBe("snake_case_name stays");
 });
 
+
+it("reads a skill's description from any YAML form", () => {
+  expect(skillDescription(`---\nname: a\ndescription: "Fill PDF forms."\n---\nbody`)).toBe("Fill PDF forms.");
+  expect(skillDescription(`---\nname: a\ndescription: >\n  Stop and check this\n  before finishing \\u{2014} it helps.\nlicense: MIT\n---\n`)).toBe("Stop and check this before finishing — it helps.");
+  expect(skillDescription(`---\ndescription: |-\n  Build apps with the Claude API.\n---`)).toBe("Build apps with the Claude API.");
+  expect(skillDescription("no frontmatter")).toBeUndefined();
+});

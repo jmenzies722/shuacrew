@@ -2,7 +2,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { AnyEvent } from "@shuacrew/core/events";
 import type { RunView } from "@shuacrew/core/projections";
-import { ArrowUpRight, Layers3, List, Minus, Plus, Radio, X } from "lucide-react";
+import { ArrowUpRight, List, Minus, Plus, Radio, X } from "lucide-react";
 import { since } from "@shuacrew/ui";
 import { useLive } from "../lib/live";
 import { selectRooms } from "../lib/room-view";
@@ -27,8 +27,7 @@ export function FloorStage({ runs, activity, approvals, now }: { runs: Record<st
   const close = () => { const previous = selected; setSelected(null); if (previous) triggers.current.get(previous)?.focus(); };
   const live = connection === "live";
   return <section className={`crew-studio ${live ? "is-connected" : "is-stale"}`} aria-label="Crew Studio" onKeyDown={e => { if (e.key === "Escape") close(); }}>
-    <header className="studio-heading"><div><span className="studio-eyebrow"><Layers3 size={13} /> YOUR AGENT STUDIO</span><h2>Great work starts here.</h2><p>A place for your crew. Every status comes from recorded work.</p></div><span className="studio-connection"><Radio size={12} />{live ? "Live" : "Last known state · reconnecting"}</span></header>
-    <div className="studio-toolbar"><div className="studio-counts"><span><b>{agents.filter(n => n.state === "working").length}</b> working</span><span><b>{agents.filter(n => n.state === "waiting").length}</b> need you</span><span><b>{agents.length}</b> agents</span></div><div className="studio-view-controls"><button onClick={() => setList(!list)} aria-pressed={list}><List size={14} />{list ? "Studio view" : "List view"}</button>{!list && <><button onClick={() => setZoom(z => Math.max(.7, z - .1))} aria-label="Zoom out"><Minus size={14} /></button><button onClick={() => setZoom(1)}>Fit</button><button onClick={() => setZoom(z => Math.min(1.5, z + .1))} aria-label="Zoom in"><Plus size={14} /></button></>}</div></div>
+    <div className="studio-toolbar"><span className="studio-connection"><Radio size={12} />{live ? "Live" : "Last known state · reconnecting"}</span><div className="studio-view-controls"><button onClick={() => setList(!list)} aria-pressed={list}><List size={14} />{list ? "Studio view" : "List view"}</button>{!list && <><button onClick={() => setZoom(z => Math.max(.7, z - .1))} aria-label="Zoom out"><Minus size={14} /></button><button onClick={() => setZoom(1)}>Fit</button><button onClick={() => setZoom(z => Math.min(1.5, z + .1))} aria-label="Zoom in"><Plus size={14} /></button></>}</div></div>
     <div className={`studio-layout ${focused ? "has-selection" : ""}`}>
       <div className="studio-world-scroll">
         {list ? <div className="studio-agent-list">{agents.map(n => <button key={n.id} ref={el => { if(el) triggers.current.set(n.id,el); }} onClick={() => setSelected(n.id)} aria-pressed={selected === n.id}><span className="studio-monogram">{n.label.slice(0,1)}</span><span><strong>{n.label}</strong><small>{n.sub}</small></span><em data-state={n.state}>{labels[n.state]}</em></button>)}</div> : <svg className="studio-world" viewBox={`0 0 1000 ${height}`} style={{ width: `${zoom * 100}%`, height: `${zoom * 540}px` }} role="group" aria-label="Isometric agent workstations">

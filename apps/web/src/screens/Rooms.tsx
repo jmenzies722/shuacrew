@@ -164,13 +164,13 @@ function RoomsHome({ eligible, allMembers, online, busy, hasRooms, onStart, onCu
     <div className="rx-home-inner">
       <WorkspaceIllustration kind="rooms" />
       <h1>What should the crew take on?</h1>
-      <p>Say the outcome. {ready ? `${eligible[0]!.name} plans it and hands the pieces to ${eligible.length > 1 ? eligible.slice(1).map((m) => m.name).join(", ") : "the room"}.` : "First, choose who can work together in rooms."}</p>
+      <p>Say the outcome. {ready ? `${eligible[0]!.name} plans it and hands the pieces to ${eligible.length > 1 ? eligible.slice(1).map((m) => m.name).join(", ") : "the room"}.` : "First, pick who works together: one plans, the rest take the pieces."}</p>
       {ready ? <div className="rx-home-crew" aria-label="In this room">{eligible.map((m) => <span key={m.id} className="rx-avatar" style={{ "--c": m.color } as React.CSSProperties} title={`${m.name} · ${m.role}`}><Glyph name={m.emoji} label={m.name} size={13} /></span>)}<small>{eligible.length} in the room</small></div>
       : <div className="rx-home-optin">
         <div className="rx-pick">{candidates.map((m) => <button type="button" key={m.id} aria-pressed={pick.includes(m.id)} onClick={() => setPick((p) => p.includes(m.id) ? p.filter((x) => x !== m.id) : [...p, m.id])}>
           <span className="rx-avatar" style={{ "--c": m.color } as React.CSSProperties}><Glyph name={m.emoji} label={m.name} size={13} /></span><span><strong>{m.name}</strong><small>{m.role}</small></span></button>)}</div>
-        <button type="button" className="rx-primary" disabled={!pick.length || busy || !online} onClick={() => onOptIn(pick)}>Let {pick.length ? pick.length : ""} work in rooms</button>
-        <small className="rx-muted">They still work within your permissions. You can change this per member on Team.</small>
+        <button type="button" className="rx-primary" disabled={!pick.length || busy || !online} onClick={() => onOptIn(pick)}>{pick.length ? `Put ${pick.length === 1 ? "them" : `these ${pick.length}`} in the room` : "Pick who works together"}</button>
+        <small className="rx-muted">They still work within your permissions. Change it per member on Agents.</small>
       </div>}
       <form className="rx-composer rx-home-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <textarea ref={field} rows={2} aria-label="What should the crew take on?" placeholder={ready ? "Launch my side project's landing page by Friday…" : "Choose your crew above to start"} value={text} disabled={!ready} onChange={(e) => setText(e.target.value)}

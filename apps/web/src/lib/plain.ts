@@ -29,3 +29,20 @@ export function prose(text: string | undefined): string {
     .replace(/\s+([.,!?:;])/g, "$1").replace(/\s+/g, " ");
   return t.trim();
 }
+
+/** A SKILL.md's description, whether it's one line, quoted, or a folded/literal YAML block (`>`, `|-`). */
+export function skillDescription(md: string): string | undefined {
+  const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(md)?.[1];
+  if (!block) return undefined;
+  const lines = block.split(/\r?\n/);
+  const i = lines.findIndex((l) => /^description:/.test(l));
+  if (i < 0) return undefined;
+  let v = lines[i]!.replace(/^description:\s*/, "").trim();
+  if (/^[>|][-+]?$/.test(v)) {
+    const body: string[] = [];
+    for (const l of lines.slice(i + 1)) { if (!/^\s/.test(l) && l.trim()) break; body.push(l.trim()); }
+    v = body.filter(Boolean).join(" ");
+  }
+  v = v.replace(/^(["'])([\s\S]*)\1$/, "$2").replace(/\\u\{([0-9a-f]+)\}/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)));
+  return v || undefined;
+}

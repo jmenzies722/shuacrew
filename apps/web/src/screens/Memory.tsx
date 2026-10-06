@@ -2,6 +2,7 @@ import { Button, Chip, Eyebrow, Panel, StatusGlyph, since } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { skillDescription } from "../lib/plain";
 import { BookOpen } from "lucide-react";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
@@ -197,14 +198,14 @@ export function Memory() {
               <Panel className="divide-y divide-line">
                 {skills.length === 0 && <div className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-3">When the same kind of ask comes back three times, Evolve drafts a skill here for you to approve. Nothing is used until you do.</div>}
                 {[...proposed, ...accepted].map((s) => {
-                  const fm = /^---[\s\S]*?description:\s*"?([^\n"]+)"?[\s\S]*?---/.exec(s.body)?.[1];
+                  const fm = skillDescription(s.body);
                   const body = s.body.replace(/^---[\s\S]*?---\s*/, "");
                   return (
                   <div key={s.id} className="px-4 py-3">
                     <div className="flex items-center gap-2 text-[13px] font-medium">
                       <StatusGlyph tone={s.status === "accepted" ? "ok" : "wait"} size={7} />
                       <span className="mono">{s.name}</span>
-                      <span className="ml-auto text-[11px] font-normal text-fg-3">from {s.from.length} runs</span>
+                      {s.from.length > 0 && <span className="ml-auto text-[11px] font-normal text-fg-3">from {s.from.length} run{s.from.length === 1 ? "" : "s"}</span>}
                     </div>
                     {fm && <p className="mt-1.5 line-clamp-3 text-[12px] leading-snug text-fg-2" title={fm}>{fm}</p>}
                     {s.status === "proposed" && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[var(--radius-s)] bg-raised p-2 text-[11.5px] text-fg-2">{body}</pre>}

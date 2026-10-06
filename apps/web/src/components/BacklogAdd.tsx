@@ -13,7 +13,7 @@ export function BacklogAdd() {
   };
   return <form className="bl-add" onSubmit={(e) => { e.preventDefault(); void add(); }}>
     <Plus size={14} />
-    <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add to backlog… (runs when you start it)" aria-label="Add to backlog" maxLength={4000} />
+    <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add to backlog…" title="Parked until you press Start" aria-label="Add to backlog" maxLength={4000} />
     {error && <small>{error}</small>}
   </form>;
 }
