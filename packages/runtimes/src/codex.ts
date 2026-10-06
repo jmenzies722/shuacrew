@@ -106,6 +106,7 @@ export class RpcPeer {
 export class CodexTranslator {
   private items = new Map<string, Json>();
   private streamed = new Set<string>();
+  private reasoned = new Set<string>(); // reasoning items whose summary already streamed
   private lastMessage = "";
   private usageTotal?: { inputTokens: number; outputTokens: number; cachedInputTokens: number };
   private usageFingerprint = "";
@@ -130,6 +131,12 @@ export class CodexTranslator {
       case "turn/started":
         this.turnId = params.turn?.id ?? params.turnId;
         return [];
+      // The reasoning summary as it's written: the seconds before the first word show what the agent is weighing.
+      case "item/reasoning/summaryTextDelta":
+        if (params.itemId) this.reasoned.add(params.itemId);
+        return params.delta ? [{ type: "thinking", text: String(params.delta), delta: true }] : [];
+      case "item/reasoning/summaryPartAdded":
+        return params.summaryIndex > 0 ? [{ type: "thinking", text: "\n\n", delta: true }] : [];
       case "item/agentMessage/delta":
         if (params.itemId) this.streamed.add(params.itemId);
         return params.delta ? [{ type: "text", text: String(params.delta) }] : [];
@@ -163,6 +170,7 @@ export class CodexTranslator {
             return [{ type: "text", text: `${text}\n` }];
           }
           case "reasoning": {
+            if (this.reasoned.has(item.id)) return []; // already streamed piece by piece
             const text = [...(item.summary ?? [])].join("\n").trim();
             return text ? [{ type: "thinking", text }] : [];
           }
@@ -351,6 +359,8 @@ export class CodexRuntime implements Runtime {
         threadId,
         input: [{ type: "text", text: run.ask, text_elements: [] }],
         ...(run.effort ? { effort: run.effort } : {}),
+        // Work sessions show their reasoning as it happens; Shua's quick turns stay lean.
+        ...(run.lean ? {} : { summary: "auto" }),
       });
 
       for (;;) {

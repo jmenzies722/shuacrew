@@ -29,3 +29,14 @@ it("Claude's TodoWrite becomes a plan event next to the tool call; a subagent's 
   const sub = new ClaudeTranslator().translate({ type: "assistant", parent_tool_use_id: "task1", message: { content: [todo] } });
   expect(sub.map((e) => e.type)).toEqual(["tool-call"]);
 });
+
+it("Codex's reasoning summary streams as it's written, and isn't repeated when the item completes", async () => {
+  const { CodexTranslator } = await import("./codex.js");
+  const t = new CodexTranslator();
+  expect(t.translate("item/reasoning/summaryPartAdded", { itemId: "r1", summaryIndex: 0 })).toEqual([]);
+  expect(t.translate("item/reasoning/summaryTextDelta", { itemId: "r1", delta: "Checking the retry", summaryIndex: 0 })).toEqual([{ type: "thinking", text: "Checking the retry", delta: true }]);
+  expect(t.translate("item/reasoning/summaryPartAdded", { itemId: "r1", summaryIndex: 1 })).toEqual([{ type: "thinking", text: "\n\n", delta: true }]);
+  expect(t.translate("item/completed", { item: { id: "r1", type: "reasoning", summary: ["Checking the retry"] } })).toEqual([]);
+  // A runtime that never streamed it still gets the summary, whole, at the end.
+  expect(new CodexTranslator().translate("item/completed", { item: { id: "r2", type: "reasoning", summary: ["Whole thought"] } })).toEqual([{ type: "thinking", text: "Whole thought" }]);
+});

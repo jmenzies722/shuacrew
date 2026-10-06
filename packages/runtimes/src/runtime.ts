@@ -52,7 +52,8 @@ export interface PlanStep { text: string; status: "pending" | "active" | "done" 
 export type RuntimeEvent =
   | { type: "session"; id: string } // the runtime's own conversation id, for resume
   | { type: "text"; text: string; final?: boolean } // a delta, or a whole message when final
-  | { type: "thinking"; text: string }
+  /** Reasoning, whole — or a streamed piece of it (`delta`), which the gateway batches like text. */
+  | { type: "thinking"; text: string; delta?: boolean }
   | { type: "tool-call"; id: string; tool: string; input: unknown; subagent?: string }
   | { type: "tool-result"; id: string; ok: boolean; output: string; durationMs?: number }
   | { type: "file"; path: string; change?: "added" | "modified" | "deleted" }

@@ -405,12 +405,18 @@ export class Supervisor {
 
     let ended = false;
     let buffered = "";
+    let thought = ""; // streamed reasoning, batched the same way
     let said = ""; // everything streamed this turn: the reply if the runtime ends with an empty final message
     let firstWordAt = 0;
-    const flush = () => {
+    const flushText = () => {
       if (buffered) this.rec("agent.delta", { turn, text: buffered }, { run: runId });
       buffered = "";
     };
+    const flushThought = () => {
+      if (thought) this.rec("agent.thinking", { turn, text: thought }, { run: runId });
+      thought = "";
+    };
+    const flush = () => (flushThought(), flushText());
     const flusher = setInterval(flush, 25); // coalesce token deltas: one fact per 25ms, not per token (the page smooths the rest)
     try {
       for await (const event of runtime.start(run, {
@@ -420,8 +426,10 @@ export class Supervisor {
       })) {
         // A runtime can finish or deliver buffered tokens after abort. Stop remains terminal.
         if (controller.signal.aborted) break;
-        if (event.type !== "text" || event.final) flush();
-        else if (!firstWordAt) firstWordAt = Date.now();
+        // Each stream batches on its own; anything else lands after whatever was streamed before it.
+        if (event.type === "thinking" && event.delta) flushText();
+        else if (event.type === "text" && !event.final) { flushThought(); if (!firstWordAt) firstWordAt = Date.now(); }
+        else flush();
         switch (event.type) {
           case "session":
             this.rec("run.session", { runtime: runtime.id, id: event.id }, { run: runId });
@@ -431,7 +439,8 @@ export class Supervisor {
             else { buffered += event.text; said += event.text; }
             break;
           case "thinking":
-            this.rec("agent.thinking", { turn, text: event.text }, { run: runId });
+            if (event.delta) thought += event.text;
+            else this.rec("agent.thinking", { turn, text: event.text }, { run: runId });
             break;
           case "tool-call":
             this.rec("tool.called", { id: event.id, tool: event.tool, input: event.input, subagent: event.subagent }, { run: runId });
