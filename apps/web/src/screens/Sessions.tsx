@@ -859,6 +859,15 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
     }
   };
 
+  // Who picks this up, and whether they're ready: the dot beside the agent picker breathes when they are.
+  const readiness = (() => {
+    const now = Date.now(), resting = (r: RuntimeInfo) => !!r.limitedUntil && r.limitedUntil > now;
+    const chosenRt = runtime ? runtimes.find((r) => r.id === runtime) : undefined;
+    if (!runtimes.length) return { tone: "off", title: "No agent connected yet" };
+    if (chosenRt) return resting(chosenRt) ? { tone: "wait", title: `${friendly(chosenRt)} is resting on a usage limit` } : { tone: "", title: `${friendly(chosenRt)} is ready` };
+    return runtimes.some((r) => !resting(r)) ? { tone: "", title: "Ready: Auto sends this to the best available agent" } : { tone: "wait", title: "Every agent is resting on a usage limit" };
+  })();
+
   const chooseFolder = async () => {
     const path = await pickFolder();
     if (path) setRepo(path);
@@ -998,6 +1007,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             {/* Agent · model · effort, always in reach (they used to sit behind Options, twice). For an open session they
                 apply to your next message, and wait while a turn is running. */}
             <span className="composer-picks" title={run ? (working ? "Available when this turn finishes" : "Applies to your next message") : "For this new session"}>
+              <span className={`composer-ready${readiness.tone ? ` is-${readiness.tone}` : ""}`} title={readiness.title} aria-hidden="true" />
               <Select label="Agent" disabled={!!run && (working || busy)} value={runtime} onChange={(v) => { setRuntime(v); setModel(""); }}
                 options={[...(run ? [] : [{ value: "", label: "Auto agent" }]), ...runtimes.map((r) => ({ value: r.id, label: friendly(r) + (r.limitedUntil ? " · limited" : "") }))]} />
               <i aria-hidden="true">·</i>
@@ -1008,7 +1018,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
             </span>
             <button className="composer-options-toggle" aria-expanded={optionsOpen} aria-controls="session-options" onClick={() => setOptionsOpen(v => !v)}>Options{race || task ? " · active" : ""} <ChevronDown size={12} /></button>
             <div className="ml-auto flex items-center gap-2">
-
+              {text.trim() && <span className="composer-live" aria-hidden="true">≈{Math.max(1, Math.round(text.trim().length / 4)).toLocaleString()} tokens{sendShortcut !== "button-only" && <> · <kbd>{sendShortcut === "enter" ? "↵" : "⌘↵"}</kbd> {working ? "queue" : "send"}</>}</span>}
               {working && !text.trim() && !files.length && run ? (
                 <button onClick={() => void cancelRun(run.id)} className="grid h-8 w-8 place-items-center rounded-full bg-raised text-fg hover:bg-line-strong" title="Stop" aria-label="Stop">
                   <CircleStop size={15} />

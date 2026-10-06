@@ -106,6 +106,9 @@
 .buddy-card.spk .spk-head .spk-who { display: flex !important; flex-direction: column; justify-content: center; align-items: flex-start !important; gap: 1px; flex: 1; min-width: 0; }
 .buddy-card.spk .spk-head .spk-who > strong { align-self: auto; font-size: 14px; font-weight: 650; letter-spacing: -.01em; color: var(--text); line-height: 1.2; }
 .buddy-card.spk .spk-head .spk-who > .spk-status { width: fit-content; padding: 0; background: transparent; font-size: 11px; color: var(--text-3); }
+/* In a narrow panel the status shrinks and ends in an ellipsis instead of being cut mid-word under the icons. */
+.buddy-card.spk .spk-head .spk-who > .spk-status { max-width: 100%; min-width: 0; white-space: nowrap; overflow: hidden; }
+.buddy-card.spk .spk-head .spk-status .spk-provider { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .buddy-card.spk .spk-head > :is(button, .spk-options) { flex: none; }
 .buddy-card.spk .spk-head > button, .buddy-card.spk .spk-head > .spk-options > summary {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: var(--text-3);
@@ -184,36 +187,7 @@
 .buddy-card.spk .spk-hello .buddy-tip { margin-top: 6px; font-size: 11.5px; color: var(--text-3); }
 .buddy-card.spk.is-calling .spk-hello { display: none; }
 
-/* ── Composer: eye · area · your words · voice · send — one glass row ──────────────────────────────────────────── */
-.buddy-card.spk form.spk-input.chat-composer {
-  display: flex !important; flex-direction: row; align-items: flex-end; gap: 4px;
-  margin: 6px 12px 12px; padding: 6px; min-height: 52px; border: 0 !important; border-radius: calc(var(--chat-radius, 18px) + 6px);
-  background: var(--composer-fill, var(--sunken)) !important;
-  box-shadow: inset 0 0 0 1px var(--line-strong, var(--line)), inset 0 1px 0 rgba(255, 255, 255, .05) !important;
-  transition: box-shadow .25s ease; animation: none !important;
-}
-.buddy-card.spk form.spk-input.chat-composer:focus-within {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 65%, transparent), 0 0 0 2px color-mix(in srgb, var(--text) 8%, transparent) !important;
-}
-.buddy-card.spk form.spk-input.chat-composer > textarea {
-  order: 3; flex: 1; min-width: 0; min-height: 40px; max-height: 150px; margin: 0; padding: 10px 6px;
-  font-size: var(--chat-text, 14px); line-height: 1.45; background: transparent; resize: none;
-}
-.buddy-card.spk form.spk-input.chat-composer > .buddy-see:not(.buddy-area) { order: 1; }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-area { order: 2; }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-talk { order: 4; }
-.buddy-card.spk form.spk-input.chat-composer > .composer-actions { order: 5; display: inline-flex; gap: 4px; }
-.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk),
-.buddy-card.spk form.spk-input.chat-composer > .composer-actions > button {
-  flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin: 0; border-radius: 13px; transition: transform .15s, background .15s, color .15s;
-}
-.buddy-card.spk form.spk-input.chat-composer > :is(.buddy-see, .buddy-talk):active,
-.buddy-card.spk form.spk-input.chat-composer > .composer-actions > button:active { transform: scale(.92); }
-.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send { border-radius: 50%; }
-.buddy-card.spk form.spk-input.chat-composer > .composer-actions > .buddy-send:not(:disabled):not(.is-stop) {
-  color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--spark-color) 85%, #fff), var(--spark-color));
-  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--spark-color) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25);
-}
+/* The composer lives in components/chat-composer.css (one design for Sessions and Shua). */
 
 /* ── Live call: glass on black, like everything else in the island ───────────────────────────────────────────── */
 .buddy-card.spk .live-panel {
@@ -224,9 +198,6 @@
 .buddy-card.spk .live-approval { border: 0; border-radius: 16px; box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffb547 38%, transparent); }
 .buddy-card.spk .live-voice select { border-radius: 9px; padding: 3px 6px; }
 
-/* The talk button is the call when Live is the voice: accent at rest, a calm red while you're on a call. */
-.buddy-card.spk form.spk-input.chat-composer > .buddy-talk.is-live { color: var(--accent-text, var(--spark-color)); }
-.buddy-card.spk form.spk-input.chat-composer > .buddy-talk.is-live.is-on { color: #ff8a8e; background: rgba(255, 90, 95, .14); }
 
 /* ── Reduce Motion: everything still, nothing lost ─────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
