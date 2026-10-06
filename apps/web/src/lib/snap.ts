@@ -90,9 +90,19 @@ function nearest(list: Candidate[], anchor: { x: number; y: number } | null): Ca
 }
 
 /** Re-identify a target after a fresh capture. Numbered IDs belong only to their original capture. */
+/** Dock items and menu-bar status icons belong to no app: the same ones are there whichever app is in front. */
+const SYSTEM_WIDE = new Set(["dockitem", "menuextra"]);
+export function systemWide(target: string | undefined, before: ScreenFacts | null): boolean {
+  const role = target && before ? picked(target, before)?.role : undefined;
+  return !!role && SYSTEM_WIDE.has(role);
+}
+
 export function reacquire(aim: Aim, before: ScreenFacts | null, current: ScreenFacts, aimed = false): Region | null {
-  if (before?.context?.app && current.context?.app !== before.context.app) return null;
-  if (before?.context?.window && current.context?.window !== before.context.window) return null;
+  // A Dock item survives the front app changing (opening ShuaCrew to ask it something does exactly that); an app's
+  // own controls don't.
+  const anyApp = systemWide(aim.target, before);
+  if (!anyApp && before?.context?.app && current.context?.app !== before.context.app) return null;
+  if (!anyApp && before?.context?.window && current.context?.window !== before.context.window) return null;
   const original = before ? picked(aim.target, before) : null;
   if (aim.target && before && !original) return null;
   const name = original?.name || aim.label;

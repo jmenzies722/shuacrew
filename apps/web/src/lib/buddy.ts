@@ -68,7 +68,7 @@ export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; ab
   { path: "/board", name: "Board", hub: "Projects", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
   { path: "/specs", name: "Specs", hub: "Projects", about: "plan a feature before code: requirements → design → tasks, each approved, tasks land on the Board as sessions" },
   { path: "/studio", name: "Creative studio", hub: "Projects", about: "the user's Apple Music, album first: what's playing, shelves of their albums, search their library" },
-  { path: "/floor", name: "Studio floor", hub: "Crew", about: "the crew live: who is working on what right now, each agent's current step, heartbeat and today's numbers, and a box to hand any agent work" },
+  { path: "/floor", name: "Studio floor", hub: "Crew", about: "the crew live in a 3D room you can turn (camera buttons Studio / Above / Close): agents at their desks, walking to you when they need you; each agent's current step, heartbeat and today's numbers, and a box to hand any agent work" },
   { path: "/crew", name: "Agents", hub: "Crew", about: "the AI crew members (role, model, voice, memory, lessons); create, edit or hand work to one" },
   { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
   { path: "/learn", name: "Learn", hub: "Learn", about: "get measurably better: Today (cards due, the next step, the user's roadmap toward their goal), Explain (visual lessons and diagrams), Library (courses, cards, career kit)" },
@@ -95,7 +95,7 @@ export function shuacrewNow(input: { members: Array<{ name: string; role?: strin
     input.members.length ? `Crew members: ${input.members.map((m) => (m.role ? `${m.name} (${m.role})` : m.name)).join(", ")}.` : "No crew members yet.",
     input.ventures.length ? `Ventures: ${input.ventures.slice(0, 12).join(", ")}.` : "",
     `Radio: ${input.radio.on ? `playing ${input.radio.on}` : "off"}${input.radio.stations.length ? `; stations: ${input.radio.stations.slice(0, 10).join(", ")}` : ""}.`,
-    'Take them to a page: ```do [{"type":"go","path":"/studio"}]```. Music is Apple Music only (the user retired the lofi radio): use media, never radio.',
+    'Take them to a page: ```do [{"type":"go","path":"/floor"}]``` (the Studio floor; /studio is the music page). Music is Apple Music only (the user retired the lofi radio): use media, never radio.',
   ].filter(Boolean).join("\n");
 }
 

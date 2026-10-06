@@ -47,3 +47,12 @@ it("names a control pressed by its number", () => {
   expect(freshAction({ type: "press", label: "", target: "#1" }, before, before)).toMatchObject({ type: "click", label: "Play" });
   expect(freshAction({ type: "press", label: "Play it", target: "#1" }, before, before)).toMatchObject({ label: "Play it" });
 });
+it("presses a Dock item even after the front app changed, but never an app's own menu", () => {
+  const dock = (name: string, x: number) => ({ name, role: "dockitem", x, y: .97, w: .03, h: .04 });
+  const seen = { context: { app: "Sable", window: "~ — Sable", elements: [{ name: "File", role: "menubaritem", x: .05, y: .01, w: .03, h: .02 }, dock("ShuaCrew", .55)] } };
+  // Opening ShuaCrew to ask it something brought it to the front, and the Dock shifted a little.
+  const now = { context: { app: "ShuaCrew", window: "ShuaCrew", elements: [{ name: "File", role: "menubaritem", x: .05, y: .01, w: .03, h: .02 }, dock("ShuaCrew", .56)] } };
+  expect(freshAction({ type: "press", label: "", target: "#2" }, seen, now)).toMatchObject({ type: "click", x: .56, label: "ShuaCrew" });
+  expect(() => freshAction({ type: "press", label: "", target: "#1" }, seen, now)).toThrow("app or window changed");
+  expect(() => freshAction({ type: "type", text: "x", label: "" }, seen, now)).toThrow("app or window changed");
+});

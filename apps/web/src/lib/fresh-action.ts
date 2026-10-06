@@ -1,9 +1,10 @@
 import type { Act } from "./buddy";
-import { reacquire, type ScreenFacts } from "./snap";
+import { reacquire, systemWide, type ScreenFacts } from "./snap";
 /** Rebind a proposed step to current evidence. Never turn an uncertain point into a click. */
 export function freshAction(action: Act, before: (ScreenFacts & { display?: number }) | null, current: ScreenFacts & { display?: number }): Act {
   if (("screen" in action && action.screen !== undefined && action.screen !== 1) || (before?.display !== undefined && before.display !== current.display)) throw new Error("The target display changed or is a secondary display without verified app identity. Move the app to the primary observed display and look again.");
-  if (!before?.context?.app || !current.context?.app || before.context.app !== current.context.app || before.context.window !== current.context.window) throw new Error("The app or window changed. Look again and confirm the next step.");
+  const anyApp = (action.type === "click" || action.type === "press") && systemWide(action.target, before);
+  if (!anyApp && (!before?.context?.app || !current.context?.app || before.context.app !== current.context.app || before.context.window !== current.context.window)) throw new Error("The app or window changed. Look again and confirm the next step.");
   if (action.type !== "click" && action.type !== "press") return action;
   // Named accessibility presses can report success without activating a control.
   // Resolve the unique current target, then dispatch an actual click at that control.

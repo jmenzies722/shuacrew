@@ -705,7 +705,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
             return perform(a, {confirmed:approved === true,requestId:`${key}:${b.key}:${index}`,active});
           },active)) {
             const measured=actionRequest.current; results.push(r); turn?.outcomes.push({ description: describeAction(a), ok: r.ok, message: r.message }); recordActionTiming({request:measured.id, route:"model",started:measured.started,completed:performance.now(),ok:r.ok});
-            if (r.ok && "ref" in a && a.type !== "crew_decide") { focus.current.run = crewRef(a.ref, "S"); saveFocus(focus.current); } setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "open_url" || a.type === "open_app" || a.type === "open_path" || a.type === "open_settings")) opened = a.type === "open_url" ? a.url : a.type === "open_app" ? a.name : a.type === "open_path" ? a.path : `System Settings (${a.pane})`; }
+            if (r.ok && "ref" in a && a.type !== "crew_decide") { focus.current.run = crewRef(a.ref, "S"); saveFocus(focus.current); } setDone((d) => ({ ...d, [key]: [...(d[key] ?? []), { label: describeAction(a), ...r }] })); if (!r.ok) failed.push(r.message); if (r.ok && (a.type === "go" || a.type === "open_url" || a.type === "open_app" || a.type === "open_path" || a.type === "open_settings")) opened = a.type === "go" ? `ShuaCrew’s ${describeAction(a).replace(/^Open /, "")} page` : a.type === "open_url" ? a.url : a.type === "open_app" ? a.name : a.type === "open_path" ? a.path : `System Settings (${a.pane})`; }
           // It already said "Opening X": if that didn't happen (no such app, a blocked step), say so out loud right away,
           // so a failure never passes as done. Once per reply.
           // Done is said, not just shown: the real result, in a few words ("Added “Launch” on Thu 1 Oct, 11:10 AM"),
@@ -725,7 +725,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           }
           // Opened something as step one ("open an article and underline…", "what's the weather")? Once the reply has
           // finished and the thing has loaded, look at it and do the rest — never stop at "I'll do it once it loads".
-          const q = [...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? "";
+          // The ask this is part of: your own words, not the "[act] Step 1 …" reports in between.
+          const q = [...messages].reverse().find((m) => m.who === "you" && !/^(\[(act|check|zoom|screen)\]|Carry on\.)/.test(m.text))?.text.split("\n\n[screen]")[0] ?? "";
           if (!failed.length && opened && needsFollowThrough(q, text) && !looked.current.has(key)) {
             looked.current.add(key);
             // Give the page time to load, and let Spark finish its sentence first: a new turn stops the voice.
