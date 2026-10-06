@@ -38,7 +38,7 @@ import { earlierToday, rememberAsk } from "../lib/spark-day";
 import { eveningRecap, localDay, morningBrief, shouldBrief, shouldRecap } from "../lib/morning";
 import { accentOf, sparkVars, cursorGradient } from "../lib/spark-color";
 import { getRadio, loadRadio, radioCommand, radioNow, type RadioNow } from "../lib/radio";
-import { NotchCaption, Rolling } from "../components/NotchCaption";
+import { NotchCaption, Rolling, SpokenReply } from "../components/NotchCaption";
 import { Recommendations } from "../components/Recommendations";
 import { locate, reacquire, type ScreenFacts } from "../lib/snap";
 import { STUCK_START, muteStuck, stuckSignal, type StuckOffer } from "../lib/stuck";
@@ -1676,7 +1676,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     : <AssistantDeck state={presentation.current} connection={commandConnection} screenEnabled={see || liveOn} evidence={observationEvidence} trusted={hands.trusted} control={prefs.control}
       background={Object.values(crew.runs).filter(r => r.id !== convo?.run && isTopLevelWork(r, crew.runs) && ["queued", "planning", "running", "awaiting_approval", "paused"].includes(r.status))} brain={choice?.runtime ? { label: `${({ claude: "Claude", codex: "Codex", local: "This Mac" } as Record<string, string>)[choice.runtime] ?? choice.runtime} · ${choice.model}`, note: /usage limit/.test(choice.reason) ? choice.reason.split(" · ")[0] : undefined } : choice ? { label: "No model right now", note: choice.reason } : undefined} onMission={() => setMissionOpen(true)} onWorkflows={() => setWorkflowsOpen(true)} onAsk={text => void ask(text)} onStop={() => void interrupt()} onAccess={() => setAccessOpen(true)} onRun={id => post({ type: "buddyOpen", path: `/sessions/${id}` })} />;
   const pointerStatus = pointerFeedback && <div className="notch-pointer-status" role="status"><MousePointer2 size={14} /><span>{pointerFeedback.message}</span>{pointerFeedback.phase === "blocked" ? <button type="button" onClick={() => showAgain(pointerFeedback.label)}>Find again</button> : pointerFeedback.phase !== "displayed" ? <button type="button" onClick={() => void interrupt()}>Cancel</button> : null}<button type="button" aria-label="Dismiss pointer feedback" onClick={() => { pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" }); }}><X size={12} /></button></div>;
-  const islandWanted = prefs.desktopPlacement === "notch" && notchPreviewWanted({ active: (call.active ? !!liveNotchText(call.feed, call.spokenText) || !!call.approval : !!(heard && (fnHeld || hearingNow || processing)) || !!(prefs.notchCaptions && ((speaking && caption) || visibleStream))) || !!error || pointerFeedback?.phase === "blocked" || !!pending || !!asking || (prefs.notchActivities !== false && liveRuns.length > 0), tucked: notchTucked, expanded: islandOpen || open });
+  const islandWanted = prefs.desktopPlacement === "notch" && notchPreviewWanted({ active: (call.active ? !!liveNotchText(call.feed, call.spokenText) || !!call.approval : !!(heard && (fnHeld || hearingNow || processing)) || !!(prefs.notchCaptions && ((speaking && caption) || visibleStream))) || !!error || pointerFeedback?.phase === "blocked" || !!pending || !!asking || !!task || (prefs.notchActivities !== false && liveRuns.length > 0), tucked: notchTucked, expanded: islandOpen || open });
   // Fluid, never flickering (measured: it opened for 6–58 ms and snapped shut between a reply's sentences, clipping
   // the caption mid-animation): open at once, close only after 0.9 s of real quiet; within a reply the height only
   // grows; and in a gap it keeps showing what it last showed rather than going blank.
@@ -1730,6 +1730,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   const nookStarters = !messages.length && !working && !busy ? starters.slice(0, 3) : [];
   // The island's one line: what it hears, says or does right now; else what needs you, the last reply, or the day.
   const lastReply = lastSpark ? prose(speakable(messages.at(-1)!.text)) : "";
+  const replyText = streamText || (speaking ? lastReply : "");
   const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string } =
     (fnHeld || hearingNow) && heard ? { text: heard, live: true }
     : streamingNow ? { text: visibleStream, live: true }
@@ -1926,9 +1927,13 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         <div className="shua-island-live" ref={liveBody} aria-hidden={!islandLive} inert={!islandLive}>{callOwnsIsland ? <LiveIsland textOnly /> : keepRow(
           // The reading surface is reserved for words; activity stays in the hardware-height header.
           (fnHeld || hearingNow || processing) && heard ? <div className="notch-hearing"><Rolling className="notch-heard">{heard}</Rolling></div>
-          : streamingNow && prefs.notchCaptions ? <Rolling className="notch-heard is-stream">{streamText}<i className="notch-caret" /></Rolling>
+          // Shua driving the screen: which step it's on, live, right under the notch — and how to stop it.
+          : task && busy ? <p className="shua-island-hint is-task" role="status"><i className="notch-task-dot" aria-hidden="true" />Step {task.step} · {busy}<small>Esc to stop</small></p>
+          // One surface from first streamed word to last spoken one: speaking brightens words in place, never restarts.
+          : (streamingNow || speaking) && prefs.notchCaptions && replyText ? <SpokenReply text={replyText} line={speaking ? caption : null} streaming={!!streamText} />
           : speaking && prefs.notchCaptions && caption ? <NotchCaption line={caption} />
           : pending ? <p className="shua-island-hint">{`Can I ${describeAct(pending).toLowerCase()}? Hover to answer`}</p>
+          : task ? <p className="shua-island-hint is-task" role="status"><i className="notch-task-dot" aria-hidden="true" />Step {task.step} · looking at the screen…<small>Esc to stop</small></p>
           : pointerFeedback?.phase === "blocked" ? <p className="shua-island-hint">{pointerFeedback.message}</p>
           : error ? <p className="shua-island-hint">Needs attention · hover for details</p>
           : visual?.type === "architecture" ? <button type="button" className="notch-lesson-peek" onClick={() => setNook(true)}><strong><BookOpen size={12} />{visual.title}<ChevronRight size={12} /></strong><span>{visual.summary}</span><small>{visual.nodes.map(node => node.label).join(" · ")}</small></button>

@@ -261,3 +261,11 @@
 :root[data-idle] .buddy .notch-live-activity { animation: none; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .notch-live-activity, :root:not([data-motion="full"]) .notch-live-activity > i::after { animation: none; } }
 :root[data-motion="reduced"] :is(.notch-live-activity, .notch-live-activity > i::after) { animation: none; }
+
+/* Shua at work on your screen: the step it's on, live, with a pulse while it acts. */
+.shua-island-hint.is-task { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--n-text); }
+.shua-island-hint.is-task small { margin-left: 4px; font-size: 11px; color: var(--n-text-2); }
+.notch-task-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 0 var(--n-glow); animation: notch-task 1.4s var(--n-settle) infinite; }
+@keyframes notch-task { 50% { box-shadow: 0 0 0 5px transparent, 0 0 10px var(--n-glow); } }
+:root[data-idle] .notch-task-dot { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .notch-task-dot { animation: none; } }
