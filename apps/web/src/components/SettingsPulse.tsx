@@ -7,6 +7,7 @@ import { ArrowUpRight, GitCommitHorizontal, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import { ACCENTS, PALETTES, type Appearance } from "../lib/appearance";
 import type { Tone } from "./ControlRoom";
+import { compact } from "../lib/charts";
 
 export interface Pulse {
   health: { ok: boolean; build: string; uptimeS: number; service: boolean; version: string } | null;
@@ -63,7 +64,7 @@ export function sectionSummary(id: string, input: SummaryInput): { text: string;
     case "shua":
       return { text: `${c.name} ${c.placement === "notch" ? "lives in your notch" : "floats on your desktop"} · ${c.control === "off" ? "Mac control off" : c.control === "ask" ? "asks before each step" : "acts on its own"}`, tone: c.control === "off" ? "idle" : "ok" };
     case "workspace":
-      return { text: `${a.density === "compact" ? "Compact" : "Comfortable"} · Enter ${a.sendShortcut === "enter" ? "sends" : "adds a line"} · ${budget ? `${Math.round(budget / 1000)}k daily budget` : "no daily budget"}`, tone: "ok" };
+      return { text: `${a.density === "compact" ? "Compact" : "Comfortable"} · Enter ${a.sendShortcut === "enter" ? "sends" : "adds a line"} · ${budget ? `${compact(budget)} daily budget` : "no daily budget"}`, tone: "ok" };
     case "agents": {
       if (!pulse.runtimes) return { text: "Checking your models…", tone: "idle" };
       const on = pulse.runtimes.filter(connected), resting = pulse.runtimes.filter((r) => r.limitedUntil && r.limitedUntil > now);

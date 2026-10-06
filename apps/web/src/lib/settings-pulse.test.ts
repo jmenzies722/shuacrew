@@ -20,6 +20,7 @@ it("says what each section is set to, in one line", () => {
   expect(sectionSummary("shua", input).text).toBe("Shua lives in your notch · acts on its own");
   expect(sectionSummary("workspace", input).text).toBe("Comfortable · Enter sends · 500k daily budget");
   expect(sectionSummary("automation", input).text).toBe("2 schedules set up");
+  expect(sectionSummary("workspace", { ...input, budget: 1_000_000 }).text).toBe("Comfortable · Enter sends · 1.0M daily budget");
 });
 
 it("flags what needs you", () => {
