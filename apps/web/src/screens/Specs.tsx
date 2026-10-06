@@ -2,7 +2,8 @@ import { Button, Eyebrow, Panel, StatusGlyph } from "@shuacrew/ui";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { FileText } from "lucide-react";
+import { FileText, KanbanSquare, ListChecks, ListTodo, PenTool, Plus } from "lucide-react";
+import "./specs.css";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
 
@@ -29,6 +30,13 @@ interface SpecView {
 }
 
 const RECENT = "shuacrew.recentRepos";
+const FLOW = [
+  { icon: ListChecks, title: "Requirements", hint: "what it must do" },
+  { icon: PenTool, title: "Design", hint: "how it will work" },
+  { icon: ListTodo, title: "Tasks", hint: "the steps, in order" },
+  { icon: KanbanSquare, title: "Board", hint: "each task, a session" },
+];
+const STARTERS = ["Add sign-in with email and Google", "Take payments with Stripe", "A landing page with a waitlist", "Nightly backups with a restore check"];
 
 /**
  * Requirements, then design, then tasks. The current phase is a file you comment on
@@ -38,6 +46,7 @@ export function Specs() {
   const [specs, setSpecs] = useState<SpecView[]>([]);
   const [open, setOpen] = useState<SpecView | null>(null);
   const [starting, setStarting] = useState(false);
+  const [seed, setSeed] = useState("");
   const refresh = () => api<SpecView[]>("/api/specs").then(setSpecs).catch(() => undefined);
   useEffect(() => {
     void refresh();
@@ -49,10 +58,11 @@ export function Specs() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-[1440px] px-8 pb-12 pt-8">
         <PaneHeader {...(() => { const waiting = specs.filter((x) => !x.approved.includes(x.phase)).length; return waiting ? { status: `${waiting} waiting for your approval`, tone: "wait" as const } : specs.length ? { status: `${specs.length} spec${specs.length === 1 ? "" : "s"}, all approved`, tone: "ok" as const } : { status: "No specs yet. Ask a session to write one and approve it here.", tone: "idle" as const }; })()} eyebrow="Plan" icon={FileText} title="Specs"
-          actions={specs.length ? <Button onClick={() => (setStarting(true), setOpen(null))}>Start a spec</Button> : undefined} />
+          actions={specs.length ? <Button onClick={() => (setSeed(""), setStarting(true), setOpen(null))}>Start a spec</Button> : undefined} />
 
         {starting && (
           <Start
+            seed={seed}
             onCancel={() => setStarting(false)}
             onCreated={(spec) => {
               setStarting(false);
@@ -73,38 +83,25 @@ export function Specs() {
           />
         ) : (
           !starting && (
-            <div className="mt-6 flex flex-col gap-2">
-              {specs.length === 0 && !starting && (
-                <div className="crew-cta flex flex-col items-center py-12 text-center">
-                  <div className="flex items-center gap-2 text-[12px] font-medium text-fg-2">
-                    {["Requirements", "Design", "Tasks", "Board"].map((step, i) => (
-                      <span key={step} className="flex items-center gap-2">
-                        {i > 0 && <span className="text-fg-3">→</span>}
-                        <span className="vn-stage-chip">{step}</span>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-5 text-[17px] font-semibold">Plan a feature before anyone writes code</div>
-                  <p className="mt-2 max-w-[520px] text-[13px] leading-relaxed text-fg-3">
-                    Describe what you want in a repo. A session drafts the requirements, you approve them, then the design, then the tasks — which land on the Board as sessions. Everything is saved in the repo under <span className="mono">.shuacrew/specs/</span>.
-                  </p>
-                  <Button variant="primary" className="mt-5" onClick={() => (setStarting(true), setOpen(null))}>
-                    Start a spec
-                  </Button>
-                </div>
-              )}
-              {specs.map((spec) => (
-                <button key={spec.id} onClick={() => void select(spec.id)} className="rounded-[var(--radius-l)] border border-line bg-panel px-4 py-3 text-left hover:border-line-strong">
-                  <div className="flex items-center gap-3">
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{spec.title}</span>
-                    <Phases spec={spec} />
-                  </div>
-                  <div className="mono mt-1 truncate text-[11.5px] text-fg-3">
-                    {spec.planning ? "drafting · " : ""}
-                    {spec.file}
-                  </div>
-                </button>
-              ))}
+            <div className="sp-list">
+              {specs.length === 0 && <section className="sp-empty">
+                <ol className="sp-flow" aria-label="How a spec moves">
+                  {FLOW.map(({ icon: Icon, title, hint }, i) => <li key={title} style={{ ["--i" as string]: i }}><i><Icon size={17} /></i><b>{title}</b><small>{hint}</small></li>)}
+                </ol>
+                <h2>Plan a feature before anyone writes code</h2>
+                <p>Describe what you want in a repo. A session drafts the requirements; you approve them, then the design, then the tasks, which land on the Board as sessions. Everything is saved in the repo under <code>.shuacrew/specs/</code>.</p>
+                <div className="sp-starters">{STARTERS.map((t) => <button key={t} type="button" onClick={() => { setSeed(t); setStarting(true); setOpen(null); }}>{t}</button>)}</div>
+                <button type="button" className="cr-btn is-primary sp-go" onClick={() => { setSeed(""); setStarting(true); setOpen(null); }}><Plus size={14} /> Start a spec</button>
+              </section>}
+              {specs.length > 0 && <div className="sp-grid">{specs.map((spec) => {
+                const waiting = !spec.approved.includes(spec.phase), done = PHASES.every((ph) => spec.approved.includes(ph));
+                return <button key={spec.id} type="button" onClick={() => void select(spec.id)} className={`sp-card${spec.planning ? " is-drafting" : waiting && !done ? " is-waiting" : done ? " is-done" : ""}`}>
+                  <span className="sp-card-top"><b>{spec.title}</b>
+                    <em>{spec.planning ? "drafting…" : done ? "on the board" : waiting ? "waiting for you" : spec.phase}</em></span>
+                  <span className="sp-rail" aria-label={`Phase: ${spec.phase}`}>{PHASES.map((ph) => <i key={ph} className={spec.approved.includes(ph) ? "is-done" : spec.phase === ph ? "is-now" : ""}><span>{ph}</span></i>)}</span>
+                  <small>{spec.repo.split("/").filter(Boolean).pop()}{spec.runs.length ? ` · ${spec.runs.length} session${spec.runs.length === 1 ? "" : "s"}` : ""}{spec.comments.length ? ` · ${spec.comments.length} comment${spec.comments.length === 1 ? "" : "s"}` : ""}</small>
+                </button>;
+              })}</div>}
             </div>
           )
         )}
@@ -130,8 +127,8 @@ function Phases({ spec }: { spec: SpecView }) {
   );
 }
 
-function Start({ onCreated, onCancel }: { onCreated: (spec: SpecView) => void; onCancel: () => void }) {
-  const [ask, setAsk] = useState("");
+function Start({ onCreated, onCancel, seed = "" }: { onCreated: (spec: SpecView) => void; onCancel: () => void; seed?: string }) {
+  const [ask, setAsk] = useState(seed);
   const [repo, setRepo] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -156,8 +153,8 @@ function Start({ onCreated, onCancel }: { onCreated: (spec: SpecView) => void; o
     }
   };
   return (
-    <Panel className="mt-6 p-5">
-      <Eyebrow className="mb-3">New spec</Eyebrow>
+    <Panel className="sp-start mt-6 p-5">
+      <Eyebrow className="mb-3">New spec · a session drafts the requirements first</Eyebrow>
       <textarea
         value={ask}
         onChange={(e) => setAsk(e.target.value)}

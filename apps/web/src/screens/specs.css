@@ -1,0 +1,48 @@
+/* Specs: the flow from idea to Board drawn as a live pipeline, specs as cards with a three-phase rail. */
+.sp-list { margin-top: 6px; }
+.sp-empty { display: grid; justify-items: center; gap: 12px; padding: 34px 24px 30px; border-radius: 18px; text-align: center; background: var(--panel); box-shadow: var(--edge, inset 0 0 0 1px var(--line)); }
+.sp-empty h2 { margin: 10px 0 0; font-size: 20px; font-weight: 650; letter-spacing: -.02em; color: var(--text); }
+.sp-empty p { max-width: 560px; margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-3); }
+.sp-empty code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; color: var(--text-2); }
+.sp-flow { display: flex; align-items: flex-start; gap: 0; margin: 0; padding: 0; list-style: none; }
+.sp-flow li { position: relative; display: grid; justify-items: center; gap: 4px; width: 128px; }
+.sp-flow li i { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--accent-text, var(--amber)); background: color-mix(in srgb, var(--amber) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 26%, transparent);
+  animation: sp-glow 4.8s ease-in-out infinite; animation-delay: calc(var(--i) * 1.2s); }
+@keyframes sp-glow { 0%, 70%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 26%, transparent); } 20% { box-shadow: inset 0 0 0 1px var(--amber), 0 0 22px -2px var(--accent-glow, rgba(255, 140, 90, .5)); } }
+.sp-flow li b { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.sp-flow li small { font-size: 11px; color: var(--text-3); }
+/* The connector between stages, with a spark of light travelling along it. */
+.sp-flow li + li::before { content: ""; position: absolute; top: 21px; right: calc(50% + 28px); width: calc(100% - 56px); height: 2px; border-radius: 2px; background: var(--line-strong); overflow: hidden; }
+.sp-flow li + li::after { content: ""; position: absolute; top: 20px; right: calc(50% + 28px); width: 10px; height: 4px; border-radius: 4px; background: var(--amber); box-shadow: 0 0 8px var(--amber);
+  transform: translateX(calc(-1 * (128px - 66px))); animation: sp-spark 4.8s linear infinite; animation-delay: calc((var(--i) - 1) * 1.2s + .4s); opacity: 0; }
+@keyframes sp-spark { 0% { opacity: 0; transform: translateX(calc(-1 * (128px - 66px))); } 5% { opacity: 1; } 20% { opacity: 1; transform: translateX(0); } 24%, 100% { opacity: 0; transform: translateX(0); } }
+.sp-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 640px; }
+.sp-starters button { padding: 6px 12px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; color: var(--text-2); background: color-mix(in srgb, var(--text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: color .15s, box-shadow .15s; }
+.sp-starters button:hover { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, var(--line)); }
+.sp-go { margin-top: 4px; height: 34px; padding: 0 16px; }
+
+.sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.sp-card { display: grid; gap: 12px; padding: 15px 16px 14px; border: 0; border-radius: 15px; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--panel); box-shadow: var(--edge, inset 0 0 0 1px var(--line)); transition: box-shadow .15s, transform .2s var(--ease-out, ease); }
+.sp-card:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.sp-card.is-waiting { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 34%, var(--line)); }
+.sp-card-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.sp-card-top b { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-card-top em { flex: none; font-style: normal; font-size: 11.5px; color: var(--text-3); }
+.sp-card.is-waiting .sp-card-top em { color: var(--wait); }
+.sp-card.is-drafting .sp-card-top em { color: var(--accent-text, var(--amber)); }
+.sp-card.is-done .sp-card-top em { color: var(--ok); }
+.sp-card > small { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.sp-rail i { position: relative; display: grid; gap: 5px; font-style: normal; }
+.sp-rail i::before { content: ""; height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+.sp-rail i.is-done::before { background: var(--ok); }
+.sp-rail i.is-now::before { background: linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--amber) 30%, transparent)); background-size: 200% 100%; animation: sp-now 1.8s linear infinite; }
+@keyframes sp-now { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.sp-rail span { font-size: 10.5px; color: var(--text-3); text-transform: capitalize; }
+.sp-rail i.is-now span { color: var(--text-2); }
+.sp-start { border-radius: 16px !important; }
+
+:root[data-idle] .sp-flow li i, :root[data-idle] .sp-rail i.is-now::before, :root[data-idle] .sp-flow li + li::after { animation-play-state: paused; }
+:root[data-motion="reduced"] .sp-flow li i, :root[data-motion="reduced"] .sp-rail i.is-now::before, :root[data-motion="reduced"] .sp-flow li + li::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .sp-flow li i, .sp-rail i.is-now::before, .sp-flow li + li::after { animation: none; } }
