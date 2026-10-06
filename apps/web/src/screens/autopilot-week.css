@@ -1,0 +1,21 @@
+/* Your week on autopilot: seven day columns, each run a chip with its time; today lit, empty days quiet. */
+.aw { margin: 4px 0 20px; padding: 20px 22px; border-radius: 22px; border: 1px solid var(--line); background: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--amber) 12%, transparent), transparent 60%), var(--raised, rgba(255,255,255,.03)); }
+.aw h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+.aw header small { font-size: 12.5px; color: var(--text-3); }
+.aw-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+@media (max-width: 1000px) { .aw-days { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.aw-day { min-height: 110px; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--text) 2%, transparent); display: grid; align-content: start; gap: 8px; }
+.aw-day.is-today { border-color: color-mix(in srgb, var(--amber) 50%, var(--line)); background: color-mix(in srgb, var(--amber) 7%, transparent); }
+.aw-day.is-empty { opacity: .55; }
+.aw-label { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
+.aw-day.is-today .aw-label { color: var(--amber); }
+.aw-runs { display: grid; gap: 5px; }
+.aw-run { display: grid; grid-template-columns: 12px auto; grid-template-rows: auto auto; column-gap: 5px; align-items: center; padding: 6px 7px; border-radius: 9px; background: color-mix(in srgb, var(--amber) 13%, transparent); color: var(--text); animation: aw-in .3s ease both; }
+.aw-run svg { color: var(--amber); grid-row: 1; }
+.aw-run b { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.aw-run em { grid-column: 1 / 3; font-style: normal; font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw-run.is-script { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.aw-run.is-script svg { color: var(--text-3); }
+.aw-more { font-size: 11px; color: var(--text-3); }
+@keyframes aw-in { from { opacity: 0; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .aw-run { animation: none; } }
