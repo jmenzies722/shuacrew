@@ -284,9 +284,33 @@ export function completedBlocks(text: string, size?: ShotSize | null): Array<{ k
   const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> = [];
   for (const m of text.matchAll(/```(do|act|point|guide|draw|visual|zoom)\s*([\s\S]*?)```/gi)) {
     const kind = m[1]!.toLowerCase() as "do";
+    // Screen steps written inside a do block (measured: ```do [{"type":"act","action":"press","target":"#28"}]```) are
+    // the act it meant, not nothing: run them as one, with the same fresh-look checks. Real do-actions stay a do block.
+    const slip = kind === "do" ? slippedActs(m[2]!) : null;
+    if (slip) {
+      if (slip.rest.length) out.push({ key: `${m.index}:do`, kind: "do", raw: `\`\`\`do ${JSON.stringify(slip.rest)}\`\`\`` });
+      const raw = `\`\`\`act ${JSON.stringify(slip.acts)}\`\`\``;
+      out.push({ key: `${m.index}:act`, kind: "act", raw: size ? pixelsToFractions(raw, "act", size) : raw });
+      continue;
+    }
     out.push({ key: `${m.index}:${kind}`, kind, raw: size && /^(act|point|guide|draw|zoom)$/.test(kind) ? pixelsToFractions(m[0], kind, size) : m[0] });
   }
   return out;
+}
+
+const ACT_KINDS = new Set(["press", "click", "type", "key", "scroll", "done"]);
+/** The screen steps inside a do block, as act objects, and the do-actions around them; null when there are none. */
+export function slippedActs(body: string): { acts: Array<Record<string, unknown>>; rest: unknown[] } | null {
+  let v: unknown;
+  try { v = JSON.parse(body.trim()); } catch { return null; }
+  const acts: Array<Record<string, unknown>> = [], rest: unknown[] = [];
+  for (const o of Array.isArray(v) ? v : [v]) {
+    const r = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;
+    if (r.type === "act" && typeof r.action === "string" && ACT_KINDS.has(r.action)) { const { action, ...step } = r; acts.push({ ...step, type: action }); }
+    else if (ACT_KINDS.has(r.type as string)) acts.push(r);
+    else rest.push(o);
+  }
+  return acts.length ? { acts, rest } : null;
 }
 
 /**
@@ -717,7 +741,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     ].filter(Boolean).join("\n") : "",
     persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
     persona.control && persona.control !== "off" && screen
-      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name (or by its number from the controls list, {"type":"press","target":"#12","label":"Send"} — exact even when two controls share a name), type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. One of two controls with the same name (two Reply buttons), or a listed control you'd otherwise click by position: click it by its number, \`\`\`act {"type":"click","target":"#12","label":"Reply"}\`\`\` — it lands on that control's exact frame even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
+      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name (or by its number from the controls list, {"type":"press","target":"#12","label":"Send"} — exact even when two controls share a name), type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Screen steps go only in act blocks, never inside a do block. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. One of two controls with the same name (two Reply buttons), or a listed control you'd otherwise click by position: click it by its number, \`\`\`act {"type":"click","target":"#12","label":"Reply"}\`\`\` — it lands on that control's exact frame even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
       : persona.control && persona.control !== "off" ? "Mouse and keyboard work needs fresh screen evidence. A missing screenshot does not mean screen access is off. Use the current SCREEN STATE; never invent a permission problem." : "You can't click or type inside other apps: SHOW them instead (point, guide, draw).",
     screen
       ? [

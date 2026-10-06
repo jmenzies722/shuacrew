@@ -442,3 +442,17 @@ it("reads a brief, with an optional window", () => {
   expect(parseActions('```do [{"type":"brief","since":"yesterday"}]```')).toEqual([{ type: "brief" }]);
   expect(buddyPrompt("what's going on?", null)).toContain('{"type":"brief"}');
 });
+
+it("runs screen steps written inside a do block as the act they meant", async () => {
+  const { completedBlocks, slippedActs } = await import("./buddy");
+  // Measured: the model wrote a press inside a do block, so nothing ran.
+  const blocks = completedBlocks('On it.\n```do\n[{"type":"act","action":"press","target":"#28"}]\n```');
+  expect(blocks.map((b) => b.kind)).toEqual(["act"]);
+  expect(parseActs(blocks[0]!.raw)).toEqual([{ type: "press", label: "", target: "#28" }]);
+  // Mixed: the real do-action stays a do block, the screen step becomes an act.
+  const mixed = completedBlocks('```do [{"type":"open_app","name":"Safari"},{"type":"press","label":"Reload"}]```');
+  expect(mixed.map((b) => b.kind)).toEqual(["do", "act"]);
+  expect(parseActions(mixed[0]!.raw)).toEqual([{ type: "open_app", name: "Safari" }]);
+  expect(slippedActs('[{"type":"focus","minutes":25}]')).toBeNull();
+  expect(slippedActs("not json")).toBeNull();
+});
