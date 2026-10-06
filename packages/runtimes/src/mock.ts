@@ -63,6 +63,11 @@ export class MockRuntime implements Runtime {
       return;
     }
     yield* say("I'll look at how this is set up first, then reproduce the problem before changing anything.\n");
+    // A checklist, kept the way a real agent keeps one: whole, each time a step moves.
+    const ships = /push|ship|pr\b|merge/.test(ask);
+    const titles = ["Reproduce the failure", "Fix the retry to use the injected clock", "Prove it with the full test suite", ...(ships ? ["Ship it"] : [])];
+    const plan = (done: number): RuntimeEvent => ({ type: "plan", steps: titles.map((text, i) => ({ text, status: i < done ? "done" : i === done ? "active" : "pending" })) });
+    yield plan(0);
     yield usage(1800);
     await wait();
 
@@ -79,6 +84,7 @@ export class MockRuntime implements Runtime {
     }
     yield usage(2600);
     yield* say("Reproduced: the retry uses real timers while the test advances fake ones. ");
+    yield plan(1);
 
     if (/parallel|subagent|delegate/.test(ask)) {
       yield* say("I'll split the investigation across two subagents.\n");
@@ -120,12 +126,14 @@ export class MockRuntime implements Runtime {
     if (edit.allow) yield { type: "file", path: own };
     if (/parallel|subagent/.test(ask)) yield { type: "file", path: "src/sync.ts" };
     yield { type: "checkpoint", note: "clock injected" };
+    yield plan(2);
 
     yield { type: "tool-call", id: "t5", tool: "Bash", input: { command: "pnpm test" } };
     await wait();
     const fails = ask.includes("(fail)"); // an explicit marker: ordinary words like "failed" must not trigger it
     yield { type: "tool-result", id: "t5", ok: !fails, output: fails ? "2 failed" : "42 passed", durationMs: 1712 };
     yield { type: "check", command: "pnpm test", exitCode: fails ? 1 : 0, output: fails ? "2 failed" : "42 passed" };
+    if (!fails) yield plan(3);
     yield usage(2200);
 
     if (/push|ship|pr\b|merge/.test(ask) && !fails) {
@@ -138,6 +146,7 @@ export class MockRuntime implements Runtime {
         ok: push.allow,
         output: push.allow ? "pushed" : `not pushed: ${push.reason}`,
       };
+      if (push.allow) yield plan(4);
     }
 
     if (fails) {

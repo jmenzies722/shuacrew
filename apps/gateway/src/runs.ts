@@ -445,6 +445,9 @@ export class Supervisor {
           case "check":
             this.rec("check.ran", { command: event.command, exitCode: event.exitCode, output: (event.output ?? "").slice(0, 4000) }, { run: runId });
             break;
+          case "plan":
+            this.rec("plan.updated", { turn, steps: event.steps, note: event.note ?? "" }, { run: runId });
+            break;
           case "subagent-start":
             this.rec("subagent.started", { id: event.id, name: event.name, task: event.task }, { run: runId });
             break;

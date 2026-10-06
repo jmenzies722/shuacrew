@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { findBinary } from "./claude.js";
 import type { AuthMode, Runtime, RunContext, RunSpec, RuntimeEvent, RuntimeStatus } from "./runtime.js";
 import { isCheck, overridingKeys } from "./shared.js";
+import { codexPlan } from "./plan.js";
 
 const exec = promisify(execFile);
 type Json = Record<string, any>;
@@ -122,6 +123,10 @@ export class CodexTranslator {
   translate(method: string, params: Json): RuntimeEvent[] {
     const item: Json = params.item ?? {};
     switch (method) {
+      case "turn/plan/updated": {
+        const plan = codexPlan(params);
+        return plan ? [{ type: "plan", steps: plan.steps, note: plan.note }] : [];
+      }
       case "turn/started":
         this.turnId = params.turn?.id ?? params.turnId;
         return [];

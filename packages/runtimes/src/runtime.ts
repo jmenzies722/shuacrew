@@ -47,6 +47,8 @@ export interface RunContext {
 }
 
 /** What every runtime's output is mapped onto. */
+export interface PlanStep { text: string; status: "pending" | "active" | "done" }
+
 export type RuntimeEvent =
   | { type: "session"; id: string } // the runtime's own conversation id, for resume
   | { type: "text"; text: string; final?: boolean } // a delta, or a whole message when final
@@ -59,6 +61,8 @@ export type RuntimeEvent =
   | { type: "subagent-end"; id: string; ok: boolean; summary?: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; cacheTokens?: number; costUsd?: number; contextUsed?: number; contextLimit?: number; accounting?: "codex-delta-v1" | "codex-last-v1" }
   | { type: "checkpoint"; note?: string }
+  /** The agent's checklist, whole, each time it changes. */
+  | { type: "plan"; steps: PlanStep[]; note?: string }
   /** The subscription's usage window is exhausted; `until` is when it lifts (ms since epoch). */
   | { type: "limited"; until: number; message: string; model?: string; credits?: boolean }
   | { type: "done"; text: string; durationMs?: number }
