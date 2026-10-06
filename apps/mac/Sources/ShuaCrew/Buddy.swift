@@ -1145,7 +1145,17 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     /// The last full-resolution look, for zooming into part of it.
     private let regionSelector = RegionSelector()
     private var lastFull: CGImage?
-    private func capture(to target: WKWebView? = nil, hires: Bool = false, requestID: String? = nil) async {
+    /// Right after Shua opens an app or a page, the front window is still arriving (a launch, a title that changes as the
+    /// page loads). Wait until the front app and its window title hold still for a beat, at most ~2 s.
+    private func settledIdentity() async {
+        var last = ScreenElements.identity(), steady = 0
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .milliseconds(250))
+            let now = ScreenElements.identity()
+            if now.pid == last.pid && now.window == last.window { steady += 1; if steady >= 2 { return } } else { steady = 0; last = now }
+        }
+    }
+    private func capture(to target: WKWebView? = nil, hires: Bool = false, requestID: String? = nil, attempt: Int = 0) async {
         let respond: ([String: Any]) -> Void = { [weak self] detail in
             var result = detail
             if let requestID { result["requestId"] = requestID }
@@ -1167,6 +1177,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             guard !SparkHands.offLimits.contains(app.bundleIdentifier ?? ""), !(app.bundleIdentifier ?? "").lowercased().contains("kiro") else {
                 respond(["error": "This app is protected from screen observation. Switch to the app you want Shua to control."]); return
             }
+            await settledIdentity()
             let startIdentity = ScreenElements.identity()
             let all = NSScreen.screens, home = panel.screen ?? NSScreen.main ?? all[0]
             let order = DisplayLayout.order(frames: all.map(\.frame), pointer: NSEvent.mouseLocation, fallback: all.firstIndex(of: home) ?? 0).map { all[$0] }
@@ -1260,7 +1271,13 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let endIdentity = ScreenElements.identity()
             guard CaptureConsistency.valid(startPID: startIdentity.pid, currentPID: endIdentity.pid, startWindow: startIdentity.window, currentWindow: endIdentity.window, observedAt: observedAt, now: Date().timeIntervalSince1970) else {
                 lastFull = nil
-                respond(["error": "The app or window changed while observing, or the capture took too long. Look again before acting."]); return
+                // Never act on a picture of a screen that was still changing — but don't give up either: let it settle and
+                // look again (a page finishing its load renames the window). Only if it never holds still is it an error.
+                if attempt < 2 {
+                    try? await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+                    await capture(to: target, hires: hires, requestID: requestID, attempt: attempt + 1); return
+                }
+                respond(["error": "The screen kept changing while I looked (three tries). Wait for it to finish loading, then ask again."]); return
             }
             shotScreen = screen; shotScreens = numbered
             respond(["observedAt": observedAt * 1000, "display": (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, "data": jpeg.base64EncodedString(), "width": small.width, "height": small.height, "text": await text, "context": context, "live": live.running, "others": others])
@@ -2349,6 +2366,12 @@ enum MacActions {
             return (true, "Opened \(url.deletingPathExtension().lastPathComponent)")
         case "open_url":
             guard let s = action["url"] as? String, let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return (false, "Only web links can be opened.") }
+            // "…in Chrome": the browser they named, when it's installed; otherwise their default.
+            if let name = (action["app"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty, let browser = Self.appURL(named: name) {
+                let config = NSWorkspace.OpenConfiguration(); config.activates = true
+                NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: config) { app, _ in Task { @MainActor in Self.bringToFront(app?.bundleIdentifier ?? Bundle(url: browser)?.bundleIdentifier) } }
+                return (true, "Opened \(url.host ?? "the link") in \(browser.deletingPathExtension().lastPathComponent)")
+            }
             open(url)
             return (true, "Opened \(url.host ?? "the link")")
         case "open_path":
@@ -2364,6 +2387,18 @@ enum MacActions {
         default:
             return (false, "Spark can't do that.")
         }
+    }
+
+    /// An installed app by the name people say ("Chrome", "Google Chrome", "Safari", "Arc").
+    static func appURL(named name: String) -> URL? {
+        let known = ["chrome": "com.google.Chrome", "google chrome": "com.google.Chrome", "safari": "com.apple.Safari", "arc": "company.thebrowser.Browser",
+                     "firefox": "org.mozilla.firefox", "edge": "com.microsoft.edgemac", "microsoft edge": "com.microsoft.edgemac", "brave": "com.brave.Browser", "brave browser": "com.brave.Browser"]
+        if let id = known[name.lowercased()], let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) { return url }
+        for dir in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
+            let candidate = URL(fileURLWithPath: dir).appendingPathComponent(name.hasSuffix(".app") ? name : name + ".app")
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
     }
 
     /// Open a link, file or folder in its app and bring that app to the front.

@@ -62,7 +62,7 @@ import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
 import { crewAsks, crewDetail, crewFinished, lastAskedApproval, noteAsked, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark } from "../lib/weather";
-import { aboutScreen, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { aboutScreen, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -661,15 +661,17 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         else if (g) void pointFresh(g, on, g);
       } else if (b.kind === "act") {
         const acts = parseActs(b.raw).map((a) => (on ? { ...a, ...where } as typeof a : a)), act = acts[0] ?? null;
-        // A batch runs back to back when Spark may act on its own; asking first, it goes one step at a time.
-        const batch: Act[] | null = null; // Re-observe after every UI mutation; do not run a stale batch.
+        // Named steps (press, type, keys) run back to back: each is found fresh as it runs. A click or scroll by position
+        // goes alone (it needs a fresh look). Asking first, it's one step at a time. What doesn't run is reported back.
+        const { run: chain, later } = chainOf(acts);
+        const batch: Act[] | null = chain.length > 1 && (prefs.control === "auto" || autoTask) ? chain : null;
         if (act?.type === "done") { stopTask(); }
         else if (act && prefs.control !== "off") {
           const step = (taskRef.current?.step ?? 0) + 1, same = describeAct(act);
           // As long as it takes — but the same move three times in a row means it's stuck: stop and ask, don't loop.
           recentActs.current = [...recentActs.current.slice(-2), same];
           if (recentActs.current.length === 3 && recentActs.current.every((x) => x === same)) { recentActs.current = []; stopTask(`I tried “${same}” three times and it isn't working. Tell me what to try, or take over.`); }
-          else { setTask({ step }); actKey.current = key; actReceiptKey.current = `${key}:${b.key}`; if (batch) void runActRef.current(batch, step); else if (prefs.control === "auto" || autoTask) void runActRef.current(act, step); else setPending(act); }
+          else { setTask({ step }); actKey.current = key; actReceiptKey.current = `${key}:${b.key}`; if (batch) void runActRef.current(batch, step, later); else if (prefs.control === "auto" || autoTask) void runActRef.current(act, step, acts.filter((a) => a.type !== "done").slice(1)); else setPending(act); }
         }
       } else if (b.kind === "do") {
         const actions = parseActions(b.raw);
@@ -1019,7 +1021,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
     window.addEventListener("shuacrew:guideClick", on); window.addEventListener("shuacrew:guideActivity", on);
     return () => { window.removeEventListener("shuacrew:guideClick", on); window.removeEventListener("shuacrew:guideActivity", on); };
   }, []);
-  const MAX_STEPS = 12; // A bounded desktop window; review and explicitly continue beyond it.
+  const MAX_STEPS = 30; // A bounded desktop window; review and explicitly continue beyond it.
   const recentActs = useRef<string[]>([]);
   const desktopGeneration = useRef(0);
   const stopTask = (why = "") => {
@@ -1031,16 +1033,16 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   };
   /** Do one step with the mouse or keyboard, then look again and ask for the next one. */
   /** Do one step — or a batch back to back (stopping at the first that fails) — then look again once and ask what's next. */
-  const runAct = async (steps: Act | Act[], step: number) => {
+  const runAct = async (steps: Act | Act[], step: number, later: Act[] = []) => {
     if (!convo) return;
-    if (step > MAX_STEPS) { stopTask("Reached 12 desktop steps. Review the current app and ask to continue."); return; }
+    if (step > MAX_STEPS) { stopTask(`Reached ${MAX_STEPS} desktop steps. Review the current app and ask to continue.`); return; }
     const desktopOwner = desktopGeneration.current;
     const generation = askGen.current, active = () => desktopOwner === desktopGeneration.current && generation === askGen.current && allowWork.current && mine() && getCompanion().control !== "off" && screenAllowed(readSee(), liveScreen.current), receiptKey = actReceiptKey.current;
     const list = (Array.isArray(steps) ? steps : [steps]).filter((a) => a.type !== "done");
     if (step <= 1) failStreak.current = 0; // a new task starts clean
     setPending(null);
     try {
-      const said: string[] = []; let ok = true;
+      const said: string[] = []; let ok = true, ran = 0;
       for (const [i, a] of list.entries()) {
         if (!active() || (!taskRef.current && i > 0)) return; // stopped mid-batch
         setBusy(describeAct(a) + "…");
@@ -1057,6 +1059,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
         liveTurn.current?.outcomes.push({ description: describeAct(a), ok: r.ok, message: r.message });
         setDone((d) => { const k = actKey.current; return { ...d, [k]: [...(d[k] ?? []), { label: describeAct(a), ...r }] }; });
         said.push(`${describeAct(a)}${r.ok ? (r.message && r.message !== describeAct(a) ? ` (${r.message})` : "") : ` — FAILED: ${r.message}`}`);
+        ran = i + 1;
         if (!r.ok) { ok = false; break; }
         if (i < list.length - 1) await new Promise((go) => setTimeout(go, a.type === "type" || a.type === "key" ? 250 : 450)); // let the app keep up
       }
@@ -1069,7 +1072,10 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
       const shot = await capture(), atts = await Promise.all(shotFiles(shot).map(upload));
       if (!active()) return;
       const tack = failStreak.current === 2 ? " TWO STEPS IN A ROW FAILED: don't retry the same thing under another name. Change approach — press it by its exact name from the controls list, bring the right app or window to the front first, use a keyboard shortcut or a do-action — or say plainly what's blocking and ask." : "";
-      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then "), ok, shot, step, MAX_STEPS) + tack, atts));
+      // Never let the model assume a step ran: everything planned but not done is named, so "done" can't be invented.
+      const notRun = [...list.slice(ran), ...later];
+      const skipped = notRun.length ? ` NOT RUN (${notRun.length}): ${notRun.map(describeAct).join("; ")} — ${ok ? "these need your fresh look first" : "nothing after the failure ran"}.` : "";
+      await followUp(convo.run, withAttachments(actFollowUp(said.join("; then ") + skipped, ok, shot, step, MAX_STEPS) + tack, atts));
     } catch (e) { if (active()) stopTask((e as Error).message); } finally { if (active()) setBusy(""); }
   };
   const taskRef = useRef(task); taskRef.current = task;

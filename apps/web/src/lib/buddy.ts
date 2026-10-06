@@ -29,7 +29,7 @@ export interface ScreenLine { t: string; x: number; y: number; w: number; h: num
 export type Action =
   | { type: "open_app"; name: string }
   | { type: "quit_app"; name: string }
-  | { type: "open_url"; url: string }
+  | { type: "open_url"; url: string; app?: string }
   | { type: "open_path"; path: string }
   | { type: "focus"; minutes: number }
   | { type: "timer"; op: "start" | "alarm" | "cancel" | "pause" | "resume" | "list"; seconds?: number; at?: string; label?: string }
@@ -356,7 +356,7 @@ function toAction(v: unknown): Action | null {
   switch (o.type) {
     case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
     case "quit_app": { const name = str(o.name, 80); return name ? { type: "quit_app", name } : null; }
-    case "open_url": { const url = str(o.url, 2000); try { return url && /^https?:$/.test(new URL(url).protocol) ? { type: "open_url", url } : null; } catch { return null; } }
+    case "open_url": { const url = str(o.url, 2000), app = str(o.app, 80); try { return url && /^https?:$/.test(new URL(url).protocol) ? { type: "open_url", url, ...(app ? { app } : {}) } : null; } catch { return null; } }
     case "open_path": { const path = str(o.path, 500); return path && /^~?\//.test(path) && !path.split("/").includes("..") ? { type: "open_path", path } : null; }
     case "timer": {
       const op = (["start", "alarm", "cancel", "pause", "resume", "list"] as const).find((x) => x === o.op); if (!op) return null;
@@ -486,6 +486,24 @@ export function describeAction(a: Action): string {
 
 /** An ```act {...}``` block: Spark's next mouse/keyboard step, or {"type":"done"}. Validated; ⌘Q and friends are the Mac's call. */
 /** One act block: a single step, or several in a row (```act [ … ]```) that run back to back before the next look. */
+/**
+ * What runs now from a plan of steps. Named steps — press by name, type into a named field, keys — are found fresh at
+ * the moment they run, so a plan of them runs back to back (Calculator: 9, ×, 9, = in one go). A click or scroll by
+ * position aims at where something *was*, so it needs a fresh look: it runs alone and ends the chain. Whatever doesn't
+ * run now comes back as `later`, and the model is told so — it must never assume a step ran.
+ */
+export function chainOf(acts: Act[], max = 6): { run: Act[]; later: Act[] } {
+  const steps = acts.filter((a) => a.type !== "done");
+  const run: Act[] = [];
+  for (const a of steps) {
+    if (run.length >= max) break;
+    if (a.type === "press" || a.type === "type" || a.type === "key") { run.push(a); continue; }
+    if (!run.length) run.push(a);
+    break;
+  }
+  return { run, later: steps.slice(run.length) };
+}
+
 export function parseActs(text: string): Act[] {
   const m = /```act\s*([\s\S]*?)```/i.exec(text);
   if (!m) return [];
@@ -537,7 +555,7 @@ const STEP_STYLE = " Reply in ONE short sentence (under 15 words) plus the block
 
 /** What goes back after Spark does a step: what happened, a fresh look, and the ask for the next step. */
 export function actFollowUp(did: string, ok: boolean, screen: { width: number; height: number; text?: ScreenLine[]; context?: ScreenContext }, step: number, max: number) {
-  return `[act] Step ${step} ${ok ? "dispatched; outcome unverified" : "FAILED"}: ${did}. Action dispatch is not proof that the user’s goal succeeded. Use the fresh screenshot to identify a visible change that proves the requested result. The target label remaining visible, the cursor arriving, or an accepted press alone is not verification. If the result is unchanged or unclear, inspect the actual selected value, wait for a visible loading state, or choose a different supported action; do not declare completion or repeat the same click blindly. A fresh screenshot is attached (${screen.width}×${screen.height}). ${Number.isFinite(max) && step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next step as one act block containing exactly one action; wait for its result before continuing, zoom first if the target is small, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000, screen) : ""}${screen.context ? `\n${elementsText(screen.context, 120, screen)}` : ""}` : ""}`;
+  return `[act] Step ${step} ${ok ? "dispatched; outcome unverified" : "FAILED"}: ${did}. Action dispatch is not proof that the user’s goal succeeded. Use the fresh screenshot to identify a visible change that proves the requested result. The target label remaining visible, the cursor arriving, or an accepted press alone is not verification. If the result is unchanged or unclear, inspect the actual selected value, wait for a visible loading state, or choose a different supported action; do not declare completion or repeat the same click blindly. A fresh screenshot is attached (${screen.width}×${screen.height}). ${Number.isFinite(max) && step >= max ? "That was the last allowed step: finish with {\"type\":\"done\"} and say what's left." : "Next: one act block — chain named presses, typing and keys back to back; a click or scroll by position goes alone. Report only what the screenshot or SCREEN TEXT actually shows; if a result isn't readable, say so instead of guessing. Zoom first if the target is small, or {\"type\":\"done\",\"summary\":\"…\"} when the task is complete."}${STEP_STYLE}${screen.text?.length || screen.context ? `\n\n[screen]\n${screen.text?.length ? screenText(screen.text, 6000, screen) : ""}${screen.context ? `\n${elementsText(screen.context, 120, screen)}` : ""}` : ""}`;
 }
 
 /** The whole reply for the open notch once Spark has finished: every sentence (it used to stop at two), no blocks or markdown marks. */
@@ -653,7 +671,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     "PASTE: when they need to paste something (a command, a line of config, an address, a reply), put the exact text in ONE fenced code block and say where it goes (\"Paste this into Terminal\"). It lands on their clipboard automatically, so say \"It's on your clipboard, just press Command-V\" — never make them select and copy it.",
     "SAY IT AFTER, NOT BEFORE: in a reply with a do block you DON'T KNOW YET whether it worked — say what you're doing (\"Quitting Music.\", \"Turning Night Shift off.\"), never that it's done (\"Music's closed.\"). The real result is confirmed or corrected aloud right after. No action for what they asked? Say you can't do that yet — never improvise a terminal command for it or pretend.",
     'Quit or close an app (it asks to save if it needs to; you hear whether it really quit): ```do [{"type":"quit_app","name":"Music"}]``` — never a terminal command or ⌘Q for this.',
-    'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…} (use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
+    'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…, app?: "Google Chrome"} — the way to open ANY website (one step, no screen needed; app picks the browser they named, else their default; use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
     'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist) | open_query (open an artist, album or search without playing), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
     [
       "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, learning, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
@@ -689,7 +707,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     ].filter(Boolean).join("\n") : "",
     persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
     persona.control && persona.control !== "off" && screen
-      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Propose one step at a time and wait for fresh evidence before the next step. Legacy arrays are accepted sequentially, never assumed atomic — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6); anything whose result you must see first ends the batch. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
+      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name, type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
       : persona.control && persona.control !== "off" ? "Mouse and keyboard work needs fresh screen evidence. A missing screenshot does not mean screen access is off. Use the current SCREEN STATE; never invent a permission problem." : "You can't click or type inside other apps: SHOW them instead (point, guide, draw).",
     screen
       ? [
