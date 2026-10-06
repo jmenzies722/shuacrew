@@ -14,7 +14,7 @@ const Studio = lazyRouteComponent(() => import("./screens/Studio"), "Studio");
 const CrewPage = lazyRouteComponent(() => import("./screens/CrewPage"), "CrewPage");
 const Rooms = lazyRouteComponent(() => import("./screens/Rooms"), "Rooms");
 const Observability = lazyRouteComponent(() => import("./screens/Observability"), "Observability");
-const Usage = lazyRouteComponent(() => import("./screens/Observability"), "Usage");
+const Usage = lazyRouteComponent(() => import("./screens/Usage"), "Usage");
 const Developer = lazyRouteComponent(() => import("./screens/Developer"), "Developer");
 const Learn = lazyRouteComponent(() => import("./screens/Learn"), "Learn");
 const Teach = lazyRouteComponent(() => import("./screens/Learn"), "Teach");

@@ -1,0 +1,29 @@
+/* Usage: the hero figure scrubs with the chart; plans, rhythm and the treemap sit under it. */
+.us-hero { padding: 22px 22px 12px; overflow: hidden; isolation: isolate; }
+.us-hero::before { content: ""; position: absolute; inset: -40% 40% 55% -10%; z-index: -1; background: radial-gradient(closest-side, color-mix(in srgb, var(--hero) 22%, transparent), transparent); pointer-events: none; }
+.us-hero-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
+.us-figure { display: grid; gap: 6px; justify-items: start; min-width: 0; }
+.us-figure small { font-size: 12.5px; color: var(--text-3); }
+.us-figure strong { font-size: 54px; line-height: .95; font-weight: 660; letter-spacing: -.045em; color: var(--text); font-variant-numeric: tabular-nums; }
+.us-figure strong span { margin-left: 8px; font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--text-3); }
+.us-delta { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font-style: normal; font-size: 12px; color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.us-delta.is-up { color: var(--accent-text, var(--amber)); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.us-legend { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.us-legend button { padding: 4px 9px; border-radius: 8px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.us-legend button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.us-exact { margin-top: 6px; }
+.us-exact .cr-table-wrap { margin: 10px 0 0; max-height: 260px; overflow-y: auto; }
+.us-exact .cr-table th, .us-exact .cr-table td { padding: 6px 12px; }
+.us-empty { padding: 48px 0; text-align: center; }
+.us-link { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.us-link:hover { color: var(--text); }
+.us-plans { margin: 0; padding: 0; list-style: none; }
+.us-plans li { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(90px, 1.4fr) minmax(110px, auto); align-items: center; gap: 20px; padding: 14px 0; border-top: 1px solid var(--line); }
+.us-plans li:first-child { border-top: 0; padding-top: 4px; }
+.us-plan-name { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-width: 0; }
+.us-plan-name b { font-size: 14px; font-weight: 600; color: var(--text); }
+.us-plan-today { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.us-plan-today strong { font-size: 20px; font-weight: 620; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.us-plan-today small { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.us-rhythm-note { margin-top: 14px; }
+@media (max-width: 720px) { .us-figure strong { font-size: 42px; } .us-plans li { grid-template-columns: 1fr auto; } .us-plans li .cr-spark { display: none; } }

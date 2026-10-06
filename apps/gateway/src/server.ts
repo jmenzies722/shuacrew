@@ -40,7 +40,7 @@ import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { LiveVoice } from "./live.js";
-import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, normalise, type CrewState } from "@shuacrew/core";
+import { IntelligenceRequestSchema, type IntelligenceRequest, apply, decide, defaultContext, defaultRules, emptyState, localDay, normalise, type CrewState } from "@shuacrew/core";
 import { assistantMustAsk } from "./assistant-policy.js";
 import { ClaudeRuntime, type Runtime, type RuntimeStatus } from "@shuacrew/runtimes";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -1148,7 +1148,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       briefing: state.briefing ? { id: state.briefing.id, day: state.briefing.day, headline: state.briefing.headline } : null,
       // Settings → Menu bar: what the Mac shows beside its icon, and today's recorded tokens for "tokens".
       menuBar: options.settings?.get().menuBar ?? "attention",
-      tokensToday: state.today.day === new Date().toISOString().slice(0, 10) ? state.today.tokens : 0,
+      tokensToday: state.today.day === localDay() ? state.today.tokens : 0,
       now: (() => {
         const live = ["awaiting_approval", "running", "planning", "queued", "paused"];
         const rank: Record<string, number> = { awaiting_approval: 0, running: 1, planning: 2, queued: 3, paused: 4 };

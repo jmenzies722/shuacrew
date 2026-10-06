@@ -7,6 +7,7 @@ import { formatTokens } from "@shuacrew/ui";
 import { DEFAULT_WORKSPACE, budgetUse, saveWorkspace, useWorkspace } from "../lib/workspace-prefs";
 import { exportPreferences, importPreferences } from "../lib/preferences-transfer";
 import { Segmented, SettingRow, Switch } from "./SettingControls";
+import { localDay } from "@shuacrew/core/projections";
 
 interface RuntimeInfo { id: string; label: string; models: Array<{ id: string; label: string; unavailable?: string }> }
 
@@ -49,7 +50,7 @@ const BUDGETS: Array<[string, number | null]> = [["Off", null], ["250k", 250_000
 /** A soft daily limit: warns, never blocks. Uses recorded tokens — not your remaining subscription quota. */
 export function BudgetSettings() {
   const prefs = useWorkspace();
-  const today = useLive((s) => (s.crew.today.day === new Date().toISOString().slice(0, 10) ? s.crew.today.tokens : 0));
+  const today = useLive((s) => (s.crew.today.day === localDay() ? s.crew.today.tokens : 0));
   const used = budgetUse(today, prefs.dailyTokenBudget);
   const key = BUDGETS.find(([, n]) => n === prefs.dailyTokenBudget)?.[0] ?? "custom";
   return <div className="settings-card">

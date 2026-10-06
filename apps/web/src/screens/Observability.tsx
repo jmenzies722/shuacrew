@@ -11,7 +11,6 @@ import { MetricLineChart } from "../components/MetricLineChart";
 import { OperationCharts } from "../components/OperationCharts";
 import { analyticsEventListener } from "../lib/analytics-events";
 import "./observability.css";
-import { UsageDashboard } from "../components/UsageDashboard";
 
 export type ProviderHealth = { id: string; label: string; authMode: string; limitedUntil: number | null; status: { installed: boolean; signedIn: boolean | null; overridingKeys: string[] } };
 const number = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -73,5 +72,4 @@ export function Observability({ usage = false, embedded = false }: { usage?: boo
     </>}
   </div>;
 }
-/** /usage: the dashboard first; every session and the data notes fold away underneath it. */
-export function Usage() { return <UsageDashboard><Observability usage embedded /></UsageDashboard>; }
+

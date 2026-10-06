@@ -5,7 +5,7 @@ it("puts every screen in exactly one hub", () => {
   expect(locate("/")?.hub.id).toBe("home");
   expect(locate("/sessions/r_1")?.tab.label).toBe("Sessions");
   expect(locate("/activity")?.tab.label).toBe("Today");
-  expect(locate("/usage")?.tab.label).toBe("Insights");
+  expect(locate("/usage")?.tab.label).toBe("Usage");
   expect(locate("/developer")?.hub.id).toBe("system");
   expect(locate("/plays/p1")?.tab.label).toBe("Playbooks");
   expect(locate("/settings")).toBeNull();
