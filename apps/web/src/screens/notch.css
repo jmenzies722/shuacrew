@@ -269,3 +269,8 @@
 @keyframes notch-task { 50% { box-shadow: 0 0 0 5px transparent, 0 0 10px var(--n-glow); } }
 :root[data-idle] .notch-task-dot { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .notch-task-dot { animation: none; } }
+/* The open island says what Shua is doing under its name: Speaking, Listening, Thinking, Ready. */
+.shua-island-name { display: grid; line-height: 1.1; }
+.shua-island-name small { font-size: 10.5px; font-weight: 500; color: rgba(255, 255, 255, .5); letter-spacing: .01em; transition: color .3s; }
+.shua-island-name small.is-speaking, .shua-island-name small.is-listening { color: color-mix(in srgb, var(--spark-color, var(--amber)) 85%, #fff); }
+.shua-island-name small.is-thinking { color: #f5c46a; }
