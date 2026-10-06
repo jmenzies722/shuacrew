@@ -950,7 +950,7 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
 }
 
 /** Deliberate instruction version, stable across bundler renaming and unrelated UI builds. */
-export const SPARK_RULES = "spark-2026-10-03-native-action-capabilities-v3";
+export const SPARK_RULES = "spark-2026-10-06-brief-targets-shuacrew-ui-v1";
 
 /**
  * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to
