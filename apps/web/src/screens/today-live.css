@@ -81,7 +81,7 @@
 @keyframes td-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes td-pulse { 50% { transform: scale(.85); } }
 @keyframes td-spin { to { transform: rotate(360deg); } }
-:root[data-idle] .today :is(.td-sun, .td-dot, .td-now::before, .td-card i svg) { animation-play-state: paused; }
+:root[data-idle] .today :is(.td-sun, .td-dot, .td-card i svg), :root[data-idle] .today .td-now::before { animation-play-state: paused; } /* a pseudo-element inside :is() voided this whole rule */
 :root[data-idle] .today .td-m { animation: none; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .today * { animation: none !important; } }
 :root[data-motion="reduced"] .today * { animation: none !important; }
