@@ -4,6 +4,12 @@
  */
 import type { Item, Receipt } from "./conversation";
 
+/** The command as you'd type it: Codex wraps each one as `/bin/zsh -lc '…'`. */
+export function shellCommand(cmd: string): string {
+  const m = /^\s*(?:\/bin\/|\/usr\/bin\/)?(?:zsh|bash|sh)\s+-l?c\s+(['"])([\s\S]*)\1\s*$/.exec(cmd);
+  return (m ? m[2]! : cmd).replace(/\s+/g, " ").trim();
+}
+
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const base = (p: string) => p.split("/").slice(-2).join("/");
 
@@ -11,11 +17,11 @@ function stepLine(item: Item): string | null {
   switch (item.kind) {
     case "tool": {
       const input = (item.input ?? {}) as Record<string, unknown>;
-      const target = typeof input.command === "string" ? `\`${clip(input.command, 80)}\`` : typeof input.file_path === "string" ? base(input.file_path) : typeof input.pattern === "string" ? `"${clip(input.pattern, 40)}"` : typeof input.query === "string" ? `"${clip(input.query, 60)}"` : typeof input.url === "string" ? input.url : "";
+      const target = typeof input.command === "string" ? `\`${clip(shellCommand(input.command), 80)}\`` : typeof input.file_path === "string" ? base(input.file_path) : typeof input.pattern === "string" ? `"${clip(input.pattern, 40)}"` : typeof input.query === "string" ? `"${clip(input.query, 60)}"` : typeof input.url === "string" ? input.url : "";
       return `${item.tool}${target ? ` ${target}` : ""}${item.ok === false ? " (failed)" : ""}`;
     }
     case "check":
-      return `Check \`${item.command}\` ${item.passed ? "passed" : "failed"}`;
+      return `Check \`${shellCommand(item.command)}\` ${item.passed ? "passed" : "failed"}`;
     case "subagent":
       return `Delegated to ${item.name}: ${clip(item.task, 80)}${item.summary ? ` → ${clip(item.summary, 100)}` : ""}`;
     case "denied":

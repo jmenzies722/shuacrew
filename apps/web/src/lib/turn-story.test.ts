@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { conversation } from "./conversation";
-import { explainAsk, turnRecord } from "./turn-story";
+import { explainAsk, shellCommand, turnRecord } from "./turn-story";
 
 it("retells only the finished turn: ask, plan, steps, verdict and what's left", () => {
   let seq = 0;
@@ -28,4 +28,10 @@ it("retells only the finished turn: ask, plan, steps, verdict and what's left", 
   expect(record).toContain("Left undone: Ship");
   expect(record).toContain("Its reply: Fixed: the retry uses the injected clock.");
   expect(explainAsk("Retry fix", record)).toMatch(/^Teach me what my crew just did in the session "Retry fix"/);
+});
+
+it("shows a shell command the way you'd type it", () => {
+  expect(shellCommand("/bin/zsh -lc 'npm test'")).toBe("npm test");
+  expect(shellCommand("bash -c \"pnpm  test --run\"")).toBe("pnpm test --run");
+  expect(shellCommand("pnpm test")).toBe("pnpm test");
 });

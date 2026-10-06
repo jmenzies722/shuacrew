@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { RunView } from "@shuacrew/core/projections";
 import { followUp } from "../lib/api";
 import type { Item, Receipt as ReceiptData } from "../lib/conversation";
-import { explainAsk, turnRecord } from "../lib/turn-story";
+import { explainAsk, shellCommand, turnRecord } from "../lib/turn-story";
 import { native, post } from "../screens/spark/bridge";
 import "./turn-cards.css";
 
@@ -76,7 +76,7 @@ export function Receipt({ item, run, items, working }: { item: Extract<Item, { k
           <span className="receipt-verdict" title={r.checks.last ? `Last check: ${r.checks.last.command}` : "No check ran after the change"}>
             <verdict.Icon size={14} aria-hidden />
             {verdict.label}
-            {r.checks.last && <code>{r.checks.last.command}</code>}
+            {r.checks.last && <code>{shellCommand(r.checks.last.command)}</code>}
           </span>
         )}
         {r.files.length > 0 && (
