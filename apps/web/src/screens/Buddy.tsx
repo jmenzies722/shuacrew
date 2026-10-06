@@ -106,6 +106,7 @@ import { saveSee, screenAllowed, useScreenAccess } from "../lib/screen-access";
 import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
 import { classicCaptureWanted } from "../lib/live-preferences";
 import { voiceTrace } from "../lib/voice-trace";
+import { prose } from "../lib/plain";
 import { notchFocus, pausedLine, useLearningFocus } from "../lib/notch-focus";
 import { NotchActivity } from "../components/NotchActivity";
 
@@ -1507,7 +1508,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   ].filter(Boolean).slice(0, 4) as string[];
   const lastSpark = messages.at(-1)?.who === "spark" && !messages.at(-1)?.live;
   // The reply as it streams in (spoken words only, no machine blocks): the notch shows it live instead of "Thinking…".
-  const streamText = messages.at(-1)?.who === "spark" && messages.at(-1)?.live ? speakable(messages.at(-1)!.text).replace(/```[\s\S]*$/, "").trim() : "";
+  const streamText = messages.at(-1)?.who === "spark" && messages.at(-1)?.live ? prose(speakable(messages.at(-1)!.text)) : ""; // the notch reads as prose: no stars, hashes or bullets
   const spokenReply = voice.on && !quietTurn.current && !speech.current.silenced && !error;
   const visibleStream = notchReplyText(streamText, "", spokenReply, speech.current.busy);
   quiet.current = !!busy || working || speaking || phase === "hearing" || phase === "transcribing" || !!guide || practicing;
@@ -1722,7 +1723,7 @@ export function Buddy({ embedded = false, full = false, onClose }: { embedded?: 
   // Nothing asked yet: the first three starters (the chat's own, fitting the moment), so the open notch is never an empty box.
   const nookStarters = !messages.length && !working && !busy ? starters.slice(0, 3) : [];
   // The island's one line: what it hears, says or does right now; else what needs you, the last reply, or the day.
-  const lastReply = lastSpark ? speakable(messages.at(-1)!.text).replace(/```[\s\S]*$/, "").trim() : "";
+  const lastReply = lastSpark ? prose(speakable(messages.at(-1)!.text)) : "";
   const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string } =
     (fnHeld || hearingNow) && heard ? { text: heard, live: true }
     : streamingNow ? { text: visibleStream, live: true }

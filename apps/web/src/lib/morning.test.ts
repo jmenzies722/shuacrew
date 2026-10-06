@@ -29,6 +29,7 @@ it("names a finished task in quotes, cut at a whole word, so the sentence still 
   const { morningBrief, named } = await import("./morning");
   expect(named("Find my Sable terminal application project. Audit its architecture, UX, performa")).toBe("“Find my Sable terminal application project. Audit its…”");
   expect(named("the landing page.")).toBe("the landing page");
+  expect(named("How do I grow what I earn?")).toBe("“How do I grow what I earn?”");
   const text = morningBrief({ now: new Date(2026, 9, 2, 9), finished: ["Find my Sable terminal application project. Audit its architecture, UX, performa"], waiting: 0, due: 0, ventures: [], running: 0 } as never);
   expect(text).toContain("Your crew finished “Find my Sable terminal application project. Audit its…”.");
 });

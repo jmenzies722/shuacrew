@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { CaptionLine } from "../lib/buddy-voice";
+import { prose } from "../lib/plain";
 
 const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduced";
 /**
@@ -62,13 +63,14 @@ export function NotchCaption({ line, lines = 3 }: { line: CaptionLine | null; li
     if (!same) setShown(0);
     timers.current.forEach(clearTimeout);
     const elapsed = performance.now() - start;
-    timers.current = fitTimes(revealTimes(line.text, line.speed), line.text, line.speed, line.durationMs)
+    const said = prose(line.text); // timed on the words actually shown
+    timers.current = fitTimes(revealTimes(said, line.speed), said, line.speed, line.durationMs)
       .map((at, i) => setTimeout(() => setShown((s) => Math.max(s, i + 1)), Math.max(0, at - elapsed)));
   }, [line]);
   if (!chain.length) return null;
-  const current = chain.at(-1)!, words = current.text.split(/\s+/).filter(Boolean);
+  const current = chain.at(-1)!, words = prose(current.text).split(/\s+/).filter(Boolean);
   return <Rolling className="notch-caption" lines={lines}>
-    {chain.slice(0, -1).map((s) => <span key={s.key} className="is-past">{s.text} </span>)}
+    {chain.slice(0, -1).map((s) => <span key={s.key} className="is-past">{prose(s.text)} </span>)}
     <span key={current.key}>{words.map((w, i) => <span key={i} className={i < shown ? "is-said" : "is-next"}>{w} </span>)}</span>
   </Rolling>;
 }

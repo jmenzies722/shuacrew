@@ -5,6 +5,7 @@ import { Shell } from "./shell/Shell";
 // Everything but the chat loads the first time you open it, so the app starts fast.
 const Board = lazyRouteComponent(() => import("./screens/Board"), "Board");
 const MissionControl = lazyRouteComponent(() => import("./screens/MissionControl"), "MissionControl");
+const Today = lazyRouteComponent(() => import("./screens/Today"), "Today");
 const Memory = lazyRouteComponent(() => import("./screens/Memory"), "Memory");
 const Schedules = lazyRouteComponent(() => import("./screens/Schedules"), "Schedules");
 const TerminalPage = lazyRouteComponent(() => import("./screens/TerminalPage"), "TerminalPage");
@@ -35,7 +36,7 @@ const root = createRootRoute({ component: Shell });
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: Sessions }),
   createRoute({ getParentRoute: () => root, path: "/sessions/$id", component: Sessions }),
-  createRoute({ getParentRoute: () => root, path: "/activity", component: MissionControl }),
+  createRoute({ getParentRoute: () => root, path: "/activity", component: Today }),
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),
   createRoute({ getParentRoute: () => root, path: "/floor", component: CrewFloor }),
   createRoute({ getParentRoute: () => root, path: "/studio", component: Studio }),
