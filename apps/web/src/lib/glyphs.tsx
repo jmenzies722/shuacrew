@@ -5,6 +5,7 @@
  */
 import {
   Anchor,
+  AudioLines,
   Blocks,
   Box,
   BrainCircuit,
@@ -52,6 +53,7 @@ import {
 } from "lucide-react";
 
 export const ICONS: Record<string, LucideIcon> = {
+  "audio-lines": AudioLines,
   telescope: Telescope,
   code: Code2,
   "pen-tool": PenTool,
@@ -112,6 +114,7 @@ export const DEFAULTS: Record<string, string> = {
   designer: "pen-tool",
   marketer: "megaphone",
   operator: "chart-line",
+  shua: "audio-lines",
   "validate-idea": "lightbulb",
   "landing-page": "layout-template",
   mvp: "hammer",
