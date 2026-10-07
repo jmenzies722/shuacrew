@@ -1,63 +1,54 @@
 /**
- * Learn, built on what the research says works: one obvious next action, short spaced retrieval sessions, practice
- * over reading, progress you can see on a path, and a forgiving weekly rhythm instead of a fragile streak.
- *
- * Three places, not six: Today (do the next thing, learn anything, see your week and where you stand), Journey (your
- * goal's roadmap, certifications and job search as one story) and Library (courses, cards, the career kit). Explain is
- * the "Learn anything" box, not a tab. Ask Shua sits under all of it: say what happened and Shua keeps it organized.
- * /learn and /teach both land here.
+ * Learn: a system for leveling up, built around what you're going for. Four places, each with one job:
+ * - Plan: will you pass your certification, and what to do today — predicted score against the pass mark, today's
+ *   session in timed blocks, the exam's blueprint with your mastery, the gates to sitting it once. Your career path
+ *   (your goal's roadmap) sits under it.
+ * - Practice: exam-style questions — a diagnostic, smart sets, domain drills, your misses, full mock exams — and your
+ *   flashcards.
+ * - Learn: the exam taught task by task, and anything else in a structured way (courses, a tutor, lessons from your
+ *   own work, projects).
+ * - Career: your goal and skills, the roadmap, certifications, the job search and the career kit.
+ * Ask Shua sits under all of it. /learn and /teach land here; older links (today, journey, library, certs, jobs) find
+ * their place.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Award, BookOpen, Brain, Briefcase, Map as MapIcon, Presentation, RotateCcw, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, Award, Plus } from "lucide-react";
 import { api } from "../lib/api";
-import { useLive } from "../lib/live";
-import { learningProgress } from "../lib/learning-progress";
-import { companionName, useCompanion } from "../lib/companion";
-import { weakestSkill, weekRhythm, article, goalRole } from "../lib/learn-today";
-import { Learning, type Tab as LibraryTab } from "./Learning";
+import { article, goalRole } from "../lib/learn-today";
+import { Learning } from "./Learning";
 import { Teaching } from "./Teaching";
-import { CertsView, JobsView, LearnAsk, PathView, careerSteps, type Cert, type Job } from "./LearnCareer";
+import { CertsView, JobsView, LearnAsk, PathView, type Cert, type Job } from "./LearnCareer";
+import { ExamPlan, ExamPractice, ExamSession, ExamTasks, MockExam, lessonAsk, useExam, type PracticeMode, type Start } from "./LearnExam";
 import "./learn.css";
 import { ControlHeader, Seg } from "../components/ControlRoom";
 import "./learn-today.css";
 import "./learn-flow.css";
 
-/** Older links and saved tabs (path, certs, jobs) open the matching part of Journey. */
-type Mode = "today" | "journey" | "library" | "explain";
-type Legacy = "goal" | "path" | "certs" | "jobs";
-const MODES: ReadonlyArray<readonly [Mode, string]> = [["today", "Today"], ["journey", "Journey"], ["library", "Library"]];
-const LAST = "shuacrew.learn.tab";
-const asMode = (v: string | null): Mode | null => (v === "path" || v === "certs" || v === "jobs" ? "journey" : MODES.some(([m]) => m === v) ? (v as Mode) : null);
-interface Track { id: string; name: string; level: number; cards: number; due: number; reviews: number; accuracy: number | null; lapses: number; stale: boolean }
-interface Insights {
-  tracks: Track[]; weakest: { id: string; name: string } | null; hardest: Array<{ front: string; lapses: number; track: string }>; stale: string[];
-  week: { reviews: number; accuracy: number | null; change: number }; due: number;
-  roadmap: { title: string; done: number; total: number; next: string | null } | null;
-}
-interface Course { id: string; title: string; topic: string; lessons: Array<{ title: string; done: boolean }> }
-interface Milestone { title: string; why: string; skills: string[]; project: string; weeks: number; done?: boolean }
-interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
-interface State { profile: { goal: string }; courses: Course[]; roadmaps?: Roadmap[]; certs?: Cert[]; jobs?: Job[]; coach?: Record<string, { run: string }>; days?: Array<{ day: string; reviews: number }> }
-interface Step { id: string; icon: typeof Brain; title: string; why: string; cta: string; run: () => Promise<void> | void }
+type Mode = "plan" | "practice" | "learn" | "career" | "explain";
+type Part = "goal" | "path" | "certs" | "jobs" | "kit";
+type LearnPart = "tasks" | "learn" | "coach" | "work" | "projects";
+const MODES: ReadonlyArray<readonly [Mode, string]> = [["plan", "Plan"], ["practice", "Practice"], ["learn", "Learn"], ["career", "Career"]];
+const LAST = "shuacrew.learn.tab", CERT = "shuacrew.learn.cert";
+/** Older tabs and links: today → Plan, library → Learn, journey and its parts → Career. */
+const asMode = (v: string | null): Mode | null => v === "today" ? "plan" : v === "library" ? "learn" : v === "journey" || v === "path" || v === "certs" || v === "jobs" || v === "goal" ? "career" : MODES.some(([m]) => m === v) ? (v as Mode) : null;
+interface Insights { tracks: Array<{ id: string; name: string; level: number; cards: number; due: number; reviews: number; accuracy: number | null; lapses: number; stale: boolean }>; due: number }
+interface Milestone { title: string; done?: boolean }
+interface Roadmap { id: string; goal: string; title: string; created: number; milestones: Milestone[] }
+interface State { profile: { goal: string }; courses: unknown[]; roadmaps?: Roadmap[]; certs?: Cert[]; jobs?: Job[] }
 
-const pct = (n: number | null) => (n === null ? "–" : `${Math.round(n * 100)}%`);
-const minutes = (cards: number) => Math.max(1, Math.round(cards * 0.4));
-
-export function Learn({ initial = "today" }: { initial?: Mode | Legacy }) {
-  const name = companionName(useCompanion());
-  const runs = useLive((s) => s.crew.runs);
-  // Where you were last time (Explain only when you came for it: /teach).
+export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | "journey" | "library" }) {
   const [mode, setModeState] = useState<Mode>(() => {
     if (initial === "explain") return "explain";
-    if (initial !== "today") return asMode(initial) ?? "today";
-    try { return asMode(localStorage.getItem(LAST)) ?? "today"; } catch { return "today"; }
+    if (initial !== "plan") return asMode(initial) ?? "plan";
+    try { return asMode(localStorage.getItem(LAST)) ?? "plan"; } catch { return "plan"; }
   });
   const setMode = (m: Mode) => { setModeState(m); if (m !== "explain") try { localStorage.setItem(LAST, m); } catch { /* ignore */ } };
-  const [section, setSection] = useState<Legacy | null>(initial === "path" || initial === "certs" || initial === "jobs" ? initial : null);
-  const [question, setQuestion] = useState(""), [asking, setAsking] = useState("");
-  const [libraryTab, setLibraryTab] = useState<LibraryTab | undefined>();
-  const [insights, setInsights] = useState<Insights | null>(null), [state, setState] = useState<State | null>(null);
-  const [busy, setBusy] = useState(""), [error, setError] = useState("");
+  const [part, setPart] = useState<Part | null>(initial === "path" || initial === "certs" || initial === "jobs" || initial === "goal" ? initial : null);
+  const [learnPart, setLearnPart] = useState<LearnPart>("tasks");
+  const [asking, setAsking] = useState(""), [from, setFrom] = useState<Mode>("plan");
+  const [insights, setInsights] = useState<Insights | null>(null), [state, setState] = useState<State | null>(null), [error, setError] = useState("");
+  const [session, setSession] = useState<null | { kind: "practice"; mode: PracticeMode; domain?: string; n?: number; key: number } | { kind: "mock"; key: number } | { kind: "review"; key: number }>(null);
+
   const load = useCallback(async () => {
     try { const [i, s] = await Promise.all([api<Insights>("/api/learning/insights"), api<State>("/api/learning")]); setInsights(i); setState(s); setError(""); }
     catch (e) { setError((e as Error).message); }
@@ -71,150 +62,117 @@ export function Learn({ initial = "today" }: { initial?: Mode | Legacy }) {
     window.addEventListener("shuacrew:deleted", on); window.addEventListener("shuacrew:learning", on); window.addEventListener("storage", stored);
     return () => { window.removeEventListener("shuacrew:deleted", on); window.removeEventListener("shuacrew:learning", on); window.removeEventListener("storage", stored); };
   }, [load]);
-  const reload = useCallback(() => { void load(); }, [load]);
-  const open = (tab: LibraryTab) => { setLibraryTab(tab); setMode("library"); };
-  const goJourney = (part: Legacy) => { setSection(part); setMode("journey"); };
-  const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); setError(""); try { await fn(); } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); } };
-  const explain = (q: string) => { if (!q.trim()) return; setAsking(q.trim()); setQuestion(""); setMode("explain"); };
 
-  // Journey opened on a part (an old Certs or Jobs link, or a Today step): bring that part into view.
-  const journey = useRef<HTMLDivElement>(null);
+  // The certification you're going for: the one you picked, else the soonest exam you haven't passed.
+  const certs = (state?.certs ?? []).filter((c) => c.status !== "passed").sort((a, b) => (a.examDate ?? Infinity) - (b.examDate ?? Infinity));
+  const [certId, setCertId] = useState<string | undefined>(() => { try { return localStorage.getItem(CERT) ?? undefined; } catch { return undefined; } });
+  const active = certs.find((c) => c.id === certId) ?? certs[0];
+  const pickCert = (id: string) => { setCertId(id); try { localStorage.setItem(CERT, id); } catch { /* ignore */ } };
+  const exam = useExam(active?.id);
+  const view = exam.view, bp = view?.blueprint ?? null;
+
+  const teach = (question: string) => { setFrom(mode === "explain" ? from : mode); setAsking(question); setMode("explain"); };
+  const start = (s: Start) => {
+    if (s.kind === "learn") {
+      const d = bp?.domains.find((x) => x.id === s.domain), t = d?.tasks.find((x) => x.id === s.task);
+      if (bp && d && t) return teach(lessonAsk(bp, d, t));
+      setLearnPart("tasks"); return setMode("learn");
+    }
+    setSession({ ...s, key: Date.now() } as typeof session); setMode("practice");
+  };
+
+  // Career opened on a part (an old Certs or Jobs link, or a step): bring it into view.
+  const career = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (mode !== "journey" || !section) return;
-    const t = setTimeout(() => journey.current?.querySelector(`#learn-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    if (mode !== "career" || !part) return;
+    const t = setTimeout(() => career.current?.querySelector(`#learn-${part}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
     return () => clearTimeout(t);
-  }, [mode, section, state]);
+  }, [mode, part, state]);
 
-  // The plan: one next action and at most two after it, in the order that moves you most, each grounded in a number.
-  const weak = insights ? weakestSkill(insights.tracks) : null;
-  const plan: Step[] = [];
-  if (insights && state) {
-    if (insights.due > 0) plan.push({ id: "review", icon: RotateCcw, title: `Review ${insights.due} card${insights.due === 1 ? "" : "s"}`, why: `About ${minutes(insights.due)} min, right before you'd forget them. Recalling beats rereading.`, cta: "Start review", run: () => open("review") });
-    for (const step of careerSteps(state)) plan.push({ id: step.id, icon: step.kind === "cert" ? Award : Briefcase, title: step.title, why: step.why, cta: step.kind === "cert" ? "Open certs" : "Open jobs", run: () => goJourney(step.kind === "cert" ? "certs" : "jobs") });
-    if (weak) plan.push({
-      id: "drill", icon: Target, title: `Strengthen ${weak.name}`,
-      why: `${pct(weak.accuracy)} right over ${weak.reviews} answers${weak.lapses ? `, ${weak.lapses} slip${weak.lapses === 1 ? "" : "s"}` : ""}. ${name} quizzes you on what you miss and turns each gap into a card.`,
-      cta: "Quiz me", run: () => run("drill", async () => {
-        const hard = insights.hardest.filter((h) => h.track === weak.id).map((h) => `"${h.front}"`).join(", ");
-        await api("/api/learning/coach", { body: { mode: "quiz", fresh: true, message: `Focus only on ${weak.name}.${hard ? ` Start with what I keep missing: ${hard}.` : ""}` } });
-        open("coach");
-      }),
-    });
-    const progress = learningProgress(state.courses), course = progress.course, lesson = course?.lessons[progress.lessonIndex];
-    if (course && lesson) plan.push({
-      id: "lesson", icon: BookOpen, title: lesson.title, why: `${course.title || course.topic} · lesson ${progress.lessonIndex + 1} of ${course.lessons.length}. Then practice it until it sticks.`, cta: "Continue lesson",
-      run: () => run("lesson", async () => {
-        const r = await api<{ run: string }>(`/api/learning/courses/${course.id}/lessons/${progress.lessonIndex}`, { body: {} });
-        try { localStorage.setItem("shuacrew.activeLesson", JSON.stringify({ course: course.id, index: progress.lessonIndex, run: r.run })); } catch { /* ignore */ }
-        window.dispatchEvent(new Event("shuacrew:lesson"));
-        open("learn");
-      }),
-    });
-    if (!plan.length) plan.push(
-      state.profile.goal.trim()
-        ? { id: "quiz", icon: Target, title: "Find where you really stand", why: "A short quiz on your goal's core skills. Your answers become the cards that keep it fresh.", cta: "Quiz me", run: () => run("quiz", async () => { await api("/api/learning/coach", { body: { mode: "quiz", fresh: true, message: `Quiz me on the core skills for becoming a ${state.profile.goal.trim()}, one question at a time.` } }); open("coach"); }) }
-        : { id: "goal", icon: Target, title: "Tell me what you're working toward", why: "Your goal shapes the roadmap, the quizzes and the next step here.", cta: "Set my goal", run: () => goJourney("goal") },
-    );
-  }
-  const scored = insights?.tracks.filter((t) => t.reviews > 0).sort((a, b) => (a.accuracy ?? 1) - (b.accuracy ?? 1)) ?? [];
-  const goal = state?.profile.goal.trim() ?? "";
-  const rhythm = state?.days ? weekRhythm(state.days) : null;
-  const statLine = insights ? [insights.due ? `${insights.due} due now` : "All caught up", insights.week.reviews ? `${insights.week.reviews} reviewed this week` : null, insights.week.accuracy !== null ? `${pct(insights.week.accuracy)} right` : null].filter(Boolean).join(" · ") : "";
-  // Your path: the newest roadmap for the goal you have now that has milestones; one still being written shows as such.
-  const roadmaps = [...(state?.roadmaps ?? [])].filter((r) => r.goal.trim().toLowerCase() === goal.toLowerCase()).sort((a, b) => b.created - a.created);
-  const path = roadmaps.find((r) => r.milestones.length > 0);
-  const building = !path && roadmaps[0] && runs[roadmaps[0].run] && ["queued", "planning", "running"].includes(runs[roadmaps[0].run]!.status);
-  const current = path ? path.milestones.findIndex((m) => !m.done) : -1;
-  // What the crew finished lately, ready to become cards from your own real work.
-  const worked = Object.values(runs).filter((r) => (r.status === "done" || r.status === "merged") && !r.labels?.some((l) => l === "buddy" || l === "learning") && Date.now() - r.updatedAt < 36 * 3600_000)
-    .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
-  const [first, ...then] = plan;
-  const role = goalRole(goal);
-  const title = mode === "today" ? (role ? `Becoming ${article(role)} ${role}` : "Learn") : mode === "journey" ? (role ? `Your journey to ${role}` : "Your journey") : mode === "library" ? "Library" : "What do you want to understand?";
+  const goal = state?.profile.goal.trim() ?? "", role = goalRole(goal);
+  const path = [...(state?.roadmaps ?? [])].filter((r) => r.milestones.length).sort((a, b) => b.created - a.created)[0];
+  const next = path?.milestones.find((m) => !m.done);
+  const title = mode === "plan" ? (bp ? `Pass ${bp.code} on the first try` : active ? `Pass ${active.code || active.name}` : "Learn") : mode === "practice" ? "Practice" : mode === "learn" ? "Learn" : mode === "career" ? (role ? `Your journey to ${role}` : "Your journey") : "Learn anything";
+  const status = mode === "plan" && view?.plan && view.predicted ? [view.plan.daysLeft !== null && view.plan.daysLeft >= 0 ? `${view.plan.daysLeft} days to the exam` : null, view.mastery?.answered ? `predicted ${view.predicted.score}` : "no answers yet", insights?.due ? `${insights.due} cards due` : null].filter(Boolean).join(" · ")
+    : insights ? (insights.due ? `${insights.due} cards due` : "All caught up") : "Reading where you stand…";
 
   return <div className="pane-scroll learn lf"><div className="pane-body pane-body-wide">
-    <ControlHeader title={title} status={!insights ? "Reading where you stand…" : statLine} tone={!insights ? "idle" : insights.due ? "live" : "ok"}>
-      <Seg label="Learn" value={mode === "explain" ? "today" : mode} onChange={(id) => { setMode(id); setSection(null); if (id === "library") setLibraryTab(undefined); }} options={MODES} />
+    <ControlHeader title={title} status={status} tone={!insights ? "idle" : view?.verdict?.level === "ready" ? "ok" : "live"}>
+      <Seg label="Learn" value={mode === "explain" ? from : mode} onChange={(id) => { setMode(id); setSession(null); setPart(null); }} options={MODES} />
     </ControlHeader>
     {error && <p className="lx-error" role="alert">{error}</p>}
+    {exam.error && <p className="lx-error" role="alert">{exam.error}</p>}
 
-    {mode === "today" && <div className="lt">
-      {first && <section className="lt-next" aria-label="Next up">
-        <span className="lt-kicker">Next up</span>
-        <div className="lt-next-row">
-          <i><first.icon size={20} /></i>
-          <div><h2>{first.title}</h2><p>{first.why}</p></div>
-          <button type="button" className="lt-go" disabled={!!busy} onClick={() => void first.run()}>{busy === first.id ? "Starting…" : first.cta}<ArrowRight size={15} /></button>
-        </div>
-        {then.length > 0 && <div className="lt-then"><span>Then</span>{then.slice(0, 2).map((step) => <button key={step.id} type="button" disabled={!!busy} onClick={() => void step.run()}><step.icon size={13} />{busy === step.id ? "Starting…" : step.title}</button>)}</div>}
-      </section>}
-
-      <form className="lf-anything" onSubmit={(e) => { e.preventDefault(); explain(question); }} aria-label="Learn anything">
-        <Presentation size={17} aria-hidden />
-        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Learn anything: “how does a Kubernetes Service route traffic?”" aria-label="What do you want to understand?" />
-        <button type="submit" disabled={!question.trim()}>Explain it<ArrowRight size={14} /></button>
-      </form>
-
-      <div className="lf-grid">
-        <section className="lf-week" aria-label="Your week">
-          <span className="lt-kicker">Your week</span>
-          {rhythm && <>
-            <ol className="lf-days">{rhythm.days.map((d) => <li key={d.day} className={`${d.reviews ? "is-on" : ""}${d.today ? " is-today" : ""}`} title={`${d.day}: ${d.reviews} review${d.reviews === 1 ? "" : "s"}`}>
-              <i style={{ ["--fill" as string]: `${Math.min(1, d.reviews / 12)}` }} /><small>{d.label}</small></li>)}</ol>
-            <p><b>{rhythm.practised} of 7 days</b>{rhythm.reviews ? ` · ${rhythm.reviews} answers` : ""}. {rhythm.practised >= 4 ? "That's the rhythm that makes it stick." : "Any 4 days a week keeps it fresh: short and often beats long and rare."}</p>
-          </>}
-        </section>
-
-        <section className="lf-stand" aria-label="Where you stand">
-          <span className="lt-kicker">Where you stand</span>
-          {scored.length ? <ul className="learn-skills">{scored.slice(0, 5).map((t) => <li key={t.id}>
-            <span><b>{t.name}</b>{t.stale && <em>stale</em>}</span>
-            <i className="learn-bar"><i style={{ width: `${Math.round((t.accuracy ?? 0) * 100)}%` }} data-tone={(t.accuracy ?? 0) < 0.6 ? "low" : (t.accuracy ?? 0) < 0.8 ? "mid" : "high"} /></i>
-            <small>{pct(t.accuracy)}</small>
-          </li>)}</ul> : <p className="learn-muted">One review or quiz and this fills in with real numbers.</p>}
-          {insights && insights.hardest.length > 0 && <div className="learn-hardest"><h3>You keep missing</h3>{insights.hardest.slice(0, 3).map((h) => <p key={h.front}>{h.front}<small>{h.lapses}×</small></p>)}</div>}
-          <button type="button" className="learn-ask" disabled={!!busy} onClick={() => void run("analyze", async () => { await api("/api/learning/coach", { body: { mode: "analyze", fresh: true } }); open("coach"); })}>
-            <Sparkles size={13} />{busy === "analyze" ? "Thinking…" : `Ask ${name} what to focus on`}</button>
-        </section>
-      </div>
-
-      <div className="lf-grid">
-        <section className="lt-path lf-path" aria-label="Your path">
-          <span className="lt-kicker">Your path</span>
-          {path ? <>
-            <ol className="lt-track">{path.milestones.map((m, i) => <li key={i} className={m.done ? "is-done" : i === current ? "is-now" : ""} title={m.title}><i />{i === current && <span>{m.title.replace(/^\d+\.\s*/, "")}</span>}</li>)}</ol>
-            <p className="lf-path-line">{path.milestones.filter((m) => m.done).length} of {path.milestones.length} milestones{current >= 0 ? ` · now: ${path.milestones[current]!.title.replace(/^\d+\.\s*/, "")}` : " · all done"}</p>
-          </> : <p className="learn-muted">{building ? `${name} is writing your roadmap now.` : goal ? `No roadmap yet for ${goal}: milestones, the skills each builds, and a project that proves it.` : "Set a goal and your roadmap, certifications and job search come together in Journey."}</p>}
-          <button type="button" className="lf-link" onClick={() => goJourney("path")}><MapIcon size={13} />Open your journey<ArrowRight size={13} /></button>
-        </section>
-
-        <section className="lt-work" aria-label="Learn from your work">
-          <span className="lt-kicker">Learn from your work</span>
-          {worked.length ? worked.map((r) => <button key={r.id} type="button" disabled={!!busy} onClick={() => void run(`study:${r.id}`, async () => { await api("/api/learning/study", { body: { run: r.id } }); open("coach"); })}>
-            <span><strong>{r.title}</strong><small>{busy === `study:${r.id}` ? "Writing cards…" : "Turn it into 3–6 cards"}</small></span><ArrowRight size={14} /></button>)
-            : <p className="learn-muted">When your crew finishes something, it shows up here, ready to become cards from your own real work.</p>}
-        </section>
-      </div>
+    {certs.length > 1 && (mode === "plan" || mode === "practice") && <div className="lx-certs" role="tablist" aria-label="Certification">
+      {certs.map((c) => <button key={c.id} type="button" role="tab" aria-selected={c.id === active?.id} className={c.id === active?.id ? "is-on" : ""} onClick={() => pickCert(c.id)}><Award size={13} /> {c.code || c.name}</button>)}
     </div>}
 
-    {mode === "journey" && state && <div className="lf-journey" ref={journey}>
-      <nav className="lf-journey-nav" aria-label="Journey">
-        {([["goal", "Goal & skills"], ["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"]] as const).map(([id, label]) => <button key={id} type="button" className={section === id ? "is-on" : ""} onClick={() => { setSection(id); journey.current?.querySelector(`#learn-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{label}</button>)}
+    {mode === "plan" && <div className="lx-plan">
+      {!active ? <AddCert onAdded={() => void load()} /> : view ? <ExamPlan view={view} onStart={start} onResearch={() => void api(`/api/exam/${active.id}/research`, { body: {} }).then(exam.reload)} /> : <section className="xp-card"><p className="lx-muted">Reading where you stand…</p></section>}
+      {(path || goal) && <section className="xp-card lx-path">
+        <div><span className="xp-kicker">Your career path</span><h3>{role ? `Becoming ${article(role)} ${role}` : "Your goal"}</h3>
+          <p>{path ? `${path.milestones.filter((m) => m.done).length} of ${path.milestones.length} milestones${next ? ` · next: ${next.title}` : " · all done"}` : "No roadmap yet: Shua can build one from your goal."}</p></div>
+        <button type="button" className="xp-quiet is-wide" onClick={() => { setPart("path"); setMode("career"); }}>Open the roadmap</button>
+      </section>}
+    </div>}
+
+    {mode === "practice" && (!active ? <AddCert onAdded={() => void load()} />
+      : session?.kind === "practice" && bp ? <ExamSession key={session.key} certId={active.id} blueprint={bp} start={session} onExit={() => { setSession(null); void exam.reload(); }} onAgain={() => setSession({ ...session, key: Date.now() })} />
+      : session?.kind === "mock" && bp ? <MockExam key={session.key} certId={active.id} blueprint={bp} onExit={() => { setSession(null); void exam.reload(); }} />
+      : session?.kind === "review" ? <div className="lx-review"><button type="button" className="lf-back" onClick={() => setSession(null)}><ArrowLeft size={14} />Practice</button><Learning embedded only="review" /></div>
+      : view ? <ExamPractice view={view} onStart={start} /> : null)}
+
+    {mode === "learn" && <div className="lx-learn">
+      <nav className="lf-journey-nav" aria-label="Learn">
+        {([["tasks", bp ? `${bp.code}, task by task` : "Your exam"], ["learn", "Learn anything"], ["coach", "Tutor"], ["work", "From your work"], ["projects", "Projects"]] as const).map(([id, label]) =>
+          <button key={id} type="button" className={learnPart === id ? "is-on" : ""} onClick={() => setLearnPart(id)}>{label}</button>)}
+      </nav>
+      {learnPart === "tasks" ? (view && bp ? <ExamTasks view={view} onTeach={(t, d) => teach(lessonAsk(bp, d, t))} /> : <AddCert onAdded={() => void load()} />)
+        : <Learning embedded only={learnPart} onJourney={() => { setPart("path"); setMode("career"); }} />}
+    </div>}
+
+    {mode === "career" && state && <div className="lf-journey" ref={career}>
+      <nav className="lf-journey-nav" aria-label="Career">
+        {([["goal", "Goal & skills"], ["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"], ["kit", "Career kit"]] as const).map(([id, label]) => <button key={id} type="button" className={part === id ? "is-on" : ""}
+          onClick={() => { setPart(id); career.current?.querySelector(`#learn-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{label}</button>)}
       </nav>
       <section id="learn-goal" className="lf-part"><Learning embedded only="profile" /></section>
-      <section id="learn-path" className="lf-part"><PathView state={state} onChange={() => void load()} startCourse={(topic) => void run("course", async () => { await api("/api/learning/courses", { body: { topic } }); open("learn"); })} /></section>
-      <section id="learn-certs" className="lf-part"><CertsView state={state} tracks={insights?.tracks ?? []} onChange={() => void load()} review={() => open("review")}
-        quiz={(topic) => void run("quiz", async () => { await api("/api/learning/coach", { body: { mode: "quiz", fresh: true, message: `Quiz me for the ${topic} exam: its highest-weight topics first, one question at a time.` } }); open("coach"); })} /></section>
-      <section id="learn-jobs" className="lf-part"><JobsView state={state} onChange={() => void load()} /></section>
+      <section id="learn-path" className="lf-part"><PathView state={state as never} onChange={() => void load()} startCourse={(topic) => void api("/api/learning/courses", { body: { topic } }).then(() => { setLearnPart("learn"); setMode("learn"); })} /></section>
+      <section id="learn-certs" className="lf-part"><CertsView state={state as never} tracks={insights?.tracks ?? []} onChange={() => void load()} review={() => start({ kind: "review" })}
+        quiz={() => start({ kind: "practice", mode: "quick", n: 10 })} /></section>
+      <section id="learn-jobs" className="lf-part"><JobsView state={state as never} onChange={() => void load()} /></section>
+      <section id="learn-kit" className="lf-part"><Learning embedded only="career" /></section>
     </div>}
 
     {mode === "explain" && <div className="lf-explain">
-      <button type="button" className="lf-back" onClick={() => setMode("today")}><ArrowLeft size={14} />Today</button>
+      <button type="button" className="lf-back" onClick={() => setMode(from)}><ArrowLeft size={14} />Back</button>
       <Teaching bare initialQuestion={asking} autoAsk={!!asking} key={asking || "teach"} />
     </div>}
-    {mode === "library" && <Learning embedded initialTab={libraryTab} onJourney={() => goJourney("path")} />}
-    {mode !== "explain" && state && <LearnAsk state={state} onChange={reload} />}
+    {mode !== "explain" && state && <LearnAsk state={state as never} onChange={() => void load()} />}
   </div></div>;
+}
+
+/** No certification yet: say which one and when, and the plan builds itself. */
+function AddCert({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState(""), [date, setDate] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const add = async () => {
+    if (!name.trim()) return;
+    setBusy(true); setError("");
+    const code = /\b[A-Z]{2,5}-?[A-Z]?\d{2,3}\b/i.exec(name)?.[0]?.toUpperCase() ?? "";
+    try { await api("/api/learning/certs", { body: { name: name.trim(), code, status: "studying", ...(date ? { examDate: date } : {}) } }); setName(""); setDate(""); onAdded(); }
+    catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(false); }
+  };
+  return <section className="xp-card lx-addcert">
+    <span className="xp-kicker">Start here</span>
+    <h3>Which certification are you going for?</h3>
+    <p className="lx-muted">Shua reads its official exam guide, writes practice questions like the real ones, and plans every day from now to the exam.</p>
+    <form onSubmit={(e) => { e.preventDefault(); void add(); }}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. AWS DevOps Engineer Professional (DOP-C02)" aria-label="Certification" />
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Exam date" />
+      <button type="submit" className="xp-go" disabled={busy || !name.trim()}><Plus size={14} /> {busy ? "Adding…" : "Plan it"}</button>
+    </form>
+    {error && <p className="lx-error" role="alert">{error}</p>}
+  </section>;
 }
 
 /** /teach: the same place, opened on Explain. */
