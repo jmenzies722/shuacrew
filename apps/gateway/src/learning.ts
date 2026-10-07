@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -19,6 +19,26 @@ const course = z.object({ id: z.string(), topic: z.string().max(160), level: z.n
 const milestone = z.object({ title: z.string().max(200), why: z.string().max(600).default(""), skills: z.array(z.string().max(80)).max(12).default([]), project: z.string().max(600).default(""), weeks: z.number().min(0).max(104).default(2), done: z.boolean().default(false) });
 const roadmap = z.object({ id: z.string(), goal: z.string().max(200), months: z.number().int().min(1).max(36), title: z.string().max(200).default(""), run: z.string(), created: z.number(), milestones: z.array(milestone).max(24).default([]) });
 const doc = z.object({ id: z.string(), kind: z.enum(["resume", "interview"]), title: z.string().max(200), run: z.string(), created: z.number() });
+/** A certification you're working toward: where it stands, the exam date, and a study plan Shua builds (steps + cards). */
+const cert = z.object({
+  id: z.string(), name: z.string().trim().min(1).max(120), provider: z.string().max(60).default(""), code: z.string().max(40).default(""),
+  status: z.enum(["planned", "studying", "booked", "passed"]).default("planned"),
+  examDate: z.number().optional(), passedAt: z.number().optional(),
+  /** The review track its flashcards go into (readiness comes from how you do on them). */
+  track: z.string().max(40).default(""),
+  plan: z.string().optional(), steps: z.array(z.object({ title: z.string().max(200), done: z.boolean().default(false) })).max(30).default([]),
+  notes: z.string().max(2000).default(""), created: z.number(),
+});
+/** A job in your search: from saved to offer, the next step and when, and what it asks that you don't have yet. */
+const job = z.object({
+  id: z.string(), company: z.string().trim().min(1).max(120), role: z.string().max(160).default(""), url: z.string().max(500).default(""),
+  stage: z.enum(["saved", "applied", "interviewing", "offer", "closed"]).default("saved"),
+  location: z.string().max(120).default(""), salary: z.string().max(80).default(""),
+  next: z.string().max(300).default(""), nextAt: z.number().optional(),
+  notes: z.string().max(4000).default(""), description: z.string().max(20000).default(""),
+  fit: z.object({ run: z.string(), score: z.number().min(0).max(100).optional(), summary: z.string().max(1200).default(""), gaps: z.array(z.string().max(80)).max(20).default([]) }).optional(),
+  source: z.enum(["you", "shua"]).default("you"), created: z.number(), updated: z.number(),
+});
 export const LearningSchema = z.object({
   version: z.literal(1).default(1),
   profile: z.object({ goal: z.string().max(500).default(""), about: z.string().max(1000).default(""), tracks: z.array(track).max(24).default([]) }).default({ goal: "", about: "", tracks: [] }),
@@ -27,13 +47,17 @@ export const LearningSchema = z.object({
   studied: z.array(z.object({ run: z.string(), at: z.number(), study: z.string() })).max(400).default([]),
   reviews: z.array(z.object({ at: z.number(), grade: z.enum(["again", "good", "easy"]), track: z.string().max(40).optional(), card: z.string().max(40).optional() })).max(20000).default([]),
   /** The coach conversation per mode (one session each, continued with follow-ups). */
-  coach: z.record(z.string().regex(/^(analyze|quiz|explain|plan)$/), z.object({ run: z.string(), started: z.number() })).default({}),
+  coach: z.record(z.string().regex(/^(analyze|quiz|explain|plan|organize)$/), z.object({ run: z.string(), started: z.number() })).default({}),
   courses: z.array(course).max(200).default([]),
   roadmaps: z.array(roadmap).max(50).default([]),
   docs: z.array(doc).max(200).default([]),
+  certs: z.array(cert).max(100).default([]),
+  jobs: z.array(job).max(500).default([]),
 });
 export type Course = z.infer<typeof course>;
 export type Roadmap = z.infer<typeof roadmap>;
+export type Cert = z.infer<typeof cert>;
+export type Job = z.infer<typeof job>;
 export type LearningState = z.infer<typeof LearningSchema>;
 export type Card = z.infer<typeof card>;
 export type Grade = "again" | "good" | "easy";
@@ -82,7 +106,14 @@ export class Learning {
   private value: LearningState;
   constructor(private file: string) {
     let v: LearningState = LearningSchema.parse({});
-    try { if (existsSync(file)) { const p = LearningSchema.safeParse(JSON.parse(readFileSync(file, "utf8"))); if (p.success) v = p.data; } } catch { /* start clean */ }
+    try {
+      if (existsSync(file)) {
+        const p = LearningSchema.safeParse(JSON.parse(readFileSync(file, "utf8")));
+        if (p.success) v = p.data;
+        // Starting clean would overwrite it on the next save (that's how courses vanished once): keep a copy first.
+        else copyFileSync(file, `${file}.unreadable-${Date.now()}`);
+      }
+    } catch { try { copyFileSync(file, `${file}.unreadable-${Date.now()}`); } catch { /* nothing to keep */ } }
     this.value = v;
   }
   get(): LearningState { return this.value; }

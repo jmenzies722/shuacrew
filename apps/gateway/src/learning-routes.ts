@@ -4,6 +4,7 @@ import type { EventStore } from "./store.js";
 import type { Supervisor } from "./runs.js";
 import { randomUUID } from "node:crypto";
 import { Learning, analyze, parseBlock, parseCards, type Grade } from "./learning.js";
+import { applyLearnOps, captureCareer, careerContext, careerRoutes } from "./learning-career.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MODEL = { runtime: "codex", effort: "low" } as const; // Resolve a current model from the connected Codex catalogue.
@@ -39,6 +40,8 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const reply = [...store.forRun(e.run)].reverse().find((x) => x.kind === "agent.message");
     const text = reply?.kind === "agent.message" ? reply.body.text : "";
     const tag = (k: string) => created.body.labels.find((l) => l.startsWith(`${k}:`))?.slice(k.length + 1);
+    // Certs and jobs (a study plan's steps, a job's fit, openings found); a study plan's cards still go to the deck below.
+    captureCareer(learning, created.body.labels, text);
     // A course plan: fill the course's lessons (once).
     const courseId = tag("learn-course");
     if (created.body.labels.includes("learn-kind:course-plan") && courseId) {
@@ -59,6 +62,8 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
       learning.edit((s) => ({ ...s, roadmaps: s.roadmaps.map((x) => (x.id === roadmapId && !x.milestones.length ? { ...x, title: str(r?.title, 200) || x.title, milestones } : x)) }));
     }
     const coaching = created.body.labels.includes("learn-kind:coach");
+    // Talking to Shua in Learn: apply the changes it made (upserts only, so a repeat read is harmless).
+    if (created.body.labels.includes("learn-coach:organize")) applyLearnOps(learning, text);
     if (!coaching && learning.get().cards.some((c) => c.source.run === e.run)) return;
     const known = new Set(learning.get().cards.map((c) => c.front.trim().toLowerCase()));
     const cards = parseCards(text).filter((c) => !known.has(c.front.trim().toLowerCase()));
@@ -72,6 +77,8 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const s = learning.get();
     for (const c of s.courses) if (!c.lessons.length && c.plan && supervisor.status(c.plan) === "done") capture(c.plan);
     for (const r of s.roadmaps) if (!r.milestones.length && supervisor.status(r.run) === "done") capture(r.run);
+    for (const c of s.certs) if (!c.steps.length && c.plan && supervisor.status(c.plan) === "done") capture(c.plan);
+    for (const j of s.jobs) if (j.fit?.run && !j.fit.summary && supervisor.status(j.fit.run) === "done") capture(j.fit.run);
   };
 
   app.get("/api/learning", async () => {
@@ -220,6 +227,10 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     analyze: { model: DEEP, title: "Coach · progress review", brief: "Give a crisp, honest analysis of their progress from the data: 3 specific insights (cite the numbers), what to focus on this week and why, and one calibrating question. Keep it under 250 words." },
     quiz: { model: MODEL, title: "Coach · quiz", brief: "Quiz them ONE question at a time, starting with their weakest and most-forgotten areas. After each answer: grade it (correct / partly / not yet), explain the gap in 2–3 sentences, then ask the next question. Keep a running score like 'Score 3/4'. When they get something wrong, add it as a card." },
     explain: { model: MODEL, title: "Coach · explain", brief: "Be a Socratic tutor: explain what they ask at their level with a concrete engineering example, then check understanding with one short question before moving on. Add a card for each key idea." },
+    organize: { model: MODEL, title: "Shua · learning & career", brief: [
+      "You are their learning and career organizer. They talk to you in plain words; you keep their Learn space (goal, roadmap, certifications, job search, study plan) organized and tell them what to do next.",
+      "Reply in 2–5 short sentences: what you changed, then the single most useful next step. Ask one question only when something is genuinely ambiguous. Never invent dates, companies, scores or URLs.",
+      'Put every change in exactly one ```learn fenced JSON array (leave it out if nothing changes). Operations: {"op":"goal","goal":"..."}; {"op":"cert","name":"...","code":"SAA-C03","provider":"AWS","status":"planned|studying|booked|passed","examDate":"YYYY-MM-DD"}; {"op":"job","company":"...","role":"...","stage":"saved|applied|interviewing|offer|closed","next":"...","nextAt":"YYYY-MM-DD","url":"https://...","notes":"..."}; {"op":"milestone","title":"words from its title","done":true}. Updates use the same company/cert name. There is no delete: if they want something removed, tell them where to remove it.'].join(" ") },
     plan: { model: DEEP, title: "Coach · today's plan", brief: "Build today's 30–45 minute plan from the data: which due cards to review, the next lesson or milestone to push, and one hands-on task in their own repos. Use a short checklist. Then ask what they want to start with." },
   } as const;
   type Mode = keyof typeof MODES;
@@ -230,17 +241,17 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
       a.hardest.length ? `Most-forgotten cards: ${a.hardest.map((h) => `"${h.front}" (${h.lapses}×)`).join("; ")}.` : "",
       `This week: ${a.week.reviews} reviews${a.week.accuracy === null ? "" : `, ${Math.round(a.week.accuracy * 100)}% correct`} (${a.week.change >= 0 ? "+" : ""}${a.week.change} vs last week). Cards due now: ${a.due}.`,
       a.courses.length ? `Courses: ${a.courses.map((c) => `${c.title} ${c.done}/${c.total}`).join("; ")}.` : "",
-      a.roadmap ? `Roadmap "${a.roadmap.title}": ${a.roadmap.done}/${a.roadmap.total} milestones, next: ${a.roadmap.next ?? "done"}.` : ""].filter(Boolean).join("\n");
+      a.roadmap ? `Roadmap "${a.roadmap.title}": ${a.roadmap.done}/${a.roadmap.total} milestones, next: ${a.roadmap.next ?? "done"}.` : "", careerContext(s)].filter(Boolean).join("\n");
   };
   app.post<{ Body: { mode?: Mode; message?: string; fresh?: boolean } }>("/api/learning/coach", async (req, reply) => {
     const mode = req.body?.mode, message = str(req.body?.message, 4000);
-    if (!mode || !(mode in MODES)) return reply.code(400).send({ error: "mode: analyze | quiz | explain | plan" });
+    if (!mode || !(mode in MODES)) return reply.code(400).send({ error: "mode: analyze | quiz | explain | plan | organize" });
     const current = learning.get().coach[mode];
     const live = current && !req.body?.fresh && supervisor.status(current.run) && !["failed", "cancelled"].includes(supervisor.status(current.run)!);
     if (live && current) {
       if (!message) return { run: current.run };
       // A short reminder rides along (hidden in the chat) so grading and cards stay consistent over a long session.
-      const nudge = mode === "quiz" ? "Grade this answer and keep the score. If it was not fully correct, end with a ```cards block covering exactly the gap." : mode === "explain" ? "If you teach a new idea, end with a ```cards block for it." : "";
+      const nudge = mode === "organize" ? `Learn right now:\n${context()}\nPut any changes in one \`\`\`learn block (upserts only; never invent dates or companies). Keep the reply short.` : mode === "quiz" ? "Grade this answer and keep the score. If it was not fully correct, end with a ```cards block covering exactly the gap." : mode === "explain" ? "If you teach a new idea, end with a ```cards block for it." : "";
       try { supervisor.followUp(current.run, nudge ? `${message}${COACH_MARK}${nudge}` : message); return { run: current.run }; } catch (e) { return reply.code(409).send({ error: (e as Error).message }); }
     }
     const m = MODES[mode];
@@ -252,4 +263,5 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     learning.edit((s) => ({ ...s, coach: { ...s.coach, [mode]: { run, started: Date.now() } } }));
     return { run };
   });
+  careerRoutes(app, { learning, supervisor, who });
 }
