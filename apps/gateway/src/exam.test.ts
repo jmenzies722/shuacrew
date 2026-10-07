@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { BUILTIN, examKey, parseBlueprint, parseQuestions, type Attempt, type Blueprint, type Mock, type Question } from "./exam-prep.js";
+import { BUILTIN, ExamSchema, applyVerdicts, examKey, parseBlueprint, parseQuestions, parseVerdicts, type Attempt, type Blueprint, type Mock, type Question } from "./exam-prep.js";
 import { isRight, mastery, mockSet, pick, predict, scoreMock, studyPlan, verdict } from "./exam-logic.js";
-import { hoursFrom, quizBlock } from "./exam-routes.js";
+import { hoursFrom, quizBlock, verdictBlock } from "./exam-routes.js";
 
 const DAY = 86_400_000, NOW = Date.UTC(2026, 9, 7, 12);
 const bp: Blueprint = { ...BUILTIN["DOP-C02"]!, at: 0 };
 let n = 0;
 const q = (domain: string, task = "", answer = ["A"]): Question => ({ id: `q${++n}`, cert: "DOP-C02", domain, task, kind: answer.length > 1 ? "multi" : "single", stem: `A company runs workload ${n} and needs a solution with the least operational overhead.`,
-  options: ["A", "B", "C", "D", "E"].slice(0, answer.length > 1 ? 5 : 4).map((id) => ({ id, text: `Option ${id} for ${n}` })), answer, explain: "Because.", why: {}, refs: [], difficulty: 2, created: 0 });
+  options: ["A", "B", "C", "D", "E"].slice(0, answer.length > 1 ? 5 : 4).map((id) => ({ id, text: `Option ${id} for ${n}` })), answer, explain: "Because.", why: {}, refs: [], difficulty: 2, evidence: "", created: 0 });
 const bank = bp.domains.flatMap((d) => Array.from({ length: 20 }, (_, i) => q(d.id, d.tasks[i % d.tasks.length]!.id)));
 const ans = (question: Question, correct: boolean, at = NOW - DAY): Attempt => ({ q: question.id, at, chosen: correct ? question.answer : ["D"], correct, ms: 30_000, mode: "quick" });
 const seq = (seed = 1) => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -32,6 +32,8 @@ describe("exam prep", () => {
     expect(got[0]).toMatchObject({ domain: "d1", task: "1.4", kind: "single", answer: ["A"] });
     expect(got[1]).toMatchObject({ domain: "d6", kind: "multi", answer: ["A", "B"] });
     expect(got[1]!.options[0]).toEqual({ id: "A", text: "GuardDuty" });
+    const cited = parseQuestions(quizBlock('```quiz\n[{"task":"1.4","stem":"A team wants to shift 10% of Lambda traffic to a new version first. Which approach meets this?","options":["Weighted alias","All at once","Rolling","Recreate"],"answer":["A"],"evidence":"You can point an alias to two versions and weight the traffic between them."}]\n```'), bp, "r_4", NOW);
+    expect(cited[0]!.evidence).toMatch(/weight the traffic/);
   });
 
   it("takes a researched blueprint only when it reads like an exam guide", () => {
@@ -105,5 +107,27 @@ describe("exam prep", () => {
     expect(studyPlan(bp, some, [], { examDate: NOW + 14 * DAY, now: NOW }).phase).toBe("sharpen");
     expect(studyPlan(bp, some, [], { examDate: NOW + 5 * DAY, now: NOW }).today[0]!.kind).toBe("mock");
     expect(hoursFrom("Become an AI Platform Engineer, dedicating 12 hours per week to learning")).toBe(12);
+  });
+
+  it("checks answer keys against the docs: confirms, corrects and re-grades, or takes a question out", () => {
+    const a = q("d1"), b = q("d2"), c = q("d3"), d = q("d6", "", ["A", "B"]);
+    const state = ExamSchema.parse({ questions: [a, b, c, d], attempts: [ans(b, true), { ...ans(b, false), chosen: ["C"] }] });
+    const verdicts = parseVerdicts(verdictBlock('Checked.\n```verdicts\n[' +
+      '{"id":"' + a.id + '","verdict":"correct","evidence":"The docs say so.","refs":["https://docs.aws.amazon.com/x"]},' +
+      '{"id":"' + b.id + '","verdict":"wrong","answer":["C"],"explain":"C is right because…","evidence":"Per the docs, C."},' +
+      '{"id":"' + c.id + '","verdict":"unclear","note":"B and C both work"},' +
+      '{"id":"' + d.id + '","verdict":"wrong","answer":["C"]},' + // would turn a choose-two into one answer: not applied
+      '{"id":"nope","verdict":"correct"},{"id":"' + a.id + '","verdict":"maybe"}' +
+      ']\n```'));
+    expect(verdicts).toHaveLength(5);
+    const { state: next, changed } = applyVerdicts(state, verdicts, NOW);
+    const get = (id: string) => next.questions.find((x) => x.id === id)!;
+    expect(get(a.id)).toMatchObject({ evidence: "The docs say so.", checked: NOW, answer: ["A"] });
+    expect(get(a.id).refs[0]).toBe("https://docs.aws.amazon.com/x");
+    expect(get(b.id)).toMatchObject({ answer: ["C"], explain: "C is right because…", why: {}, checked: NOW });
+    expect(next.attempts.map((x) => x.correct)).toEqual([false, true]); // graded again against the corrected key
+    expect(get(c.id).flag?.note).toMatch(/couldn't confirm.*B and C both work/);
+    expect(get(d.id).flag).toBeDefined(); // a "fix" that changes how many answers it has isn't trusted
+    expect(changed.map((x) => x.id).sort()).toEqual([b.id, c.id, d.id].sort());
   });
 });

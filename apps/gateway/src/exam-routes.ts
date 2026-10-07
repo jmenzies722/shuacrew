@@ -7,7 +7,7 @@
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { randomUUID } from "node:crypto";
-import { BUILTIN, ExamPrep, examKey, parseBlueprint, parseQuestions, type Blueprint, type Domain, type Question } from "./exam-prep.js";
+import { BUILTIN, ExamPrep, applyVerdicts, examKey, parseBlueprint, parseQuestions, parseVerdicts, type Blueprint, type Domain, type Question } from "./exam-prep.js";
 import { isRight, mastery, mockSet, pick, predict, scoreMock, studyPlan, verdict } from "./exam-logic.js";
 import { parseBlock, type Learning } from "./learning.js";
 import type { Supervisor } from "./runs.js";
@@ -20,6 +20,28 @@ const LOW = 6; // fewer unanswered questions than this in a domain: write more
 const bad = (reply: FastifyReply, error: string, code = 400) => reply.code(code).send({ error });
 
 /** The questions in a reply: a ```quiz array, or any fenced JSON array of objects with a stem. */
+/** A check run's ```verdicts block (or any fenced array of verdicts). */
+export function verdictBlock(text: string): unknown {
+  const tryParse = (s: string) => { try { return JSON.parse(s.trim()) as unknown; } catch { return undefined; } };
+  const named = /```verdicts\s*([\s\S]*?)```/i.exec(text)?.[1];
+  if (named) { const v = tryParse(named); if (v !== undefined) return v; }
+  for (const m of text.matchAll(/```[a-z]*\s*([\s\S]*?)```/gi)) { const v = tryParse(m[1]!); if (Array.isArray(v) && v.some((x) => x && typeof x === "object" && "verdict" in x)) return v; }
+  return undefined;
+}
+
+/** Ask a fresh run to check answer keys against the docs: a second pair of eyes, not the one that wrote them. */
+export function verifyAsk(bp: Blueprint, qs: Question[]): string {
+  return [
+    `Check these ${qs.length} practice questions for ${bp.name} (${bp.code}) against the current official documentation. Someone studying for the real exam will learn from them, so be strict: a wrong answer key teaches the wrong thing.`,
+    "For each question, look up what settles it in the official docs (don't rely on memory), then decide:",
+    '- "correct": the keyed answer is clearly the best by what the stem asks (least operational overhead, most cost-effective, …). Give the sentence from the docs that settles it.',
+    '- "wrong": a different option is right. Give the right option letter(s) — the same number as now — a 3–5 sentence explanation, one line on why each other option is wrong, and the sentence from the docs.',
+    '- "unclear": the docs don\'t settle it, or two options could both be defended. Say why in a note.',
+    `Questions: ${JSON.stringify(qs.map((q) => ({ id: q.id, stem: q.stem, options: q.options, answer: q.answer })))}`,
+    'Return exactly one ```verdicts fenced JSON array, one entry per question: [{"id": "…", "verdict": "correct", "evidence": "…", "refs": ["https://docs.aws.amazon.com/…"]}, {"id": "…", "verdict": "wrong", "answer": ["C"], "explain": "…", "why": {"A": "…", "B": "…", "D": "…"}, "evidence": "…", "refs": ["https://…"]}, {"id": "…", "verdict": "unclear", "note": "…"}]',
+  ].join("\n");
+}
+
 export function quizBlock(text: string): unknown {
   const named = /```quiz\s*([\s\S]*?)```/i.exec(text)?.[1];
   const tryParse = (s: string) => { try { return JSON.parse(s.trim()) as unknown; } catch { return undefined; } };
@@ -52,8 +74,12 @@ export function questionsAsk(bp: Blueprint, d: Domain, n: number, avoid: string[
     "- One answer is clearly best by the exam's priorities (best practice, least overhead, most cost-effective — whatever the stem asks). Distractors are plausible: real services used wrongly, missing a requirement, or more operational work.",
     "- Spread them over the tasks; current services and features only; no trivia, no \"all of the above\".",
     "- For each: why the right answer is right in 3–5 sentences (the principle, not just the fact), one line on why each other option is wrong, and 1–2 official documentation URLs.",
+    "Accuracy comes first — a wrong answer key teaches the wrong thing:",
+    "- Check every answer against the current official documentation before you write it (look it up; don't rely on memory). Put the sentence from the docs that settles it in \"evidence\" (quoted, under 300 characters) and that page first in \"refs\".",
+    "- If the docs don't clearly settle it, or two options could both be defended, drop the question. Fewer, correct questions beat more, shaky ones.",
+    "- Respect service limits, defaults and names as they are today; when the exam guide still covers an older service, test it the way the guide does.",
     avoid.length ? `Already in the bank, so don't repeat these: ${avoid.slice(0, 40).map((s) => `"${s.slice(0, 90)}"`).join("; ")}.` : "",
-    'Return exactly one ```quiz fenced JSON array: [{"task": "1.4", "stem": "…", "options": [{"id": "A", "text": "…"}, …], "answer": ["B"], "explain": "…", "why": {"A": "…", "C": "…", "D": "…"}, "refs": ["https://…"], "difficulty": 2}]',
+    'Return exactly one ```quiz fenced JSON array: [{"task": "1.4", "stem": "…", "options": [{"id": "A", "text": "…"}, …], "answer": ["B"], "explain": "…", "why": {"A": "…", "C": "…", "D": "…"}, "evidence": "…", "refs": ["https://…"], "difficulty": 2}]',
   ].filter(Boolean).join("\n");
 }
 
@@ -82,10 +108,24 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
     prep.edit((s) => ({ ...s, working: { ...s.working, [k]: { run, started: Date.now() } } }));
     return run;
   };
+  /** Check answer keys Shua hasn't checked yet, a dozen at a time, one check at a time. */
+  const verify = (bp: Blueprint) => {
+    const k = `v:${bp.code}`;
+    if (busy(k) || cooling(k)) return null;
+    const todo = bankOf(bp.code).filter((q) => !q.checked).sort((a, b) => a.created - b.created).slice(0, 12);
+    if (!todo.length) return null;
+    const run = supervisor.launch({ ask: verifyAsk(bp, todo), title: `Checking answers · ${bp.code} · ${todo.length} questions`.slice(0, 90), ...DEEP, labels: ["learning", "learn-kind:exam-verify", `exam-cert:${bp.code}`] });
+    prep.edit((s) => ({ ...s, working: { ...s.working, [k]: { run, started: Date.now() } } }));
+    return run;
+  };
+  /** A missed question's flashcard front: its stem, cut at a word if it's long. */
+  const cardFront = (q: Question) => (q.stem.length > 420 ? `${q.stem.slice(0, 400).replace(/\s+\S*$/, "")}…` : q.stem);
+  /** The bank that counts: this exam's questions, minus any you reported as wrong. */
+  const bankOf = (code: string) => prep.get().questions.filter((q) => q.cert === code && !q.flag);
   /** Keep every domain stocked: write more where unanswered questions run low (at most `max` domains at once). */
   const topUp = (bp: Blueprint, max = 3) => {
     const s = prep.get(), answered = new Set(s.attempts.map((a) => a.q));
-    const left = (d: Domain) => s.questions.filter((q) => q.cert === bp.code && q.domain === d.id && !answered.has(q.id)).length;
+    const left = (d: Domain) => bankOf(bp.code).filter((q) => q.domain === d.id && !answered.has(q.id)).length;
     return [...bp.domains].filter((d) => left(d) < LOW && !busy(`q:${bp.code}:${d.id}`) && !cooling(`q:${bp.code}:${d.id}`)).sort((a, b) => left(a) - left(b) || b.weight - a.weight).slice(0, max).map((d) => write(bp, d));
   };
 
@@ -94,9 +134,10 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
     const c = certOf(req.params.cert); if (!c) return bad(reply, "No such certification.", 404);
     const key = keyOf(c), bp = prep.blueprint(key);
     if (!bp) return { cert: c, key, blueprint: null, researching: busy(`bp:${key}`) ? prep.get().working[`bp:${key}`]!.run : cooling(`bp:${key}`) ? null : research(c), failed: cooling(`bp:${key}`) };
-    const s = prep.get(), mine = s.questions.filter((q) => q.cert === bp.code), m = mastery(bp, mine, s.attempts);
+    const s = prep.get(), mine = bankOf(bp.code), m = mastery(bp, mine, s.attempts);
     const writing = Object.fromEntries(bp.domains.map((d) => [d.id, busy(`q:${bp.code}:${d.id}`)]));
     if (mine.length < 24) topUp(bp); // a new bank: get every domain started
+    verify(bp); // and every answer key checked against the docs
     const missed = pick(bp, mine, s.attempts, m, 200, { mode: "missed" }).length;
     return {
       cert: c, key, blueprint: bp, researching: busy(`bp:${key}`) ? s.working[`bp:${key}`]!.run : null, builtin: bp.source === "builtin",
@@ -127,7 +168,7 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
     const c = certOf(req.params.cert); if (!c) return bad(reply, "No such certification.", 404);
     const bp = prep.blueprint(keyOf(c)); if (!bp) return bad(reply, "Shua is still reading the exam guide.", 409);
     const mode = (["quick", "drill", "missed", "diagnostic"] as const).find((x) => x === req.query.mode) ?? "quick";
-    const s = prep.get(), mine = s.questions.filter((q) => q.cert === bp.code), m = mastery(bp, mine, s.attempts);
+    const s = prep.get(), mine = bankOf(bp.code), m = mastery(bp, mine, s.attempts);
     const n = Math.min(40, Math.max(1, Math.round(Number(req.query.n) || (mode === "diagnostic" ? 20 : 10))));
     const questions = pick(bp, mine, s.attempts, m, n, { mode, domain: mode === "drill" ? req.query.domain : undefined });
     if (questions.length < n && mode !== "missed") topUp(bp);
@@ -147,11 +188,22 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
     return { correct, answer: q.answer };
   });
 
+  /** "Something's wrong with this one": out of practice, mocks and mastery, and its miss card out of your deck. */
+  app.post<{ Params: { id: string }; Body: { note?: string } }>("/api/exam/questions/:id/flag", async (req, reply) => {
+    const q = prep.get().questions.find((x) => x.id === req.params.id); if (!q) return bad(reply, "No such question.", 404);
+    const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 500) : "";
+    prep.edit((s) => ({ ...s, questions: s.questions.map((x) => (x.id === q.id ? { ...x, flag: { at: Date.now(), note } } : x)) }));
+    const front = cardFront(q);
+    learning.edit((s) => ({ ...s, cards: s.cards.filter((k) => !(k.front === front && k.source.title === `Missed · ${q.cert}`)) }));
+    const bp = prep.blueprint(q.cert); if (bp) topUp(bp, 1);
+    return { ok: true };
+  });
+
   /** Start a mock exam: the real exam's length and weighting, its clock. */
   app.post<{ Params: { cert: string } }>("/api/exam/:cert/mocks", async (req, reply) => {
     const c = certOf(req.params.cert); if (!c) return bad(reply, "No such certification.", 404);
     const bp = prep.blueprint(keyOf(c)); if (!bp) return bad(reply, "Shua is still reading the exam guide.", 409);
-    const s = prep.get(), set = mockSet(bp, s.questions, s.attempts);
+    const s = prep.get(), set = mockSet(bp, bankOf(bp.code), s.attempts);
     if (set.length < Math.min(20, bp.questions)) { topUp(bp, bp.domains.length); return bad(reply, `The question bank has ${set.length} questions; Shua is writing more for a full mock. Try a practice set meanwhile.`, 409); }
     const minutes = Math.round((bp.minutes * set.length) / bp.questions); // a shorter mock keeps the real pace
     const mock = { id: `mk_${randomUUID().slice(0, 8)}`, cert: bp.code, started: Date.now(), minutes, questions: set.map((q) => q.id), answers: {}, flagged: [] };
@@ -185,7 +237,7 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
   const missCard = (q: Question) => {
     const c = learning.get().certs.find((x) => examKey(x.code || x.name) === q.cert); if (!c?.track) return;
     const right = q.answer.map((a) => q.options.find((o) => o.id === a)?.text ?? "").filter(Boolean).join(" + ");
-    const front = q.stem.length > 420 ? `${q.stem.slice(0, 400).replace(/\s+\S*$/, "")}…` : q.stem;
+    const front = cardFront(q);
     try { learning.addCards([{ front, back: `${right}\n\n${q.explain}`.slice(0, 2000) }], c.track, { title: `Missed · ${q.cert}` }); } catch { /* the deck is full or the card exists */ }
   };
 
@@ -210,6 +262,18 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
           const k = `q:${key}:${domainId}`, working = { ...s.working, [k]: { run, started: s.working[k]?.started ?? Date.now(), done: Date.now(), added: fresh.length } };
           return { ...s, working, questions: [...s.questions, ...fresh].slice(-6000) };
         });
+        return true;
+      }
+      if (labels.includes("learn-kind:exam-verify")) {
+        const key = tag("exam-cert") ?? "", verdicts = parseVerdicts(verdictBlock(text));
+        let changed: Question[] = [];
+        prep.edit((s) => {
+          const applied = applyVerdicts(s, verdicts); changed = applied.changed;
+          const k = `v:${key}`;
+          return { ...applied.state, working: { ...applied.state.working, [k]: { run, started: s.working[k]?.started ?? Date.now(), done: Date.now(), added: verdicts.length } } };
+        });
+        // A miss card made from a key that changed or was taken out carries the old answer: out of the deck.
+        if (changed.length) { const fronts = new Set(changed.map(cardFront)); learning.edit((s) => ({ ...s, cards: s.cards.filter((c) => !(fronts.has(c.front) && c.source.title === `Missed · ${key}`)) })); }
         return true;
       }
       return false;

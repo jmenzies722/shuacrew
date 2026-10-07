@@ -24,7 +24,7 @@ export interface ExamView {
   bank?: { total: number; perDomain: Record<string, number>; writing: Record<string, boolean>; missed: number };
   mocks?: Array<{ id: string; started: number; finished?: number; correct?: number; score?: number; total: number }>;
 }
-export interface Question { id: string; domain: string; task: string; kind: "single" | "multi"; stem: string; options: Array<{ id: string; text: string }>; answer: string[]; explain: string; why: Record<string, string>; refs: string[] }
+export interface Question { id: string; domain: string; task: string; kind: "single" | "multi"; stem: string; options: Array<{ id: string; text: string }>; answer: string[]; explain: string; why: Record<string, string>; refs: string[]; evidence?: string }
 export type PracticeMode = "quick" | "drill" | "missed" | "diagnostic";
 export type Start = { kind: "practice"; mode: PracticeMode; domain?: string; n?: number } | { kind: "mock" } | { kind: "review" } | { kind: "learn"; domain?: string; task?: string };
 
@@ -161,9 +161,9 @@ export function ExamCard({ q, index, total, domain, mode, onDone, reveal = true,
   onDone?: (correct: boolean) => void; reveal?: boolean; chosen?: string[]; onChoose?: (c: string[]) => void;
 }) {
   const [own, setOwn] = useState<string[]>([]), chosen = controlled ?? own;
-  const [result, setResult] = useState<{ correct: boolean } | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [result, setResult] = useState<{ correct: boolean } | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(""), [reported, setReported] = useState(false);
   const started = useRef(performance.now()), need = q.answer.length;
-  useEffect(() => { setOwn([]); setResult(null); setError(""); started.current = performance.now(); }, [q.id]);
+  useEffect(() => { setOwn([]); setResult(null); setError(""); setReported(false); started.current = performance.now(); }, [q.id]);
   const choose = (id: string) => {
     if (result) return;
     const next = need === 1 ? [id] : chosen.includes(id) ? chosen.filter((x) => x !== id) : chosen.length < need ? [...chosen, id] : [...chosen.slice(1), id];
@@ -212,11 +212,31 @@ export function ExamCard({ q, index, total, domain, mode, onDone, reveal = true,
       : <section className="xq-explain">
           <h4>{result.correct ? <><Check size={16} /> Correct</> : <><X size={16} /> The answer is {q.answer.join(" and ")}</>}</h4>
           {q.explain && <p>{q.explain}</p>}
+          {q.evidence && <blockquote className="xq-evidence"><span>From the docs</span>{q.evidence}</blockquote>}
           {q.refs.length > 0 && <p className="xq-refs">{q.refs.map((r) => <a key={r} href={r} target="_blank" rel="noreferrer">{r.replace(/^https:\/\/(docs\.)?/, "").split("/").slice(0, 3).join("/")} <ExternalLink size={11} /></a>)}</p>}
-          <footer className="xq-foot"><span>{result.correct ? "On to the next one." : "It's in your flashcards now, and it'll come back tomorrow."}</span>
+          <Report id={q.id} onSent={() => setReported(true)} />
+          <footer className="xq-foot"><span>{reported || result.correct ? "On to the next one." : "It's in your flashcards now, and it'll come back tomorrow."}</span>
             <button type="button" className="xp-go" onClick={() => onDone?.(result.correct)}>{index + 1 < total ? "Next question" : "See how you did"} <ArrowRight size={14} /></button></footer>
         </section>)}
   </article>;
+}
+
+/** "Something's wrong with this question": it leaves your practice, mocks and score, and its miss card leaves your deck. */
+function Report({ id, onSent }: { id: string; onSent: () => void }) {
+  const [state, setState] = useState<"idle" | "open" | "sending" | "sent">("idle"), [note, setNote] = useState(""), [error, setError] = useState("");
+  const send = async () => {
+    setState("sending"); setError("");
+    try { await api(`/api/exam/questions/${encodeURIComponent(id)}/flag`, { body: { note } }); setState("sent"); onSent(); }
+    catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); setState("open"); }
+  };
+  if (state === "sent") return <p className="xq-report is-sent"><Check size={13} /> Taken out of your practice — it won't count toward your score.</p>;
+  if (state === "idle") return <p className="xq-report"><button type="button" className="xp-quiet is-wide" onClick={() => setState("open")}><Flag size={12} /> Something's wrong with this question?</button></p>;
+  return <form className="xq-report is-open" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+    <input autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="What's wrong? e.g. B is also correct since…" aria-label="What's wrong" maxLength={500} />
+    <button type="submit" className="xp-go" disabled={state === "sending"}>{state === "sending" ? "Sending…" : "Remove it"}</button>
+    <button type="button" className="xp-quiet is-wide" onClick={() => setState("idle")}>Cancel</button>
+    {error && <span className="xq-error" role="alert">{error}</span>}
+  </form>;
 }
 
 /** A practice set: questions one at a time, then how it went and what to do next. */

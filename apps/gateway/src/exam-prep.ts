@@ -29,6 +29,12 @@ const question = z.object({
   /** Why the right answer is right, in a paragraph; and a line on each option. */
   explain: z.string().max(2000).default(""), why: z.record(z.string().regex(/^[A-H]$/), z.string().max(500)).default({}),
   refs: z.array(z.string().max(500)).max(4).default([]), difficulty: z.number().int().min(1).max(3).default(2),
+  /** The official documentation's own words that settle the answer: checked when it was written, shown when it's revealed. */
+  evidence: z.string().max(800).default(""),
+  /** When Shua last checked its answer key against the docs (a separate run from the one that wrote it). */
+  checked: z.number().optional(),
+  /** You reported it as wrong: out of practice, mocks and your mastery from then on. */
+  flag: z.object({ at: z.number(), note: z.string().max(500).default("") }).optional(),
   run: z.string().optional(), created: z.number(),
 });
 const attempt = z.object({ q: z.string(), at: z.number(), chosen: z.array(z.string()).max(8), correct: z.boolean(), ms: z.number().min(0).default(0), mode: z.enum(["quick", "drill", "missed", "mock", "diagnostic"]) });
@@ -150,7 +156,7 @@ export function parseQuestions(raw: unknown, bp: Pick<Blueprint, "code" | "domai
     const parsed = question.safeParse({
       id: id(), cert: bp.code, domain: domainId, task: tasks.has(taskId) ? taskId : "", kind, stem: str(o.stem ?? o.question, 3000), options, answer: [...new Set(answer)].sort(),
       explain: str(o.explain ?? o.explanation, 2000), why, refs: Array.isArray(o.refs) ? o.refs.map((r) => str(r, 500)).filter((r) => /^https:\/\//.test(r)).slice(0, 4) : [],
-      difficulty: Math.min(3, Math.max(1, Math.round(num(o.difficulty) ?? 2))), run, created: now,
+      difficulty: Math.min(3, Math.max(1, Math.round(num(o.difficulty) ?? 2))), evidence: str(o.evidence ?? o.source, 800), run, created: now,
     });
     if (parsed.success) out.push(parsed.data);
   }
@@ -184,4 +190,44 @@ export class ExamPrep {
     const key = examKey(code);
     return this.value.blueprints[key] ?? (BUILTIN[key] ? { ...BUILTIN[key]!, at: 0 } : null);
   }
+}
+
+/** Shua's check of one question against the docs. */
+export interface Verdict { id: string; verdict: "correct" | "wrong" | "unclear"; answer?: string[]; explain?: string; why?: Record<string, string>; evidence?: string; refs?: string[]; note?: string }
+
+/** A check run's verdicts, kept only where they name a real question and say something definite. */
+export function parseVerdicts(raw: unknown): Verdict[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((x): Verdict[] => {
+    const o = (x ?? {}) as Record<string, unknown>, id = str(o.id, 80), v = str(o.verdict, 12).toLowerCase();
+    if (!id || !["correct", "wrong", "unclear"].includes(v)) return [];
+    const answer = Array.isArray(o.answer) ? o.answer.map((a) => str(a, 1).toUpperCase()).filter((a) => /^[A-H]$/.test(a)) : undefined;
+    const why = o.why && typeof o.why === "object" ? Object.fromEntries(Object.entries(o.why as Record<string, unknown>).filter(([k, t]) => /^[A-H]$/.test(k) && typeof t === "string").map(([k, t]) => [k, str(t, 500)])) : undefined;
+    const refs = Array.isArray(o.refs) ? o.refs.map((r) => str(r, 500)).filter((r) => /^https:\/\//.test(r)).slice(0, 4) : undefined;
+    return [{ id, verdict: v as Verdict["verdict"], answer, explain: str(o.explain, 2000) || undefined, why, evidence: str(o.evidence, 800) || undefined, refs, note: str(o.note, 300) || undefined }];
+  });
+}
+
+/**
+ * Apply a check: confirmed keys get their evidence; a wrong key is corrected (same number of answers, so the stem's
+ * "choose two" still holds) and every past answer to it is graded again; one the docs can't settle is taken out.
+ * Returns the questions whose key changed or that were taken out (their miss cards carry the old answer).
+ */
+export function applyVerdicts(s: ExamState, verdicts: Verdict[], now = Date.now()): { state: ExamState; changed: Question[] } {
+  const byId = new Map(verdicts.map((v) => [v.id, v])), changed: Question[] = [], regrade = new Map<string, string[]>();
+  const questions = s.questions.map((q) => {
+    const v = byId.get(q.id); if (!v || q.flag) return q;
+    const refs = v.refs?.length ? [...new Set([...v.refs, ...q.refs])].slice(0, 4) : q.refs;
+    if (v.verdict === "correct") return { ...q, evidence: v.evidence ?? q.evidence, refs, checked: now };
+    const fixed = v.verdict === "wrong" && v.answer && v.answer.length === q.answer.length && new Set(v.answer).size === v.answer.length && v.answer.every((a) => q.options.some((o) => o.id === a));
+    if (fixed) {
+      const answer = [...v.answer!].sort(), next = { ...q, answer, explain: v.explain ?? v.note ?? "", why: v.why ?? {}, evidence: v.evidence ?? "", refs, checked: now };
+      changed.push(q); regrade.set(q.id, answer); return next;
+    }
+    changed.push(q);
+    return { ...q, checked: now, flag: { at: now, note: `Shua couldn't confirm this one against the official docs${v.note ? `: ${v.note}` : "."}`.slice(0, 500) } };
+  });
+  const same = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  const attempts = regrade.size ? s.attempts.map((a) => (regrade.has(a.q) ? { ...a, correct: same(a.chosen, regrade.get(a.q)!) } : a)) : s.attempts;
+  return { state: { ...s, questions, attempts }, changed };
 }

@@ -164,3 +164,11 @@
   .xp-domain { grid-template-columns: 40px minmax(0, 1fr) 70px 16px; } .xp-domain .xp-bar { display: none; } .xp-tasks { padding-left: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .xp-go, .xr-mode, .xp-bar > i, .xg-fill { transition: none; } }
+
+/* The docs' own words, and "something's wrong" */
+.xq-evidence { margin: 4px 0 0; padding: 10px 14px; max-width: 74ch; border-left: 2px solid color-mix(in srgb, var(--ok) 60%, transparent); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--ok) 6%, transparent); font-size: 14px; line-height: 1.6; color: var(--text); }
+.xq-evidence span { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.xq-report { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 0; font-size: 13px; color: var(--text-3); }
+.xq-report.is-sent { color: var(--text-2); }
+.xq-report.is-sent svg { color: var(--ok); }
+.xq-report input { flex: 1; min-width: 220px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 13.5px; }
