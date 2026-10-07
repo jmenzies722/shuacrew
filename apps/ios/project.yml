@@ -31,6 +31,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ShuaCrew
         INFOPLIST_KEY_NSFaceIDUsageDescription: Authenticate before allowing a specific crew action on your Mac.
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan the pairing code on your Mac to connect Shua.
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Hold the mic to talk to Shua.
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: Turns what you say into words for Shua, on this iPhone when it can.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
