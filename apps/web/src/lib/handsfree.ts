@@ -162,7 +162,8 @@ export class HandsFree {
   replay(samples: Float32Array, rate: number, timeoutMs = 30_000): Promise<{ text: string; source: string }> {
     const saved = { ctx: this.ctx, onTurn: this.onTurn, onDropped: this.onDropped, lang: this.lang };
     const restore = () => { this.ctx = saved.ctx; this.onTurn = saved.onTurn; this.onDropped = saved.onDropped; this.lang = saved.lang; };
-    this.ctx = { sampleRate: rate } as AudioContext; this.lang = "en";
+    // A stand-in for the mic's audio context: finishing a turn closes it (that threw, so a replayed turn never ended).
+    this.ctx = { sampleRate: rate, close: () => Promise.resolve() } as unknown as AudioContext; this.lang = "en";
     return new Promise((resolve) => {
       let finished = false, stepTimer: ReturnType<typeof setTimeout> | undefined;
       const done = (text: string) => { if (finished) return; finished = true; this.recognitionEpoch++; clearTimeout(t); clearTimeout(stepTimer); this.live?.cancel(this.turnId); this.turnId++; this.turn = null; restore(); resolve({ text, source: text ? this.lastSource : "dropped" }); };

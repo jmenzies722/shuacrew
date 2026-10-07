@@ -188,7 +188,11 @@ export const setLiveVoice = (v: string) => { if (!LIVE_VOICES.includes(v)) retur
 function onEvent(e: LiveEvent) {
   if (e.type === "capture") return emit({ capturing: e.on, mode: e.mode });
   if (e.type === "muted") return emit({ muted: e.on, spokenText: "" });
-  if (e.type === "playback") return emit({ spokenText: e.text });
+  if (e.type === "playback") {
+    // Self-tests: each step of the reveal, timed, so the log shows the words keeping pace with the voice.
+    if ((window as { __sparkTiming?: boolean }).__sparkTiming && e.text) native()?.postMessage({ type: "buddySelfTest", ok: true, message: `LIVE HEARD ${e.text.length} state=${view.state} t=${Math.round(performance.now())}` });
+    return emit({ spokenText: e.text });
+  }
   if (e.type === "levels") {
     if (e.mic > 0.06) lastMicActivity = Date.now();
     if (e.voice > 0.02 || e.mic > 0.06) touch();

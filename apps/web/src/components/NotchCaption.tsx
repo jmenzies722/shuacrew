@@ -93,9 +93,19 @@ export function sentenceStart(words: string[], sentence: string[], from: number)
  * to re-read (it follows again a few seconds later). It used to show only a 3-line window around the voice, and the open
  * notch cut the reply at two lines with "…". A spoken line that isn't part of this reply falls back to the plain caption.
  */
-export function SpokenReply({ text, line, streaming = false, lines = 3 }: { text: string; line: CaptionLine | null; streaming?: boolean; lines?: number }) {
+export function SpokenReply({ text, line, streaming = false, lines = 3, voiceLed = false, more = false }: {
+  text: string; line: CaptionLine | null; streaming?: boolean; lines?: number;
+  /** Shua is going to say this reply: words appear as the voice says them, not as they're written. */
+  voiceLed?: boolean;
+  /** The voice has more of this reply still to say (between sentences it can go quiet for a moment). */
+  more?: boolean;
+}) {
   const words = prose(text).split(/\s+/).filter(Boolean);
   const [said, setSaid] = useState(0);
+  // Has the voice started on this reply yet? A new reply (its opening words change) starts over.
+  const opening = words.slice(0, 3).join(" "), spoke = useRef({ opening, on: false });
+  if (spoke.current.opening !== opening) spoke.current = { opening, on: false };
+  if (line) spoke.current.on = true;
   const starts = useRef(new Map<number, { word: number; at: number }>()), timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const [lost, setLost] = useState(false);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -116,11 +126,32 @@ export function SpokenReply({ text, line, streaming = false, lines = 3 }: { text
   }, [line]);
   if (line && lost) return <NotchCaption line={line} lines={lines} />;
   const speaking = !!line;
+  // Voice-led: until the voice has said a word it stays unseen (its place kept, so lines never jump), and it appears
+  // the moment it's spoken — the text never runs ahead of the voice. Before the first word: a breath, not the reply.
+  const led = voiceLed && (speaking || more || streaming || !spoke.current.on);
+  if (led && !spoke.current.on) return <div className="notch-reply is-waiting" aria-label="About to speak"><i className="notch-breath"><b /><b /><b /></i></div>;
   // What the view follows: the word being said; or, while it's still being written, the newest word.
-  const focus = speaking ? Math.min(said, words.length - 1) : streaming ? words.length - 1 : -1;
+  const focus = speaking || led ? Math.min(said, words.length - 1) : streaming ? words.length - 1 : -1;
   return <ReplyScroll lines={lines} focus={focus}>
-    {words.map((w, i) => <Fragment key={i}><span data-i={i} className={!speaking || i < said ? "is-said" : i === said ? "is-now" : "is-next"}>{w}</span>{" "}</Fragment>)}
-    {streaming && <i className="notch-caret" />}
+    {words.map((w, i) => <Fragment key={i}><span data-i={i} className={(!speaking && !led) || i < said ? "is-said" : i === said && speaking ? "is-now" : led ? "is-unsaid" : "is-next"}>{w}</span>{" "}</Fragment>)}
+    {streaming && !led && <i className="notch-caret" />}
+  </ReplyScroll>;
+}
+
+/**
+ * A live call's reply in the notch: all its words, the ones already heard lit, the one being said marked, the rest
+ * still to come — `heard` is paced to the voice itself (lib/live-pace), so the words light up as they're spoken.
+ * Nothing heard and no voice (muted, or before this call): shown whole.
+ */
+export function HeardReply({ text, heard, speaking, lines = 3, voiced = true }: { text: string; heard: string; speaking: boolean; lines?: number; voiced?: boolean }) {
+  const words = prose(text).split(/\s+/).filter(Boolean);
+  const said = heard ? prose(heard).split(/\s+/).filter(Boolean).length : 0;
+  // With the voice on, words appear only as they're heard (the transcript arrives ahead of the sound); muted, it's whole.
+  const whole = !voiced || (!speaking && !heard && !text), done = said >= words.length;
+  if (voiced && !done && !speaking && !heard) return <div className="notch-reply is-waiting" aria-label="About to speak"><i className="notch-breath"><b /><b /><b /></i></div>;
+  const focus = whole ? -1 : Math.min(said, words.length - 1);
+  return <ReplyScroll lines={lines} focus={focus}>
+    {words.map((w, i) => <Fragment key={i}><span data-i={i} className={whole || done || i < said ? "is-said" : i === said ? "is-now" : "is-unsaid"}>{w}</span>{" "}</Fragment>)}
   </ReplyScroll>;
 }
 

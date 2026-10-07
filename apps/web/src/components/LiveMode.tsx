@@ -6,6 +6,7 @@ import { useLive, useLiveLevels, startLive, endLive, stopLiveWork, stopLiveSpeec
 import { LiveVoiceSelect } from "./LiveVoiceSelect";
 export { liveActive, liveUsable, startLive, endLive, useLive, liveVoice, setLiveVoice, LIVE_VOICES } from "../lib/live-session";
 import "./live-mode.css";
+import { HeardReply } from "./NotchCaption";
 
 const LABEL: Record<LiveView["state"], string> = { off: "Live", ready: "Mic off · enable Talk", connecting: "Connecting…", listening: "Listening", speaking: "Speaking", working: "Working on it", ended: "Call ended", error: "Couldn't connect" };
 
@@ -118,7 +119,10 @@ export function LiveIsland({ expanded = false, textOnly = false }: { expanded?: 
   if (!live.active) return null;
   const last = live.feed.at(-1);
   if (textOnly) return <section className={`live-island is-text-only${expanded ? " is-expanded" : ""}`} aria-label="Live conversation">
-    {expanded ? <LiveTranscript live={live} /> : liveNotchText(live.feed, live.spokenText) && <p className="live-island-text">{liveNotchText(live.feed, live.spokenText)}</p>}
+    {expanded ? <LiveTranscript live={live} /> : last?.kind === "line" && last.role === "assistant" && last.text.trim()
+      // Shua's reply: the words light up as the voice says them (not all at once, ahead of it).
+      ? <div className="isl-reply"><HeardReply text={last.text} heard={live.spokenText ?? ""} speaking={live.state === "speaking"} voiced={!live.muted} lines={4} /></div>
+      : liveNotchText(live.feed, live.spokenText) && <p className="live-island-text">{liveNotchText(live.feed, live.spokenText)}</p>}
     <Approval live={live} compact />
   </section>;
   if (expanded) return <section className="live-island is-expanded" aria-label="Live conversation">

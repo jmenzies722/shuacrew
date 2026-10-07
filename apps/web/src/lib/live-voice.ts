@@ -6,6 +6,10 @@
 import { NativePlayback } from "./native-playback";
 import { NativeInputBuffer } from "./native-input";
 import { micConstraints } from "./mic-route";
+import { DEFAULT_RATE, LivePace } from "./live-pace";
+
+const RATE_KEY = "shuacrew.live.rate";
+const loadRate = () => { try { const r = Number(localStorage.getItem(RATE_KEY)); return r > 0 ? r : DEFAULT_RATE; } catch { return DEFAULT_RATE; } };
 
 export type LiveState = "connecting" | "ready" | "listening" | "speaking" | "working" | "ended" | "error";
 export type LiveEvent =
@@ -75,6 +79,10 @@ export class LiveCall {
   private pendingCaption?: { type: "caption"; role: "assistant"; text: string; final: boolean };
   private heardAssistant = false;
   private publishedText = "";
+  /** What's been heard of the reply: paced to the voice, not the transcript that runs ahead of it (lib/live-pace). */
+  private pace = new LivePace(loadRate());
+  private replyFinal = false;
+  private lastAudible = 0;
   private announcementPending = false;
   private announcementTimer?: ReturnType<typeof setTimeout>;
   private captions = { user: "", assistant: "" };
@@ -278,9 +286,19 @@ export class LiveCall {
           if (ms >= 50 && ms <= 30_000) this.o.onEvent({ type: "latency", ms });
         }
         if (this.speaking) {
-          this.heardAssistant = true;
+          this.heardAssistant = true; this.lastAudible = now;
           if (this.pendingCaption) { this.o.onEvent(this.pendingCaption); this.pendingCaption = undefined; }
-          if (this.captionText && this.captionText !== this.publishedText) { this.publishedText = this.captionText; this.o.onEvent({ type: "playback", text: this.captionText }); }
+        }
+        // The words light up in the notch as they're said: paced to the voice while it's audible, whole words at a time.
+        if (this.captionText && this.heardAssistant) {
+          const heard = this.pace.tick(this.captionText, 50, this.speaking);
+          if (heard !== null) { this.publishedText = heard; this.o.onEvent({ type: "playback", text: heard }); }
+          // The voice finished the reply (its transcript is final and it's been quiet 0.8 s): all of it is heard, and the
+          // real speaking rate is kept for the next reply.
+          if (this.replyFinal && !this.speaking && now - this.lastAudible > 800 && this.publishedText !== this.captionText) {
+            this.publishedText = this.pace.finish(this.captionText); try { localStorage.setItem(RATE_KEY, String(this.pace.rate)); } catch { /* next call starts at the default */ }
+            this.o.onEvent({ type: "playback", text: this.captionText });
+          }
         }
         this.set(this.speaking ? "speaking" : this.working ? "working" : this.wantsMic ? "listening" : "ready");
       }, 50);
@@ -301,21 +319,22 @@ export class LiveCall {
       this.captions[role] += String(m.text);
       if (role === "assistant") {
         if (this.playback.muted) return;
+        if (this.replyFinal) { this.pace.reset(); this.replyFinal = false; this.publishedText = ""; } // the next reply begins
         this.captionText = this.captions[role].trim();
         this.pendingCaption = { type: "caption", role, text: this.captionText, final: false };
         return;
-      } else if (String(m.text).trim()) { this.captionText = ""; this.heardAssistant = false; this.pendingCaption = undefined; this.publishedText = ""; this.o.onEvent({ type: "playback", text: "" }); }
+      } else if (String(m.text).trim()) { this.captionText = ""; this.heardAssistant = false; this.pendingCaption = undefined; this.publishedText = ""; this.pace.reset(); this.replyFinal = false; this.o.onEvent({ type: "playback", text: "" }); }
       this.o.onEvent({ type: "caption", role, text: this.captions[role].trim(), final: false });
     } else if (m.type === "transcript") {
       const role = m.role === "assistant" ? "assistant" : "user";
       this.captions[role] = "";
       if (role === "assistant") {
         if (this.playback.muted) return;
-        this.captionText = String(m.text);
+        this.captionText = String(m.text); this.replyFinal = true;
         this.pendingCaption = { type: "caption", role, text: this.captionText, final: true };
         if (this.heardAssistant) { this.o.onEvent(this.pendingCaption); this.pendingCaption = undefined; }
         return;
-      } else if (String(m.text).trim()) { this.captionText = ""; this.heardAssistant = false; this.pendingCaption = undefined; this.publishedText = ""; this.o.onEvent({ type: "playback", text: "" }); }
+      } else if (String(m.text).trim()) { this.captionText = ""; this.heardAssistant = false; this.pendingCaption = undefined; this.publishedText = ""; this.pace.reset(); this.replyFinal = false; this.o.onEvent({ type: "playback", text: "" }); }
       this.o.onEvent({ type: "caption", role, text: String(m.text), final: true });
     } else if (m.type === "working") this.working = m.on === true;
     else if (m.type === "step") this.o.onEvent({ type: "step", text: String(m.text) });

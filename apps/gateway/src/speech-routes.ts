@@ -28,11 +28,17 @@ export function speechRoutes(app: FastifyInstance, speech?: SpeechService) {
     const abort = new AbortController();
     const cancel = () => abort.abort();
     reply.raw.once("close", cancel);
+    // One line per spoken piece, like transcription's: proof Shua spoke, and how soon its voice started.
+    const began = Date.now(); let first = 0, clips = 0, failed = "";
     const stream = async function* () {
-      try { for await (const chunk of speech.synthesize(input, abort.signal)) yield JSON.stringify(chunk) + "\n"; }
+      try { for await (const chunk of speech.synthesize(input, abort.signal)) { if ((chunk as { type?: string }).type === "audio") { clips++; first ||= Date.now() - began; } yield JSON.stringify(chunk) + "\n"; } }
       catch (error) {
-        if (!abort.signal.aborted) yield JSON.stringify({ id: input.id, generation: input.generation, type: "error", error: error instanceof Error ? error.message : "Speech failed." }) + "\n";
-      } finally { reply.raw.off("close", cancel); }
+        failed = error instanceof Error ? error.message : "Speech failed.";
+        if (!abort.signal.aborted) yield JSON.stringify({ id: input.id, generation: input.generation, type: "error", error: failed }) + "\n";
+      } finally {
+        reply.raw.off("close", cancel);
+        console.log(`${new Date().toISOString()} speak voice=${input.voiceId} chars=${input.text.length} clips=${clips} first=${first}ms ms=${Date.now() - began}${abort.signal.aborted ? " cancelled" : ""}${failed ? ` error=${failed.slice(0, 120)}` : ""}`);
+      }
     };
     return reply.header("Cache-Control", "no-store").type("application/x-ndjson").send(Readable.from(stream()));
   });

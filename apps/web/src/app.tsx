@@ -12,8 +12,10 @@ import { applyTheme, connect, useLive } from "./lib/live";
 import { folderPicked } from "./lib/native";
 import { startShuaLook } from "./lib/shua-look";
 import { startShuaRemote } from "./lib/shua-remote";
+import { startFreshBuild } from "./lib/fresh-build";
 
 startShuaLook(); // the iPhone shows the Shua you designed here
+startFreshBuild(); // a new build reaches the open windows at their next quiet moment, no relaunch
 startShuaRemote(); // and what you ask on the iPhone, the notch's Shua does
 import { router } from "./routes";
 import { Buddy } from "./screens/Buddy";
