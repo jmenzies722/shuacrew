@@ -172,3 +172,40 @@
 .xq-report.is-sent { color: var(--text-2); }
 .xq-report.is-sent svg { color: var(--ok); }
 .xq-report input { flex: 1; min-width: 220px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 13.5px; }
+
+/* How sure? — before you check */
+.xq-foot { flex-wrap: wrap; }
+.xq-sure { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 3px; border-radius: 99px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.xq-sure small { padding: 0 8px 0 10px; font-size: 12px; color: var(--text-3); }
+.xq-sure button { height: 28px; padding: 0 12px; border: 0; border-radius: 99px; background: none; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+.xq-sure button:hover { color: var(--text); }
+.xq-sure button.is-on { color: #0b0b0c; background: var(--ok); }
+.xq-sure button.is-on.is-unsure { background: var(--wait); }
+.xq-option { transition: transform .12s ease, border-color .15s, background .15s; }
+.xq-option:active:not(:disabled) { transform: scale(.985); }
+
+/* Your progress */
+.xpg-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.xpg-stats div { padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.xpg-stats b { display: block; font-size: 24px; font-weight: 700; letter-spacing: -.02em; color: var(--text); font-variant-numeric: tabular-nums; }
+.xpg-stats span { font-size: 12.5px; color: var(--text-3); }
+.xpg-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; margin-top: 12px; }
+.xpg-grid figure { margin: 0; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); }
+.xpg-grid figcaption { margin-bottom: 8px; font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.xpg-trend svg { display: block; width: 100%; height: auto; overflow: visible; }
+.xpg-pass { stroke: var(--ok); stroke-width: 1; stroke-dasharray: 4 4; opacity: .7; }
+.xpg-passlabel { fill: var(--ok); font-size: 10px; font-weight: 600; }
+.xpg-line { fill: none; stroke: var(--amber); stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+.xpg-pt { fill: var(--panel); stroke: var(--amber); stroke-width: 2; }
+.xpg-now { fill: var(--amber); }
+.xpg-nowlabel { fill: var(--text); font-size: 11px; font-weight: 700; }
+.xpg-empty { margin: 18px 0; font-size: 13px; color: var(--text-3); }
+.xpg-heat { display: grid; grid-template-rows: repeat(7, 13px); grid-auto-flow: column; grid-auto-columns: minmax(13px, 1fr); gap: 4px; }
+.xpg-heat i { border-radius: 3px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.xpg-heat i[data-l="1"] { background: color-mix(in srgb, var(--amber) 30%, transparent); }
+.xpg-heat i[data-l="2"] { background: color-mix(in srgb, var(--amber) 52%, transparent); }
+.xpg-heat i[data-l="3"] { background: color-mix(in srgb, var(--amber) 76%, transparent); }
+.xpg-heat i[data-l="4"] { background: var(--amber); }
+.xpg-legend { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-3); }
+.xpg-tip { margin: 12px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--text-2); }
+@media (max-width: 760px) { .xpg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .xpg-grid { grid-template-columns: 1fr; } .xq-sure { margin-left: 0; } }

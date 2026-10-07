@@ -23,12 +23,12 @@ const statusOf = (accuracy: number, answered: number): Mastery["status"] => answ
 export function mastery(bp: Blueprint, questions: Question[], attempts: Attempt[], now = Date.now()): MasteryMap {
   const byId = new Map(questions.filter((q) => q.cert === bp.code).map((q) => [q.id, q]));
   const acc: Record<string, { w: number; c: number; n: number; k: number }> = {};
-  const add = (key: string, w: number, ok: boolean) => { const a = (acc[key] ??= { w: 0, c: 0, n: 0, k: 0 }); a.w += w; a.c += ok ? w : 0; a.n++; a.k += ok ? 1 : 0; };
+  const add = (key: string, w: number, credit: number, ok: boolean) => { const a = (acc[key] ??= { w: 0, c: 0, n: 0, k: 0 }); a.w += w; a.c += credit * w; a.n++; a.k += ok ? 1 : 0; };
   let answered = 0;
   for (const a of attempts) {
     const q = byId.get(a.q); if (!q) continue;
-    const w = weightOf(a.at, now); answered++;
-    add(`d:${q.domain}`, w, a.correct); if (q.task) add(`t:${q.task}`, w, a.correct);
+    const w = weightOf(a.at, now), credit = a.correct ? (a.sure === false ? 0.5 : 1) : 0; answered++; // a right guess earns half
+    add(`d:${q.domain}`, w, credit, a.correct); if (q.task) add(`t:${q.task}`, w, credit, a.correct);
   }
   // A prior of one right and one wrong: two lucky answers read 75%, not 100%.
   const of = (key: string): Mastery => { const a = acc[key]; if (!a) return { accuracy: 0, answered: 0, correct: 0, status: "new" }; const accuracy = (a.c + 1) / (a.w + 2); return { accuracy, answered: a.n, correct: a.k, status: statusOf(accuracy, a.n) }; };
@@ -87,9 +87,10 @@ export function pick(bp: Blueprint, bank: Question[], attempts: Attempt[], m: Ma
   const now = opts.now ?? Date.now(), random = opts.random ?? Math.random;
   const { last, misses } = history(attempts);
   const pool = bank.filter((q) => q.cert === bp.code && (!opts.domain || q.domain === opts.domain));
-  // Your misses that are due, the most-missed first (then the oldest).
-  if (opts.mode === "missed") return pool.filter((q) => { const a = last.get(q.id); return a && !a.correct && now >= missDue(a); })
-    .sort((a, b) => (misses.get(b.id) ?? 0) - (misses.get(a.id) ?? 0) || last.get(a.id)!.at - last.get(b.id)!.at).slice(0, n);
+  // Your misses (and right guesses) that are due: confident misses first, then the most-missed, then the oldest.
+  const shaky = (a: Attempt) => !a.correct || a.sure === false, sureMiss = (a: Attempt) => !a.correct && a.sure === true ? 1 : 0;
+  if (opts.mode === "missed") return pool.filter((q) => { const a = last.get(q.id); return a && shaky(a) && now >= missDue(a); })
+    .sort((a, b) => sureMiss(last.get(b.id)!) - sureMiss(last.get(a.id)!) || (misses.get(b.id) ?? 0) - (misses.get(a.id) ?? 0) || last.get(a.id)!.at - last.get(b.id)!.at).slice(0, n);
   if (opts.mode === "diagnostic") { // a spread: each domain in proportion to its weight
     return stratified(bp, pool.filter((q) => !last.has(q.id)), n, random);
   }
@@ -100,7 +101,7 @@ export function pick(bp: Blueprint, bank: Question[], attempts: Attempt[], m: Ma
     const dm = m.domains[q.domain], weakness = 1 - (dm?.answered ? dm.accuracy : 0.5);
     const weight = (bp.domains.find((d) => d.id === q.domain)?.weight ?? 0) / total;
     let s = weight * (0.35 + weakness);
-    if (!a) s *= 1.6; else if (!a.correct && now >= missDue(a)) s *= 2 + 0.3 * Math.min(3, misses.get(q.id) ?? 1); else if (a.correct) s *= 0.25;
+    if (!a) s *= 1.6; else if (!a.correct && now >= missDue(a)) s *= 2 + 0.3 * Math.min(3, misses.get(q.id) ?? 1) + sureMiss(a); else if (a.correct) s *= a.sure === false ? 1.2 : 0.25;
     return [{ q, s: s * (0.75 + random() * 0.5) }];
   });
   return scored.sort((a, b) => b.s - a.s).slice(0, n).map((x) => x.q);
@@ -188,4 +189,38 @@ export function studyPlan(bp: Blueprint, m: MasteryMap, mocks: Mock[], opts: { e
       { kind: "practice", minutes: practiceMin, title: sharpen ? "Mixed practice set" : `${domain.name} drill`, detail: sharpen ? "Questions from every domain, weighted toward your gaps." : "Exam-style questions on what you just learned.", domain: sharpen ? undefined : domain.id, count: Math.max(5, Math.round(practiceMin / 2.4)) },
       ...(sharpen && !done.some((x) => now - (x.finished ?? 0) < 7 * DAY) ? [{ kind: "mock" as const, minutes: bp.minutes, title: "This week's mock exam", detail: "A full mock under exam conditions." }] : []),
     ] };
+}
+
+export interface Progress {
+  /** The last 8 weeks, a day each (local dates), oldest first. */
+  days: Array<{ day: string; answered: number; correct: number }>;
+  /** Days in a row with at least one answer, up to today (or yesterday, if today hasn't started). */
+  streak: number;
+  week: { answered: number; correct: number; minutes: number };
+  /** Your predicted score at the end of each of the last 8 weeks, from what you'd answered by then. */
+  trend: Array<{ end: number; score: number | null; answered: number }>;
+  /** When you said you were sure, how often you were right; and when you weren't. Null until there are 5 of each. */
+  calibration: { sure: number | null; unsure: number | null; sureN: number; unsureN: number };
+}
+
+const dayKey = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
+/** How you've actually been doing: every number comes from your answers, nothing estimated that isn't labelled so. */
+export function progress(bp: Blueprint, bank: Question[], attempts: Attempt[], now = Date.now()): Progress {
+  const ids = new Set(bank.filter((q) => q.cert === bp.code).map((q) => q.id)), mine = attempts.filter((a) => ids.has(a.q));
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const days: Progress["days"] = [], byDay = new Map<string, { answered: number; correct: number }>();
+  for (const a of mine) { const k = dayKey(a.at), d = byDay.get(k) ?? { answered: 0, correct: 0 }; d.answered++; d.correct += a.correct ? 1 : 0; byDay.set(k, d); }
+  for (let i = 55; i >= 0; i--) { const t = new Date(today); t.setDate(t.getDate() - i); const k = dayKey(t.getTime()); days.push({ day: k, ...(byDay.get(k) ?? { answered: 0, correct: 0 }) }); }
+  let streak = 0;
+  for (let i = days.length - 1; i >= 0; i--) { if (days[i]!.answered) streak++; else if (i === days.length - 1) continue; else break; }
+  const weekAgo = now - 7 * DAY, recent = mine.filter((a) => a.at > weekAgo);
+  const week = { answered: recent.length, correct: recent.filter((a) => a.correct).length, minutes: Math.round(recent.reduce((s, a) => s + Math.min(a.ms, 10 * 60_000), 0) / 60_000) };
+  const trend = Array.from({ length: 8 }, (_, i) => {
+    const end = now - (7 - i) * 7 * DAY, upTo = mine.filter((a) => a.at <= end);
+    return { end, score: upTo.length ? predict(bp, mastery(bp, bank, upTo, end)).score : null, answered: upTo.length };
+  });
+  const sure = mine.filter((a) => a.sure === true), unsure = mine.filter((a) => a.sure === false);
+  const rate = (xs: Attempt[]) => (xs.length >= 5 ? xs.filter((a) => a.correct).length / xs.length : null);
+  return { days, streak, week, trend, calibration: { sure: rate(sure), unsure: rate(unsure), sureN: sure.length, unsureN: unsure.length } };
 }

@@ -1,0 +1,32 @@
+/* Quizzes and flashcards inside a reply: readable, clickable, calm. */
+.qb, .qc { margin: 14px 0; padding: 16px 18px; border-radius: 18px; border: 1px solid var(--line); background: color-mix(in srgb, var(--text) 3%, transparent); }
+.qb-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.qb-head span { font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.qb-head em { font-style: normal; font-size: 12.5px; color: var(--text-2); }
+.qb-head button { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: 99px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.qb-q { padding: 12px 0; }
+.qb-q + .qb-q { border-top: 1px solid var(--line); }
+.qb-stem { margin: 0 0 10px; max-width: 72ch; font-size: 15px; line-height: 1.65; color: var(--text); }
+.qb-stem b { color: var(--text-3); font-weight: 650; }
+.qb-stem small { color: var(--text-3); font-size: 13px; }
+.qb-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-width: 760px; }
+.qb-option { width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 12px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel, rgba(255, 255, 255, .02)); color: var(--text); font: inherit; font-size: 14.5px; line-height: 1.55; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, transform .12s; }
+.qb-option:hover:not(:disabled) { border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); }
+.qb-option:active:not(:disabled) { transform: scale(.99); }
+.qb-option:disabled { cursor: default; }
+.qb-letter { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; font-size: 12.5px; font-weight: 700; color: var(--text-2); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.qb-option.is-on { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 9%, transparent); }
+.qb-option.is-on .qb-letter { color: #0b0b0c; background: var(--amber); }
+.qb-option.is-correct { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.qb-option.is-correct .qb-letter { color: #0b0b0c; background: var(--ok); }
+.qb-option.is-missed { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, transparent); }
+.qb-option.is-missed .qb-letter { color: #fff; background: var(--bad); }
+.qb-option.is-other { opacity: .55; }
+.qb-why { margin: 6px 0 2px 54px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.qb-explain { margin: 12px 0 0; max-width: 72ch; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); font-size: 14px; line-height: 1.6; color: var(--text); }
+.qc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.qc-card { min-height: 110px; display: grid; align-content: start; gap: 6px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel, rgba(255, 255, 255, .02)); color: var(--text); font: inherit; font-size: 14px; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color .15s, background .2s, transform .2s; }
+.qc-card:hover { border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); transform: translateY(-1px); }
+.qc-card small { font-size: 10.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.qc-card.is-back { background: color-mix(in srgb, var(--amber) 8%, var(--panel, transparent)); border-color: color-mix(in srgb, var(--amber) 35%, var(--line)); }
+.qb-writing { margin: 12px 0; font-size: 13px; color: var(--text-3); }

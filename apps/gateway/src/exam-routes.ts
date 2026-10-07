@@ -8,7 +8,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { randomUUID } from "node:crypto";
 import { BUILTIN, ExamPrep, applyVerdicts, examKey, parseBlueprint, parseQuestions, parseVerdicts, type Blueprint, type Domain, type Question } from "./exam-prep.js";
-import { isRight, mastery, mockSet, pick, predict, scoreMock, studyPlan, verdict } from "./exam-logic.js";
+import { isRight, mastery, mockSet, pick, predict, progress, scoreMock, studyPlan, verdict } from "./exam-logic.js";
 import { parseBlock, type Learning } from "./learning.js";
 import type { Supervisor } from "./runs.js";
 
@@ -141,7 +141,7 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
     const missed = pick(bp, mine, s.attempts, m, 200, { mode: "missed" }).length;
     return {
       cert: c, key, blueprint: bp, researching: busy(`bp:${key}`) ? s.working[`bp:${key}`]!.run : null, builtin: bp.source === "builtin",
-      mastery: m, predicted: predict(bp, m), verdict: verdict(bp, m, s.mocks),
+      mastery: m, predicted: predict(bp, m), verdict: verdict(bp, m, s.mocks), progress: progress(bp, mine, s.attempts),
       plan: studyPlan(bp, m, s.mocks, { examDate: c.examDate, hoursPerWeek: hoursFrom(learning.get().profile.goal), dueCards: learning.due().filter((x) => x.track === c.track).length }),
       bank: { total: mine.length, perDomain: Object.fromEntries(bp.domains.map((d) => [d.id, mine.filter((q) => q.domain === d.id).length])), writing, missed },
       mocks: s.mocks.filter((x) => x.cert === bp.code).map(({ id, started, finished, correct, score, questions }) => ({ id, started, finished, correct, score, total: questions.length })).slice(-10),
@@ -176,13 +176,13 @@ export function examRoutes(app: FastifyInstance, deps: { prep: ExamPrep; learnin
   });
 
   /** One answer. Right or wrong comes back with the answer; a miss becomes a flashcard in the cert's deck. */
-  app.post<{ Body: { q?: string; chosen?: unknown; ms?: number; mode?: string } }>("/api/exam/attempts", async (req, reply) => {
+  app.post<{ Body: { q?: string; chosen?: unknown; ms?: number; mode?: string; sure?: unknown } }>("/api/exam/attempts", async (req, reply) => {
     const q = prep.get().questions.find((x) => x.id === req.body?.q); if (!q) return bad(reply, "No such question.", 404);
     const chosen = (Array.isArray(req.body?.chosen) ? req.body!.chosen : []).map((x) => String(x).toUpperCase()).filter((x) => q.options.some((o) => o.id === x)).slice(0, 8);
     if (!chosen.length) return bad(reply, "Choose an answer.");
     const mode = (["quick", "drill", "missed", "diagnostic"] as const).find((x) => x === req.body?.mode) ?? "quick";
     const correct = isRight(q, chosen);
-    prep.edit((s) => ({ ...s, attempts: [...s.attempts, { q: q.id, at: Date.now(), chosen, correct, ms: Math.max(0, Number(req.body?.ms) || 0), mode }].slice(-40_000) }));
+    prep.edit((s) => ({ ...s, attempts: [...s.attempts, { q: q.id, at: Date.now(), chosen, correct, ms: Math.max(0, Number(req.body?.ms) || 0), mode, ...(typeof req.body?.sure === "boolean" ? { sure: req.body.sure } : {}) }].slice(-40_000) }));
     if (!correct) missCard(q);
     const bp = prep.blueprint(q.cert); if (bp) topUp(bp, 1);
     return { correct, answer: q.answer };

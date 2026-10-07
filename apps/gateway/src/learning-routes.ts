@@ -188,6 +188,7 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
       `Course: ${c.title || c.topic} (learner level ${c.level}/5). Lessons so far: ${c.lessons.map((l, i) => `${i + 1}. ${l.title}`).join("; ")}.`,
       `Teach lesson ${n + 1}: "${lesson.title}" — ${lesson.summary}`,
       "Structure: the idea in plain words, a worked example with real code or commands, common mistakes, and a hands-on exercise they can do in their own projects with what 'done' looks like.",
+      `Then a \`\`\`quiz fenced JSON array of 3 check-yourself questions [{"stem": "…", "options": ["…", "…", "…", "…"], "answer": ["B"], "explain": "why, in 1–2 sentences", "why": {"A": "why not", …}}] — scenario-style, one clearly best answer, plausible wrong ones.`,
       'Finish with 3–5 flashcards as a ```cards fenced JSON array of {"front": "...", "back": "..."}.'].join("\n");
     const run = supervisor.launch({ ask, title: `${c.title || c.topic} · ${lesson.title}`.slice(0, 90), ...MODEL, labels: ["learning", "learn-kind:lesson", `learn-track:${c.id}`] });
     learning.edit((s) => ({ ...s, courses: s.courses.map((x) => (x.id === c.id ? { ...x, lessons: x.lessons.map((l, i) => (i === n ? { ...l, run } : l)) } : x)) }));
@@ -270,7 +271,7 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     if (live && current) {
       if (!message) return { run: current.run };
       // A short reminder rides along (hidden in the chat) so grading and cards stay consistent over a long session.
-      const nudge = mode === "organize" ? `Learn right now:\n${context()}\nPut any changes in one \`\`\`learn block (upserts only; never invent dates or companies). Keep the reply short.` : mode === "quiz" ? "Grade this answer and keep the score. If it was not fully correct, end with a ```cards block covering exactly the gap." : mode === "explain" ? "If you teach a new idea, end with a ```cards block for it." : "";
+      const nudge = mode === "organize" ? `Learn right now:\n${context()}\nPut any changes in one \`\`\`learn block (upserts only; never invent dates or companies). Keep the reply short.` : mode === "quiz" ? "Grade this answer and keep the score. If it was not fully correct, end with a ```cards block covering exactly the gap." : mode === "explain" ? "If you teach a new idea, check it with one clickable question as a ```quiz fenced JSON array [{\"stem\": \"…\", \"options\": [\"…\"], \"answer\": [\"B\"], \"explain\": \"…\"}], then end with a ```cards block for it." : "";
       try { supervisor.followUp(current.run, nudge ? `${message}${COACH_MARK}${nudge}` : message); return { run: current.run }; } catch (e) { return reply.code(409).send({ error: (e as Error).message }); }
     }
     const m = MODES[mode];

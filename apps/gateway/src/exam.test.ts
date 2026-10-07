@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILTIN, ExamSchema, applyVerdicts, examKey, parseBlueprint, parseQuestions, parseVerdicts, type Attempt, type Blueprint, type Mock, type Question } from "./exam-prep.js";
-import { isRight, mastery, mockSet, pick, predict, scoreMock, studyPlan, verdict } from "./exam-logic.js";
+import { isRight, mastery, mockSet, pick, predict, progress, scoreMock, studyPlan, verdict } from "./exam-logic.js";
 import { hoursFrom, quizBlock, verdictBlock } from "./exam-routes.js";
 
 const DAY = 86_400_000, NOW = Date.UTC(2026, 9, 7, 12);
@@ -129,5 +129,38 @@ describe("exam prep", () => {
     expect(get(c.id).flag?.note).toMatch(/couldn't confirm.*B and C both work/);
     expect(get(d.id).flag).toBeDefined(); // a "fix" that changes how many answers it has isn't trusted
     expect(changed.map((x) => x.id).sort()).toEqual([b.id, c.id, d.id].sort());
+  });
+
+  it("counts a right guess as half, and brings confident misses and guesses back first", () => {
+    const d1 = bank.filter((x) => x.domain === "d1");
+    const sure = mastery(bp, bank, d1.slice(0, 6).map((x) => ({ ...ans(x, true), sure: true })), NOW).domains.d1!.accuracy;
+    const guessed = mastery(bp, bank, d1.slice(0, 6).map((x) => ({ ...ans(x, true), sure: false })), NOW).domains.d1!.accuracy;
+    expect(guessed).toBeLessThan(sure);
+    expect(guessed).toBeCloseTo(0.5, 1); // 6 half-right guesses ≈ a coin toss, not 6/6
+    const attempts = [{ ...ans(d1[0]!, false), sure: false }, { ...ans(d1[1]!, false), sure: true }, { ...ans(d1[2]!, true), sure: false }, { ...ans(d1[3]!, true), sure: true }];
+    const due = pick(bp, bank, attempts, mastery(bp, bank, attempts, NOW), 10, { mode: "missed", now: NOW }).map((x) => x.id);
+    expect(due[0]).toBe(d1[1]!.id); // the confident miss leads
+    expect(due).toContain(d1[2]!.id); // a right guess comes back too
+    expect(due).not.toContain(d1[3]!.id); // a sure right answer doesn't
+  });
+
+  it("tracks progress from real answers: days, streak, this week, the trend and how well-calibrated you are", () => {
+    const d1 = bank.filter((x) => x.domain === "d1");
+    const attempts = [
+      ...d1.slice(0, 5).map((x) => ({ ...ans(x, true, NOW - 2 * DAY), sure: true, ms: 60_000 })),
+      ...d1.slice(5, 10).map((x, i) => ({ ...ans(x, i < 2, NOW - DAY), sure: false, ms: 60_000 })),
+      { ...ans(d1[10]!, true, NOW - 1000), ms: 60_000 },
+      { ...ans(d1[11]!, true, NOW - 30 * DAY) },
+    ];
+    const p = progress(bp, bank, attempts, NOW);
+    expect(p.days).toHaveLength(56);
+    expect(p.days.at(-1)).toMatchObject({ answered: 1, correct: 1 });
+    expect(p.streak).toBe(3);
+    expect(p.week).toEqual({ answered: 11, correct: 8, minutes: 11 });
+    expect(p.calibration).toMatchObject({ sure: 1, unsure: 0.4, sureN: 5, unsureN: 5 });
+    expect(p.trend).toHaveLength(8);
+    expect(p.trend[0]!.score).toBeNull(); // nothing answered 7 weeks ago
+    expect(p.trend.at(-1)!.answered).toBe(12);
+    expect(progress(bp, bank, attempts.slice(0, 5), NOW).streak).toBe(0); // last answered 2 days ago: the streak broke
   });
 });

@@ -37,7 +37,9 @@ const question = z.object({
   flag: z.object({ at: z.number(), note: z.string().max(500).default("") }).optional(),
   run: z.string().optional(), created: z.number(),
 });
-const attempt = z.object({ q: z.string(), at: z.number(), chosen: z.array(z.string()).max(8), correct: z.boolean(), ms: z.number().min(0).default(0), mode: z.enum(["quick", "drill", "missed", "mock", "diagnostic"]) });
+const attempt = z.object({ q: z.string(), at: z.number(), chosen: z.array(z.string()).max(8), correct: z.boolean(), ms: z.number().min(0).default(0), mode: z.enum(["quick", "drill", "missed", "mock", "diagnostic"]),
+  /** How sure you were before you checked: a right guess isn't mastery, and a confident miss is the one most worth fixing. */
+  sure: z.boolean().optional() });
 const mock = z.object({
   id: z.string(), cert: z.string().max(40), started: z.number(), minutes: z.number().int(), questions: z.array(z.string()).max(400),
   answers: z.record(z.string(), z.array(z.string()).max(8)).default({}), flagged: z.array(z.string()).max(400).default([]),

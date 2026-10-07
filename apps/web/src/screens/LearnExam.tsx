@@ -7,6 +7,7 @@
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, BookOpen, Check, ChevronDown, Clock, ExternalLink, Flag, Layers, ListChecks, Play, RotateCcw, Sparkles, Target, Timer, Trophy, X } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import { api } from "../lib/api";
 import "./learn-exam.css";
 
@@ -23,6 +24,11 @@ export interface ExamView {
   plan?: { daysLeft: number | null; phase: string; phaseTitle: string; today: Block[]; milestones: Array<{ title: string; done: boolean; when?: string }> };
   bank?: { total: number; perDomain: Record<string, number>; writing: Record<string, boolean>; missed: number };
   mocks?: Array<{ id: string; started: number; finished?: number; correct?: number; score?: number; total: number }>;
+  progress?: Progress;
+}
+export interface Progress {
+  days: Array<{ day: string; answered: number; correct: number }>; streak: number; week: { answered: number; correct: number; minutes: number };
+  trend: Array<{ end: number; score: number | null; answered: number }>; calibration: { sure: number | null; unsure: number | null; sureN: number; unsureN: number };
 }
 export interface Question { id: string; domain: string; task: string; kind: "single" | "multi"; stem: string; options: Array<{ id: string; text: string }>; answer: string[]; explain: string; why: Record<string, string>; refs: string[]; evidence?: string }
 export type PracticeMode = "quick" | "drill" | "missed" | "diagnostic";
@@ -103,6 +109,8 @@ export function ExamPlan({ view, onStart, onResearch }: { view: ExamView; onStar
       </li>)}</ol>
     </section>
 
+    {view.progress && <ProgressCard progress={view.progress} bp={bp} />}
+
     <section className="xp-card">
       <header className="xp-head"><div><span className="xp-kicker">The exam, domain by domain</span><h3>Weight, and where you stand</h3></div>
         <span className="xp-legend"><i /> 70% target</span></header>
@@ -152,6 +160,43 @@ export function ExamPlan({ view, onStart, onResearch }: { view: ExamView; onStar
   </div>;
 }
 
+/** How you're actually doing: streak, this week, the predicted score over 8 weeks, every day you practised, and calibration. */
+function ProgressCard({ progress: p, bp }: { progress: Progress; bp: Blueprint }) {
+  const scores = p.trend.map((t) => t.score).filter((x): x is number => x !== null);
+  const lo = Math.min(bp.passing - 150, ...scores.map((x) => x - 40)), hi = Math.max(bp.passing + 100, ...scores.map((x) => x + 40));
+  const W = 560, H = 128, x = (i: number) => 14 + (i * (W - 28)) / (p.trend.length - 1), y = (v: number) => 8 + (H - 22) * (1 - (v - lo) / (hi - lo));
+  const pts = p.trend.map((t, i) => (t.score === null ? null : [x(i), y(t.score)] as const)).filter((v): v is readonly [number, number] => !!v);
+  const level = (n: number) => (n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4);
+  const c = p.calibration, tip = c.sure !== null && c.sure < 0.8 ? `When you're sure, you're right ${pct(c.sure)} of the time — read every option before you commit.`
+    : c.unsure !== null && c.unsure >= 0.7 ? `Your guesses are right ${pct(c.unsure)} of the time — you know more than you think.` : c.sure !== null ? `When you're sure, you're right ${pct(c.sure)} of the time. Well calibrated.` : "Mark Sure or Guessing before you check: a guess that lands counts half, so your score stays honest.";
+  return <section className="xp-card xprog">
+    <header className="xp-head"><div><span className="xp-kicker">Your progress</span><h3>{p.streak ? `${p.streak}-day streak` : "Start a streak today"}</h3></div></header>
+    <div className="xpg-stats">
+      <div><b>{p.week.answered}</b><span>questions this week</span></div>
+      <div><b>{p.week.answered ? pct(p.week.correct / p.week.answered) : "—"}</b><span>right this week</span></div>
+      <div><b>{p.week.minutes}</b><span>minutes practising</span></div>
+      <div><b>{c.sure !== null ? pct(c.sure) : "—"}</b><span>right when you're sure</span></div>
+    </div>
+    <div className="xpg-grid">
+      <figure className="xpg-trend">
+        <figcaption>Predicted score, last 8 weeks</figcaption>
+        {pts.length ? <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Predicted score ${scores.join(", ")}; pass ${bp.passing}`}>
+          <line x1="0" x2={W} y1={y(bp.passing)} y2={y(bp.passing)} className="xpg-pass" /><text x={W - 4} y={y(bp.passing) - 4} textAnchor="end" className="xpg-passlabel">pass {bp.passing}</text>
+          {pts.length > 1 && <polyline points={pts.map((v) => v.join(",")).join(" ")} className="xpg-line" />}
+          {pts.map(([px, py], i) => <circle key={i} cx={px} cy={py} r={i === pts.length - 1 ? 4.5 : 3} className={i === pts.length - 1 ? "xpg-now" : "xpg-pt"} />)}
+          <text x={pts.at(-1)![0]} y={pts.at(-1)![1] - 9} textAnchor="middle" className="xpg-nowlabel">{scores.at(-1)}</text>
+        </svg> : <p className="xpg-empty">Your first answers start the line.</p>}
+      </figure>
+      <figure className="xpg-days">
+        <figcaption>Every day you practised</figcaption>
+        <div className="xpg-heat">{p.days.map((d) => <i key={d.day} data-l={level(d.answered)} title={`${d.day}: ${d.answered ? `${d.answered} answered, ${d.correct} right` : "no practice"}`} />)}</div>
+        <div className="xpg-legend"><span>8 weeks ago</span><span>today</span></div>
+      </figure>
+    </div>
+    <p className="xpg-tip">{tip}</p>
+  </section>;
+}
+
 const startOf = (b: Block): Start => b.kind === "review" ? { kind: "review" } : b.kind === "learn" ? { kind: "learn", domain: b.domain, task: b.task } : b.kind === "mock" ? { kind: "mock" }
   : b.kind === "diagnostic" ? { kind: "practice", mode: "diagnostic", n: b.count ?? 20 } : { kind: "practice", mode: b.domain ? "drill" : "quick", domain: b.domain, n: b.count };
 
@@ -162,8 +207,9 @@ export function ExamCard({ q, index, total, domain, mode, onDone, reveal = true,
 }) {
   const [own, setOwn] = useState<string[]>([]), chosen = controlled ?? own;
   const [result, setResult] = useState<{ correct: boolean } | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(""), [reported, setReported] = useState(false);
+  const [sure, setSure] = useState<boolean | null>(null), reduce = useReducedMotion();
   const started = useRef(performance.now()), need = q.answer.length;
-  useEffect(() => { setOwn([]); setResult(null); setError(""); setReported(false); started.current = performance.now(); }, [q.id]);
+  useEffect(() => { setOwn([]); setResult(null); setError(""); setReported(false); setSure(null); started.current = performance.now(); }, [q.id]);
   const choose = (id: string) => {
     if (result) return;
     const next = need === 1 ? [id] : chosen.includes(id) ? chosen.filter((x) => x !== id) : chosen.length < need ? [...chosen, id] : [...chosen.slice(1), id];
@@ -172,7 +218,7 @@ export function ExamCard({ q, index, total, domain, mode, onDone, reveal = true,
   const check = async () => {
     if (chosen.length !== need || busy || result) return;
     setBusy(true);
-    try { const r = await api<{ correct: boolean }>("/api/exam/attempts", { body: { q: q.id, chosen, ms: Math.round(performance.now() - started.current), mode } }); setResult(r); }
+    try { const r = await api<{ correct: boolean }>("/api/exam/attempts", { body: { q: q.id, chosen, ms: Math.round(performance.now() - started.current), mode, ...(sure === null ? {} : { sure }) } }); setResult(r); }
     catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(false); }
   };
   // Keys: A–H (or 1–8) choose, Enter checks, then Enter goes on.
@@ -181,12 +227,14 @@ export function ExamCard({ q, index, total, domain, mode, onDone, reveal = true,
       if ((e.target as HTMLElement)?.closest("input, textarea, [contenteditable]")) return;
       const k = e.key.toUpperCase(), byNumber = /^[1-8]$/.test(k) ? "ABCDEFGH"[Number(k) - 1] ?? "" : k;
       if (byNumber.length === 1 && q.options.some((o) => o.id === byNumber)) { e.preventDefault(); choose(byNumber); }
+      else if (reveal && !result && (k === "S" || k === "U")) { e.preventDefault(); setSure(k === "S"); }
       else if (e.key === "Enter" && reveal) { e.preventDefault(); if (result) onDone?.(result.correct); else void check(); }
     };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   });
   const right = (id: string) => q.answer.includes(id);
-  return <article className={`xq${result ? (result.correct ? " is-right" : " is-wrong") : ""}`} aria-label={`Question ${index + 1} of ${total}`}>
+  return <motion.article className={`xq${result ? (result.correct ? " is-right" : " is-wrong") : ""}`} aria-label={`Question ${index + 1} of ${total}`}
+    initial={reduce ? false : { opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }}>
     <header className="xq-meta">
       <span className="xq-domain">{domain ?? q.domain}{q.task ? ` · ${q.task}` : ""}</span>
       <span>{index + 1} / {total}</span>
@@ -208,17 +256,22 @@ export function ExamCard({ q, index, total, domain, mode, onDone, reveal = true,
     {error && <p className="xq-error" role="alert">{error}</p>}
     {reveal && (!result
       ? <footer className="xq-foot"><span>{need > 1 ? `Choose ${COUNT[need]} · ` : ""}A–{q.options.at(-1)!.id} to choose · Enter to check</span>
+          <div className="xq-sure" role="group" aria-label="How sure are you?">
+            <small>How sure?</small>
+            <button type="button" aria-pressed={sure === true} className={sure === true ? "is-on" : ""} onClick={() => setSure(sure === true ? null : true)} title="S">Sure</button>
+            <button type="button" aria-pressed={sure === false} className={sure === false ? "is-on is-unsure" : ""} onClick={() => setSure(sure === false ? null : false)} title="U">Guessing</button>
+          </div>
           <button type="button" className="xp-go" disabled={chosen.length !== need || busy} onClick={() => void check()}>{busy ? "Checking…" : "Check answer"}</button></footer>
-      : <section className="xq-explain">
+      : <motion.section className="xq-explain" initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>
           <h4>{result.correct ? <><Check size={16} /> Correct</> : <><X size={16} /> The answer is {q.answer.join(" and ")}</>}</h4>
           {q.explain && <p>{q.explain}</p>}
           {q.evidence && <blockquote className="xq-evidence"><span>From the docs</span>{q.evidence}</blockquote>}
           {q.refs.length > 0 && <p className="xq-refs">{q.refs.map((r) => <a key={r} href={r} target="_blank" rel="noreferrer">{r.replace(/^https:\/\/(docs\.)?/, "").split("/").slice(0, 3).join("/")} <ExternalLink size={11} /></a>)}</p>}
           <Report id={q.id} onSent={() => setReported(true)} />
-          <footer className="xq-foot"><span>{reported || result.correct ? "On to the next one." : "It's in your flashcards now, and it'll come back tomorrow."}</span>
+          <footer className="xq-foot"><span>{reported ? "On to the next one." : result.correct ? (sure === false ? "Right — but a guess counts half. It'll come back to make sure." : "On to the next one.") : sure === true ? "A confident miss: the most worth fixing. It'll come back first tomorrow." : "It's in your flashcards now, and it'll come back tomorrow."}</span>
             <button type="button" className="xp-go" onClick={() => onDone?.(result.correct)}>{index + 1 < total ? "Next question" : "See how you did"} <ArrowRight size={14} /></button></footer>
-        </section>)}
-  </article>;
+        </motion.section>)}
+  </motion.article>;
 }
 
 /** "Something's wrong with this question": it leaves your practice, mocks and score, and its miss card leaves your deck. */
@@ -390,6 +443,7 @@ export const lessonAsk = (bp: Blueprint, d: Domain, t: Task) => [
   `Teach me ${bp.code} task ${t.id}: "${t.title}" (${d.name}, ${d.weight}% of the ${bp.name} exam).`,
   t.skills.length ? `Cover: ${t.skills.join(", ")}.` : "",
   "Structure it: 1) the idea in plain words, 2) how each service fits and when to choose which (a comparison table), 3) the decision rules the exam tests (\"least operational overhead\", \"most cost-effective\", cross-account, multi-Region), 4) the traps — the plausible wrong answers and why they're wrong, 5) one worked exam-style scenario.",
+  'Then check me with a ```quiz fenced JSON array of 3 exam-style questions [{"stem": "…", "options": ["…", "…", "…", "…"], "answer": ["B"], "explain": "why, in 1–2 sentences", "why": {"A": "why not", …}}] — scenario-style, one clearly best answer, plausible wrong ones.',
   "End with a ```cards block of the 4–6 facts most worth remembering.",
 ].filter(Boolean).join("\n");
 

@@ -1,4 +1,5 @@
 import { noEmoji } from "../lib/no-emoji";
+import { CardsBlock, QuizBlock, parseCards, parseQuiz } from "./QuizBlock";
 import { Check, CircleDot, Copy, FileCode2, GitPullRequest, Ticket } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { Token } from "../lib/highlight";
@@ -45,6 +46,14 @@ function blocks(text: string, streaming?: boolean): ReactNode[] {
       while (i < lines.length && !lines[i]!.trim().startsWith(fence[1]!)) body.push(lines[i++]!);
       const open = i >= lines.length && streaming;
       i++;
+      // A lesson's quiz or flashcards: clickable, never raw JSON (still being written: say so).
+      const lang = fence[2]?.toLowerCase();
+      if (lang === "quiz" || lang === "cards") {
+        if (open) { out.push(<p key={key()} className="qb-writing">Writing {lang === "quiz" ? "a quiz" : "flashcards"}…</p>); continue; }
+        const quiz = lang === "quiz" ? parseQuiz(body.join("\n")) : null, cards = lang === "cards" ? parseCards(body.join("\n")) : null;
+        if (quiz) { out.push(<QuizBlock key={key()} items={quiz} />); continue; }
+        if (cards) { out.push(<CardsBlock key={key()} cards={cards} />); continue; }
+      }
       out.push(<CodeBlock key={key()} code={body.join("\n")} lang={fence[2] || undefined} open={open} />);
       continue;
     }
