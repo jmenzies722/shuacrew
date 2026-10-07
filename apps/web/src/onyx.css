@@ -268,6 +268,7 @@
   border: 1px solid transparent !important;
   background:
     linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
+    linear-gradient(var(--composer-solid, var(--ink)), var(--composer-solid, var(--ink))) padding-box,
     conic-gradient(from var(--ring), color-mix(in srgb, var(--amber) 90%, #fff), var(--accent-2), var(--accent-3), color-mix(in srgb, var(--amber) 90%, #fff)) border-box !important;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 10%, transparent), 0 16px 40px -18px var(--accent-glow) !important;
   animation: ring-turn 1.4s var(--ease-out) 1;

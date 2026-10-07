@@ -161,11 +161,18 @@ final class SparkSounds {
         }
     }
 
-    /// Play one sound now, in the chosen style.
-    func play(_ kind: EarconSynth.Kind, volume: Float = 0.75) {
+    /// Packs played one sound at a time without becoming the chosen one (hold to talk always pops), rendered on first use.
+    private var oneOff: [EarconSynth.Pack: (plain: [EarconSynth.Kind: AVAudioPCMBuffer], spatial: [EarconSynth.Kind: AVAudioPCMBuffer])] = [:]
+    /// Play one sound now, in the chosen style — in the chosen pack, or `only` this time in another.
+    func play(_ kind: EarconSynth.Kind, volume: Float = 0.75, only: EarconSynth.Pack? = nil) {
         guard style != "off" else { return }
         warm()
-        guard engine.isRunning, let buf = (style == "simple" ? buffers : spatialBuffers)[kind], let node = (style == "simple" ? plain : spatial)[kind] else { return }
+        var set = (plain: buffers, spatial: spatialBuffers)
+        if let only, only != pack {
+            if oneOff[only] == nil { let r = Self.render(only, format); oneOff[only] = (r.0, r.1) }
+            set = oneOff[only] ?? set
+        }
+        guard engine.isRunning, let buf = (style == "simple" ? set.plain : set.spatial)[kind], let node = (style == "simple" ? plain : spatial)[kind] else { return }
         node.stop() // the same sound again restarts cleanly rather than stacking
         node.volume = volume
         node.scheduleBuffer(buf, at: nil, options: [])

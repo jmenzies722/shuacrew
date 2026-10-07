@@ -128,12 +128,16 @@ export function warmSounds(style: SoundStyle) {
   try { context(); for (const k of Object.keys(CUES) as Earcon[]) void bounce(k, style); } catch { /* no audio */ }
 }
 
-/** Play a sound: one buffer, started 25 ms ahead so it never starts late. `volume` 0–1. */
-export function earcon(kind: Earcon, style: SoundStyle = "spatial", volume = 0.7, pack?: string) {
+/**
+ * Play a sound: one buffer, started 25 ms ahead so it never starts late. `volume` 0–1. `pack` also makes that pack the
+ * chosen one (Settings previews); `only` plays this one sound in another pack and leaves the choice alone (hold to talk
+ * always pops).
+ */
+export function earcon(kind: Earcon, style: SoundStyle = "spatial", volume = 0.7, pack?: string, only?: string) {
   if (style === "off" || volume <= 0) return;
   const mac = native();
   // Packs are native-only; a browser plays the original glass set.
-  if (mac) { mac.postMessage({ type: "buddySound", kind, style, ...(pack ? { pack } : {}) }); return; }
+  if (mac) { mac.postMessage({ type: "buddySound", kind, style, ...(pack ? { pack } : {}), ...(only ? { only } : {}) }); return; }
   try {
     const a = context();
     void bounce(kind, style).then((buf) => {

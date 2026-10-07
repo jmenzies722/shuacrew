@@ -189,6 +189,7 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
       <SettingRow name="Brain" detail={<>Each question goes to the model it needs: quick things to a fast model, real work to a stronger one, always Claude or Codex. <a className="spark-link" href="#agents">Manage connected providers →</a></>}><span className="spark-muted">Automatic</span></SettingRow>
       <SettingRow name="Language" detail={`English is fastest and shows live captions. Any language: speak whatever you like — Whisper detects it on this Mac and ${name} answers in it (captions pause).`} modified={prefs.language !== "en"}><Segmented label="Language" value={prefs.language} onChange={(language) => set({ language })} options={[["en", "English"], ["auto", "Any language"]]} /></SettingRow>
       {prefs.voiceEngine === "classic" ? <WakeRow name={name} nickname={prefs.nickname} /> : <SettingRow name="Microphone privacy" detail="Wake-word listening is off in native mode. Use the notch microphone to start or stop Talk. Hold Fn to select a screen area." />}
+      <HoldChordRow name={name} />
       <FnKeyRow name={name} />
       <ScreenMemoryRow name={name} />
       <SettingRow name="Radio DJ" detail={`${name} introduces each new track or station in a line or two, with the occasional crew update. The music dips under the voice.`} modified={prefs.dj}><Switch label="Radio DJ" on={prefs.dj} onChange={(dj) => set({ dj })} /></SettingRow>
@@ -321,6 +322,12 @@ function NotchLook({ prefs, set, name }: { prefs: CompanionPreferences; set: (pa
         onClick={() => { set({ soundPack: pack }); soundStyle(prefs.sounds, pack); earcon("listen", prefs.sounds, 0.7, pack); setTimeout(() => earcon("sent", prefs.sounds, 0.7, pack), 600); }}>
         <b><AudioLines size={12} /> {PACK_INFO[pack].name}</b><small>{PACK_INFO[pack].blurb}</small></button>)}</div>
     </SettingRow>}
+    <SettingRow name="Talk button" detail={`Hands-free: tap Talk and just speak, or hold it (or Space) to talk once. Hold to speak: ${name} listens only while you hold Talk, and sends the moment you let go.`} modified={prefs.listen !== "auto"}>
+      <Segmented label="Talk button" value={prefs.listen} onChange={(listen) => set({ listen })} options={[["auto", "Tap · hands-free"], ["hold", "Hold to speak"]]} />
+    </SettingRow>
+    {prefs.sounds !== "off" && <SettingRow name="Hold-to-talk pops" detail="A bubbly pop the instant the mic opens and a softer one as you let go, whichever sound you picked above." modified={!prefs.holdPops}>
+      <Switch label="Hold-to-talk pops" on={prefs.holdPops} onChange={(holdPops) => { set({ holdPops }); if (holdPops) { earcon("listen", prefs.sounds, 0.8, undefined, "pop"); setTimeout(() => earcon("sent", prefs.sounds, 0.8, undefined, "pop"), 420); } }} />
+    </SettingRow>}
     <SettingRow name="Glow" detail="Accent lights the island's edge while it's open or talking; Spectrum runs your palette's gradient round it." modified={prefs.notchGlow !== "accent"}>
       <Segmented label="Glow" value={prefs.notchGlow} onChange={(notchGlow) => set({ notchGlow })} options={[["off", "Off"], ["accent", "Accent"], ["spectrum", "Spectrum"]]} />
     </SettingRow>
@@ -341,6 +348,22 @@ function ChromeRow({ name }: { name: string }) {
       <button type="button" onClick={() => setShown((v) => !v)}>{shown ? "Hide" : "Show"}</button>
       <button type="button" className="spark-reach-go" onClick={copy}>{copied ? "Copied" : "Copy key"}</button>
     </span> : <span className="spark-reach-state">Restart ShuaCrew to enable</span>}
+  </SettingRow>;
+}
+
+/** Hold ⌃⌥ to talk from any app: the Mac app watches the chord (ChordHold); ⌃⌥ shortcuts with another key are left alone. */
+function HoldChordRow({ name }: { name: string }) {
+  const bridge = (window as { webkit?: { messageHandlers?: { shuacrew?: { postMessage(m: unknown): void } } } }).webkit?.messageHandlers?.shuacrew;
+  const [state, setState] = useState<{ on: boolean; trusted: boolean } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setState((e as CustomEvent<{ on: boolean; trusted: boolean }>).detail);
+    window.addEventListener("shuacrew:holdChord", on);
+    bridge?.postMessage({ type: "buddyHoldChord" });
+    return () => window.removeEventListener("shuacrew:holdChord", on);
+  }, []);
+  if (!bridge) return null;
+  return <SettingRow name="Hold ⌃⌥ to talk" detail={<>From any app: hold <kbd>⌃</kbd><kbd>⌥</kbd> (Control + Option), talk, and let go to send — with a pop each way. {name} lights up in the notch while it listens. ⌃⌥ with another key (your app shortcuts) is left alone.{state && !state.trusted ? <b> Needs Accessibility access (System Settings → Privacy & Security → Accessibility).</b> : null}</>} modified={state ? !state.on : false}>
+    <Switch label="Hold Control Option to talk" on={state?.on ?? true} onChange={(on) => bridge.postMessage({ type: "buddyHoldChord", on })} />
   </SettingRow>;
 }
 

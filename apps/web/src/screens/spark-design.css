@@ -9,7 +9,7 @@
 .spk-pop.is-notched .buddy-card.spk {
   --text: #f5f3f8; --text-2: rgba(245, 243, 248, .68); --text-3: rgba(245, 243, 248, .44);
   --raised: rgba(255, 255, 255, .07); --sunken: rgba(255, 255, 255, .045); --panel: #0b0b0e;
-  --line: rgba(255, 255, 255, .075); --line-strong: rgba(255, 255, 255, .12); --composer-fill: rgba(255, 255, 255, .055);
+  --line: rgba(255, 255, 255, .075); --line-strong: rgba(255, 255, 255, .12); --composer-fill: rgba(255, 255, 255, .055); --composer-solid: #0b0b0e;
 }
 
 /* ── The shape: one black surface from the notch down ─────────────────────────────────────────────────────────── */
@@ -94,8 +94,20 @@
 .spk-pop.is-notched > .buddy-card.spk:has(.spk-avatar:is(.is-speaking, .is-hearing))::before { opacity: .34; }
 .spk-pop.is-notched > .buddy-card.spk:has(.spk-avatar.is-thinking)::before { opacity: .24; }
 /* As the island grows, what's inside arrives a beat later — the shape first, then the words (Dynamic Island). */
-.spk-pop.is-notched > .buddy-card.spk > * { animation: ob-arrive .34s cubic-bezier(.2, .8, .2, 1) .1s both; }
+/* `backwards`, not `both`: a transform animation that keeps filling turns its element into a containing block and a
+   stacking context, so the header trapped the options menu (model picker included) at 22 px, under the messages. The
+   header itself only fades, so it never boxes the menu in even while arriving. */
+.spk-pop.is-notched > .buddy-card.spk > * { animation: ob-arrive .34s cubic-bezier(.2, .8, .2, 1) .1s backwards; }
+.spk-pop.is-notched > .buddy-card.spk > .spk-head { animation-name: ob-fade; }
 @keyframes ob-arrive { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes ob-fade { from { opacity: 0; } }
+/* The chat pours out of the notch on the compositor thread: a CSS transform/opacity animation keeps its frames even when
+   the page is busy mounting the conversation (a JS-driven spring stalled with it). Same spring as before (k 380, c 32,
+   m .9), sampled into linear(); `backwards` so no transform lingers to box in menus. Motion still runs the exit. */
+.buddy.is-docked .spk-pop.is-notched { animation: spk-pour .43s linear(0, 0.0548, 0.1775, 0.3239, 0.4683, 0.5974, 0.7056, 0.792, 0.8583, 0.9074, 0.9426, 0.9668, 0.983, 0.9932, 0.9993, 1.0026, 1.004, 1.0044, 1.0042, 1.0037, 1.003, 1.0024, 1.0018, 1.0013, 1) backwards; }
+@keyframes spk-pour { from { opacity: 0; transform: translateY(-4px) scale(.7, .3); } }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .buddy.is-docked .spk-pop.is-notched { animation: none; } }
+:root[data-motion="reduced"] .buddy.is-docked .spk-pop.is-notched { animation: none; }
 
 /* ── Header: identity, status, tools — one tidy row ────────────────────────────────────────────────────────────── */
 .buddy-card.spk .spk-head {

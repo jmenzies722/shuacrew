@@ -20,7 +20,7 @@
 /* The glow under the box: present while you write, gone at rest. Only its opacity changes. */
 .composer-box.chat-composer::before,
 .buddy-input.chat-composer::before {
-  content: ""; position: absolute; z-index: -1; inset: 10% 6% -18px; border-radius: inherit; pointer-events: none;
+  content: ""; position: absolute; z-index: -1; inset: 50% 6% -18px; border-radius: inherit; pointer-events: none;
   background: radial-gradient(60% 80% at 30% 100%, color-mix(in srgb, var(--amber) 34%, transparent), transparent 70%),
     radial-gradient(50% 70% at 75% 100%, color-mix(in srgb, var(--accent-2, var(--amber)) 26%, transparent), transparent 70%);
   filter: blur(18px); opacity: 0; transition: opacity 320ms ease;
@@ -28,6 +28,14 @@
 .composer-box.chat-composer:focus-within::before,
 .buddy-input.chat-composer:focus-within::before,
 .composer-box.chat-composer.is-working::before { opacity: .9; }
+/* The box's own fill, repainted above the glow. Inside `isolation: isolate` a z-index:-1 layer paints OVER the element's
+   background, so the glow used to flood the whole box with accent colour whenever you typed (text and icons washed out).
+   This layer (same z, later in order) restores the fill; only the glow's spill below the box stays visible. */
+.composer-box.chat-composer::after,
+.buddy-input.chat-composer::after {
+  content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none;
+  background: inherit; box-shadow: inset 0 1px 0 var(--highlight, rgba(255, 255, 255, .04));
+}
 .composer-box.chat-composer:focus-within,
 .buddy-input.chat-composer:focus-within { border-color: color-mix(in srgb, var(--amber) 50%, var(--line-strong)); }
 .chat-composer textarea,

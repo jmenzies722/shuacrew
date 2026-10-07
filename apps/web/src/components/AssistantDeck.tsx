@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarCheck, Check, ChevronRight, Circle, Eye, Fingerprint, Headphones, Layers3, ScanEye, Square, Timer, Zap } from "lucide-react";
+import { CalendarCheck, Check, ChevronRight, Circle, Eye, Fingerprint, Headphones, Layers3, Mic, ScanEye, Square, Timer, Zap } from "lucide-react";
 import type { AssistantState } from "../lib/assistant-state";
 import { screenEvidence, type ScreenEvidence } from "../lib/screen-evidence";
 import "./assistant-deck.css";
@@ -17,6 +17,8 @@ export interface AssistantDeckProps {
   onAsk: (text: string) => void; onStop: () => void; onAccess: () => void; onRun?: (id: string) => void;
   /** What actually answers right now, and why if it isn't the usual one. */
   brain?: { label: string; note?: string };
+  /** Hold to speak: the Talk button listens only while held (with pops). Toggled right here, from the notch. */
+  holdToSpeak?: { on: boolean; toggle: () => void };
 }
 export function AssistantDeck(p: AssistantDeckProps) {
   const [now, setNow] = useState(Date.now);
@@ -46,6 +48,8 @@ export function AssistantDeck(p: AssistantDeckProps) {
       <button type="button" className={p.nowPlaying?.playing ? "is-live is-music" : undefined} title={p.nowPlaying?.title ? `${p.nowPlaying.title} · ${p.nowPlaying.artist}` : undefined}
         onClick={() => p.onAsk("Show what is playing and help me choose music using my connected music app. Ask before starting playback.")}><Headphones size={13} />{p.nowPlaying?.playing && p.nowPlaying.title ? <span>{p.nowPlaying.title}</span> : "Music"}</button>
       <button type="button" onClick={() => p.onAsk("Help me plan the rest of my day using only sources I have permitted. Show priorities and gaps; ask before changing anything.")}><CalendarCheck size={13} />Plan my day</button>
+      {p.holdToSpeak && <button type="button" className={p.holdToSpeak.on ? "is-live" : undefined} aria-pressed={p.holdToSpeak.on} onClick={p.holdToSpeak.toggle}
+        title={p.holdToSpeak.on ? "Talk listens while you hold it. Tap to go back to hands-free." : "Make Talk listen only while you hold it (or hold ⌃⌥ anywhere)"}><Mic size={13} />{p.holdToSpeak.on ? "Hold to speak · on" : "Hold to speak"}</button>}
     </div>}
     {p.background.length > 0 && <div className="assistant-background"><span className="assistant-eyebrow">IN THE BACKGROUND · {p.background.length}</span>{p.background.slice(0, 3).map(run => <button type="button" key={run.id} onClick={() => p.onRun?.(run.id)}><i /><span>{run.title || "Background task"}</span><small>{run.status?.replaceAll("_", " ") || "working"}</small><ChevronRight size={12} /></button>)}</div>}
     <footer><Check size={10} />{p.control === "off" ? "Mac control is off" : !p.trusted ? "Mac control needs Accessibility access" : p.control === "ask" ? "Ask before each Mac step" : "Mac control enabled · Esc stops actions"}</footer>

@@ -47,6 +47,8 @@ export interface CompanionPreferences {
   sounds: "spatial" | "simple" | "off";
   /** Which instrument those sounds use (played natively by the Mac app). */
   soundPack: SoundPack;
+  /** Hold to talk always answers with pops (a bubble as the mic opens, a softer one as you let go), whatever the pack. */
+  holdPops: boolean;
   /** While you talk, the notch shows a waveform (your words appear once you stop), or the waveform with your words live. */
   notchHearing: "wave" | "words";
 }
@@ -96,7 +98,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     follow: v.follow !== false, persist: v.persist !== false,
     chatStyle: choice("chatStyle", ["solid", "glass"], "solid"), chatTone: choice("chatTone", ["theme", "deep", "accent"], "theme"), chatCorners: choice("chatCorners", ["round", "soft", "square"], "round"),
     chatText: choice("chatText", ["s", "m", "l"], "m"), chatHeader: choice("chatHeader", ["plain", "gradient"], "plain"),
-    notice: v.notice !== false, proactive: v.proactive !== false, morningBrief: v.morningBrief !== false, commandNarration: v.commandNarration !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, notchActivities: v.notchActivities !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
+    notice: v.notice !== false, holdPops: v.holdPops !== false, proactive: v.proactive !== false, morningBrief: v.morningBrief !== false, commandNarration: v.commandNarration !== false, headsUpMinutes: ([5, 10, 15] as const).find((m) => m === v.headsUpMinutes) ?? 10, notchCaptions: v.notchCaptions !== false, notchActivities: v.notchActivities !== false, sounds: choice("sounds", ["spatial", "simple", "off"], "spatial"), soundPack: choice("soundPack", SOUND_PACKS, "glass"), notchHearing: choice("notchHearing", ["wave", "words"], "wave"), notchMedia: v.notchMedia !== false, notchControls: v.notchControls !== false,
     notchGlow: choice("notchGlow", ["off", "accent", "spectrum"], "accent"), notchSize: choice("notchSize", ["compact", "roomy"], "compact") };
 }
 export type CompanionPose = "offline" | "review" | "failed" | "working" | "idle";

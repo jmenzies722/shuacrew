@@ -21,7 +21,9 @@
 .shua-island.is-open .spark-nook-row{position:sticky;top:-8px;z-index:3;background:#000;padding:4px 0 6px}
 .shua-island.is-open .spark-nook-voice>span{display:none}
 .shua-island.is-open .spark-nook-next.is-starter{display:none}
-:root[data-native-notch-surface=true] .buddy.is-docked .shua-island.is-open .shua-island-shape{background:transparent;box-shadow:none}
+/* The native backdrop draws the open island (Core Animation spring, continuous corners) once it is on screen; the page's own
+   black shape stays until then so no frame shows an empty notch. */
+:root[data-native-notch-surface=true][data-native-notch-shown=true] .buddy.is-docked .shua-island.is-open .shua-island-shape{background:transparent;box-shadow:none}
 
 /* More (Oct 5): a Control Center for Shua. Four tiles that say their state, quick pills, and the brain that answers. */
 .deck-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

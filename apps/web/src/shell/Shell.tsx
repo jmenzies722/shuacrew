@@ -148,10 +148,23 @@ function SparkSide() {
     };
     window.addEventListener("keydown", on); return () => window.removeEventListener("keydown", on);
   }, [full]);
+  // The panel takes its width at once (one reflow of the page beside it, not one per frame of a width spring) and its
+  // contents slide in on the compositor (hub-nav.css). Shua mounts a frame later, so the panel answers ⌘J immediately.
   return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Shua"
-    initial={{ width: 0, opacity: 0 }} animate={{ width: "clamp(340px, 24vw, 400px)", opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 38 }}>
-    <div className="spark-side-inner"><Buddy embedded page={page} full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></div>
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } }} transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}>
+    <div className="spark-side-inner"><AfterFirstFrame><Buddy embedded page={page} full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></AfterFirstFrame></div>
   </motion.aside>}</AnimatePresence>;
+}
+
+/** Renders its children one frame late: what wraps them paints (and starts animating) first. */
+function AfterFirstFrame({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let timer = 0;
+    const frame = requestAnimationFrame(() => { timer = window.setTimeout(() => setReady(true), 0); });
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, []);
+  return ready ? <>{children}</> : null;
 }
 
 /** Kiro Crew's top bar: where you are, search for anything, and what needs you. */

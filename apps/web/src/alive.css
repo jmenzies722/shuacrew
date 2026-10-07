@@ -58,6 +58,8 @@
   border-color: transparent !important;
   background:
     linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
+    /* An opaque base under the fill: Shua's fill is translucent, and without this the ring showed through the whole box. */
+    linear-gradient(var(--composer-solid, var(--ink)), var(--composer-solid, var(--ink))) padding-box,
     conic-gradient(from var(--ring), var(--amber), var(--accent-2), var(--accent-3), var(--amber)) border-box !important;
   border: 1.5px solid transparent !important;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 12%, transparent), 0 12px 32px -14px var(--accent-glow) !important;
