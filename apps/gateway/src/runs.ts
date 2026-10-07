@@ -178,16 +178,13 @@ export class Supervisor {
     return { repo: canonical, base };
   }
 
-  launch(spec: LaunchSpec, reservedId?: string): string {
+  /** Who does this work and on what: the assistant's brain, a crew member's defaults, or Auto's choice for the ask. */
+  private route(spec: LaunchSpec): { spec: LaunchSpec; member?: ReturnType<NonNullable<SupervisorOptions["crew"]>["get"]> } {
     if (spec.labels?.includes("buddy") && [...this.runtimes.keys()].some(id => id !== "mock")) {
       const brain = this.assistantRuntime();
       if (!brain) throw new Error("Connect Codex or Claude to use the personal assistant.");
       spec = { ...spec, runtime: brain, model: spec.runtime === brain ? spec.model : undefined };
     }
-    this.expand(spec.ask);
-    const id = reservedId ?? `r_${randomUUID().slice(0, 8)}`;
-    if (!/^r_[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid reserved run ID");
-    if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const member = spec.member ? this.options.crew?.get(spec.member) : undefined;
     if (member) spec = { ...spec, runtime: spec.runtime ?? (member.runtime && this.runtimes.has(member.runtime) ? member.runtime : undefined), model: spec.model ?? (member.runtime && this.runtimes.has(member.runtime) ? member.model : undefined) };
     // Auto and Spark use one routing policy. Explicit choices and crew-member defaults stay explicit.
@@ -199,6 +196,37 @@ export class Supervisor {
       else if (rule) spec = { ...spec, model: rule.model || undefined }; // scripted demo fixtures have no real model catalogue
       if (rule) spec = { ...spec, effort: spec.effort || rule.effort || undefined, labels: [...(spec.labels ?? []), `rule:${rule.name}`] };
     }
+    return { spec, member };
+  }
+
+  /**
+   * A new session you're still typing: reserve its id and get its agent ready (thread started, tools and skills
+   * loaded), so the first turn begins at once — launch it with the returned id. Work in the default workspace only:
+   * a repo session's worktree doesn't exist until launch. Undefined when there's nothing to get ahead of.
+   */
+  prepareNew(draft: LaunchSpec): string | undefined {
+    if (this.halted || draft.repo || draft.parent || draft.labels?.length || draft.hold || draft.later || !draft.ask?.trim()) return undefined;
+    let routed: ReturnType<Supervisor["route"]>;
+    try { routed = this.route(draft); } catch { return undefined; }
+    const spec = routed.spec;
+    const runtime = this.runtimes.get(spec.runtime ?? this.defaultRuntime());
+    if (!runtime?.prepare) return undefined;
+    const id = `r_${randomUUID().slice(0, 8)}`;
+    // Shaped exactly as its run.created will be, so the turn's thread matches the one started here.
+    const created = { labels: spec.labels ?? [], model: spec.model, effort: spec.effort, member: routed.member ? spec.member : undefined, venture: spec.venture };
+    const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(id, created, runtime);
+    runtime.prepare({ lean, id, ask: "", cwd: this.options.workspace, model, effort, disableNativeAgents, mcpServers, plugins: lean ? undefined : this.options.plugins?.(runtime.id), system: this.instructions(id, created, runtime) }, agentEnv(process.env, runtime.authMode));
+    return id;
+  }
+
+  launch(spec: LaunchSpec, reservedId?: string): string {
+    const routed = this.route(spec);
+    spec = routed.spec;
+    const member = routed.member;
+    this.expand(spec.ask);
+    const id = reservedId ?? `r_${randomUUID().slice(0, 8)}`;
+    if (!/^r_[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid reserved run ID");
+    if (this.store.forRun(id).some(e => e.kind === "run.created")) throw new Error("Run already exists");
     const runtime = spec.runtime ?? this.defaultRuntime();
     this.rec(
       "run.created",
@@ -308,6 +336,11 @@ export class Supervisor {
   }
 
   // ── running ──────────────────────────────────────────────────────────────────────────
+
+  /** A fresh conversation's standing instructions (with `recalled` lessons where the runtime takes them here). */
+  private instructions(runId: string, spec: { labels: string[]; repo?: string; member?: string; venture?: string }, runtime: Runtime, recalled?: string): string | undefined {
+    return [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, recalled, this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined;
+  }
 
   /**
    * The parts of a turn that shape the agent's conversation (model, effort, tools): one definition, used by the turn
@@ -429,6 +462,12 @@ export class Supervisor {
     const resume = this.backendSession(runId, runtime.id);
     const moved = !resume && turn > 1;
     const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(runId, spec, runtime);
+    // Lessons recalled for this ask. A runtime that prepares threads ahead takes them with the turn rather than in the
+    // thread's instructions, which mustn't depend on the ask, or the thread couldn't be started before you send.
+    const fresh = !resume && !lean;
+    const recalled = fresh ? this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }) : undefined;
+    const separate = !!runtime.prepare;
+    const system = fresh ? this.instructions(runId, spec, runtime, separate ? undefined : recalled) : undefined;
     const run: RunSpec = {
       lean,
       id: runId,
@@ -441,7 +480,8 @@ export class Supervisor {
       agents: lean || spec.labels.includes("crew-room") ? undefined : this.options.crew?.agentsFor?.(runtime.id, spec.member),
       disableNativeAgents,
       // A resumed conversation already has its lessons; only a fresh one is told.
-      system: resume || lean ? undefined : [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, this.options.memory?.systemFor(runId, ask, { skills: !this.options.plugins?.(runtime.id)?.length }), this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined,
+      system,
+      context: separate ? recalled : undefined,
       mcpServers,
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
@@ -584,6 +624,8 @@ export class Supervisor {
         const now = this.status(runId);
         if (now !== "cancelled" && now !== "paused" && this.unanswered(runId).length) this.setStatus(runId, "queued", "follow-up");
         this.pump();
+        // Talking with Shua is back and forth: the next reply's agent is readied as soon as this one lands.
+        if (lean && now === "done") this.prepare(runId);
       }
     }
   }

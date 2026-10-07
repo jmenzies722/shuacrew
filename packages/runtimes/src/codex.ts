@@ -47,8 +47,10 @@ type ServerRequestHandler = (method: string, params: Json) => Promise<Json>;
 interface Line { note: (method: string, params: Json) => void; request: ServerRequestHandler; exit: (code: number | null) => void; stderr: string }
 interface Conn { key: string; child: ChildProcess; peer: RpcPeer; line: Line; ready: Promise<string | undefined> }
 const IDLE = () => undefined;
-/** How long a connection opened ahead of time waits for its turn before it's let go. */
-const WARM_TTL = 90_000;
+/** How long a connection opened ahead of time waits for its turn: a conversation with Shua is likelier to go on. */
+const WARM_TTL = 90_000, LEAN_WARM_TTL = 5 * 60_000;
+/** At most this many connections wait at once (say, a session you're typing in and your talk with Shua). */
+const SPARES = 2;
 
 /** A warm connection is only used by a turn that would have opened exactly the same thread. */
 export function warmKey(run: RunSpec): string {
@@ -319,9 +321,9 @@ export class CodexRuntime implements Runtime {
     }
   }
 
-  private spare?: { conn: Conn; timer: NodeJS.Timeout };
+  private spares = new Map<string, { conn: Conn; timer: NodeJS.Timeout }>();
 
-  /** Spawn the app-server, initialize it, and reconnect the thread if there is one: everything before the turn. */
+  /** Spawn the app-server, initialize it, and reconnect the thread (or start a new one): everything before the turn. */
   private open(run: RunSpec, env: NodeJS.ProcessEnv, key: string): Conn {
     const child = spawn(this.binary!, ["app-server"], { cwd: run.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     const line: Line = { note: IDLE, request: async () => ({ decision: "decline" }), exit: IDLE, stderr: "" };
@@ -331,50 +333,52 @@ export class CodexRuntime implements Runtime {
     const ready = (async () => {
       await peer.request("initialize", { clientInfo: { name: "shuacrew", title: "ShuaCrew", version: "0.1.0" }, capabilities: { experimentalApi: true } });
       peer.notify("initialized");
-      if (!run.resume) return undefined;
-      const thread = await peer.request("thread/resume", { threadId: run.resume, ...codexThreadOverrides(run) });
-      return String(thread.thread?.id ?? run.resume);
+      const thread = run.resume ? await peer.request("thread/resume", { threadId: run.resume, ...codexThreadOverrides(run) }) : await peer.request("thread/start", codexThreadOverrides(run));
+      return String(thread.thread?.id ?? run.resume ?? "");
     })();
     ready.catch(() => undefined); // a warm connection that fails is simply not used
     return { key, child, peer, line, ready };
   }
 
   /**
-   * The next follow-up, ready before you send it: the agent started, its tools and skills loaded, the thread
-   * reconnected — measured at ~2.5s of a cold turn's ~5s to first word. One spare at a time; idle ones are let go.
+   * The next turn, ready before you send it: the agent started, its tools and skills loaded, the thread reconnected
+   * (or a new one started) — a real follow-up went from 6.5s to 2.2s to first word. Idle ones are let go.
    */
   prepare(run: RunSpec, env: NodeJS.ProcessEnv): void {
-    if (!this.binary || !run.resume) return; // a fresh thread's instructions depend on the ask: nothing to get ahead of
+    if (!this.binary) return;
     const key = warmKey(run);
-    if (this.spare?.conn.key === key && this.spare.conn.child.exitCode === null) return void this.spare.timer.refresh();
-    this.dropSpare();
+    const ttl = run.lean ? LEAN_WARM_TTL : WARM_TTL;
+    const have = this.spares.get(key);
+    if (have && have.conn.child.exitCode === null) return void have.timer.refresh();
+    if (have) this.drop(key);
+    while (this.spares.size >= SPARES) this.drop(this.spares.keys().next().value!); // the oldest goes
     const conn = this.open(run, env, key);
-    const timer = setTimeout(() => this.dropSpare(), WARM_TTL);
+    const timer = setTimeout(() => this.drop(key), ttl);
     timer.unref?.();
-    this.spare = { conn, timer };
-    conn.line.exit = () => { if (this.spare?.conn === conn) { clearTimeout(timer); this.spare = undefined; } };
+    this.spares.set(key, { conn, timer });
+    conn.line.exit = () => { if (this.spares.get(key)?.conn === conn) { clearTimeout(timer); this.spares.delete(key); } };
   }
 
-  /** Whether a warm connection is waiting (for tests and diagnostics). */
+  /** Whether a prepared connection is waiting (for tests and diagnostics). */
   get warmed(): boolean {
-    return !!this.spare && this.spare.conn.child.exitCode === null;
+    return [...this.spares.values()].some((s) => s.conn.child.exitCode === null);
   }
 
-  private dropSpare(): void {
-    const spare = this.spare;
+  private drop(key: string): void {
+    const spare = this.spares.get(key);
     if (!spare) return;
-    this.spare = undefined;
+    this.spares.delete(key);
     clearTimeout(spare.timer);
     spare.conn.child.kill("SIGTERM");
   }
 
-  /** The warm connection, if it's the one this turn needs and still alive; anything else is let go. */
+  /** The prepared connection for exactly this turn, if one is alive; it's used once. */
   private take(key: string): Conn | undefined {
-    const spare = this.spare;
+    const spare = this.spares.get(key);
     if (!spare) return undefined;
-    if (spare.conn.key !== key || spare.conn.child.exitCode !== null) return void this.dropSpare();
-    this.spare = undefined;
+    this.spares.delete(key);
     clearTimeout(spare.timer);
+    if (spare.conn.child.exitCode !== null) return undefined;
     return spare.conn;
   }
 
@@ -420,13 +424,12 @@ export class CodexRuntime implements Runtime {
 
     let threadId = run.resume;
     try {
-      const resumed = await conn.ready;
-      if (resumed) threadId = resumed;
-      else threadId = String((await peer.request("thread/start", codexThreadOverrides(run))).thread?.id ?? threadId);
-      yield { type: "session", id: threadId };
+      threadId = (await conn.ready) || threadId;
+      yield { type: "session", id: threadId! };
       await peer.request("turn/start", {
         threadId,
-        input: [{ type: "text", text: run.ask, text_elements: [] }],
+        // Lessons recalled for this ask ride with it, so the thread itself could be started before you sent it.
+        input: [...(run.context ? [{ type: "text", text: `Notes ShuaCrew remembers from your past work that may apply here:\n\n${run.context}`, text_elements: [] }] : []), { type: "text", text: run.ask, text_elements: [] }],
         ...(run.effort ? { effort: run.effort } : {}),
         // Work sessions show their reasoning as it happens; Shua's quick turns stay lean.
         ...(run.lean ? {} : { summary: "auto" }),

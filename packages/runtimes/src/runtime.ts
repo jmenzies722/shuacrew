@@ -9,6 +9,9 @@
 export type AuthMode = "subscription" | "api-key" | "bedrock";
 
 export interface RunSpec {
+  /** Notes for this turn that depend on the ask (lessons recalled for it). Runtimes that prepare threads ahead
+   *  take these with the turn; the gateway folds them into `system` for the rest. */
+  context?: string;
   id: string;
   ask: string;
   cwd: string;

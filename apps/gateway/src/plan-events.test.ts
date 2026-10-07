@@ -93,3 +93,51 @@ it("a follow-up prepared while you type matches the turn that runs, so the warm 
   expect(warmKey(prepared[0]!)).toBe(warmKey(started[1]!));
   expect(supervisor.prepare("no-such-run")).toBe(false);
 });
+
+it("a new session prepared while you type matches its first turn, under the id it reserved", async () => {
+  const { warmKey } = await import("@shuacrew/runtimes");
+  const store = new EventStore(":memory:");
+  const prepared: Array<Parameters<NonNullable<Runtime["prepare"]>>[0]> = [];
+  const started: Array<Parameters<Runtime["start"]>[0]> = [];
+  const fake: Runtime = Object.assign(Object.create(new MockRuntime({ pace: 0 })), {
+    id: "codex",
+    prepare: (run: (typeof prepared)[number]) => void prepared.push(run),
+    async *start(run: (typeof started)[number]) {
+      started.push(run);
+      yield { type: "session", id: "thread-9" } as const;
+      yield { type: "done", text: "ok" } as const;
+    },
+  });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", fake]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-new-")), roots: [] });
+  cleanups.push(() => { supervisor.shutdown(); store.close(); });
+  const id = supervisor.prepareNew({ ask: "Write the pricing page copy", runtime: "codex" });
+  expect(id).toMatch(/^r_/);
+  expect(supervisor.launch({ ask: "Write the pricing page copy for the audit", runtime: "codex" }, id)).toBe(id);
+  const end = Date.now() + 5000;
+  while (!started.length && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+  expect(started[0]!.id).toBe(id);
+  expect(warmKey(prepared[0]!)).toBe(warmKey(started[0]!));
+  expect(prepared[0]!.system).toContain("keep a plan with the update_plan tool");
+  expect(supervisor.prepareNew({ ask: "Fix it", runtime: "codex", repo: "/some/repo" })).toBeUndefined(); // its worktree doesn't exist yet
+});
+
+it("when Shua answers, its next reply's agent is readied straight away", async () => {
+  const store = new EventStore(":memory:");
+  const prepared: Array<Parameters<NonNullable<Runtime["prepare"]>>[0]> = [];
+  const fake: Runtime = Object.assign(Object.create(new MockRuntime({ pace: 0 })), {
+    id: "mock",
+    prepare: (run: (typeof prepared)[number]) => void prepared.push(run),
+    async *start() {
+      yield { type: "session", id: "shua-thread" } as const;
+      yield { type: "text", text: "Hi.", final: true } as const;
+      yield { type: "done", text: "Hi." } as const;
+    },
+  });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["mock", fake]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-lean-")), roots: [] });
+  cleanups.push(() => { supervisor.shutdown(); store.close(); });
+  const id = supervisor.launch({ ask: "Hey Shua", runtime: "mock", labels: ["buddy"] });
+  const end = Date.now() + 5000;
+  while (!prepared.length && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+  expect(prepared).toHaveLength(1);
+  expect(prepared[0]).toMatchObject({ id, lean: true, resume: "shua-thread" });
+});

@@ -21,7 +21,7 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
   if (m.method !== "turn/start") return send({ id: m.id, result: {} });
   send({ id: m.id, result: { turn: { id: "u1" } } });
   send({ method: "turn/started", params: { turn: { id: "u1" } } });
-  send({ method: "item/completed", params: { item: { id: "m1", type: "agentMessage", text: "pid " + process.pid } } });
+  send({ method: "item/completed", params: { item: { id: "m1", type: "agentMessage", text: "pid " + process.pid + " inputs " + m.params.input.length } } });
   send({ method: "turn/completed", params: { turn: { id: "u1", status: "completed" } } });
 });
 `);
@@ -48,23 +48,42 @@ it("a follow-up prepared ahead of time runs on that same process instead of star
   expect(rt.warmed).toBe(true);
   const reply = await turn(rt, spec());
   expect(spawns()).toHaveLength(1);
-  expect(reply).toBe(`pid ${spawns()[0]}`);
+  expect(reply).toBe(`pid ${spawns()[0]} inputs 1`);
   expect(rt.warmed).toBe(false); // used up, not kept
 });
 
-it("a turn that differs from what was prepared starts fresh and lets the spare go", async () => {
+it("a turn that differs from what was prepared starts fresh; the spare stays for the turn it was made for", async () => {
   writeFileSync(log, "");
   const rt = new CodexRuntime({ binary: bin }); runtimes.push(rt);
   rt.prepare(spec({ ask: "", model: "model-a" }), process.env);
   await new Promise((r) => setTimeout(r, 300));
   const reply = await turn(rt, spec({ model: "model-b" }));
   expect(spawns()).toHaveLength(2);
-  expect(reply).toBe(`pid ${spawns()[1]}`);
-  expect(rt.warmed).toBe(false);
+  expect(reply).toBe(`pid ${spawns()[1]} inputs 1`);
+  expect(rt.warmed).toBe(true);
 });
 
-it("nothing is prepared for a brand-new conversation (its instructions depend on the ask)", () => {
+it("a brand-new conversation can be prepared too, and its recalled lessons ride with the first message", async () => {
+  writeFileSync(log, "");
   const rt = new CodexRuntime({ binary: bin }); runtimes.push(rt);
   rt.prepare(spec({ ask: "", resume: undefined }), process.env);
-  expect(rt.warmed).toBe(false);
+  await new Promise((r) => setTimeout(r, 300));
+  expect(rt.warmed).toBe(true);
+  const reply = await turn(rt, spec({ resume: undefined, context: "Use pnpm, never npm." }));
+  expect(spawns()).toHaveLength(1);
+  expect(reply).toBe(`pid ${spawns()[0]} inputs 2`); // the lessons, then the ask
+});
+
+it("keeps at most two spares, letting the oldest go", async () => {
+  writeFileSync(log, "");
+  const rt = new CodexRuntime({ binary: bin }); runtimes.push(rt);
+  for (const resume of ["t-a", "t-b", "t-c"]) rt.prepare(spec({ ask: "", resume }), process.env);
+  await new Promise((r) => setTimeout(r, 400));
+  const before = spawns(); // the oldest may be let go before it even logs its start
+  const replyA = await turn(rt, spec({ resume: "t-a" })); // its spare was let go: a fresh process
+  expect(spawns()).toHaveLength(before.length + 1);
+  expect(replyA).toBe(`pid ${spawns().at(-1)} inputs 1`);
+  const replyC = await turn(rt, spec({ resume: "t-c" })); // still waiting: reused, no new process
+  expect(spawns()).toHaveLength(before.length + 1);
+  expect(before.map((pid) => `pid ${pid} inputs 1`)).toContain(replyC);
 });

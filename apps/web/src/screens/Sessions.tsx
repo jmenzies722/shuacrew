@@ -45,7 +45,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Thread } from "../components/Thread";
 import { api, cancelRun, followUp, launchRun, launchTask } from "../lib/api";
 import { conversation } from "../lib/conversation";
-import { prepareTurn } from "../lib/prepare-turn";
+import { newSessionReservation, prepareTurn } from "../lib/prepare-turn";
 import { MessageQueue } from "../components/MessageQueue";
 import { shouldSend } from "../lib/composer-keys";
 import { canRemoveSession, removeSession } from "../lib/session-removal";
@@ -639,6 +639,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
   const sendShortcut = useLive((s) => s.appearance.sendShortcut);
   // The empty hero box cycles its suggestion; it holds still once you type, in a session, or with Reduce motion.
   const [prompt, setPrompt] = useState(0);
+  const reservation = useRef(newSessionReservation()); // a new session's agent, started while you type
   const spellcheck = useLive((s) => s.appearance.spellcheck);
   const [text, setText] = useState("");
   useEffect(() => {
@@ -918,7 +919,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
       }
       const { id } = task
         ? await launchTask({ markdown: message.startsWith("#") ? message : `# ${message.split("\n")[0]}\n${message}`, ...common })
-        : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto, member: member || undefined });
+        : await launchRun({ ask: message, ...common, effort: effort || undefined, approveAll: auto, member: member || undefined, reservedId: repo ? undefined : await reservation.current.take({ runtime: runtime || undefined, model: model || undefined, effort: effort || undefined, member: member || undefined }) });
       if (repo) localStorage.setItem(RECENT, JSON.stringify([repo, ...recent.filter((r) => r !== repo)].slice(0, 8)));
       setText("");
       setFiles([]);
@@ -1038,8 +1039,9 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
               setText(e.target.value);
               setSlashIndex(0);
               setCommandsDismissed(false);
-              // A follow-up is on its way: get the agent ready while you finish typing.
+              // A message is on its way: get its agent ready while you finish typing.
               if (run && !working && e.target.value.trim()) prepareTurn(run.id);
+              if (!run && !repo && !task && !race) reservation.current.typed({ ask: e.target.value, runtime: runtime || undefined, model: model || undefined, effort: effort || undefined, member: member || undefined });
             }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;

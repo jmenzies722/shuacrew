@@ -474,7 +474,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         }
       } else if (!body.runtime && !body.model && !body.member) await refreshIntelligence("auto");
       try {
-        const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo });
+        const reservedId = typeof (body as { reservedId?: unknown }).reservedId === "string" ? (body as { reservedId: string }).reservedId : undefined;
+        const id = supervisor.launch({ ...body, ask: body.ask, repo: body.repo ?? venture?.repo }, reservedId);
         return { id };
       } catch (error) { return reply.code(409).send({ error: (error as Error).message }); }
     },
@@ -587,6 +588,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   // Backlog: start a parked session; it joins the queue and runs like any other.
   app.post<{ Params: { id: string } }>("/api/runs/:id/start", async (request, reply) =>
     supervisor.startBacklog(request.params.id) ? { ok: true } : reply.code(409).send({ error: "that session isn't waiting in your backlog" }));
+  // You're typing a new session: reserve its id and start its agent now; launch with { reservedId } to use it.
+  app.post<{ Body: { ask?: string; runtime?: string; model?: string; effort?: string; member?: string } }>("/api/runs/prepare", async (request) => {
+    const body = request.body ?? {};
+    if (!body.runtime && !body.model && !body.member) await refreshIntelligence("auto");
+    return { id: supervisor.prepareNew({ ask: body.ask ?? "", runtime: body.runtime, model: body.model, effort: body.effort, member: body.member }) ?? null };
+  });
   // You're typing a follow-up: start its agent now, so the turn begins the moment you send it.
   app.post<{ Params: { id: string } }>("/api/runs/:id/prepare", async (request) => ({ prepared: supervisor.prepare(request.params.id) }));
 

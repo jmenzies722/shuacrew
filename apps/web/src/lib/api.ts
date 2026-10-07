@@ -19,8 +19,12 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 
 export const launchTask = (body: { markdown: string; repo?: string; runtime?: string; model?: string }) => api<{ id: string }>("/api/tasks", { body });
 
-export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; member?: string; title?: string; labels?: string[] }) =>
+export const launchRun = (body: { ask: string; repo?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; member?: string; title?: string; labels?: string[]; reservedId?: string }) =>
   api<{ id: string }>("/api/runs", { body: { ...body, member: routeLaunch(body.member, getMix()) } });
+
+/** Reserve a new session's id and start its agent while you type; launch with `reservedId` to use it. */
+export const prepareRun = (body: { ask: string; runtime?: string; model?: string; effort?: string; member?: string }) =>
+  api<{ id: string | null }>("/api/runs/prepare", { body: { ...body, member: routeLaunch(body.member, getMix()) } }).then((r) => r.id).catch(() => null);
 
 export const decideApproval = (id: string, allow: boolean, extra: { always?: boolean; comment?: string } = {}) =>
   api<{ ok: boolean }>(`/api/approvals/${id}`, { body: { allow, ...extra } });
