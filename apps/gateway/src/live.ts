@@ -250,11 +250,16 @@ export class LiveVoice {
   readiness(): Promise<LiveReadiness> {
     const age = this.ready ? Date.now() - this.ready.at : Infinity;
     if (age < 30_000) return this.ready!.value;
-    const value = this.readRateLimits().then(liveReadyFrom, () => ({ usable: true }));
     if (age < 10 * 60_000) {
-      if (!this.refreshing) { this.refreshing = true; void value.finally(() => { this.ready = { at: Date.now(), value }; this.refreshing = false; }); }
+      // One refresh at a time: check before reading, or every ask in the window spawns its own app-server.
+      if (!this.refreshing) {
+        this.refreshing = true;
+        const value = this.readRateLimits().then(liveReadyFrom, () => ({ usable: true }));
+        void value.finally(() => { this.ready = { at: Date.now(), value }; this.refreshing = false; });
+      }
       return this.ready!.value;
     }
+    const value = this.readRateLimits().then(liveReadyFrom, () => ({ usable: true }));
     this.ready = { at: Date.now(), value };
     return value;
   }
