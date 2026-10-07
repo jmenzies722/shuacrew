@@ -1,31 +1,47 @@
+import CoreImage.CIFilterBuiltins
 import SwiftUI
 
-/// Noir: black, lit like a stage. A key light in your accent behind Shua (brighter while it talks, amber when something
-/// needs you, green when something lands, dim when it sleeps), a faint rim of light from above, and a vignette. The
-/// layers drift a touch against the phone's tilt, so the screen has depth: never a flat fill.
+/// The room everything sits in: black, with a slow living mesh of your accent drifting through it — brighter while
+/// Shua talks, amber when something needs you, green when something lands, deep indigo when it sleeps — a fine film
+/// grain so it reads as light, not a flat fill, and a vignette. It leans a touch against the phone's tilt.
 struct NoirBackdrop: View {
     let mood: SparkMood
     var accent: Color = .shuaPurple
     var tilt: CGVector = .zero
-    /// Where the key light sits (Shua's position on screen).
+    /// Where the light gathers (Shua's position on screen).
     var focus: UnitPoint = UnitPoint(x: 0.5, y: 0.28)
     var reach: CGFloat = 380
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: still)) { ctx in
-            let breath = still ? 1 : 1 + 0.04 * sin(ctx.date.timeIntervalSinceReferenceDate * 0.8)
-            let at = UnitPoint(x: focus.x - tilt.dx * 0.04, y: focus.y - tilt.dy * 0.03)
+        TimelineView(.animation(minimumInterval: 1 / 24, paused: still)) { ctx in
+            let t = still ? 0 : ctx.date.timeIntervalSinceReferenceDate
             ZStack {
                 Color.black
-                RadialGradient(colors: [key.opacity(intensity), key.opacity(intensity * 0.28), .clear], center: at, startRadius: 0, endRadius: reach * breath)
-                RadialGradient(colors: [key.opacity(intensity * 0.35), .clear], center: UnitPoint(x: at.x, y: at.y + 0.3), startRadius: 0, endRadius: reach * 0.7)
-                LinearGradient(colors: [.white.opacity(0.07), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.35))
-                RadialGradient(colors: [.clear, .black.opacity(0.75)], center: .center, startRadius: 220, endRadius: 760)
+                MeshGradient(width: 3, height: 3, points: points(at: t), colors: [
+                    .black, key.opacity(glow * 0.35), .black,
+                    second.opacity(glow * 0.28), key.opacity(glow), .black,
+                    .black, second.opacity(glow * 0.22), .black,
+                ], smoothsColors: true)
+                LinearGradient(colors: [.white.opacity(0.06), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.3))
+                RadialGradient(colors: [.clear, .black.opacity(0.7)], center: .center, startRadius: 240, endRadius: 820)
+                Grain()
             }
         }
         .animation(.smooth(duration: 1.2), value: mood)
         .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    /// The mesh's points: the corners pinned, the edges and the centre drifting slowly, the centre on Shua.
+    private func points(at t: Double) -> [SIMD2<Float>] {
+        func drift(_ speed: Double, _ amount: Float = 0.06) -> Float { Float(sin(t * speed)) * amount }
+        let fx = Float(focus.x - tilt.dx * 0.04), fy = Float(focus.y - tilt.dy * 0.03)
+        return [
+            [0, 0], [0.5 + drift(0.21), 0], [1, 0],
+            [0, 0.45 + drift(0.17)], [fx + drift(0.13, 0.08), fy + drift(0.11, 0.06)], [1, 0.5 + drift(0.19)],
+            [0, 1], [0.5 + drift(0.15), 1], [1, 1],
+        ]
     }
 
     private var key: Color {
@@ -36,26 +52,43 @@ struct NoirBackdrop: View {
         default: accent
         }
     }
-    private var intensity: Double {
+    /// A cooler partner colour, so the light has depth instead of one flat hue.
+    private var second: Color { mood == .concerned ? .red : mood == .sleepy ? .blue : .indigo }
+    private var glow: Double {
         switch mood {
-        case .speaking: 0.34
-        case .thinking: 0.27
-        case .sleepy: 0.12
-        default: 0.2
+        case .speaking: 0.62
+        case .thinking: 0.5
+        case .sleepy: 0.22
+        default: 0.4
         }
     }
 }
 
-/// Kept for older call sites: the Noir backdrop.
+/// Kept for older call sites: the backdrop.
 typealias ShuaStage = NoirBackdrop
+
+/// A fine film grain over the light: made once, tiled, barely there.
+struct Grain: View {
+    @MainActor private static let tile: Image? = {
+        guard let noise = CIFilter.randomGenerator().outputImage?.cropped(to: CGRect(x: 0, y: 0, width: 192, height: 192)) else { return nil }
+        let mono = CIFilter.colorControls(); mono.inputImage = noise; mono.saturation = 0
+        guard let out = mono.outputImage, let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
+        return Image(decorative: cg, scale: 2)
+    }()
+    var body: some View {
+        if let tile = Self.tile {
+            Rectangle().fill(.image(tile)).opacity(0.05).blendMode(.overlay).allowsHitTesting(false)
+        }
+    }
+}
 
 /// Where Shua stands: a soft lit floor and a contact shadow, so it's in a place, not pasted on.
 struct ShuaFloor: View {
     var accent: Color = .shuaPurple
     var body: some View {
         ZStack {
-            Ellipse().fill(RadialGradient(colors: [accent.opacity(0.28), .clear], center: .center, startRadius: 0, endRadius: 140)).frame(width: 280, height: 70)
-            Ellipse().fill(.black.opacity(0.65)).frame(width: 150, height: 22).blur(radius: 10)
+            Ellipse().fill(RadialGradient(colors: [accent.opacity(0.32), .clear], center: .center, startRadius: 0, endRadius: 140)).frame(width: 280, height: 70)
+            Ellipse().fill(.black.opacity(0.7)).frame(width: 150, height: 22).blur(radius: 10)
         }
         .allowsHitTesting(false)
     }
@@ -74,6 +107,57 @@ struct ShuaAura: View {
         .animation(active ? .easeOut(duration: 1.4).repeatForever(autoreverses: false) : .smooth, value: pulse)
         .onAppear { pulse = true }
         .allowsHitTesting(false)
+    }
+}
+
+/// The house surface: Liquid Glass with a lit top edge, so cards catch the light like real glass.
+struct LitGlass: ViewModifier {
+    var radius: CGFloat = 28
+    var tint: Color? = nil
+    func body(content: Content) -> some View {
+        content
+            .glassEffect(tint.map { .regular.tint($0.opacity(0.18)) } ?? .regular, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.04), .white.opacity(0.02)], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                .allowsHitTesting(false))
+    }
+}
+
+extension View {
+    func litGlass(_ radius: CGFloat = 28, tint: Color? = nil) -> some View { modifier(LitGlass(radius: radius, tint: tint)) }
+    /// Rows and cards ease in as they scroll into view and settle back as they leave: the list feels alive.
+    func scrollSettle() -> some View {
+        scrollTransition(.interactive, axis: .vertical) { content, phase in
+            content.opacity(phase.isIdentity ? 1 : 0.55).scaleEffect(phase.isIdentity ? 1 : 0.96).blur(radius: phase.isIdentity ? 0 : 1.5)
+        }
+    }
+}
+
+/// A soft fade at a screen's edge, so what scrolls under the status bar or the floating controls dissolves into the
+/// dark instead of colliding with them.
+struct EdgeFade: View {
+    var edge: VerticalEdge = .top
+    var height: CGFloat = 110
+    var body: some View {
+        LinearGradient(colors: [.black.opacity(0.92), .black.opacity(0.6), .clear], startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top)
+            .frame(height: height)
+            .frame(maxHeight: .infinity, alignment: edge == .top ? .top : .bottom)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+    }
+}
+
+/// A large page title with a quiet line under it, the way Apple's own apps open.
+struct PageTitle: View {
+    let title: String
+    var subtitle: String?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let subtitle { Text(subtitle).noirLabel(Noir.soft) }
+            Text(title).font(Noir.display(40)).tracking(-0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24).padding(.top, 12)
     }
 }
 

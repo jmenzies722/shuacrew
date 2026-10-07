@@ -255,6 +255,14 @@ struct EyesSetup: Equatable, Sendable, Codable {
 }
 extension EyesLens: Codable {}
 
+/// The two ways Shua films you: at the desk (the front camera, close, watching you work) or all of you (the back
+/// 0.5×, a few steps away, for content).
+enum EyesScene: String, CaseIterable, Identifiable, Sendable {
+    case desk, body
+    var id: String { rawValue }
+    var title: String { self == .desk ? "Desk" : "Full body" }
+}
+
 /// What a press of the shutter makes.
 enum EyesMode: String, CaseIterable, Identifiable, Sendable {
     case video, timelapse, photo
@@ -296,6 +304,11 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
     private(set) var deskSince: Date?
     /// Bumped once the camera has switched, so the preview follows the new lens.
     private(set) var generation = 0
+    /// What's stopping the camera right now ("Another app is using the camera."), in words; nil when it's fine.
+    private(set) var trouble: String?
+    /// Which screen shows the live picture. The camera can feed only one picture at a time: the full-screen camera
+    /// takes it while it's open and hands it back after.
+    var previewOwner: String?
 
     /// The camera, the shutter's mode and the timelapse pace, kept between launches.
     var setup: EyesSetup = EyesSetup(lens: EyesLens(rawValue: UserDefaults.standard.string(forKey: "shua.eyes.lens") ?? "") ?? .front,
@@ -307,6 +320,17 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
     }
     var mode: EyesMode = EyesMode(rawValue: UserDefaults.standard.string(forKey: "shua.eyes.mode") ?? "") ?? .video {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: "shua.eyes.mode") }
+    }
+    /// Desk or full body: picks the camera and what the shutter makes, so each is one tap.
+    var scene: EyesScene = EyesScene(rawValue: UserDefaults.standard.string(forKey: "shua.eyes.scene") ?? "") ?? .desk {
+        didSet {
+            UserDefaults.standard.set(scene.rawValue, forKey: "shua.eyes.scene")
+            guard scene != oldValue else { return }
+            switch scene {
+            case .desk: setup.lens = .front; if mode == .video { mode = .timelapse }
+            case .body: setup.lens = EyesFeed.camera(for: .backWide) != nil ? .backWide : .back; mode = .video
+            }
+        }
     }
     var every: Double = UserDefaults.standard.object(forKey: "shua.eyes.every") as? Double ?? 2 {
         didSet { UserDefaults.standard.set(every, forKey: "shua.eyes.every") }
@@ -330,7 +354,8 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
         guard await EyesFeed.allowed(.video) else { problem = "Shua needs the camera to see you: Settings → ShuaCrew → Camera."; wanted = false; return }
         on = true
         moments = Moments()
-        feed.start(setup, Self.delivery(to: self), Self.switched(to: self))
+        trouble = nil
+        feed.start(setup, Self.delivery(to: self), Self.switched(to: self), Self.troubled(to: self))
     }
 
     /// Off, for good (until you turn it on again). A recording in progress is finished and saved first.
@@ -351,6 +376,9 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
     }
     nonisolated private static func switched(to eyes: ShuaEyes) -> @Sendable () -> Void {
         { Task { @MainActor in eyes.generation += 1 } }
+    }
+    nonisolated private static func troubled(to eyes: ShuaEyes) -> @Sendable (String?) -> Void {
+        { words in Task { @MainActor in eyes.trouble = words } }
     }
 
     private func take(_ f: EyesFrame) {
@@ -426,7 +454,10 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
         UIApplication.shared.isIdleTimerDisabled = false
         let result = await feed.finishRecording()
         feed.endSound()
-        guard let (url, frames) = result else { problem = "That recording didn't save: nothing was captured."; return }
+        guard case .success(let (url, frames)) = result else {
+            if case .failure(let f) = result { problem = "That recording didn't save: \(f.reason)." }
+            return
+        }
         do {
             try await Self.saveVideo(url)
             let lasted = Date.now.timeIntervalSince(r.started)
