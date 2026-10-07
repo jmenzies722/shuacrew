@@ -31,10 +31,15 @@
     linear-gradient(90deg, color-mix(in srgb, var(--text) 6%, transparent) 1px, transparent 1px) 0 0 / 50px 50px,
     linear-gradient(180deg, color-mix(in srgb, var(--panel) 85%, #1a1f2b), color-mix(in srgb, var(--panel) 70%, #10131a));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent), 0 80px 140px -60px rgba(0, 0, 0, .9); }
+/* A slow pool of your accent drifting across the floor: the room feels lit and alive, never busy. */
+.s3-floor::before { content: ""; position: absolute; left: -25%; top: 0; width: 55%; height: 100%; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--amber) 9%, transparent), transparent); animation: s3-sweep 22s ease-in-out infinite alternate; }
+@keyframes s3-sweep { to { transform: translateX(165%); } }
 .s3-floor::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 26px; transform-origin: top; transform: rotateX(-90deg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 55%, #07080c), #06070a); border-radius: 0 0 8px 8px; }
 .s3-paths { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transform: translateZ(1px); pointer-events: none; }
-.s3-path { fill: none; stroke: color-mix(in srgb, var(--c) 22%, transparent); stroke-width: 2; stroke-dasharray: 2 10; stroke-linecap: round; }
+/* Clean floor: a path shows only while work is flowing on it or someone waits on you. */
+.s3-path { fill: none; stroke: transparent; stroke-width: 2; stroke-dasharray: 2 10; stroke-linecap: round; transition: stroke .4s; }
 .s3-path.is-live { stroke: color-mix(in srgb, var(--c) 70%, transparent); stroke-width: 3; animation: s3-flow 1s linear infinite; }
 .s3-path.is-wait { stroke: color-mix(in srgb, var(--wait) 60%, transparent); stroke-dasharray: 6 8; }
 @keyframes s3-flow { to { stroke-dashoffset: -12; } }
@@ -78,6 +83,12 @@
 .s3-hub.is-wait .s3-hub-pulse { border-color: var(--wait); animation-duration: 1.6s; }
 .s3-hub.is-wait .s3-hub-disc { box-shadow: 0 0 0 1px color-mix(in srgb, var(--wait) 55%, transparent), 0 0 80px -8px color-mix(in srgb, var(--wait) 55%, transparent); }
 @keyframes s3-pulse { 0% { transform: translateZ(3px) scale(.62); opacity: .9; } 100% { transform: translateZ(3px) scale(1.55); opacity: 0; } }
+/* Your Shua on the platform: lit in your accent, floating a little, its name and the floor's state under it. */
+.s3-lead { display: block; margin-bottom: -6px; filter: drop-shadow(0 14px 18px rgba(0, 0, 0, .55)) drop-shadow(0 0 24px color-mix(in srgb, var(--amber) 28%, transparent));
+  animation: s3-float 4.2s ease-in-out infinite; }
+.s3-lead .spark-character { display: block; }
+.s3-hub.is-wait .s3-lead { filter: drop-shadow(0 14px 18px rgba(0, 0, 0, .55)) drop-shadow(0 0 26px color-mix(in srgb, var(--wait) 45%, transparent)); }
+@keyframes s3-float { 50% { transform: translateY(-5px); } }
 .s3-hub > .s3-bill.s3-you { left: calc(50% - 80px); bottom: 50%; width: 160px; gap: 0; transform: translateZ(14px) rotateZ(calc(var(--spin) * -1)) rotateX(calc(var(--tilt) * -1)); }
 .s3-you b { padding: 6px 16px 2px; font-size: 17px; font-weight: 750; letter-spacing: -.01em; color: var(--text); text-shadow: 0 2px 14px color-mix(in srgb, var(--amber) 60%, transparent); }
 .s3-you small { padding: 2px 10px; border-radius: 99px; font-size: 11px; color: var(--text-2); background: color-mix(in srgb, var(--panel) 85%, transparent); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
@@ -114,7 +125,12 @@
 .s3-figure { position: relative; display: grid; justify-items: center; padding: 0; border: 0; background: none; color: #fff; font: inherit; cursor: pointer; transform-origin: 50% 100%; transition: transform .2s var(--ease-out, ease); }
 .s3-figure:hover { transform: translateY(-3px) scale(1.06); }
 .s3-figure:focus-visible { outline: none; }
-.s3-figure:focus-visible .s3-head, .s3-spot.is-selected .s3-head { outline: 2px solid var(--c); outline-offset: 4px; }
+.s3-figure:focus-visible .s3-bot, .s3-spot.is-selected .s3-bot { outline: 2px solid var(--c); outline-offset: 3px; border-radius: 18px; }
+/* A crew member: a robot from your Shua's family in the member's colour, its glyph as a badge. */
+.s3-bot { position: relative; display: block; filter: drop-shadow(0 10px 12px rgba(0, 0, 0, .5)); }
+.s3-bot .spark-character { display: block; }
+.s3-badge { position: absolute; right: 50%; bottom: 2px; margin-right: -32px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: color-mix(in srgb, var(--panel) 92%, transparent); box-shadow: inset 0 0 0 1.5px var(--c), 0 4px 10px -4px rgba(0, 0, 0, .6); }
 .s3-head { position: relative; z-index: 1; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
   background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--c) 68%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 55%, #000));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent), inset 0 2px 0 rgba(255, 255, 255, .25), 0 8px 18px -8px color-mix(in srgb, var(--c) 80%, transparent); }
@@ -126,7 +142,7 @@
 .s3-name { font-size: 11.5px; font-weight: 650; color: var(--text); text-shadow: 0 1px 8px var(--ink), 0 0 2px var(--ink); white-space: nowrap; }
 .s3-spot.is-idle .s3-figure, .s3-spot.is-queued .s3-figure { filter: saturate(.75) brightness(.9); }
 .s3-spot.is-queued .s3-figure { opacity: .8; }
-.s3-spot.is-failed .s3-head { box-shadow: 0 0 0 2px var(--bad), inset 0 2px 0 rgba(255, 255, 255, .25); }
+.s3-spot.is-failed .s3-bot { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--bad) 60%, transparent)); }
 
 /* What they're doing, in body language: typing at the desk, a hop when they need you, a step when they walk. */
 .s3-spot.is-working:not(.is-walking) .s3-body i { animation: s3-tap .26s ease-in-out infinite alternate; }

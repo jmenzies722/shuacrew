@@ -13,7 +13,7 @@ it("lays desks out in centred rows behind your platform", () => {
 
 it("walks an agent to you when it needs you or brings work back, else keeps it at its desk", () => {
   const desk = { x: 280, y: 300 };
-  expect(spotFor("working", desk, 0, 0)).toEqual({ x: 280, y: 248, at: "desk" });
+  expect(spotFor("working", desk, 0, 0)).toEqual({ x: desk.x + 92, y: desk.y + 10, at: "desk" }); // beside its desk, in view
   expect(spotFor("idle", desk, 0, 0).at).toBe("desk");
   expect(spotFor("waiting", desk, 0, 1)).toEqual({ x: 500, y: 630, at: "you" });
   // Three visitors: an arc behind your platform, the middle one farthest back, none on top of another.

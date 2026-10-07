@@ -28,7 +28,8 @@ export function spotFor(state: FloorState, desk: Desk, visitor: number, visitors
     const step = visitors > 1 ? Math.min(42, 150 / (visitors - 1)) : 0, a = ((-90 + (visitor - (visitors - 1) / 2) * step) * Math.PI) / 180;
     return { x: Math.round(HUB.x + Math.cos(a) * 165), y: Math.round(HUB.y + Math.sin(a) * 140), at: "you" };
   }
-  return { x: desk.x, y: desk.y - 52, at: "desk" };
+  // Beside its desk and a step forward, facing you: in full view, never hidden behind the screen it's working on.
+  return { x: desk.x + 92, y: desk.y + 10, at: "desk" };
 }
 
 export interface Camera { spin: number; tilt: number; zoom: number }

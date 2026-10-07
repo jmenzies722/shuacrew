@@ -1,8 +1,10 @@
 /**
- * The Studio floor in 3D: a room you can turn, with a desk per agent and your platform up front. Agents sit at their
- * desks while they work (the screen shows the real step), walk over to you when they need your OK or bring finished
- * work back, and walk home again. Live work flows along the floor to you. Every state and step comes from recorded
- * events; only the camera is yours to move. Pure CSS 3D (perspective + preserve-3d), no WebGL.
+ * The Studio floor in 3D: a room you can turn, with a desk per agent and your Shua — the character you designed — on
+ * the platform up front, running the floor for you: it frets when someone waits on you, cheers when work lands and
+ * thinks while the crew works. The crew are little robots from the same family as your Shua, each in its own colour.
+ * They sit at their desks while they work (the screen shows the real step), walk over to Shua when they need your OK
+ * or bring finished work back, and walk home again. Every state and step comes from recorded events; only the camera
+ * is yours to move. Pure CSS 3D (perspective + preserve-3d), no WebGL.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -15,6 +17,8 @@ import { buildStage, type StageNode } from "../lib/floor-graph";
 import { Glyph } from "../lib/glyphs";
 import { CAMERA, HUB, VIEWS, WORLD, clampCamera, deskLayout, spotFor, type Camera, type Desk } from "../lib/studio-layout";
 import { Inspector, STATE, Station, doing, owns } from "./CrewStations";
+import { SparkCharacter, type Mood } from "./SparkCharacter";
+import { ROBOT_CHARACTERS, useCompanion, type CompanionPreferences } from "../lib/companion";
 import "./crew-studio3d.css";
 
 const CAMERA_KEY = "shuacrew.studio.camera";
@@ -25,6 +29,7 @@ type Css = React.CSSProperties & Record<`--${string}`, string | number>;
 
 export function CrewStudio3D({ runs, activity, approvals, now }: { runs: Record<string, RunView>; activity: AnyEvent[]; approvals: Record<string, { run?: string | null }>; now: number }) {
   const members = useLive((s) => s.crew.members), rooms = useLive((s) => selectRooms(s.crew)), connection = useLive((s) => s.connection);
+  const me = useCompanion();
   const [selected, setSelected] = useState<string | null>(null);
   const graph = useMemo(() => buildStage({ members, rooms, runs, activity, approvals, now }), [members, rooms, runs, activity, approvals, now]);
   const agents = useMemo(() => graph.nodes.filter((n) => n.kind !== "you").sort((a, b) => a.label.localeCompare(b.label)), [graph]);
@@ -95,12 +100,12 @@ export function CrewStudio3D({ runs, activity, approvals, now }: { runs: Record<
                 d={`M ${d.x} ${d.y + 34} L ${HUB.x} ${HUB.y - 70}`} />; })}
           </svg>
           {agents.map((n) => <Desk3D key={n.id} node={n} desk={desks.get(n.id)!} live={live} />)}
-          <Hub3D waiting={waiting} working={working} />
+          <Hub3D waiting={waiting} working={working} landed={agents.some((n) => n.state === "recent")} me={me} />
           {live && agents.filter((n) => n.state === "working").map((n) => <Packets key={n.id} node={n} desk={desks.get(n.id)!} />)}
           {/* With a crowd at your platform, finished work just says "Done"; its title is on the station below. */}
           {agents.map((n) => { const v = visitors.indexOf(n), spot = spotFor(n.state, desks.get(n.id)!, Math.max(0, v), visitors.length);
             return <Agent3D key={n.id} node={n} x={spot.x} y={spot.y} away={spot.at === "you"} title={n.runId && visitors.length <= 2 ? runs[n.runId]?.title : undefined}
-              selected={selected === n.id} onPick={() => setSelected(selected === n.id ? null : n.id)} />; })}
+              selected={selected === n.id} onPick={() => setSelected(selected === n.id ? null : n.id)} look={crewLook(me, n)} />; })}
         </div>
       </div>
 
@@ -133,13 +138,33 @@ function Desk3D({ node, desk, live }: { node: StageNode; desk: Desk; live: boole
   </div>;
 }
 
-/** Your platform, front and centre: it glows amber while anyone waits on you. */
-function Hub3D({ waiting, working }: { waiting: number; working: number }) {
+/**
+ * Your platform, front and centre, with your Shua on it — the character you designed, standing in for you. It frets
+ * (and the platform glows amber) while anyone waits on you, cheers when work lands, thinks while the crew works.
+ */
+function Hub3D({ waiting, working, landed, me }: { waiting: number; working: number; landed: boolean; me: CompanionPreferences }) {
+  const mood: Mood = waiting ? "concerned" : landed ? "happy" : working ? "thinking" : "idle";
   return <div className={`s3-hub${waiting ? " is-wait" : working ? " is-busy" : ""}`} style={{ left: HUB.x - 92, top: HUB.y - 92 }}>
-    <i className="s3-hub-pulse" /><i className="s3-hub-pulse" /><i className="s3-hub-disc" /><i className="s3-hub-top" />
-    <div className="s3-bill s3-you"><b>You</b><small>{waiting ? `${waiting} waiting on you` : working ? `${working} working` : "All quiet"}</small></div>
+    <i className="s3-hub-pulse" /><i className="s3-hub-pulse" /><i className="s3-hub-disc" />
+    <div className="s3-bill s3-you">
+      <span className="s3-lead" aria-hidden="true"><SparkCharacter preferences={me} mood={mood} size={112} /></span>
+      <b>{me.nickname || "Shua"}</b>
+      <small>{waiting ? `${waiting} waiting on you` : working ? `${working} at work` : landed ? "Work just landed" : "All quiet"}</small>
+    </div>
   </div>;
 }
+
+/**
+ * A crew member, drawn as a robot from your Shua's own family: your Shua's finish and style, the member's colour, and
+ * one of the four robots chosen by who it is (so the same member always looks the same). No hats: it's a work floor.
+ */
+export function crewLook(me: CompanionPreferences, node: Pick<StageNode, "id" | "color">): CompanionPreferences {
+  let h = 0; for (const c of node.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { ...me, character: ROBOT_CHARACTERS[h % ROBOT_CHARACTERS.length]!, color: /^#[0-9a-f]{6}$/i.test(node.color) ? node.color : me.color, hat: "none", faceWear: "none", neck: "none" };
+}
+
+/** How a crew member looks while it's in each state. */
+const MOOD: Record<StageNode["state"], Mood> = { working: "thinking", waiting: "concerned", recent: "happy", failed: "concerned", queued: "idle", idle: "sleepy" } as Record<StageNode["state"], Mood>;
 
 /** Work flowing from a working agent's desk to you, along the floor. */
 function Packets({ node, desk }: { node: StageNode; desk: Desk }) {
@@ -148,7 +173,7 @@ function Packets({ node, desk }: { node: StageNode; desk: Desk }) {
 }
 
 /** An agent: stands where its state puts it, walks there when that changes, and faces you whichever way the room turns. */
-function Agent3D({ node, x, y, away, title, selected, onPick }: { node: StageNode; x: number; y: number; away: boolean; title?: string; selected: boolean; onPick: () => void }) {
+function Agent3D({ node, x, y, away, title, selected, onPick, look }: { node: StageNode; x: number; y: number; away: boolean; title?: string; selected: boolean; onPick: () => void; look: CompanionPreferences }) {
   const [walking, setWalking] = useState(false);
   const was = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
@@ -167,8 +192,8 @@ function Agent3D({ node, x, y, away, title, selected, onPick }: { node: StageNod
       {bubble && <span className="s3-bubble">{node.state === "waiting" ? <Hand size={11} /> : node.state === "recent" ? <Check size={11} /> : node.state === "failed" ? <TriangleAlert size={11} /> : null}{bubble}</span>}
       <button type="button" className="s3-figure" onClick={onPick} aria-pressed={selected}
         aria-label={`${node.label} · ${STATE[node.state]}${node.state === "working" && node.tool ? ` · ${doing(node.tool)}` : ""}`}>
-        <span className="s3-head">{node.emoji ? <Glyph name={node.emoji} fallback={node.id} label={node.label} size={18} /> : <b>{node.label.slice(0, 1)}</b>}</span>
-        <span className="s3-body"><i /><i /></span>
+        <span className="s3-bot"><SparkCharacter preferences={look} mood={MOOD[node.state] ?? "idle"} size={70} /></span>
+        {node.emoji && <span className="s3-badge"><Glyph name={node.emoji} fallback={node.id} label={node.label} size={12} /></span>}
       </button>
       <span className="s3-name">{node.label}</span>
     </div>
