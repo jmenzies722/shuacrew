@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		19B356F2653F35A563E90014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 24EE70911A11EF56A7E77608 /* Assets.xcassets */; };
 		27A8A1C0726488733F892649 /* ShuaCrewWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		30B2DC64B1C0A6AA77D663FC /* PhoneNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE5A820775E9BF5FA7623433 /* PhoneNotifications.swift */; };
 		3CFE4B0124D9D178C46064E4 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFCFF83093186660C1D0AA5C /* TodayView.swift */; };
@@ -27,6 +28,7 @@
 		A32F1A1883340C01E5501D19 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C970161BF6CE29920ED105A /* PairView.swift */; };
 		AA5ED4D6262CB46E629342B3 /* DefaultShua.json in Resources */ = {isa = PBXBuildFile; fileRef = 1AEC99DEA66413AD96EB0B8F /* DefaultShua.json */; };
 		B2CF8D8F3DF039ADFAABBE8D /* ShuaCrewMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 8AEB27639D0437F84DFAC4D0 /* ShuaCrewMobile */; };
+		B3D09F4BF1D32418F9424588 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 81DD07F211CA959B50DADB47 /* Assets.xcassets */; };
 		DC0F51F65071976D0AF7B8FE /* WatchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212EE2F56C882B15B9A10BA3 /* WatchModel.swift */; };
 		DCCDE9AAA8F86A477C4A74E9 /* CompanionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BB0BEAE4C15D865694F919 /* CompanionUITests.swift */; };
 		DD170CB355D436AC90DE99C3 /* ShuaCrewMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 8A9E27C92184F23D3BE7AEDF /* ShuaCrewMobile */; };
@@ -87,6 +89,7 @@
 		1D218FD1D749616D739F669C /* ShuaLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaLook.swift; sourceTree = "<group>"; };
 		21201FDDEB759B0C3E0E240F /* SparkFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkFace.swift; sourceTree = "<group>"; };
 		212EE2F56C882B15B9A10BA3 /* WatchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModel.swift; sourceTree = "<group>"; };
+		24EE70911A11EF56A7E77608 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2B58F80156C9C259ABB27417 /* apple */ = {isa = PBXFileReference; lastKnownFileType = folder; name = apple; path = ../../packages/apple; sourceTree = SOURCE_ROOT; };
 		42BB0BEAE4C15D865694F919 /* CompanionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionUITests.swift; sourceTree = "<group>"; };
 		498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShuaCrewWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -94,6 +97,7 @@
 		630FEE223256A8F1F1E23593 /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
 		6C970161BF6CE29920ED105A /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
 		7640A326CBD43710645D66C1 /* DockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockView.swift; sourceTree = "<group>"; };
+		81DD07F211CA959B50DADB47 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		93ED7261823C9AA050E21A63 /* ShuaCrew.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ShuaCrew.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9AE0B56317AD72D45321735D /* ShuaCrewUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ShuaCrewUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB17EECD4F91FAF99439190E /* ShuaCrewApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaCrewApp.swift; sourceTree = "<group>"; };
@@ -134,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */,
+				24EE70911A11EF56A7E77608 /* Assets.xcassets */,
 				518EF07C6987A5237AFF5235 /* CrewView.swift */,
 				C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */,
 				630FEE223256A8F1F1E23593 /* MobileModel.swift */,
@@ -149,6 +154,7 @@
 		33AEE9980E921801F41AD80F /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				81DD07F211CA959B50DADB47 /* Assets.xcassets */,
 				D27A7D2FA09061C8A150F530 /* ShuaCrewWatchApp.swift */,
 				212EE2F56C882B15B9A10BA3 /* WatchModel.swift */,
 			);
@@ -296,6 +302,7 @@
 			buildConfigurationList = 03C8480B4721081244EA7592 /* Build configuration list for PBXNativeTarget "ShuaCrewWatch" */;
 			buildPhases = (
 				5821752730EC12853B1983BA /* Sources */,
+				F0A37CD596E3A452D6A8D999 /* Resources */,
 				807955881DCD7CAFA60E52F5 /* Frameworks */,
 			);
 			buildRules = (
@@ -386,7 +393,16 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				19B356F2653F35A563E90014 /* Assets.xcassets in Resources */,
 				AA5ED4D6262CB46E629342B3 /* DefaultShua.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0A37CD596E3A452D6A8D999 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B3D09F4BF1D32418F9424588 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
