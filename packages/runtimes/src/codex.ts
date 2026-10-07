@@ -31,7 +31,11 @@ export function codexThreadOverrides(run: RunSpec): Json {
       ...(run.lean ? {plugins:{
         "unified-computer-use@openai-bundled":{enabled:false},
         "computer-use@openai-bundled":{enabled:false},
-      }} : {}),
+      }} : {
+        // Codex's plan tool is off by default: without it a work session can't keep the checklist the plan card shows
+        // (measured: 0 plan updates on a multi-step task; 4 with it on). Only these threads, not your Codex config.
+        tools:{update_plan:{enabled:true}},
+      }),
     },
   };
 }
