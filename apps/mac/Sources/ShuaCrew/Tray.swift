@@ -393,20 +393,26 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
 
     static let amber = NSColor(srgbRed: 1, green: 0.69, blue: 0.125, alpha: 1)
 
-    /// The ShuaCrew mark as a template image, so it follows the menu bar's light or dark.
+    /// The ShuaCrew mark as a template image, so it follows the menu bar's light or dark: Shua's voice inside the
+    /// crew's orbit, three crew on the ring (the app icon's drawing, scripts/brand/mark.mjs, at 18pt).
     static let glyph: NSImage = {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            let centre = NSPoint(x: 9, y: 9), radius: CGFloat = 6.6
             NSColor.black.set()
-            let ring = NSBezierPath(ovalIn: NSRect(x: 5, y: 5, width: 8, height: 8))
-            ring.lineWidth = 1.6
+            let ring = NSBezierPath(ovalIn: NSRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+            ring.lineWidth = 1.3
             ring.stroke()
-            let outer = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 14, height: 14))
-            outer.lineWidth = 1
-            NSColor.black.withAlphaComponent(0.45).set()
-            outer.stroke()
-            NSColor.black.set()
-            for (x, y) in [(9.0, 16.0), (15.1, 5.5), (2.9, 5.5)] {
-                NSBezierPath(ovalIn: NSRect(x: x - 1.9, y: y - 1.9, width: 3.8, height: 3.8)).fill()
+            // The voice: three rounded bars, tallest in the middle.
+            for (dx, height) in [(-2.6, 4.2), (0.0, 7.0), (2.6, 4.2)] as [(CGFloat, CGFloat)] {
+                NSBezierPath(roundedRect: NSRect(x: centre.x + dx - 0.75, y: centre.y - height / 2, width: 1.5, height: height), xRadius: 0.75, yRadius: 0.75).fill()
+            }
+            // The crew, each cut free of the ring by a clear halo (top, lower right, lower left).
+            for angle in [90.0, -30.0, 210.0] as [CGFloat] {
+                let point = NSPoint(x: centre.x + radius * cos(angle * .pi / 180), y: centre.y + radius * sin(angle * .pi / 180))
+                NSGraphicsContext.current?.compositingOperation = .clear
+                NSBezierPath(ovalIn: NSRect(x: point.x - 2.6, y: point.y - 2.6, width: 5.2, height: 5.2)).fill()
+                NSGraphicsContext.current?.compositingOperation = .sourceOver
+                NSBezierPath(ovalIn: NSRect(x: point.x - 1.75, y: point.y - 1.75, width: 3.5, height: 3.5)).fill()
             }
             return true
         }

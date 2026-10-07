@@ -26,9 +26,11 @@
 		9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */; };
 		A32F1A1883340C01E5501D19 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C970161BF6CE29920ED105A /* PairView.swift */; };
 		B2CF8D8F3DF039ADFAABBE8D /* ShuaCrewMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 8AEB27639D0437F84DFAC4D0 /* ShuaCrewMobile */; };
+		CD8563D67C470AC2988A5CDE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DEDDF6765F11BDF3B90FAAED /* Assets.xcassets */; };
 		DC0F51F65071976D0AF7B8FE /* WatchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212EE2F56C882B15B9A10BA3 /* WatchModel.swift */; };
 		DCCDE9AAA8F86A477C4A74E9 /* CompanionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BB0BEAE4C15D865694F919 /* CompanionUITests.swift */; };
 		DD170CB355D436AC90DE99C3 /* ShuaCrewMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 8A9E27C92184F23D3BE7AEDF /* ShuaCrewMobile */; };
+		F72819153590D19EEB3CB879 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BBBA29E540B2B31D74D1B1D2 /* Assets.xcassets */; };
 		F8CA7A5BDFA537F02CE550F5 /* MobileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630FEE223256A8F1F1E23593 /* MobileModel.swift */; };
 		FF5DF1BF1EB1D297AB84DD47 /* ShuaLook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D218FD1D749616D739F669C /* ShuaLook.swift */; };
 /* End PBXBuildFile section */
@@ -98,10 +100,12 @@
 		AC020B17C7E33D6AD8CC1ACE /* SparkHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHomeView.swift; sourceTree = "<group>"; };
 		AD2A012F25E3B975CCAB5DEC /* ShuaCrewWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShuaCrewWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AFCFF83093186660C1D0AA5C /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		BBBA29E540B2B31D74D1B1D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BEE50C7AB0E0B552CF09E5F9 /* ShuaTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaTabs.swift; sourceTree = "<group>"; };
 		C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalView.swift; sourceTree = "<group>"; };
 		C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppDelegate.swift; sourceTree = "<group>"; };
 		D27A7D2FA09061C8A150F530 /* ShuaCrewWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaCrewWatchApp.swift; sourceTree = "<group>"; };
+		DEDDF6765F11BDF3B90FAAED /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E246E7A19D93D8C091FBAACD /* ShuaVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaVoice.swift; sourceTree = "<group>"; };
 		E69C60B1D61E9AC5FEA342A3 /* SparkLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkLink.swift; sourceTree = "<group>"; };
 		ECA9AE331B6B0918A9D7A3BD /* ShuaCrewTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ShuaCrewTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -128,6 +132,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		25E09A2BCCE05B87A01EF7E1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				BBBA29E540B2B31D74D1B1D2 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		2E06EC56B2E22632B742D571 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -210,6 +222,8 @@
 			isa = PBXGroup;
 			children = (
 				D26C68F7185FB0990CF170E5 /* Packages */,
+				25E09A2BCCE05B87A01EF7E1 /* Resources */,
+				FFBDC05D4606FC7BA11A7934 /* Resources */,
 				2E06EC56B2E22632B742D571 /* Sources */,
 				33AEE9980E921801F41AD80F /* Sources */,
 				6B0127AD7169F5F226E80399 /* Tests */,
@@ -225,6 +239,15 @@
 				2B58F80156C9C259ABB27417 /* apple */,
 			);
 			name = Packages;
+			sourceTree = "<group>";
+		};
+		FFBDC05D4606FC7BA11A7934 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				DEDDF6765F11BDF3B90FAAED /* Assets.xcassets */,
+			);
+			name = Resources;
+			path = ../watch/Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -253,6 +276,7 @@
 			buildConfigurationList = D2F179A72844CC32BE01D895 /* Build configuration list for PBXNativeTarget "ShuaCrew" */;
 			buildPhases = (
 				D705804D0B1FBFBD408A7E08 /* Sources */,
+				8E21523DEC7B4F3D0328C3B8 /* Resources */,
 				E83ADF1F12D475467D7EAFAC /* Frameworks */,
 				842181D9064C513C415CA312 /* Embed Watch Content */,
 			);
@@ -292,6 +316,7 @@
 			buildConfigurationList = 03C8480B4721081244EA7592 /* Build configuration list for PBXNativeTarget "ShuaCrewWatch" */;
 			buildPhases = (
 				5821752730EC12853B1983BA /* Sources */,
+				F0A37CD596E3A452D6A8D999 /* Resources */,
 				807955881DCD7CAFA60E52F5 /* Frameworks */,
 			);
 			buildRules = (
@@ -376,6 +401,25 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8E21523DEC7B4F3D0328C3B8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F72819153590D19EEB3CB879 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0A37CD596E3A452D6A8D999 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD8563D67C470AC2988A5CDE /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1D0D0E767EF36227FC2F657B /* Sources */ = {

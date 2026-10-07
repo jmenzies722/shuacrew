@@ -16,7 +16,7 @@ targets:
   ShuaCrew:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources: [Sources, Resources/Assets.xcassets]
     info:
       path: Resources/Info.plist
       properties:
@@ -36,11 +36,12 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   ShuaCrewWatch:
     type: application
     platform: watchOS
     deploymentTarget: "27.0"
-    sources: [../watch/Sources]
+    sources: [../watch/Sources, ../watch/Resources/Assets.xcassets]
     dependencies:
       - package: ShuaCrewMobile
     settings:
@@ -51,6 +52,7 @@ targets:
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: dev.shuacrew.ios
         INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO
         SKIP_INSTALL: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   ShuaCrewWatchTests:
     type: bundle.unit-test
     platform: watchOS

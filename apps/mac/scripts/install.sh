@@ -6,16 +6,8 @@ cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}"
 # The installed window and the gateway must use the same current interface.
 (cd ../web && node node_modules/vite/bin/vite.js build)
-if [ ! -f Resources/AppIcon.icns ]; then
-  ICON=$(mktemp -d)
-  swift scripts/make-icon.swift "$ICON/icon.png"
-  mkdir -p "$ICON/AppIcon.iconset"
-  for s in 16 32 128 256 512; do
-    sips -z $s $s "$ICON/icon.png" --out "$ICON/AppIcon.iconset/icon_${s}x${s}.png" >/dev/null
-    sips -z $((s * 2)) $((s * 2)) "$ICON/icon.png" --out "$ICON/AppIcon.iconset/icon_${s}x${s}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICON/AppIcon.iconset" -o Resources/AppIcon.icns
-fi
+# Every icon comes from one drawing (scripts/brand/mark.mjs); regenerate with `node scripts/make-icons.mjs`.
+[ -f Resources/AppIcon.icns ] || (cd ../.. && node scripts/make-icons.mjs)
 swift build -c release --product ShuaCrew
 BIN=$(swift build -c release --show-bin-path)/ShuaCrew
 STAGE=$(mktemp -d)/ShuaCrew.app

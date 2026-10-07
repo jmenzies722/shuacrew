@@ -9,40 +9,44 @@ import { useLive } from "./live";
 
 export const reduced = () => typeof document !== "undefined" && document.documentElement.dataset.motion === "reduced";
 
-/** The ShuaCrew mark, alive: the three agents drift around their orbit and the core breathes. */
 /**
- * The ShuaCrew mark — a lit core, an orbit, three crew — drawn in the theme's own accent (and a second
- * tint derived from it), so it matches every palette. `bare` drops the tile for inline use (sidebar, top
- * bar); `spin` lets the crew orbit and the core breathe.
+ * The ShuaCrew mark, alive — Shua's voice inside the crew's orbit, three crew on the ring, on an obsidian tile
+ * (the app icon's drawing, scripts/brand/mark.mjs). Chrome on black; the glow is the theme's accent. `bare`
+ * drops the tile and draws in the text colour for inline use; `spin` lets the crew orbit and the voice breathe.
  */
 export function LogoMark({ size = 56, spin = true, bare = false }: { size?: number; spin?: boolean; bare?: boolean }) {
   const id = useId().replace(/:/g, "");
   const stop = (offset: string, color: string, opacity?: number) => <stop offset={offset} style={{ stopColor: color, ...(opacity === undefined ? {} : { stopOpacity: opacity }) }} />;
-  // Three stacked layers of one drawing: the moving parts (core, orbit) live in their own HTML boxes, so the browser
+  // Three stacked layers of one drawing: the moving parts (voice, crew) live in their own HTML boxes, so the browser
   // spins and breathes them on the GPU. Animating shapes inside one SVG re-laid-out the page every frame.
   const layer = { position: "absolute", inset: 0, width: size, height: size } as const;
+  // The icon's geometry (1024 grid, full-bleed tile) scaled to 64: ring r 15.4, five bars, crew at -90°, 30°, 150°.
+  const R = 15.4, bars: Array<[number, number]> = [[-9.8, 9.3], [-4.9, 16.2], [0, 21.3], [4.9, 16.2], [9.8, 9.3]];
+  const crew = [-90, 30, 150].map((a) => [32 + R * Math.cos((a * Math.PI) / 180), 32 + R * Math.sin((a * Math.PI) / 180)] as const);
+  const metal = bare ? "var(--text)" : `url(#${id}-bar)`;
   return (
     <span className={`logo-mark ${spin ? "is-live" : ""} ${bare ? "is-bare" : ""}`} style={{ position: "relative", display: "inline-block", width: size, height: size, flex: "none" }} aria-hidden>
       <svg width={size} height={size} viewBox="0 0 64 64" style={layer}>
         <defs>
-          <linearGradient id={`${id}-tile`} x1="0" y1="0" x2="0" y2="1">{stop("0", "var(--logo-tile-a)")}{stop(".5", "var(--logo-tile-b)")}{stop("1", "var(--logo-tile-c)")}</linearGradient>
-          <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)", 0.55)}{stop(".55", "var(--amber)", 0.12)}{stop("1", "var(--accent-2)", 0.35)}</linearGradient>
-          <linearGradient id={`${id}-core`} x1="0" y1="0" x2="1" y2="1">{stop("0", "var(--logo-hi)")}{stop(".5", "var(--amber)")}{stop("1", "var(--accent-2)")}</linearGradient>
-          <linearGradient id={`${id}-crew`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fff")}{stop("1", "var(--logo-hi)")}</linearGradient>
-          <radialGradient id={`${id}-glow`} cx=".5" cy=".5" r=".5">{stop("0", "var(--amber)", 0.42)}{stop("1", "var(--amber)", 0)}</radialGradient>
+          <radialGradient id={`${id}-tile`} cx=".5" cy=".3" r=".85">{stop("0", "var(--logo-tile-a)")}{stop(".38", "var(--logo-tile-b)")}{stop("1", "var(--logo-tile-c)")}</radialGradient>
+          <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fff", 0.46)}{stop(".45", "#fff", 0.07)}{stop("1", "#fff", 0.16)}</linearGradient>
+          <linearGradient id={`${id}-bar`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fff")}{stop(".44", "#e8e9ef")}{stop(".56", "#c3c6d0")}{stop("1", "#f2f3f7")}</linearGradient>
+          <radialGradient id={`${id}-glow`} cx=".5" cy=".56" r=".5">{stop("0", "var(--amber)", bare ? 0.22 : 0.34)}{stop("1", "var(--amber)", 0)}</radialGradient>
         </defs>
         {!bare && <rect width="64" height="64" rx="15" fill={`url(#${id}-rim)`} />}
-        {!bare && <rect x=".8" y=".8" width="62.4" height="62.4" rx="14.2" fill={`url(#${id}-tile)`} />}
-        <circle cx="32" cy="32" r={bare ? 30 : 24} fill={`url(#${id}-glow)`} />
-        <circle cx="32" cy="32" r="16" fill="none" stroke="var(--logo-hi)" strokeOpacity=".32" strokeWidth={bare ? 1.6 : 0.9} />
+        {!bare && <rect x=".6" y=".6" width="62.8" height="62.8" rx="14.4" fill={`url(#${id}-tile)`} />}
+        <circle cx="32" cy="34" r={bare ? 30 : 25} fill={`url(#${id}-glow)`} />
       </svg>
       <span className="logo-core" style={layer}><svg width={size} height={size} viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r="7.7" fill="none" stroke={`url(#${id}-core)`} strokeWidth={bare ? 4.4 : 3.4} />
+        {bars.map(([dx, h]) => <rect key={dx} x={32 + dx - 1.85} y={32 - h / 2} width="3.7" height={h} rx="1.85" fill={metal} />)}
       </svg></span>
       <span className="logo-orbit" style={layer}><svg width={size} height={size} viewBox="0 0 64 64">
-        <circle cx="32" cy="16" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
-        <circle cx="45.9" cy="40" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
-        <circle cx="18.1" cy="40" r={bare ? 4.2 : 3.3} fill={`url(#${id}-crew)`} />
+        <defs>
+          <linearGradient id={`${id}-ring2`} x1="0" y1="0" x2="0" y2="1">{stop("0", "#fbfbfd")}{stop(".5", "#9da1ae")}{stop("1", "#d7d9e1")}</linearGradient>
+          <radialGradient id={`${id}-node2`} cx=".4" cy=".34" r=".7">{stop("0", "#fff")}{stop(".55", "#eceaf6")}{stop("1", "var(--logo-hi)")}</radialGradient>
+        </defs>
+        <circle cx="32" cy="32" r={R} fill="none" stroke={bare ? "var(--text)" : `url(#${id}-ring2)`} strokeOpacity={bare ? 0.85 : 1} strokeWidth="2.3" />
+        {crew.map(([x, y]) => <g key={`${x}`}>{!bare && <circle cx={x} cy={y} r="3.6" fill="#09090b" />}<circle cx={x} cy={y} r="2.6" fill={bare ? "var(--text)" : `url(#${id}-node2)`} /></g>)}
       </svg></span>
     </span>
   );

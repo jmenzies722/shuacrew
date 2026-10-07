@@ -10,11 +10,11 @@
   --accent-grad: linear-gradient(135deg, var(--amber), var(--accent-2));
   --accent-grad-soft: linear-gradient(135deg, color-mix(in srgb, var(--amber) 16%, transparent), color-mix(in srgb, var(--accent-2) 12%, transparent));
   --accent-glow: color-mix(in srgb, var(--amber) 45%, transparent);
-  /* The logo's own tokens (LogoMark): a tile of the palette's inks, lit by the accent. */
+  /* The logo's own tokens (LogoMark): an obsidian tile like the app icon's, a breath of the accent in its light. */
   --logo-hi: color-mix(in srgb, var(--amber) 38%, #fff);
-  --logo-tile-a: color-mix(in srgb, var(--amber) 16%, var(--raised));
-  --logo-tile-b: color-mix(in srgb, var(--amber) 6%, var(--ink));
-  --logo-tile-c: color-mix(in srgb, var(--amber) 4%, var(--sunken));
+  --logo-tile-a: color-mix(in srgb, var(--amber) 7%, #3a3a42);
+  --logo-tile-b: color-mix(in srgb, var(--amber) 3%, #141417);
+  --logo-tile-c: #000;
 }
 :root[data-theme="light"] {
   --logo-hi: color-mix(in srgb, var(--amber) 55%, #fff);
