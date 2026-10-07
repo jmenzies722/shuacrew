@@ -84,3 +84,27 @@ it("pairs by the Mac's Tailscale name, which iOS allows, when MagicDNS is on", a
   expect(dnsNameFrom(JSON.stringify({ Self: { DNSName: "evil.example.com." } }))).toBeUndefined();
   expect(dnsNameFrom("not json")).toBeUndefined();
 });
+
+it("compresses what it sends the phone when the phone accepts it", async () => {
+  const { app, door } = await gateway();
+  const { key } = (await app.inject({ method: "POST", url: "/api/phone/pair", headers: { "x-shuacrew": "1" } })).json();
+  const at = door.address()!;
+  const { request } = await import("node:http");
+  const { gunzipSync } = await import("node:zlib");
+  const get = (encoding: string) => new Promise<{ headers: Record<string, unknown>; body: Buffer }>((done, fail) => {
+    const req = request({ host: at.host, port: at.port, path: "/phone/api/snapshot", headers: { "x-shuacrew-key": key, "accept-encoding": encoding } }, (res) => {
+      const chunks: Buffer[] = []; res.on("data", (c) => chunks.push(c)); res.on("end", () => done({ headers: res.headers, body: Buffer.concat(chunks) }));
+    });
+    req.on("error", fail); req.end();
+  });
+  for (const ask of ["Fix the flaky upload test", "Write the pricing page", "Review the auth module", "Research onboarding flows"]) {
+    await app.inject({ method: "POST", url: "/api/runs", headers: { "x-shuacrew": "1" }, payload: { ask, runtime: "mock" } });
+  }
+  await new Promise((r) => setTimeout(r, 300)); // the crew at work: a snapshot worth compressing
+  const plain = await get("identity"), packed = await get("gzip, deflate, br");
+  expect(plain.headers["content-encoding"]).toBeUndefined();
+  expect(plain.body.length).toBeGreaterThan(1024); // big enough to be worth it, so this really exercises gzip
+  expect(packed.headers["content-encoding"]).toBe("gzip");
+  expect(gunzipSync(packed.body).toString()).toBe(plain.body.toString());
+  expect(packed.body.length).toBeLessThan(plain.body.length);
+});

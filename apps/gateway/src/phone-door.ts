@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import type { Hub } from "./hub.js";
@@ -186,7 +187,14 @@ export class PhoneDoor {
       const r = await app.inject({ method: request.method as "GET", url, headers, payload: request.body as object | undefined });
       const type = r.headers["content-type"];
       if (type) void reply.header("content-type", type);
-      return reply.code(r.statusCode).send(r.rawPayload);
+      // Over Tailscale to the phone, the crew's state compresses several times over: gzip anything worth it when the
+      // phone accepts it (URLSession unpacks it on its own). Tiny replies go as they are.
+      const body = r.rawPayload;
+      if (body.length > 1024 && /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? "")) && /json|text|ndjson/.test(String(type ?? ""))) {
+        void reply.header("content-encoding", "gzip").header("vary", "accept-encoding");
+        return reply.code(r.statusCode).send(gzipSync(body, { level: 6 }));
+      }
+      return reply.code(r.statusCode).send(body);
     });
     return door;
   }
