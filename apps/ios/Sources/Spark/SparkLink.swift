@@ -296,7 +296,45 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         }
         let final = Self.clean(latest)
         reply(final.isEmpty ? "Done." : final)
-        ShuaVoice.shared.say(final)
+        speak(final)
+    }
+
+    /// Shua's reply, aloud, in the same voice as on the Mac: ShuaCrew's voice engine through the phone door, clip by
+    /// clip as they're made. The iPhone's own voice only if the engine can't be reached.
+    func speak(_ text: String) {
+        let voice = ShuaVoice.shared
+        guard voice.enabled, !text.isEmpty else { return }
+        guard let id = look?.voiceId, pairing != nil else { voice.say(text); return }
+        let speed = min(1.2, max(0.8, look?.voiceSpeed ?? 1)), g = voice.begin()
+        Task { [weak self] in
+            guard let self else { return }
+            var spoke = false
+            for piece in Self.pieces(text) {
+                guard let stream = try? await self.stream("/phone/api/speech/synthesize", body: ["id": "phone-\(g)-\(UUID().uuidString.prefix(8))", "generation": 1, "voiceId": id, "text": piece, "speed": speed]) else { break }
+                do {
+                    for try await line in stream.lines {
+                        guard let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], j["type"] as? String == "audio",
+                              let b64 = j["data"] as? String, let clip = Data(base64Encoded: b64) else { continue }
+                        voice.enqueue(clip, generation: g); spoke = true
+                    }
+                } catch { break }
+            }
+            if !spoke { voice.say(text) } // the engine isn't there: still say it
+        }
+    }
+
+    /// The engine takes up to 600 characters a request: whole sentences, packed.
+    static func pieces(_ text: String) -> [String] {
+        var out: [String] = [], current = ""
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { s, _, _, _ in
+            guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return }
+            for part in stride(from: 0, to: s.count, by: 560).map({ String(s.dropFirst($0).prefix(560)) }) {
+                if current.count + part.count + 1 > 560, !current.isEmpty { out.append(current); current = "" }
+                current += current.isEmpty ? part : " " + part
+            }
+        }
+        if !current.isEmpty { out.append(current) }
+        return out
     }
 
     private func update(_ text: String, pending: Bool) {
@@ -351,6 +389,19 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     }
 
     // MARK: Plumbing
+
+    /// A streamed POST (newline-delimited JSON) through the phone door.
+    private func stream(_ path: String, body: [String: Any]) async throws -> URLSession.AsyncBytes {
+        guard let pairing, let url = URL(string: "http://\(pairing.host):\(pairing.port)\(path)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue(pairing.key, forHTTPHeaderField: "x-shuacrew-key")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (bytes, response) = try await session.bytes(for: request)
+        guard ((response as? HTTPURLResponse)?.statusCode ?? 0) == 200 else { throw URLError(.badServerResponse) }
+        return bytes
+    }
 
     private func request(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> Data {
         guard let pairing, let url = URL(string: "http://\(pairing.host):\(pairing.port)\(path)") else { throw URLError(.badURL) }

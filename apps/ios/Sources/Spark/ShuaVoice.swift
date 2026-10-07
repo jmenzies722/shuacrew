@@ -12,6 +12,10 @@ import Speech
         set { UserDefaults.standard.set(newValue, forKey: "shua.voice"); if !newValue { stop() } }
     }
     @ObservationIgnored private let synth = AVSpeechSynthesizer()
+    /// Clips from ShuaCrew's voice engine (WAV), played back to back as they arrive.
+    @ObservationIgnored private var clips: [Data] = []
+    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private var generation = 0
 
     override private init() { super.init(); synth.delegate = self }
 
@@ -34,12 +38,37 @@ import Speech
         synth.speak(utterance)
     }
 
-    func stop() { synth.stopSpeaking(at: .immediate) }
+    func stop() { synth.stopSpeaking(at: .immediate); generation += 1; clips = []; player?.stop(); player = nil; if speaking { done() } }
+
+    /// A new reply in Shua's own voice: returns its generation, so late clips from an older reply are dropped.
+    func begin() -> Int { stop(); try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers]); try? AVAudioSession.sharedInstance().setActive(true); return generation }
+    func enqueue(_ clip: Data, generation g: Int) {
+        guard enabled, g == generation else { return }
+        clips.append(clip)
+        if player == nil { playNext() }
+    }
+    private func playNext() {
+        guard !clips.isEmpty else { player = nil; if speaking { done() }; return }
+        let clip = clips.removeFirst()
+        guard let p = try? AVAudioPlayer(data: clip) else { playNext(); return }
+        p.delegate = clipDelegate
+        player = p; speaking = true
+        p.play()
+    }
+    @ObservationIgnored private lazy var clipDelegate = ClipDelegate { [weak self] in self?.playNext() }
 
     nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didStart u: AVSpeechUtterance) { Task { @MainActor in self.speaking = true } }
     nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) { Task { @MainActor in self.done() } }
     nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel u: AVSpeechUtterance) { Task { @MainActor in self.done() } }
     private func done() { speaking = false; try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+}
+
+/// Tells ShuaVoice a clip ended (AVAudioPlayer calls back on the main thread).
+final class ClipDelegate: NSObject, AVAudioPlayerDelegate {
+    let next: @MainActor () -> Void
+    init(next: @escaping @MainActor () -> Void) { self.next = next }
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { MainActor.assumeIsolated { next() } }
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) { MainActor.assumeIsolated { next() } }
 }
 
 /// Hold to talk: what you say, transcribed live (on this iPhone when it can), handed to Shua when you let go.

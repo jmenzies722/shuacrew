@@ -20,3 +20,9 @@ it("lets the paired phone read the look and the brief, nothing more", () => {
   expect(phoneAllowed("GET", "/api/brief")).toBe(true);
   expect(phoneAllowed("POST", "/api/shua/look")).toBe(false);
 });
+
+it("carries Shua's voice, validated, so the phone speaks with the same one", () => {
+  expect(toLook({ markup: svg, css: "", voiceId: "michael", voiceSpeed: 1.05 }, 1)).toMatchObject({ voiceId: "michael", voiceSpeed: 1.05 });
+  const odd = toLook({ markup: svg, css: "", voiceId: "../etc", voiceSpeed: 9 }, 1)!;
+  expect(odd.voiceId).toBeUndefined(); expect(odd.voiceSpeed).toBeUndefined();
+});
