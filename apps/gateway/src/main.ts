@@ -1,5 +1,6 @@
 import { macFirstName } from "./shua-look.js";
 import { shouldArchiveLiveCall } from "./live.js";
+import { freshStartPending, performFreshStart } from "./fresh-start.js";
 /**
  * The gateway process: one long-running local daemon that owns sessions, runs, memory, schedules,
  * approvals and policy, and serves the dashboard. Everything it knows is in its event log, so a
@@ -90,6 +91,8 @@ function trimLog(file = process.env.SHUACREW_LOG) {
 export async function boot(options: { port?: number; host?: string } = {}) {
   trimLog();
   const home = dataDir();
+  // Settings → Start fresh left a marker and restarted us: erase what you made, keep your setup — before anything opens the log.
+  if (freshStartPending(home)) { const fresh = performFreshStart(home); console.log(`fresh start: kept ${fresh.kept} setup events; ${fresh.erased} others and ${fresh.moved.length} files/folders moved to ${fresh.backup}`); }
   const workspace = path.join(home, "workspace");
   mkdirSync(workspace, { recursive: true });
   const store = new EventStore(path.join(home, "shuacrew.db"));

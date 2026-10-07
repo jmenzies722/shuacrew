@@ -155,6 +155,15 @@ export class Library {
     return this.state.artifacts[id]!;
   }
 
+  /** A deleted session's artifacts: out of the library's view, its search index and the disk (their events are purged with the session). */
+  forgetArtifacts(ids: string[]) {
+    for (const id of ids) {
+      delete this.state.artifacts[id];
+      this.unindex(id);
+      if (/^[\w-]{1,80}$/.test(id)) rmSync(path.join(this.root, "artifacts", id), { recursive: true, force: true });
+    }
+  }
+
   removeArtifact(id: string) {
     if (!this.state.artifacts[id]) throw new Error(`no artifact ${id}`);
     this.store.append("artifact.removed", { id });

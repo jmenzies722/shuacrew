@@ -149,6 +149,45 @@ export class EventStore {
     if (this.db.isOpen) this.db.close();
   }
 
+  /**
+   * Erase a session for good: every event it wrote, plus events of the `about` kinds that mention it (lessons drawn from
+   * it, its approvals and reviews…) — an allowlist, so a venture, site or schedule that merely refers to the session is
+   * never collateral. The chain after the first removed event
+   * is re-linked in the same transaction, so `verify` still passes; sequence numbers keep their gaps (readers skip
+   * them). Returns how many events were removed. The caller appends the contentless run.deleted afterwards.
+   */
+  purgeRun(run: string, about: ReadonlySet<string> = new Set()): number {
+    if (!/^[\w-]{1,80}$/.test(run)) throw new Error("bad session id");
+    const kinds = [...about], marks = kinds.map(() => "?").join(",");
+    const doomed = (this.db.prepare(`SELECT seq FROM events WHERE run = ?${kinds.length ? ` OR (kind IN (${marks}) AND body LIKE ? ESCAPE '\\')` : ""} ORDER BY seq`)
+      .all(run, ...kinds, ...(kinds.length ? [`%"${run.replace(/[\\%_]/g, "\\$&")}"%`] : [])) as Array<{ seq: number }>).map((r) => r.seq);
+    if (!doomed.length) return 0;
+    const first = doomed[0]!;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const drop = this.db.prepare("DELETE FROM events WHERE seq = ?");
+      for (const seq of doomed) drop.run(seq);
+      let prev = (this.db.prepare("SELECT hash FROM events WHERE seq < ? ORDER BY seq DESC LIMIT 1").get(first) as { hash: string } | undefined)?.hash ?? GENESIS;
+      const relink = this.db.prepare("UPDATE events SET prev = ?, hash = ? WHERE seq = ?");
+      for (const row of this.db.prepare("SELECT * FROM events WHERE seq > ? ORDER BY seq").all(first) as Row[]) {
+        const hash = hashOf({ seq: row.seq, at: row.at, kind: row.kind as Kind, run: row.run, session: row.session, body: JSON.parse(row.body), prev });
+        relink.run(prev, hash, row.seq);
+        prev = hash;
+      }
+      this.db.exec("COMMIT");
+      this.lastHash = prev;
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+    return doomed.length;
+  }
+
+  /** A deleted session's action receipts (what it did on your Mac) go with it. */
+  forgetReceipts(run: string): number {
+    return Number(this.db.prepare("DELETE FROM action_receipts WHERE owner = ? OR result LIKE ?").run(run, `%"run":"${run}"%`).changes);
+  }
+
   /** Test seam: lets a test tamper with the log to prove `verify` notices. */
   unsafeExec(sql: string): void {
     this.db.exec(sql);

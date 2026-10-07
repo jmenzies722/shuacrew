@@ -81,6 +81,8 @@ export const bodies = {
   "run.priority": z.object({ priority: z.number() }),
   // Put away: gone from every list, still in the audit chain.
   "run.archived": z.object({ reason: z.string().default("") }),
+  // Deleted for good: its events are gone from the log (re-linked after) and this contentless line is all that's left.
+  "run.deleted": z.object({}),
   "run.followup": z.object({ id: z.string().optional(), text: z.string(), by: z.string().default("you") }), // another turn, same run
   "run.followup.withdrawn": z.object({ id: z.string() }), // taken back before its turn started
   "run.followup.edited": z.object({ id: z.string(), text: z.string() }),

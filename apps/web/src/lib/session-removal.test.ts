@@ -1,9 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { removeSession, canRemoveSession, sessionRemovalCopy } from "./session-removal";
-it("explains that deleting from the list retains project files and audit history", () => {
-  expect(sessionRemovalCopy.title).toBe("Delete session?");
-  expect(sessionRemovalCopy.description).toContain("project files");
-  expect(sessionRemovalCopy.description).toContain("audit history");
+it("says plainly that deleting is for good and reaches everywhere", () => {
+  expect(sessionRemovalCopy.title).toBe("Delete session for good?");
+  expect(sessionRemovalCopy.description).toContain("everywhere");
+  expect(sessionRemovalCopy.description).toContain("can't be undone");
 });
 it("rejects active and usage-paused sessions before sending a request", async () => {
   const send = vi.fn();
@@ -13,10 +13,10 @@ it("rejects active and usage-paused sessions before sending a request", async ()
   }
   expect(send).not.toHaveBeenCalled();
 });
-it("uses the real archive endpoint and propagates errors without hiding the chat", async () => {
+it("deletes through the real endpoint and propagates errors without hiding the chat", async () => {
   const send = vi.fn().mockResolvedValue({ ok: true });
   await removeSession("r_1", "done", send);
-  expect(send).toHaveBeenCalledWith("/api/runs/r_1/archive", { body: {} });
+  expect(send).toHaveBeenCalledWith("/api/runs/r_1", { method: "DELETE" });
   send.mockRejectedValue(new Error("offline"));
   await expect(removeSession("r_1", "done", send)).rejects.toThrow("offline");
 });

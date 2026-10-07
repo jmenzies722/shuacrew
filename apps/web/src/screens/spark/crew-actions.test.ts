@@ -32,9 +32,9 @@ it("rejects unknown refs and the wrong kind of ref before sending a request", as
   expect((await performNow({ type: "crew_stop", ref: "missing" })).ok).toBe(false);
   expect(decideApproval).not.toHaveBeenCalled(); expect(cancelRun).not.toHaveBeenCalled();
 });
-it("archives only finished sessions and forwards review and PR results", async () => {
+it("deletes only finished sessions (gone everywhere) and forwards review and PR results", async () => {
   expect((await performNow({ type: "crew_delete", ref: ref() })).ok).toBe(true);
-  expect(api).toHaveBeenLastCalledWith("/api/runs/target/archive", { body: {} });
+  expect(api).toHaveBeenLastCalledWith("/api/runs/target", { method: "DELETE" });
   sparkHooks.confirmDelete = async () => true;
   expect((await perform({ type: "crew_review", ref: ref(), approve: true })).message).toBe("Queued for merge");
   expect(api).toHaveBeenLastCalledWith("/api/runs/target/review", { body: { approve: true } });

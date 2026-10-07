@@ -170,6 +170,9 @@ function flush(): void {
     if (event.run) touched.add(event.run);
     if (event.kind.startsWith("approval.")) approvalsChanged = true;
   }
+  // Deleted for good (run.deleted): nothing of it stays in this window either — its cached events, its lines in the
+  // activity feed, anything it was waiting on.
+  const deleted = new Set(accepted.filter((e) => e.kind === "run.deleted" && e.run).map((e) => e.run!));
   // New references only for what changed: a streamed token re-renders its own run, not every screen.
   const runs = { ...crew.runs };
   for (const id of touched) if (runs[id]) runs[id] = { ...runs[id] };
@@ -182,7 +185,7 @@ function flush(): void {
       ...crew,
       runs,
       rooms: fresh("rooms", crew.rooms ?? {}, (r) => Object.fromEntries(Object.entries(r).filter(([, room]) => !room.archived).map(([id, room]) => [id, { ...room }]))),
-      approvals: fresh("approvals", crew.approvals, shallow),
+      approvals: deleted.size ? { ...crew.approvals } : fresh("approvals", crew.approvals, shallow),
       limited: fresh("limited", crew.limited, inForce),
       members: fresh("members", crew.members, shallow),
       artifacts: fresh("artifacts", crew.artifacts, shallow),
@@ -193,9 +196,11 @@ function flush(): void {
       plays: fresh("plays", crew.plays, deep),
       today: fresh("today", crew.today, shallow),
     },
-    runEvents: appendLoadedEvents(runEvents, accepted),
-    ...(acted.length ? { activity: [...activity, ...acted].slice(-1500) } : {}),
+    runEvents: deleted.size ? Object.fromEntries(Object.entries(appendLoadedEvents(runEvents, accepted)).filter(([id]) => !deleted.has(id))) : appendLoadedEvents(runEvents, accepted),
+    ...(acted.length || deleted.size ? { activity: [...activity, ...acted].filter((e) => !e.run || !deleted.has(e.run)).slice(-1500) } : {}),
   });
+  // Whatever holds its own copy (Shua's open conversation, Learn) lets go too.
+  if (deleted.size && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("shuacrew:deleted", { detail: [...deleted] }));
 }
 
 const ACTIVITY = new Set(["run.created", "run.status", "turn.started", "turn.completed", "tool.called", "tool.returned", "file.changed", "check.ran", "subagent.started", "subagent.finished", "approval.requested", "approval.decided", "merge.landed", "merge.failed", "pr.opened", "agent.thinking"]);
@@ -221,6 +226,12 @@ let loadedBuild: string | null = null;
  * under a half-typed message: wait until the composer is empty.
  */
 async function checkBuild(): Promise<void> {
+  // A fresh start (Settings → Start fresh) gives the workspace a new content epoch: reload at once, so this window
+  // drops what it holds and boot clears its stored content (lib/fresh-content.ts). Nothing typed survives it anyway.
+  try {
+    const { epoch } = await api<{ epoch: string | null }>("/api/content-epoch");
+    if (epoch && localStorage.getItem("shuacrew.content-epoch") && localStorage.getItem("shuacrew.content-epoch") !== epoch) { location.reload(); return; }
+  } catch { /* gateway restarting: try again next time */ }
   let build: string;
   try {
     build = (await api<{ build: string }>("/api/health")).build;
@@ -257,6 +268,7 @@ function open(): void {
   socket.onclose = () => {
     useLive.setState({ connection: "offline" });
     setTimeout(() => void checkBuild(), 1500); // a gateway restart is the usual moment a new build lands
+    setTimeout(() => void checkBuild(), 6000); // …or a fresh start (new content epoch), once it's back up
     const delay = Math.min(4000, 150 * 2 ** retry++);
     setTimeout(open, delay);
   };
