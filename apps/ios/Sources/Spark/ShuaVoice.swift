@@ -55,7 +55,7 @@ import Speech
     func start() async {
         guard !listening else { return }
         problem = nil; heard = ""
-        let speech = await withCheckedContinuation { c in SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) } }
+        let speech = await Self.speechPermission()
         guard speech == .authorized else { problem = "Allow Speech Recognition for ShuaCrew in Settings to talk to Shua."; return }
         guard await AVAudioApplication.requestRecordPermission() else { problem = "Allow the microphone for ShuaCrew in Settings to talk to Shua."; return }
         guard let recognizer, recognizer.isAvailable else { problem = "Speech recognition isn't available right now."; return }
@@ -89,6 +89,10 @@ import Speech
 
     // The microphone and the recognizer call back on their own threads: these closures are made outside the main
     // actor so they never inherit its isolation (Swift 6 would stop the app the moment audio arrived).
+    /// Measured on the iPhone: TCC answers on a background queue, so this callback must not be main-actor isolated.
+    nonisolated private static func speechPermission() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { c in SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) } }
+    }
     nonisolated private static func feed(_ request: SFSpeechAudioBufferRecognitionRequest) -> AVAudioNodeTapBlock { { buffer, _ in request.append(buffer) } }
     nonisolated private static func transcribe(_ heard: @escaping @Sendable (String) -> Void) -> (SFSpeechRecognitionResult?, (any Error)?) -> Void {
         { result, _ in if let text = result?.bestTranscription.formattedString { heard(text) } }
