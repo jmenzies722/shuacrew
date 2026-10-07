@@ -9,6 +9,7 @@ import { Coach } from "../components/Coach";
 import "../components/setting-controls.css";
 import "./settings.css";
 import "./learning.css";
+import { LearningProjects } from "../components/LearningProjects";
 
 interface Track { id: string; name: string; level: number; focus: boolean }
 interface Card { id: string; track: string; front: string; back: string; source: { run?: string; title?: string }; due: number; reps: number; lapses: number; interval: number }
@@ -18,8 +19,12 @@ interface Milestone { title: string; why: string; skills: string[]; project: str
 interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
 interface Doc { id: string; kind: "resume" | "interview"; title: string; run: string; created: number }
 interface State { profile: { goal: string; about: string; tracks: Track[] }; cards: Card[]; due: number; days: Array<{ day: string; reviews: number }>; totalReviews: number; drill: { day: string; track: string; run: string; done: boolean } | null; studied: Array<{ run: string; study: string }>; coach: Partial<Record<"analyze" | "quiz" | "explain" | "plan", { run: string }>>; courses: Course[]; roadmaps: Roadmap[]; docs: Doc[] }
-export type Tab = "overview" | "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile";
+export type Tab = "overview" | "coach" | "today" | "learn" | "roadmap" | "career" | "work" | "review" | "profile" | "projects";
 const TABS: Array<[Tab, string]> = [["overview", "My path"], ["learn", "Courses"], ["today", "Practice"], ["review", "Review"]];
+/** The Library inside Learn: one row, each thing once. Practice lives with the flashcards it drills; the roadmap and
+ * your goal live in Journey. */
+const LIBRARY: Array<[Tab, string]> = [["learn", "Courses"], ["review", "Flashcards"], ["coach", "Tutor"], ["work", "From your work"], ["career", "Career kit"], ["projects", "Projects"]];
+const inLibrary = (t: Tab): Tab => (t === "today" ? "review" : LIBRARY.some(([id]) => id === t) ? t : "learn");
 interface Session { id: string; title: string; at: number; studied: boolean }
 
 /** Suggestions only — nothing is added until you pick it. */
@@ -29,11 +34,16 @@ const SUGGESTED: Array<[string, string]> = [
 ];
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
-/** `embedded`: the Library inside Learn — no page header or overview (Learn's Today replaces them). */
-export function Learning({ embedded = false, initialTab }: { embedded?: boolean; initialTab?: Tab } = {}) {
+/**
+ * `embedded`: the Library inside Learn — no page header or overview (Learn's Today replaces them), one row of tabs.
+ * `only`: just one part, no tabs (Journey shows Goal & skills this way).
+ */
+export function Learning({ embedded = false, initialTab, only, onJourney }: { embedded?: boolean; initialTab?: Tab; only?: Tab; onJourney?: () => void } = {}) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>(initialTab ?? (embedded ? "learn" : "overview"));
-  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
+  const place = (t: Tab | undefined): Tab => only ?? (embedded ? inLibrary(t ?? "learn") : t ?? "overview");
+  const [tab, setTab] = useState<Tab>(place(initialTab));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (initialTab) setTab(place(initialTab)); }, [initialTab]);
   const [selectedLesson, setSelectedLesson] = useState<{course:string;index:number;run:string}|null>(()=>{try{const v=JSON.parse(localStorage.getItem("shuacrew.activeLesson")??"null");return v&&typeof v.course==="string"&&Number.isInteger(v.index)&&typeof v.run==="string"?v:null;}catch{return null;}});
   useEffect(() => {
     const sync = () => { try { const v=JSON.parse(localStorage.getItem("shuacrew.activeLesson")??"null"); setSelectedLesson(v && typeof v.course === "string" && Number.isInteger(v.index) && typeof v.run === "string" ? v : null); } catch { setSelectedLesson(null); } };
@@ -95,8 +105,8 @@ export function Learning({ embedded = false, initialTab }: { embedded?: boolean;
       </section>
     </div>
     }
-    <nav className="lx-tabs" role="tablist" aria-label="Learning">{(embedded ? TABS.filter(([id]) => id !== "overview") : TABS).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>
-    <div className="lx-secondary">{([['roadmap','Roadmap'],['coach','Tutor'],['work','From my work'],['career','Career kit'],['profile','Goal & skills']] as const).map(([id,label])=><button key={id} className={tab===id?'is-on':''} onClick={()=>go(id)}>{label}</button>)}</div>
+    {!only && <nav className="lx-tabs" role="tablist" aria-label={embedded ? "Library" : "Learning"}>{(embedded ? LIBRARY : TABS).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => go(id)}>{label}{id === "review" && s.due > 0 && <b>{s.due}</b>}</button>)}</nav>}
+    {!embedded && !only && <><div className="lx-secondary">{([['roadmap','Roadmap'],['coach','Tutor'],['work','From my work'],['career','Career kit'],['profile','Goal & skills']] as const).map(([id,label])=><button key={id} className={tab===id?'is-on':''} onClick={()=>go(id)}>{label}</button>)}</div></>}
     {!embedded && tab === "overview" && <section className="lx-panel"><h2>Your path, one step at a time.</h2><p className="lx-muted">Learn a concept, try the exercise, get feedback, then revisit it in Review. Building ideas live separately in Projects.</p><div className="lx-secondary"><button onClick={()=>go("learn")}>Explore courses</button><button onClick={()=>go("today")}>Practice a skill</button><Link to="/ventures">Recommended projects ↗</Link></div></section>}
     {error && <p className="lx-error" role="alert">{error}</p>}
     {tab === "coach" && <Coach runs={s.coach ?? {}} onChange={() => void load()} />}
@@ -104,8 +114,13 @@ export function Learning({ embedded = false, initialTab }: { embedded?: boolean;
       <TodayCard s={s} busy={busy} onDrill={() => act("drill", () => api("/api/learning/drill", { body: {} }))} />
       <ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} />
     </div>}
-    {tab === "review" && <div className="lx-top lx-top-single"><ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} /></div>}
+    {tab === "review" && embedded && <div className="lx-top">
+      <TodayCard s={s} busy={busy} onDrill={() => act("drill", () => api("/api/learning/drill", { body: {} }))} />
+      <ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} />
+    </div>}
+    {tab === "review" && !embedded && <div className="lx-top lx-top-single"><ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} /></div>}
     {tab === "review" && <CardLibrary cards={s.cards} tracks={tracks} onAdd={(c) => act("add", () => api("/api/learning/cards", { body: c }))} onRemove={(id) => act(`d:${id}`, () => api(`/api/learning/cards/${id}`, { method: "DELETE" }))} />}
+    {tab === "projects" && <LearningProjects onPlan={onJourney ?? (() => void navigate({ to: "/learn" }))} />}
     {tab === "learn" && <LearnAnything courses={s.courses} busy={busy} act={act} onOpen={openLesson} />}
     {tab === "roadmap" && <RoadmapTab roadmaps={s.roadmaps} goal={s.profile.goal} busy={busy} act={act} onSetGoal={() => go("profile")} />}
     {tab === "career" && <CareerKit docs={s.docs} goal={s.profile.goal} busy={busy} act={act} />}

@@ -11,6 +11,7 @@ import type { AnyEvent } from "@shuacrew/core/events";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { Markdown } from "../components/Markdown";
+import { article, goalRole } from "../lib/learn-today";
 import "./learn-career.css";
 
 export interface Milestone { title: string; why: string; skills: string[]; project: string; weeks: number; done?: boolean }
@@ -53,7 +54,7 @@ export function PathView({ state, onChange, startCourse }: { state: CareerState;
   const weeksLeft = road ? road.milestones.filter((m) => !m.done).reduce((n, m) => n + (m.weeks || 0), 0) : 0;
   return <div className="lc">
     <section className="lc-head">
-      <div><h2>{road ? (road.title || `${road.months} months to ${road.goal}`) : goal ? `A plan to become a ${goal}` : "Where are you headed?"}</h2>
+      <div><h2>{road ? (road.title || `${road.months} months to ${road.goal}`) : goal ? `A plan to become ${article(goalRole(goal))} ${goalRole(goal)}` : "Where are you headed?"}</h2>
         {road && <p className="lc-sub">{done} of {road.milestones.length} milestones · about {Math.max(1, Math.round(weeksLeft))} weeks to go</p>}</div>
       {ready.length > 1 && <div className="lc-pills" role="tablist" aria-label="Roadmaps">{ready.map((r) => <button key={r.id} type="button" role="tab" aria-selected={r.id === road?.id} className={r.id === road?.id ? "is-on" : ""} onClick={() => setPick(r.id)}>{r.title || r.goal}</button>)}</div>}
     </section>
@@ -272,7 +273,7 @@ function JobDetail({ job, busy, running, onClose, patch, fit, prep, openRun, rem
 
 // ── Ask Shua ─────────────────────────────────────────────────────────────────────────────────────────────────────
 const STARTERS = (goal: string) => [
-  goal ? `What should I focus on this week to become a ${goal}?` : "I want to change careers. Help me pick a goal and plan it.",
+  goal ? `What should I focus on this week to become ${article(goalRole(goal))} ${goalRole(goal)}?` : "I want to change careers. Help me pick a goal and plan it.",
   "Add the AWS Solutions Architect Associate exam for December",
   "I applied to a job today. Track it and remind me to follow up",
   "Which certification should I do first, and why?",

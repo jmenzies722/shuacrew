@@ -18,3 +18,12 @@ it("lays out the last seven days, today last, counting days practised rather tha
   expect(w.practised).toBe(2);
   expect(w.reviews).toBe(9);
 });
+
+it("turns your goal sentence into a role for headings", async () => {
+  const { goalRole, article } = await import("./learn-today");
+  expect(goalRole("Become an AI Platform Engineer / AI Enablement Engineer, dedicating 12 hours per week to learning and hands-on projects.")).toBe("AI Platform Engineer / AI Enablement Engineer");
+  expect(goalRole("I want to become a staff engineer while working full time")).toBe("staff engineer");
+  expect(goalRole("Cloud architect")).toBe("Cloud architect");
+  expect(article("AI Platform Engineer")).toBe("an");
+  expect(article("staff engineer")).toBe("a");
+});

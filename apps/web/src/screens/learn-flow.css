@@ -49,3 +49,7 @@
 .lf-explain { display: grid; gap: 12px; }
 
 @media (prefers-reduced-motion: reduce) { .lf-days i::after { transition: none; } .lf-anything button { transition: none; } }
+
+/* The page fills the window, so Tell Shua rests at the bottom even when a tab is short (sticky once it scrolls). */
+.learn.lf > .pane-body { min-height: 100%; display: flex; flex-direction: column; }
+.learn.lf .lc-ask { margin-top: auto; padding-top: 16px; }

@@ -198,3 +198,10 @@ kbd { padding:1px 6px; border-radius:5px; font-family:var(--font-mono); font-siz
 .lx-studio-header button:focus-visible, .lx-studio-overview button:focus-visible, .lx-pathways button:focus-visible { outline:2px solid var(--amber); outline-offset:4px; }
 @media (max-width:1000px) { .lx-studio-overview { grid-template-columns:1fr; } .lx-pathways { grid-template-columns:1fr; gap:8px; } }
 @media (max-width:600px) { .lx-studio-header { align-items:flex-start; flex-direction:column; gap:12px; } .lx-continue, .lx-progress-summary { padding:20px; } }
+
+/* Projects with nothing to build yet: where they come from, and the way there. */
+.learning-projects.is-empty { display: grid; justify-items: start; gap: 8px; padding: 28px; border-radius: 20px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.learning-projects.is-empty h2 { margin: 4px 0 0; font-size: 18px; }
+.learning-projects.is-empty p { margin: 0; max-width: 560px; color: var(--text-2); font-size: 13.5px; line-height: 1.55; }
+.learning-projects.is-empty button { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; height: 32px; padding: 0 14px; border: 0; border-radius: 16px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--amber) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 30%, transparent); cursor: pointer; }
+.learning-projects.is-empty .studio-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; letter-spacing: .1em; color: var(--text-3); }

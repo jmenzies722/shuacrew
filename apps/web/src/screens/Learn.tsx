@@ -13,10 +13,9 @@ import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { learningProgress } from "../lib/learning-progress";
 import { companionName, useCompanion } from "../lib/companion";
-import { weakestSkill, weekRhythm } from "../lib/learn-today";
+import { weakestSkill, weekRhythm, article, goalRole } from "../lib/learn-today";
 import { Learning, type Tab as LibraryTab } from "./Learning";
 import { Teaching } from "./Teaching";
-import { LearningProjects } from "../components/LearningProjects";
 import { CertsView, JobsView, LearnAsk, PathView, careerSteps, type Cert, type Job } from "./LearnCareer";
 import "./learn.css";
 import { ControlHeader, Seg } from "../components/ControlRoom";
@@ -25,7 +24,7 @@ import "./learn-flow.css";
 
 /** Older links and saved tabs (path, certs, jobs) open the matching part of Journey. */
 type Mode = "today" | "journey" | "library" | "explain";
-type Legacy = "path" | "certs" | "jobs";
+type Legacy = "goal" | "path" | "certs" | "jobs";
 const MODES: ReadonlyArray<readonly [Mode, string]> = [["today", "Today"], ["journey", "Journey"], ["library", "Library"]];
 const LAST = "shuacrew.learn.tab";
 const asMode = (v: string | null): Mode | null => (v === "path" || v === "certs" || v === "jobs" ? "journey" : MODES.some(([m]) => m === v) ? (v as Mode) : null);
@@ -114,7 +113,7 @@ export function Learn({ initial = "today" }: { initial?: Mode | Legacy }) {
     if (!plan.length) plan.push(
       state.profile.goal.trim()
         ? { id: "quiz", icon: Target, title: "Find where you really stand", why: "A short quiz on your goal's core skills. Your answers become the cards that keep it fresh.", cta: "Quiz me", run: () => run("quiz", async () => { await api("/api/learning/coach", { body: { mode: "quiz", fresh: true, message: `Quiz me on the core skills for becoming a ${state.profile.goal.trim()}, one question at a time.` } }); open("coach"); }) }
-        : { id: "goal", icon: Target, title: "Tell me what you're working toward", why: "Your goal shapes the roadmap, the quizzes and the next step here.", cta: "Set my goal", run: () => open("profile") },
+        : { id: "goal", icon: Target, title: "Tell me what you're working toward", why: "Your goal shapes the roadmap, the quizzes and the next step here.", cta: "Set my goal", run: () => goJourney("goal") },
     );
   }
   const scored = insights?.tracks.filter((t) => t.reviews > 0).sort((a, b) => (a.accuracy ?? 1) - (b.accuracy ?? 1)) ?? [];
@@ -130,7 +129,8 @@ export function Learn({ initial = "today" }: { initial?: Mode | Legacy }) {
   const worked = Object.values(runs).filter((r) => (r.status === "done" || r.status === "merged") && !r.labels?.some((l) => l === "buddy" || l === "learning") && Date.now() - r.updatedAt < 36 * 3600_000)
     .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
   const [first, ...then] = plan;
-  const title = mode === "today" ? (goal ? `Becoming a ${goal}` : "Learn") : mode === "journey" ? (goal ? `Your journey to ${goal}` : "Your journey") : mode === "library" ? "Library" : "What do you want to understand?";
+  const role = goalRole(goal);
+  const title = mode === "today" ? (role ? `Becoming ${article(role)} ${role}` : "Learn") : mode === "journey" ? (role ? `Your journey to ${role}` : "Your journey") : mode === "library" ? "Library" : "What do you want to understand?";
 
   return <div className="pane-scroll learn lf"><div className="pane-body pane-body-wide">
     <ControlHeader title={title} status={!insights ? "Reading where you stand…" : statLine} tone={!insights ? "idle" : insights.due ? "live" : "ok"}>
@@ -199,8 +199,9 @@ export function Learn({ initial = "today" }: { initial?: Mode | Legacy }) {
 
     {mode === "journey" && state && <div className="lf-journey" ref={journey}>
       <nav className="lf-journey-nav" aria-label="Journey">
-        {([["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"]] as const).map(([id, label]) => <button key={id} type="button" className={section === id ? "is-on" : ""} onClick={() => { setSection(id); journey.current?.querySelector(`#learn-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{label}</button>)}
+        {([["goal", "Goal & skills"], ["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"]] as const).map(([id, label]) => <button key={id} type="button" className={section === id ? "is-on" : ""} onClick={() => { setSection(id); journey.current?.querySelector(`#learn-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{label}</button>)}
       </nav>
+      <section id="learn-goal" className="lf-part"><Learning embedded only="profile" /></section>
       <section id="learn-path" className="lf-part"><PathView state={state} onChange={() => void load()} startCourse={(topic) => void run("course", async () => { await api("/api/learning/courses", { body: { topic } }); open("learn"); })} /></section>
       <section id="learn-certs" className="lf-part"><CertsView state={state} tracks={insights?.tracks ?? []} onChange={() => void load()} review={() => open("review")}
         quiz={(topic) => void run("quiz", async () => { await api("/api/learning/coach", { body: { mode: "quiz", fresh: true, message: `Quiz me for the ${topic} exam: its highest-weight topics first, one question at a time.` } }); open("coach"); })} /></section>
@@ -211,7 +212,7 @@ export function Learn({ initial = "today" }: { initial?: Mode | Legacy }) {
       <button type="button" className="lf-back" onClick={() => setMode("today")}><ArrowLeft size={14} />Today</button>
       <Teaching bare initialQuestion={asking} autoAsk={!!asking} key={asking || "teach"} />
     </div>}
-    {mode === "library" && <><LearningProjects /><Learning embedded initialTab={libraryTab} /></>}
+    {mode === "library" && <Learning embedded initialTab={libraryTab} onJourney={() => goJourney("path")} />}
     {mode !== "explain" && state && <LearnAsk state={state} onChange={reload} />}
   </div></div>;
 }

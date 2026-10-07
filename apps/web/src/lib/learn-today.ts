@@ -26,3 +26,17 @@ export function weekRhythm(days: Array<{ day: string; reviews: number }>, today 
   });
   return { days: week, practised: week.filter((d) => d.reviews > 0).length, reviews: week.reduce((n, d) => n + d.reviews, 0) };
 }
+
+/**
+ * Your goal as a role you can put in a heading: "Become an AI Platform Engineer / AI Enablement Engineer, dedicating
+ * 12 hours per week…" → "AI Platform Engineer / AI Enablement Engineer". Drops "become (a/an)", stops at the first
+ * comma or "dedicating/spending/while…", and keeps it short. The whole sentence stays in Goal & skills.
+ */
+export function goalRole(goal: string, max = 60): string {
+  let g = goal.trim().replace(/^(i\s+want\s+to\s+|to\s+)?(become|becoming|be)\s+(an?\s+|the\s+)?/i, "");
+  g = g.split(/\s*[,;.(]\s*|\s+(?:dedicating|spending|while|by|within|in\s+\d|with\s+\d)\b/i)[0]!.trim();
+  if (g.length > max) g = g.slice(0, max).replace(/\s+\S*$/, "") + "…";
+  return g;
+}
+/** "a"/"an" for a role. */
+export const article = (role: string) => (/^[aeiou]/i.test(role) && !/^(uni|use|eu)/i.test(role) ? "an" : "a");
