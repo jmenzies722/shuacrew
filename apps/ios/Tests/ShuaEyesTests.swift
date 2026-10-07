@@ -172,3 +172,19 @@ private func silence(at t: CMTime, frames: Int = 1470) -> CMSampleBuffer {
     let seconds = try await asset.load(.duration).seconds
     #expect(seconds > 0.8 && seconds < 1.3)
 }
+
+@MainActor @Test func theNewestScreenShowsYouAndHandsBackWhenItCloses() {
+    let eyes = ShuaEyes.shared
+    eyes.claimPreview("desk-a")            // the desk on its side
+    #expect(eyes.previewOwner == "desk-a")
+    eyes.claimPreview("cam-b")             // the camera opens over it
+    #expect(eyes.previewOwner == "cam-b")
+    eyes.claimPreview("desk-c")            // a second desk appears while the camera is up
+    eyes.releasePreview("cam-b")           // the camera closes: the newest screen still up keeps the picture
+    #expect(eyes.previewOwner == "desk-c")
+    eyes.releasePreview("desk-c")
+    #expect(eyes.previewOwner == "desk-a") // back to the desk underneath, never to nobody while one is up
+    eyes.claimPreview("desk-a")            // appearing again doesn't duplicate it
+    eyes.releasePreview("desk-a")
+    #expect(eyes.previewOwner == nil)
+}

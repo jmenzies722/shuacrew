@@ -103,7 +103,8 @@ struct ShuaCam: View {
     @State private var waves = 0
     @State private var scripting = false
     @State private var guide = false
-    @State private var handBack: String?
+    /// This camera screen's claim on the live picture.
+    @State private var me = "cam-" + UUID().uuidString
     @AppStorage("shua.script") private var script = ""
     @AppStorage("shua.script.on") private var prompter = false
     @AppStorage("shua.script.speed") private var speed = 26.0
@@ -115,7 +116,7 @@ struct ShuaCam: View {
         VStack(spacing: 0) {
             // The viewfinder: just you and the light controls at the top; nothing over the middle of the shot.
             ZStack {
-                EyesPreview(accent: accent, showsBody: true)
+                EyesPreview(accent: accent, owner: me, showsBody: true)
                 if eyes.on, eyes.scene == .body, let body = eyes.body { FrameGuide(whole: body.framing == .whole).padding(.horizontal, 18).padding(.top, 128).padding(.bottom, 18).allowsHitTesting(false) } // the guides start below the top controls
                 VStack(spacing: 10) {
                     topBar
@@ -165,8 +166,8 @@ struct ShuaCam: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .task { await eyes.start() }
-        .onAppear { handBack = eyes.previewOwner; eyes.previewOwner = "cam" } // the live picture is this screen's while it's open
-        .onDisappear { eyes.previewOwner = handBack }
+        .onAppear { eyes.claimPreview(me) } // the live picture is this screen's while it's open
+        .onDisappear { eyes.releasePreview(me) }
         .onChange(of: eyes.moment) { _, m in
             guard let m else { return }
             switch m.kind {

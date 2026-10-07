@@ -15,6 +15,8 @@ struct DeskView: View {
     let start: () -> Void
     let finish: () -> Void
     @State private var camera = false
+    /// This desk's claim on the live picture (the desk on its side and the full-screen desk are two different screens).
+    @State private var me = "desk-" + UUID().uuidString
     private var eyes: ShuaEyes { .shared }
     private var voice: ShuaVoice { .shared }
     private var accent: Color { link.look?.accentColor ?? .shuaPurple }
@@ -32,7 +34,7 @@ struct DeskView: View {
                     .padding(.horizontal, 36).padding(.top, 14).padding(.bottom, inline ? 74 : 18)
                 } else {
                     VStack(spacing: 16) {
-                        VStack(spacing: 10) { shua.frame(height: geo.size.height * 0.3); presence }
+                        VStack(spacing: 10) { shua.frame(height: geo.size.height * 0.26); presence } // leaves the corner for you
                         panel(wide: false)
                     }
                     .padding(.horizontal, 24).padding(.top, 56).padding(.bottom, inline ? 64 : 24)
@@ -44,6 +46,10 @@ struct DeskView: View {
                 .onChanged { value in if case .second(true, _) = value, !listen.listening { start() } }
                 .onEnded { _ in finish() })
             .animation(.smooth(duration: 0.35), value: listen.listening)
+        }
+        .overlay(alignment: .topTrailing) {
+            // Upright, you sit in the corner like FaceTime's picture-in-picture.
+            GeometryReader { geo in if geo.size.height > geo.size.width { you(CGSize(width: 84, height: 112)).padding(.trailing, 20).padding(.top, inline ? 8 : 20).frame(maxWidth: .infinity, alignment: .trailing) } }
         }
         .overlay(alignment: .topLeading) {
             if !inline {
@@ -59,11 +65,11 @@ struct DeskView: View {
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true // a desk companion stays on
             tilt.start()
-            if eyes.previewOwner == nil { eyes.previewOwner = "desk" }
+            eyes.claimPreview(me)
         }
         .onDisappear {
             if eyes.recording == nil { UIApplication.shared.isIdleTimerDisabled = false }
-            if eyes.previewOwner == "desk" { eyes.previewOwner = nil }
+            eyes.releasePreview(me)
         }
     }
 
@@ -98,7 +104,7 @@ struct DeskView: View {
                         if wide { presence.padding(.top, 4) }
                     }
                 }
-                if wide, eyes.on { Spacer(minLength: 8); you }
+                if wide { Spacer(minLength: 8); you(CGSize(width: 104, height: 138)) }
             }
             // On its side there's room for one thing: what needs you, or else what Shua is saying.
             if wide, let a = link.approvals.first {
@@ -112,14 +118,33 @@ struct DeskView: View {
         .frame(maxWidth: wide ? .infinity : 560, alignment: wide ? .leading : .center)
     }
 
-    /// You, as Shua sees you, small: proof it's watching (and where it thinks your hand is).
-    private var you: some View {
-        EyesPreview(accent: accent, owner: "desk")
-            .frame(width: 92, height: 122)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(accent.opacity(eyes.present ? 0.8 : 0.25), lineWidth: 1.5))
-            .overlay(alignment: .topTrailing) { if eyes.recording != nil { Circle().fill(.red).frame(width: 9, height: 9).padding(7) } }
-            .onTapGesture { camera = true }
+    /// You, as Shua sees you, like FaceTime's picture-in-picture: live when Shua's eyes are on (tap for the full
+    /// camera); when they're off, a tile that turns them on.
+    private func you(_ size: CGSize) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        return ZStack {
+            if eyes.on {
+                EyesPreview(accent: accent, owner: me)
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "eye").font(.system(size: 20, weight: .semibold))
+                    Text("Watch me").font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(Noir.soft)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.white.opacity(0.06))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(eyes.on ? accent.opacity(eyes.present ? 0.85 : 0.3) : .white.opacity(0.12), lineWidth: 1.5))
+        .overlay(alignment: .topTrailing) { if eyes.recording != nil { Circle().fill(.red).frame(width: 9, height: 9).padding(8) } }
+        .shadow(color: .black.opacity(0.5), radius: 14, y: 6)
+        .contentShape(shape)
+        .onTapGesture {
+            if eyes.on { camera = true } else { Task { eyes.scene = .desk; await eyes.start() } }
+        }
+        .accessibilityLabel(eyes.on ? "You, as Shua sees you. Tap for the camera." : "Let Shua see you")
     }
 
     /// The desk tools, in glass: Shua's eyes, a timelapse of your session, the camera, and the talk orb.

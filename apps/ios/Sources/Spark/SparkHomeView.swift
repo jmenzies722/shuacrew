@@ -22,7 +22,9 @@ struct SparkHomeView: View {
 
     var body: some View {
         Group {
-            if vertical == .compact, link.state != .unpaired {
+            // On its side, home is the desk — unless the full-screen desk or the camera is already up (two desks would
+            // fight over the one live picture).
+            if vertical == .compact, link.state != .unpaired, !desk, !camera {
                 DeskView(tilt: tilt, listen: listen, waves: waves, inline: true, start: startListening, finish: finishListening)
             } else { out }
         }

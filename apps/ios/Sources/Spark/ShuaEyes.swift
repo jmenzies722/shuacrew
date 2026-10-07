@@ -306,9 +306,12 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
     private(set) var generation = 0
     /// What's stopping the camera right now ("Another app is using the camera."), in words; nil when it's fine.
     private(set) var trouble: String?
-    /// Which screen shows the live picture. The camera can feed only one picture at a time: the full-screen camera
-    /// takes it while it's open and hands it back after.
-    var previewOwner: String?
+    /// The screens that want the live picture, in the order they appeared. The camera feeds one picture at a time, so
+    /// the newest one still on screen shows it; when it goes, the one before takes it back.
+    private(set) var previewOwners: [String] = []
+    var previewOwner: String? { previewOwners.last }
+    func claimPreview(_ id: String) { previewOwners.removeAll { $0 == id }; previewOwners.append(id) }
+    func releasePreview(_ id: String) { previewOwners.removeAll { $0 == id } }
 
     /// The camera, the shutter's mode and the timelapse pace, kept between launches.
     var setup: EyesSetup = EyesSetup(lens: EyesLens(rawValue: UserDefaults.standard.string(forKey: "shua.eyes.lens") ?? "") ?? .front,
