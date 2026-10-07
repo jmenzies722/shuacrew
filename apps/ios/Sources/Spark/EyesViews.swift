@@ -27,15 +27,17 @@ struct CameraLayer: UIViewRepresentable {
     }
 }
 
-/// What Shua sees: you, with your body traced in white and your hand in your accent as Shua reads them.
+/// What Shua sees: you, with your body traced in white and your hand in your accent as Shua reads them. Only the
+/// screen that owns the picture shows it live (the camera feeds one picture at a time); the tracing shows anywhere.
 struct EyesPreview: View {
     let accent: Color
+    var owner = "cam"
     var showsBody = false
     private var eyes: ShuaEyes { .shared }
     var body: some View {
         ZStack {
             Color.black
-            if eyes.on { CameraLayer(session: eyes.feed.session).id(eyes.generation) } // a new lens: a new preview
+            if eyes.on, eyes.previewOwner == owner { CameraLayer(session: eyes.feed.session).id(eyes.generation) } // a new lens: a new preview
             Canvas { ctx, box in
                 let frame = eyes.frameSize
                 guard frame.width > 0 else { return }
@@ -72,8 +74,9 @@ struct EyesButton: View {
         Button(action: open) {
             ZStack {
                 if eyes.on {
-                    EyesPreview(accent: accent).clipShape(Circle())
-                        .overlay(Circle().strokeBorder(accent.opacity(eyes.present ? 0.9 : 0.35), lineWidth: 2))
+                    Circle().fill(accent.opacity(eyes.present ? 0.35 : 0.12))
+                    Image(systemName: eyes.present ? "eye.fill" : "eye").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .symbolEffect(.pulse, isActive: eyes.present)
                 } else {
                     Image(systemName: "camera").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                 }
@@ -100,6 +103,7 @@ struct ShuaCam: View {
     @State private var waves = 0
     @State private var scripting = false
     @State private var guide = false
+    @State private var handBack: String?
     @AppStorage("shua.script") private var script = ""
     @AppStorage("shua.script.on") private var prompter = false
     @AppStorage("shua.script.speed") private var speed = 26.0
@@ -111,9 +115,10 @@ struct ShuaCam: View {
         @Bindable var eyes = eyes
         ZStack {
             EyesPreview(accent: accent, showsBody: true).ignoresSafeArea()
-            if eyes.on, eyes.mode != .timelapse, let body = eyes.body { FrameGuide(whole: body.framing == .whole).padding(.horizontal, 22).padding(.top, 108).padding(.bottom, 190).allowsHitTesting(false) }
+            if eyes.on, eyes.scene == .body, let body = eyes.body { FrameGuide(whole: body.framing == .whole).padding(.horizontal, 22).padding(.top, 108).padding(.bottom, 190).allowsHitTesting(false) }
             VStack(spacing: 12) {
                 topBar
+                if eyes.scene == .body { lenses }
                 status
                 if prompter, !script.isEmpty, eyes.mode == .video { Prompter(text: script, rolling: eyes.recording?.started, speed: speed) }
                 Spacer(minLength: 0)
@@ -147,6 +152,8 @@ struct ShuaCam: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .task { await eyes.start() }
+        .onAppear { handBack = eyes.previewOwner; eyes.previewOwner = "cam" } // the live picture is this screen's while it's open
+        .onDisappear { eyes.previewOwner = handBack }
         .onChange(of: eyes.moment) { _, m in
             guard let m else { return }
             switch m.kind {
@@ -167,11 +174,11 @@ struct ShuaCam: View {
                 .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle()).accessibilityLabel("Close the camera")
             Spacer()
             HStack(spacing: 2) {
-                ForEach(EyesLens.allCases.filter { EyesFeed.camera(for: $0) != nil || ProcessInfo.processInfo.environment["SHUA_DEMO"] == "1" }) { lens in
-                    Button { eyes.setup.lens = lens } label: {
-                        Text(lens.title).font(.system(size: 13, weight: .bold)).frame(minWidth: 40).padding(.vertical, 8)
-                            .foregroundStyle(eyes.setup.lens == lens ? .black : .white)
-                            .background(eyes.setup.lens == lens ? AnyShapeStyle(.white) : AnyShapeStyle(.clear), in: Capsule())
+                ForEach(EyesScene.allCases) { s in
+                    Button { withAnimation(.smooth) { eyes.scene = s } } label: {
+                        Text(s.title).font(.system(size: 14, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 9)
+                            .foregroundStyle(eyes.scene == s ? .black : .white)
+                            .background(eyes.scene == s ? AnyShapeStyle(.white) : AnyShapeStyle(.clear), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -186,9 +193,28 @@ struct ShuaCam: View {
         }
     }
 
+    /// Which lens, under Full body: front, 1× or 0.5× (whichever this iPhone has).
+    private var lenses: some View {
+        @Bindable var eyes = eyes
+        return HStack(spacing: 2) {
+            ForEach(EyesLens.allCases.filter { EyesFeed.camera(for: $0) != nil || ProcessInfo.processInfo.environment["SHUA_DEMO"] == "1" }) { lens in
+                Button { eyes.setup.lens = lens } label: {
+                    Text(lens.title).font(.system(size: 13, weight: .bold)).frame(minWidth: 40).padding(.vertical, 7)
+                        .foregroundStyle(eyes.setup.lens == lens ? .black : .white)
+                        .background(eyes.setup.lens == lens ? AnyShapeStyle(.yellow) : AnyShapeStyle(.clear), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3).glassEffect(.regular, in: Capsule()).disabled(rolling)
+    }
+
     /// Recording time, or how you sit in the shot, or what was just saved.
     @ViewBuilder private var status: some View {
-        if let r = eyes.recording {
+        if let trouble = eyes.trouble {
+            Label(trouble, systemImage: "exclamationmark.triangle.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8).glassEffect(.regular.tint(.orange.opacity(0.4)), in: Capsule())
+        } else if let r = eyes.recording {
             HStack(spacing: 8) {
                 Circle().fill(.red).frame(width: 9, height: 9)
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
@@ -202,6 +228,16 @@ struct ShuaCam: View {
         } else if let saved = eyes.saved {
             Label(saved, systemImage: "checkmark.circle.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 8).glassEffect(.regular.tint(.green.opacity(0.35)), in: Capsule())
+        } else if eyes.on, eyes.scene == .desk {
+            HStack(spacing: 8) {
+                Image(systemName: eyes.present ? "eye.fill" : "eye.slash").foregroundStyle(eyes.present ? .green : .white)
+                Text(eyes.present ? (eyes.sign?.title ?? "I can see you") : "Sit where I can see you")
+                if let since = eyes.deskSince {
+                    TimelineView(.periodic(from: .now, by: 30)) { _ in Text("· \(Plainly.since(Date.now.timeIntervalSince(since)))").foregroundStyle(.white.opacity(0.6)) }
+                }
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .padding(.horizontal, 14).padding(.vertical, 8).glassEffect(.regular, in: Capsule())
         } else if eyes.on {
             let framing = eyes.body?.framing ?? .lost
             HStack(spacing: 8) {

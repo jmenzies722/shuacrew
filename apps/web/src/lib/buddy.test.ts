@@ -508,3 +508,50 @@ describe("blocks written as tags", () => {
     expect(parseActions('<do>[{"type":"open","url":"https://apple.com"},{"type":"quit","name":"Music"}]</do>')).toEqual([{ type: "open_url", url: "https://apple.com" }, { type: "quit_app", name: "Music" }]);
   });
 });
+
+describe("media keys pressed as screen steps", () => {
+  it("become the media action they meant, and nothing else does", async () => {
+    const { completedBlocks, mediaKeys, parseActions, speakable } = await import("./buddy");
+    const reply = 'Pausing it.\n<act>{"type":"keypress","key":"MEDIA_PLAY_PAUSE"}</act>';
+    const blocks = completedBlocks(reply);
+    expect(blocks.map((b) => b.kind)).toEqual(["do"]);
+    expect(parseActions(blocks[0]!.raw)).toEqual([{ type: "media", command: "toggle" }]);
+    expect(speakable(reply)).toBe("Pausing it.");
+    expect(mediaKeys('[{"type":"key","key":"MediaNextTrack"},{"type":"key","key":"AudioVolumeUp"}]')).toEqual([{ type: "media", command: "next" }, { type: "media", command: "volume_up" }]);
+    // Ordinary keys stay screen steps: never a track skip.
+    for (const key of ["backspace", "space", "cmd+p", "Return", "playground"]) expect(mediaKeys(JSON.stringify({ type: "key", key })), key).toBeNull();
+    expect(mediaKeys('[{"type":"key","key":"MEDIA_PLAY_PAUSE"},{"type":"press","target":"#3"}]')).toBeNull();
+    expect(completedBlocks('```act {"type":"key","key":"backspace"}```').map((b) => b.kind)).toEqual(["act"]);
+  });
+});
+
+describe("web-search citation markers", () => {
+  it("are never shown or said, finished or mid-stream", async () => {
+    const { speakable, spoken } = await import("./buddy");
+    const reply = "**76ers 120, Knicks 97**. Philadelphia won by 23. citeturn1reddit16\nNext: Oct 20.";
+    expect(speakable(reply)).toBe("**76ers 120, Knicks 97**. Philadelphia won by 23.\nNext: Oct 20.");
+    expect(spoken(reply)).toBe("76ers 120, Knicks 97. Philadelphia won by 23. Next: Oct 20.");
+    expect(speakable("Won by 23. citeturn1red")).toBe("Won by 23.");
+  });
+});
+
+describe("a reply that was only actions", () => {
+  it("says what it did, in plain words; a reply with words says nothing extra", async () => {
+    const { actionsOnly } = await import("./buddy");
+    expect(actionsOnly('<act>{"type":"keypress","key":"MEDIA_PLAY_PAUSE"}</act>')).toEqual(["Play/pause the music"]);
+    expect(actionsOnly('<do>{"type":"open","app":"Music"}</do>')).toEqual(["Open Music"]);
+    expect(actionsOnly('```do {"type":"media","command":"pause"}```')).toEqual(["Pause the music"]);
+    expect(actionsOnly('Paused.\n```do {"type":"media","command":"pause"}```')).toEqual([]);
+  });
+});
+
+describe("bringing something up on the iPhone", () => {
+  it("is hidden on the Mac, never read aloud, and counts as doing it", async () => {
+    const { speakable, spoken, claimsWithoutAction, actionsOnly } = await import("./buddy");
+    const reply = 'Opened the Knicks schedule on your phone.\n```phone {"open":"https://www.nba.com/knicks/schedule"}```';
+    expect(speakable(reply)).toBe("Opened the Knicks schedule on your phone.");
+    expect(spoken(reply)).toBe("Opened the Knicks schedule on your phone.");
+    expect(claimsWithoutAction(reply)).toBe(false);
+    expect(actionsOnly('```phone {"open":"https://maps.apple.com/?q=MSG"}```')).toEqual(["Brought it up on your iPhone"]);
+  });
+});

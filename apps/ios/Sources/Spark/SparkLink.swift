@@ -44,6 +44,8 @@ struct ShuaLine: Identifiable, Equatable, Sendable {
     var text: String
     var pending = false
     var failed = false
+    /// The pages this reply points to, as cards you can tap (first three).
+    var links: [URL] = []
     let at = Date()
 }
 
@@ -288,6 +290,10 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         chat.append(ShuaLine(role: .shua, text: "", pending: true))
         if chat.count > 40 { chat.removeFirst(chat.count - 40) }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // "Open YouTube", "go to espn.com": an iPhone app or a site, asked here, opens here, at once. ("…on my Mac" goes to the Mac.)
+        if let here = PhoneHands.intent(text) {
+            if await PhoneHands.open(here.urls) { let said = "Opening \(here.name) here."; reply(said); speak(said); return }
+        }
         do {
             let head = try await refresh() // only what happens after this moment is part of the answer
             // The notch may be reconnecting for a moment (a restart on the Mac): try once more before saying it isn't open.
@@ -299,7 +305,15 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
             for _ in 0..<40 where run == nil {
                 try await Task.sleep(for: .milliseconds(500))
                 let state = try await request("GET", "/phone/api/shua/remote/\(id)")
-                run = (try? JSONSerialization.jsonObject(with: state) as? [String: Any])?["run"] as? String
+                let ask = (try? JSONSerialization.jsonObject(with: state) as? [String: Any]) ?? [:]
+                // Done on the Mac at once (pause, next, volume, open…): no conversation to follow, just what Shua said.
+                if let answer = ask["answer"] as? String {
+                    let ok = ask["ok"] as? Bool != false
+                    reply(answer, failed: !ok)
+                    if ok { speak(Self.speakable(answer)) }
+                    return
+                }
+                run = ask["run"] as? String
             }
             guard let run else { return reply("Shua on your Mac didn't pick that up. Is ShuaCrew open there?", failed: true) }
             try await follow(run: run, after: head, asked: text)
@@ -341,8 +355,9 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
             if let q = quietSince, Date.now.timeIntervalSince(q) > 3 { break }
             try await Task.sleep(for: .milliseconds(400))
         }
-        let final = Self.clean(latest)
-        reply(final.isEmpty ? "Done." : final)
+        let final = Self.clean(latest), opens = PhoneHands.opens(in: latest)
+        reply(final.isEmpty ? (opens.isEmpty ? "Done." : "Here it is.") : final, links: PhoneHands.links(in: latest, plus: opens))
+        if !opens.isEmpty { _ = await PhoneHands.open(opens) } // Shua brought it up on this phone
         speak(Self.speakable(final))
     }
 
@@ -388,9 +403,9 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         guard let i = chat.lastIndex(where: { $0.role == .shua }) else { return }
         chat[i].text = text; chat[i].pending = pending
     }
-    private func reply(_ text: String, failed: Bool = false) {
+    private func reply(_ text: String, failed: Bool = false, links: [URL] = []) {
         guard let i = chat.lastIndex(where: { $0.role == .shua }) else { return }
-        chat[i].text = text; chat[i].pending = false; chat[i].failed = failed
+        chat[i].text = text; chat[i].pending = false; chat[i].failed = failed; chat[i].links = links
         UINotificationFeedbackGenerator().notificationOccurred(failed ? .error : .success)
     }
 
@@ -521,4 +536,66 @@ private enum Keychain {
         return try? JSONDecoder().decode(SparkPairing.self, from: data)
     }
     static func clear() { SecItemDelete(query as CFDictionary) }
+}
+
+/// What Shua does on this phone itself. "Open YouTube" asked here opens it here (an iPhone app by its own link, the
+/// website if the app isn't installed); a page, place or song Shua finds for you comes back as a ```phone {"open": …}```
+/// block and opens here too; and every page a reply points to becomes a card you can tap.
+enum PhoneHands {
+    /// iPhone apps by what you'd call them: their own link first, then the website.
+    static let apps: [String: [String]] = [
+        "music": ["music://"], "apple music": ["music://"], "maps": ["maps://"], "apple maps": ["maps://"], "messages": ["sms:"],
+        "mail": ["message://"], "calendar": ["calshow://"], "photos": ["photos-redirect://"], "notes": ["mobilenotes://"],
+        "reminders": ["x-apple-reminderkit://"], "facetime": ["facetime://"], "app store": ["itms-apps://"], "podcasts": ["podcasts://"],
+        "books": ["ibooks://"], "shortcuts": ["shortcuts://"], "safari": ["https://www.google.com"], "google": ["https://www.google.com"],
+        "youtube": ["youtube://", "https://www.youtube.com"], "spotify": ["spotify://", "https://open.spotify.com"],
+        "instagram": ["instagram://app", "https://www.instagram.com"], "whatsapp": ["whatsapp://", "https://www.whatsapp.com"],
+        "x": ["twitter://", "https://x.com"], "twitter": ["twitter://", "https://x.com"], "slack": ["slack://open", "https://app.slack.com"],
+        "discord": ["discord://", "https://discord.com/app"], "gmail": ["googlegmail://", "https://mail.google.com"],
+        "google maps": ["comgooglemaps://", "https://maps.google.com"], "netflix": ["nflx://", "https://www.netflix.com"],
+        "uber": ["uber://", "https://m.uber.com"], "reddit": ["reddit://", "https://www.reddit.com"], "linkedin": ["linkedin://", "https://www.linkedin.com"],
+        "github": ["github://", "https://github.com"], "espn": ["sportscenter://", "https://www.espn.com"], "amazon": ["com.amazon.mobile.shopping://", "https://www.amazon.com"],
+    ]
+
+    /// "open YouTube", "pull up espn.com on my phone": what to open here. Nil when it's for the Mac (it says so, or it
+    /// isn't an iPhone app or a site): the Mac's Shua takes it.
+    static func intent(_ text: String) -> (name: String, urls: [URL])? {
+        var s = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        if s.range(of: #"\bon (my |the )?mac(book)?\b"#, options: .regularExpression) != nil { return nil }
+        s = s.replacingOccurrences(of: #"^(hey |ok |okay )?(shua[, ]+)?((can|could|would|will) you( please| just| actually)* )?(please |just )?"#, with: "", options: .regularExpression)
+        guard let m = s.firstMatch(of: /^(?:open|launch|pull up|bring up|go to)\s+(?:up\s+)?(?:the\s+)?(.+?)(?:\s+app)?(?:\s+(?:on|in)\s+(?:my|the|this)\s+(?:phone|iphone))?(?:\s+(?:please|for me))?$/) else { return nil }
+        let name = String(m.1)
+        let pretty = ["youtube": "YouTube", "facetime": "FaceTime", "linkedin": "LinkedIn", "github": "GitHub", "whatsapp": "WhatsApp", "espn": "ESPN", "x": "X", "app store": "the App Store"]
+        if let found = apps[name] { return (pretty[name] ?? name.capitalized, found.compactMap(URL.init(string:))) }
+        if name.range(of: #"^[a-z0-9-]+(\.[a-z0-9-]+)+(/\S*)?$"#, options: .regularExpression) != nil, let url = URL(string: "https://\(name)") { return (name, [url]) }
+        return nil
+    }
+
+    /// Opens the first that works (the app, else its website). False when none could open.
+    @MainActor static func open(_ urls: [URL]) async -> Bool {
+        for url in urls where await UIApplication.shared.open(url) { return true }
+        return false
+    }
+
+    /// ```phone {"open": "https://…"}``` (or a list): what Shua brings up on this phone. Web pages and maps only.
+    static func opens(in text: String) -> [URL] {
+        var out: [URL] = []
+        for m in text.matches(of: /```phone\s*([\s\S]*?)```/) {
+            let v = try? JSONSerialization.jsonObject(with: Data(String(m.1).utf8))
+            for o in (v as? [[String: Any]]) ?? [(v as? [String: Any]) ?? [:]] {
+                if let s = o["open"] as? String, let u = URL(string: s), ["http", "https", "maps"].contains(u.scheme?.lowercased() ?? ""), !out.contains(u) { out.append(u) }
+            }
+        }
+        return Array(out.prefix(2))
+    }
+
+    /// The pages a reply points to (Markdown links and bare addresses), plus what it brought up: first three, for cards.
+    static func links(in text: String, plus first: [URL] = []) -> [URL] {
+        var out = first.filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        for m in detector?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? [] {
+            if let u = m.url, ["http", "https"].contains(u.scheme?.lowercased() ?? ""), !out.contains(u) { out.append(u) }
+        }
+        return Array(out.prefix(3))
+    }
 }

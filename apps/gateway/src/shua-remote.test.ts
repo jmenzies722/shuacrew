@@ -35,6 +35,7 @@ it("lets the phone ask and follow, but never listen or take", () => {
   expect(phoneAllowed("POST", "/api/shua/remote")).toBe(true);
   expect(phoneAllowed("GET", "/api/shua/remote/ra_0123456789ab")).toBe(true);
   expect(phoneAllowed("GET", "/api/shua/remote/events")).toBe(false);
+  expect(phoneAllowed("POST", "/api/shua/remote/ra_0123456789ab/answer")).toBe(false); // only the Mac answers
   expect(phoneAllowed("POST", "/api/shua/remote/ra_0123456789ab/take")).toBe(false);
 });
 
@@ -57,4 +58,17 @@ it("never lets a late guess overwrite what the record showed", () => {
   remote.observe({ kind: "run.followup", run: "r_real", body: { text: "From my iPhone: open Safari" } });
   remote.take(ask.id, "r_stale");
   expect(remote.get(ask.id)?.run).toBe("r_real");
+});
+
+it("an ask the notch did itself carries its answer to the phone; a conversation turn, once taken, outranks it", () => {
+  const remote = new ShuaRemote();
+  remote.subscribe(() => {});
+  const ask = remote.send("Pause music")!;
+  expect(remote.answer(ask.id, "Paused.", true)).toBe(true);
+  expect(remote.get(ask.id)).toMatchObject({ status: "answered", answer: "Paused.", ok: true });
+  expect(remote.answer(ask.id, "again", true)).toBe(false); // answered once
+  const other = remote.send("What's the score")!;
+  remote.observe({ kind: "turn.started", run: "r_1", body: { text: "From my iPhone: What's the score" } });
+  expect(remote.answer(other.id, "Mic error", false)).toBe(false); // a turn has it: the phone follows that
+  expect(remote.answer("ra_unknown", "x", true)).toBe(false);
 });

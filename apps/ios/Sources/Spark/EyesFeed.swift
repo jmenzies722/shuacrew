@@ -2,12 +2,17 @@ import AVFoundation
 import CoreImage
 import Vision
 
-/// The camera end: the chosen camera into Vision (your face, one hand, your whole body) 10–15 times a second, and
-/// every frame — with the microphone, for videos — into the recorder when one is running. Everything here happens on
-/// its own queue; results go to `ShuaEyes` on the main actor.
+/// The camera end: every frame — with the microphone, for videos — into the recorder when one is running, and up to
+/// 15 a second into Vision (your face, one hand, your whole body) on a queue of its own, so reading you never holds up
+/// what's being recorded. Results go to `ShuaEyes` on the main actor; so does anything that stops the camera.
 final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "dev.shuacrew.eyes", qos: .userInitiated)
+    private let visionQueue = DispatchQueue(label: "dev.shuacrew.eyes.vision", qos: .userInitiated)
+    /// Vision is reading a frame: the next ones go straight past it.
+    private var reading = false
+    private var trouble: (@Sendable (String?) -> Void)?
+    private var watching = false
     private let output = AVCaptureVideoDataOutput()
     private let audioOutput = AVCaptureAudioDataOutput()
     private var videoInput: AVCaptureDeviceInput?
@@ -45,11 +50,45 @@ final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AV
         }
     }
 
-    func start(_ setup: EyesSetup, _ deliver: @escaping @Sendable (EyesFrame) -> Void, _ switched: @escaping @Sendable () -> Void) {
+    func start(_ setup: EyesSetup, _ deliver: @escaping @Sendable (EyesFrame) -> Void, _ switched: @escaping @Sendable () -> Void,
+               _ trouble: @escaping @Sendable (String?) -> Void) {
         queue.async { [self] in
-            self.deliver = deliver; self.switched = switched
+            self.deliver = deliver; self.switched = switched; self.trouble = trouble
             configure(setup)
+            watch()
             if !session.isRunning { session.startRunning() }
+            if videoInput == nil { trouble("Shua couldn't open that camera.") }
+        }
+    }
+
+    /// Say what stopped the camera, and start it again when it can.
+    private func watch() {
+        guard !watching else { return }
+        watching = true
+        let center = NotificationCenter.default
+        center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] note in
+            let error = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
+            self?.queue.async {
+                guard let self, self.deliver != nil else { return }
+                if error?.code != .mediaServicesWereReset { self.trouble?("The camera stopped: \(error?.localizedDescription ?? "unknown error"). Starting it again…") }
+                if !self.session.isRunning { self.session.startRunning() }
+            }
+        }
+        center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil) { [weak self] note in
+            let reason = (note.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int).flatMap(AVCaptureSession.InterruptionReason.init(rawValue:))
+            self?.trouble?(Self.words(reason))
+        }
+        center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { [weak self] _ in self?.trouble?(nil) }
+    }
+
+    static func words(_ reason: AVCaptureSession.InterruptionReason?) -> String? {
+        switch reason {
+        case .videoDeviceNotAvailableInBackground: nil
+        case .videoDeviceInUseByAnotherClient: "Another app is using the camera."
+        case .audioDeviceInUseByAnotherClient: "Another app is using the microphone."
+        case .videoDeviceNotAvailableWithMultipleForegroundApps: "The camera pauses while another app is on screen with this one."
+        case .videoDeviceNotAvailableDueToSystemPressure: "The iPhone is too warm for the camera right now."
+        default: "The camera paused."
         }
     }
 
@@ -137,14 +176,25 @@ final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AV
         recorder?.append(pixels, at: time)
         if let waiter = snapWaiter { snapWaiter = nil; waiter.resume(returning: jpeg(pixels)) }
         tick += 1
-        guard tick % (setup.fourK ? 3 : 2) == 0, let deliver else { return } // 10–15 reads a second is plenty to follow you
+        // Up to 15 reads a second, on Vision's own queue; frames that arrive while it's busy just go by.
+        guard tick % 2 == 0, !reading, let deliver else { return }
+        reading = true
+        let frame = Pixels(buffer: pixels)
+        visionQueue.async { [self] in
+            let seen = read(frame.buffer, at: time.seconds)
+            queue.async { self.reading = false }
+            deliver(seen)
+        }
+    }
+
+    /// One frame through Vision: your face, a hand, your body.
+    private func read(_ pixels: CVPixelBuffer, at time: TimeInterval) -> EyesFrame {
         try? VNImageRequestHandler(cvPixelBuffer: pixels, orientation: .up).perform([hands, faces, bodies])
         let face = faces.results?.max { $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height }
             .map { b in CGRect(x: b.boundingBox.minX, y: 1 - b.boundingBox.maxY, width: b.boundingBox.width, height: b.boundingBox.height) }
         let hand = hands.results?.first.flatMap(HandShape.init(observation:))
         let body = bodies.results?.first.flatMap(BodyShape.init(observation:))
-        deliver(EyesFrame(time: time.seconds, face: face, hand: hand, body: body,
-                          size: CGSize(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels))))
+        return EyesFrame(time: time, face: face, hand: hand, body: body, size: CGSize(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels)))
     }
 
     private func jpeg(_ pixels: CVPixelBuffer) -> Data? {
@@ -170,7 +220,8 @@ final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AV
         }
     }
 
-    func finishRecording() async -> (URL, Int)? {
+    /// The movie and its frame count, or why there isn't one.
+    func finishRecording() async -> Result<(URL, Int), RecordingFailed> {
         let r: EyesRecorder? = await withCheckedContinuation { c in
             queue.async { [self] in
                 let r = recorder
@@ -179,9 +230,16 @@ final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AV
                 c.resume(returning: r)
             }
         }
-        return await r?.finish()
+        guard let r else { return .failure(RecordingFailed(reason: "it never started")) }
+        if let done = await r.finish() { return .success(done) }
+        return .failure(RecordingFailed(reason: r.failure ?? "no frames came from the camera"))
     }
 }
+
+/// A camera frame handed to Vision's queue (the camera won't reuse it while it's held).
+private struct Pixels: @unchecked Sendable { let buffer: CVPixelBuffer }
+
+struct RecordingFailed: Error { let reason: String }
 
 extension HandShape {
     init?(observation o: VNHumanHandPoseObservation) {
@@ -233,6 +291,8 @@ final class EyesRecorder: @unchecked Sendable {
     private var lastTaken: CMTime?
     private(set) var frames = 0
     private var broken = false
+    /// What went wrong, in words, if the movie couldn't be written.
+    private(set) var failure: String?
 
     init(url: URL, kind: ShuaEyes.RecordKind, video: [String: Any]? = nil, audio: [String: Any]? = nil) {
         self.url = url; self.kind = kind; videoSettings = video; audioSettings = kind == .video ? audio : nil
@@ -252,8 +312,10 @@ final class EyesRecorder: @unchecked Sendable {
             lastTaken = time
             at = CMTime(value: CMTimeValue(frames), timescale: 30)
         }
-        if adaptor.append(pixels, withPresentationTime: at) { frames += 1 }
+        if adaptor.append(pixels, withPresentationTime: at) { frames += 1 } else if writer?.status == .failed { fail(writer?.error?.localizedDescription ?? "writing failed") }
     }
+
+    private func fail(_ reason: String) { broken = true; if failure == nil { failure = reason } }
 
     /// Sound from the moment the first frame is in; nothing before it.
     func appendAudio(_ sample: CMSampleBuffer) {
@@ -262,20 +324,21 @@ final class EyesRecorder: @unchecked Sendable {
     }
 
     private func begin(width: Int, height: Int, at time: CMTime) {
-        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { broken = true; return }
+        let writer: AVAssetWriter
+        do { writer = try AVAssetWriter(outputURL: url, fileType: .mov) } catch { fail(error.localizedDescription); return }
         var settings = videoSettings ?? [AVVideoCodecKey: AVVideoCodecType.h264]
         settings[AVVideoWidthKey] = width; settings[AVVideoHeightKey] = height // the picture as turned upright
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = true
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
-        guard writer.canAdd(input) else { broken = true; return }
+        guard writer.canAdd(input) else { fail("the video format wasn't accepted"); return }
         writer.add(input)
         if let audioSettings {
             let a = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
             a.expectsMediaDataInRealTime = true
             if writer.canAdd(a) { writer.add(a); audio = a }
         }
-        guard writer.startWriting() else { broken = true; return }
+        guard writer.startWriting() else { fail(writer.error?.localizedDescription ?? "the movie couldn't start"); return }
         let start = kind == .video ? time : .zero
         writer.startSession(atSourceTime: start)
         self.writer = writer; self.input = input; self.adaptor = adaptor; self.start = start; size = CGSize(width: width, height: height)
@@ -286,6 +349,7 @@ final class EyesRecorder: @unchecked Sendable {
         guard let writer, let input, frames > 0 else { writer?.cancelWriting(); return nil }
         input.markAsFinished(); audio?.markAsFinished()
         await writer.finishWriting()
+        if writer.status != .completed { fail(writer.error?.localizedDescription ?? "the movie couldn't be finished") }
         return writer.status == .completed ? (url, frames) : nil
     }
 

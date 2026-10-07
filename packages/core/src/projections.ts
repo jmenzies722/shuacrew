@@ -494,6 +494,13 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
     case "run.archived":
       if (event.run) delete state.runs[event.run];
       break;
+    case "run.deleted":
+      // Gone everywhere: the session and anything still waiting on it.
+      if (event.run) {
+        delete state.runs[event.run];
+        for (const [id, a] of Object.entries(state.approvals)) if ((a as { run?: string }).run === event.run) delete state.approvals[id];
+      }
+      break;
     case "run.priority":
       if (run) run.priority = event.body.priority;
       break;

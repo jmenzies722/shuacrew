@@ -1,110 +1,97 @@
 import SwiftUI
 
-/// Shua on your iPhone, Noir. Black, lit like a stage: your Shua standing in its light, a greeting by name, what it's
-/// saying in New York serif, the one thing that needs you on glass, and a single talk orb. Everything else is a swipe
-/// up away. Sideways, the same room, side by side. Hold anywhere to talk.
+/// Shua's home on your iPhone. Out and about (upright): your Shua big in its light, hello by name and what matters in
+/// one sentence, the one thing that needs you, a glance at the day, things to ask and your conversation — Shua eases
+/// back as you scroll — with the talk controls floating at the bottom. At your desk (on its side, or Desk): the desk
+/// companion. Hold anywhere to talk.
 struct SparkHomeView: View {
     @Environment(SparkLink.self) private var link
     @Environment(\.verticalSizeClass) private var vertical
+    @Environment(\.openTab) private var openTab
     @State private var tilt = SparkTilt()
     @State private var listen = ShuaListen()
     @State private var pairing = false
-    @State private var docked = false
-    @State private var seeing = false
-    @State private var waves = 0
-    private var eyes: ShuaEyes { .shared }
-    @State private var activity = false
+    @State private var desk = false
+    @State private var camera = false
     @State private var typing = false
+    @State private var waves = 0
+    @Namespace private var zoom
+    private var eyes: ShuaEyes { .shared }
     private var voice: ShuaVoice { .shared }
     private var accent: Color { link.look?.accentColor ?? .shuaPurple }
 
     var body: some View {
         Group {
-            if vertical == .compact, link.state != .unpaired { landscape } else { portrait }
+            if vertical == .compact, link.state != .unpaired {
+                DeskView(tilt: tilt, listen: listen, waves: waves, inline: true, start: startListening, finish: finishListening)
+            } else { out }
         }
         .sheet(isPresented: $pairing) { PairView() }
-        .sheet(isPresented: $activity) { ActivitySheet() }
-        .fullScreenCover(isPresented: $seeing) { ShuaCam(listen: listen) }
-        .modifier(EyesReactions(listen: listen, waves: $waves, start: startListening, finish: finishListening))
         .sheet(isPresented: $typing) { AskSheet { text in Task { await link.ask(text) } } }
-        .fullScreenCover(isPresented: $docked) { DockView(tilt: tilt) }
+        .fullScreenCover(isPresented: $desk) { DeskView(tilt: tilt, listen: listen, waves: waves, inline: false, start: startListening, finish: finishListening) }
+        .fullScreenCover(isPresented: $camera) { ShuaCam(listen: listen).navigationTransition(.zoom(sourceID: "camera", in: zoom)) }
+        .modifier(EyesReactions(listen: listen, waves: $waves, start: startListening, finish: finishListening))
         .toolbar(.hidden, for: .navigationBar)
         .onAppear { tilt.start(); link.start() }
         .onDisappear { tilt.stop() }
         .alert("Shua", isPresented: Binding(get: { link.error != nil || listen.problem != nil }, set: { if !$0 { link.error = nil; listen.problem = nil } })) { Button("OK") {} } message: { Text(link.error ?? listen.problem ?? "") }
     }
 
-    // MARK: Portrait
+    // MARK: Out
 
-    private var portrait: some View {
-        ZStack {
-            NoirBackdrop(mood: mood, accent: accent, tilt: tilt.gaze, focus: UnitPoint(x: 0.5, y: 0.27))
-            VStack(spacing: 0) {
-                TopLine(docked: $docked, seeing: $seeing).padding(.horizontal, 24).padding(.top, 6)
-                ZStack(alignment: .bottom) {
-                    ShuaFloor(accent: accent).offset(y: 18)
-                    ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).frame(minHeight: 150, maxHeight: 270)
+    private var out: some View {
+        ZStack(alignment: .top) {
+            NoirBackdrop(mood: mood, accent: accent, tilt: tilt.gaze, focus: UnitPoint(x: 0.5, y: 0.25))
+            ScrollView {
+                VStack(spacing: 22) {
+                    hero
+                    Headline(listening: listen.listening, heard: listen.heard, short: !link.approvals.isEmpty)
+                        .padding(.horizontal, 30)
+                    if link.state == .unpaired {
+                        Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder").font(Noir.title).frame(maxWidth: .infinity).padding(.vertical, 6) }
+                            .buttonStyle(.glassProminent).tint(accent).controlSize(.large).padding(.horizontal, 32)
+                    } else {
+                        if let a = link.approvals.first {
+                            NeedsYouCard(approval: a).padding(.horizontal, 20).scrollSettle()
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        Glance { openTab($0) }.padding(.horizontal, 20).scrollSettle()
+                        Ideas {}.padding(.horizontal, 20).scrollSettle()
+                        if !link.chat.isEmpty { ConversationCard().padding(.horizontal, 20).scrollSettle() }
+                    }
                 }
-                .padding(.top, 10)
-                .layoutPriority(-1) // Shua gives up room first, so nothing rides up under the status bar
-                Headline(listening: listen.listening, heard: listen.heard, short: !link.approvals.isEmpty)
-                    .padding(.horizontal, 32).padding(.top, 22)
-                Spacer(minLength: 14)
-                if link.state == .unpaired {
-                    Button { pairing = true } label: { Text("Pair with your Mac").font(Noir.title).frame(maxWidth: .infinity).padding(.vertical, 6) }
-                        .buttonStyle(.glassProminent).tint(accent).controlSize(.large).padding(.horizontal, 32)
-                    Spacer(minLength: 100)
-                } else {
-                    if let a = link.approvals.first { NeedsYouCard(approval: a).padding(.horizontal, 20).transition(.move(edge: .bottom).combined(with: .opacity)) }
-                    Spacer(minLength: 14)
-                    Controls(listen: listen, accent: accent, typing: $typing, activity: $activity, start: startListening, finish: finishListening)
-                    Text(link.asking ? "Shua is on it…" : "Hold to talk · swipe up for activity").font(.system(size: 12, weight: .medium)).foregroundStyle(Noir.faint).padding(.top, 10)
-                        .contentTransition(.opacity)
-                    Spacer(minLength: 86) // the tab bar
-                }
+                .padding(.top, 58).padding(.bottom, 24)
+                .frame(maxWidth: 620).frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.hidden)
+            .refreshable { await link.reload() }
+            EdgeFade(edge: .top, height: 120)
+            EdgeFade(edge: .bottom, height: 230)
+            TopLine(desk: $desk).padding(.horizontal, 20).padding(.top, 4)
             if listen.listening { ListeningOverlay(heard: listen.heard, accent: accent).transition(.opacity) }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if link.state != .unpaired {
+                Controls(listen: listen, accent: accent, zoom: zoom, typing: $typing, camera: $camera, start: startListening, finish: finishListening)
+                    .padding(.bottom, 6)
+            }
         }
         .contentShape(Rectangle())
         .simultaneousGesture(holdToTalk)
-        .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in if v.translation.height < -60, abs(v.translation.width) < 80, link.state != .unpaired { activity = true } })
         .animation(.smooth(duration: 0.4), value: listen.listening)
         .animation(.spring(response: 0.5, dampingFraction: 0.85), value: link.approvals.first?.id)
     }
 
-    // MARK: Landscape
-
-    private var landscape: some View {
-        GeometryReader { geo in
-            ZStack {
-                NoirBackdrop(mood: mood, accent: accent, tilt: tilt.gaze, focus: UnitPoint(x: 0.24, y: 0.42), reach: 340)
-                HStack(spacing: 0) {
-                    VStack(spacing: 4) {
-                        ZStack(alignment: .bottom) {
-                            ShuaFloor(accent: accent).scaleEffect(0.8).offset(y: 12)
-                            ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).frame(height: geo.size.height * 0.56)
-                        }
-                        Headline(listening: listen.listening, heard: listen.heard, compact: true, short: true).padding(.horizontal, 28).padding(.top, 8)
-                    }
-                    .padding(.bottom, 64) // clear of the tab bar
-                    .frame(width: geo.size.width * 0.48)
-                    VStack(spacing: 14) {
-                        TopLine(docked: $docked, seeing: $seeing)
-                        Spacer(minLength: 0)
-                        if let a = link.approvals.first { NeedsYouCard(approval: a) } else { Summary() }
-                        Spacer(minLength: 0)
-                        Controls(listen: listen, accent: accent, typing: $typing, activity: $activity, start: startListening, finish: finishListening)
-                    }
-                    .padding(.horizontal, 24).padding(.top, 14).padding(.bottom, 74)
-                    .frame(width: geo.size.width * 0.52)
-                }
-                if listen.listening { ListeningOverlay(heard: listen.heard, accent: accent).transition(.opacity) }
-            }
-            .contentShape(Rectangle())
-            .simultaneousGesture(holdToTalk)
-            .animation(.smooth(duration: 0.4), value: listen.listening)
+    /// Shua, standing in its light. As you scroll it eases back, smaller and dimmer, and the page takes over.
+    private var hero: some View {
+        ZStack(alignment: .bottom) {
+            ShuaFloor(accent: accent).offset(y: 18)
+            ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).frame(height: 270)
         }
-        .ignoresSafeArea(edges: [.top, .horizontal])
+        .visualEffect { content, proxy in
+            let up = max(0, 58 - proxy.frame(in: .scrollView).minY)
+            return content.scaleEffect(max(0.6, 1 - up / 650), anchor: .bottom).opacity(max(0, 1 - up / 340)).offset(y: up * 0.4)
+        }
     }
 
     // MARK: Talking
@@ -128,21 +115,87 @@ struct SparkHomeView: View {
     }
 }
 
-/// The top line: live with which Mac, Shua's eyes, and the desk clock.
+/// The top line: live with which Mac, and the way to the desk companion.
 private struct TopLine: View {
     @Environment(SparkLink.self) private var link
-    @Binding var docked: Bool
-    @Binding var seeing: Bool
+    @Binding var desk: Bool
     var body: some View {
         HStack(spacing: 10) {
             StatusPill(state: link.state, mac: link.pairing?.name)
             Spacer()
             if link.state != .unpaired {
-                EyesButton(accent: link.look?.accentColor ?? .shuaPurple) { seeing = true }
-                Button { docked = true } label: { Label("Desk", systemImage: "clock").font(.system(size: 13, weight: .semibold)) }
+                Button { desk = true } label: { Label("Desk", systemImage: "desktopcomputer").font(.system(size: 13, weight: .semibold)) }
                     .buttonStyle(.glass).controlSize(.small)
+                    .accessibilityHint("Shua as a companion beside your Mac")
             }
         }
+    }
+}
+
+/// The controls, floating in liquid glass: type · talk (hold) · Shua's camera.
+private struct Controls: View {
+    @Environment(SparkLink.self) private var link
+    let listen: ShuaListen
+    let accent: Color
+    let zoom: Namespace.ID
+    @Binding var typing: Bool
+    @Binding var camera: Bool
+    let start: () -> Void
+    let finish: () -> Void
+    var body: some View {
+        GlassEffectContainer(spacing: 18) {
+            HStack(spacing: 26) {
+                Button { typing = true } label: { Image(systemName: "keyboard").font(.system(size: 18, weight: .medium)).frame(width: 54, height: 54) }
+                    .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle())
+                    .accessibilityLabel("Type to Shua")
+                ZStack {
+                    ShuaAura(active: listen.listening || ShuaVoice.shared.speaking, accent: accent).frame(width: 84, height: 84)
+                    Image(systemName: listen.listening ? "waveform" : "mic.fill")
+                        .font(.system(size: 27, weight: .semibold)).foregroundStyle(.white)
+                        .symbolEffect(.variableColor.iterative, isActive: listen.listening)
+                        .frame(width: 84, height: 84)
+                        .glassEffect(.regular.tint(accent.opacity(0.85)).interactive(), in: Circle())
+                        .shadow(color: accent.opacity(0.5), radius: 26, y: 10)
+                        .scaleEffect(listen.listening ? 1.12 : 1)
+                        .gesture(DragGesture(minimumDistance: 0).onChanged { _ in if !listen.listening { start() } }.onEnded { _ in finish() })
+                        .accessibilityLabel("Hold to talk to Shua")
+                }
+                EyesButton(accent: accent) { camera = true }
+                    .scaleEffect(54 / 40)
+                    .frame(width: 54, height: 54)
+                    .matchedTransitionSource(id: "camera", in: zoom)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: listen.listening)
+    }
+}
+
+/// The day at a glance: what needs you, what's working, what's done. Each opens Today.
+private struct Glance: View {
+    @Environment(SparkLink.self) private var link
+    let open: (PhoneTab) -> Void
+    var body: some View {
+        let working = link.activeRuns.filter { $0.status != "awaiting_approval" }.count
+        HStack(spacing: 10) {
+            tile(link.approvals.count, "Need you", "hand.raised.fill", .orange, .today)
+            tile(working, "Working", "bolt.fill", .green, .crew)
+            tile(link.runs.filter(\.finished).count, "Done", "checkmark", link.look?.accentColor ?? .shuaPurple, .today)
+        }
+    }
+    private func tile(_ n: Int, _ label: String, _ symbol: String, _ tint: Color, _ tab: PhoneTab) -> some View {
+        Button { open(tab) } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(n > 0 ? tint : Noir.faint)
+                    .frame(width: 28, height: 28).background((n > 0 ? tint : .white).opacity(0.14), in: Circle())
+                Text("\(n)").font(.system(size: 30, weight: .bold).monospacedDigit()).contentTransition(.numericText())
+                Text(label).noirLabel()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .litGlass(24)
+        }
+        .buttonStyle(.plain)
+        .animation(.smooth, value: n)
     }
 }
 
@@ -165,6 +218,7 @@ struct Headline: View {
                 } else {
                     Text(SparkLink.styled(line.text)).font(Noir.voice(compact ? 19 : 22)).foregroundStyle(line.failed ? .orange : .white)
                         .lineLimit(short ? 3 : compact ? 6 : 7).minimumScaleFactor(0.85)
+                    if let url = line.links.first, !short { LinkCard(url: url).padding(.top, 4) }
                 }
             } else {
                 Text(link.state == .unpaired ? "Hi, I'm \(link.look?.name ?? "Shua")." : Plainly.hello(link.look?.firstName))
@@ -181,50 +235,6 @@ struct Headline: View {
     }
 }
 
-/// The one control cluster, in liquid glass: type · talk · activity.
-private struct Controls: View {
-    @Environment(SparkLink.self) private var link
-    let listen: ShuaListen
-    let accent: Color
-    @Binding var typing: Bool
-    @Binding var activity: Bool
-    let start: () -> Void
-    let finish: () -> Void
-    var body: some View {
-        GlassEffectContainer(spacing: 18) {
-            HStack(spacing: 22) {
-                Button { typing = true } label: { Image(systemName: "keyboard").font(.system(size: 18, weight: .medium)).frame(width: 52, height: 52) }
-                    .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle())
-                    .accessibilityLabel("Type to Shua")
-                ZStack {
-                    ShuaAura(active: listen.listening || ShuaVoice.shared.speaking, accent: accent).frame(width: 88, height: 88)
-                    Image(systemName: listen.listening ? "waveform" : "mic.fill")
-                        .font(.system(size: 28, weight: .semibold)).foregroundStyle(.white)
-                        .symbolEffect(.variableColor.iterative, isActive: listen.listening)
-                        .frame(width: 88, height: 88)
-                        .glassEffect(.regular.tint(accent.opacity(0.85)).interactive(), in: Circle())
-                        .shadow(color: accent.opacity(0.45), radius: 24, y: 8)
-                        .scaleEffect(listen.listening ? 1.12 : 1)
-                        .gesture(DragGesture(minimumDistance: 0).onChanged { _ in if !listen.listening { start() } }.onEnded { _ in finish() })
-                        .accessibilityLabel("Hold to talk to Shua")
-                }
-                Button { activity = true } label: {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "square.stack").font(.system(size: 18, weight: .medium)).frame(width: 52, height: 52)
-                        let working = link.activeRuns.filter { $0.status != "awaiting_approval" }.count
-                        if working > 0 {
-                            Text("\(working)").font(.system(size: 11, weight: .bold)).foregroundStyle(.black).frame(width: 18, height: 18).background(.green, in: Circle()).offset(x: -4, y: 4)
-                        }
-                    }
-                }
-                .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle())
-                .accessibilityLabel("Activity")
-            }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: listen.listening)
-    }
-}
-
 /// Glass card house style: depth from Liquid Glass, not a flat fill.
 struct ShuaCard<Content: View>: View {
     let title: String, symbol: String, tint: Color
@@ -236,7 +246,7 @@ struct ShuaCard<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .litGlass(28)
     }
 }
 
@@ -244,14 +254,16 @@ struct ShuaCard<Content: View>: View {
 struct NeedsYouCard: View {
     @Environment(SparkLink.self) private var link
     let approval: CrewApproval
+    /// Just what and the buttons (the desk on its side has room for little else).
+    var compact = false
     @State private var exact = false
     var body: some View {
         ShuaCard(title: "Needs your OK", symbol: "hand.raised.fill", tint: .orange) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(title) wants to \(approval.what.isEmpty ? "go ahead" : approval.what)").font(Noir.title).foregroundStyle(.white)
-                if !approval.why.isEmpty { Text(approval.why).font(.system(size: 15)).foregroundStyle(Noir.soft) }
+                if !approval.why.isEmpty, !compact { Text(approval.why).font(.system(size: 15)).foregroundStyle(Noir.soft) }
             }
-            if let command = approval.command {
+            if let command = approval.command, !compact {
                 DisclosureGroup(isExpanded: $exact) {
                     Text(command).font(.system(size: 13, design: .monospaced)).foregroundStyle(Noir.soft).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
                 } label: { Text("The exact command").font(.system(size: 13, weight: .medium)).foregroundStyle(Noir.faint) }
@@ -271,7 +283,7 @@ struct NeedsYouCard: View {
 }
 
 /// When nothing needs you (landscape): what's moving, in one glass line.
-private struct Summary: View {
+struct Summary: View {
     @Environment(SparkLink.self) private var link
     var body: some View {
         let working = link.activeRuns.filter { $0.status != "awaiting_approval" }
@@ -283,39 +295,6 @@ private struct Summary: View {
                 Text("Nothing needs you. Ask me anything.").font(Noir.body).foregroundStyle(Noir.soft)
             }
         }
-    }
-}
-
-/// Everything else, a swipe up away: what's working, what finished, what's coming, ideas, the conversation.
-struct ActivitySheet: View {
-    @Environment(SparkLink.self) private var link
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ForEach(link.approvals.dropFirst()) { NeedsYouCard(approval: $0) }
-                    WorkingCard()
-                    DoneCard()
-                    if let next = link.brief?.next, !next.isEmpty {
-                        ShuaCard(title: "Coming up on its own", symbol: "calendar", tint: .cyan) {
-                            ForEach(next) { item in
-                                HStack { Text(item.name).font(Noir.body); Spacer(); Text(item.at, format: .dateTime.hour().minute()).font(Noir.body.monospacedDigit()).foregroundStyle(Noir.soft) }
-                            }
-                        }
-                    }
-                    Ideas { dismiss() }
-                    if !link.chat.isEmpty { ConversationCard() }
-                }
-                .padding(20)
-            }
-            .scrollIndicators(.hidden)
-            .background(NoirBackdrop(mood: .idle, accent: link.look?.accentColor ?? .shuaPurple, focus: UnitPoint(x: 0.5, y: 0), reach: 300))
-            .navigationTitle("Activity").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationBackground(.black)
     }
 }
 
@@ -359,7 +338,7 @@ struct DoneCard: View {
 }
 
 /// Things to ask, as glass chips.
-private struct Ideas: View {
+struct Ideas: View {
     @Environment(SparkLink.self) private var link
     let asked: () -> Void
     var body: some View {
@@ -391,18 +370,21 @@ struct FlowLayout: Layout {
 }
 
 /// The conversation on this phone, as readable as a message thread.
-private struct ConversationCard: View {
+struct ConversationCard: View {
     @Environment(SparkLink.self) private var link
     var body: some View {
         ShuaCard(title: "Conversation", symbol: "text.bubble", tint: Noir.faint) {
             ForEach(link.chat.suffix(12)) { line in
                 HStack {
                     if line.role == .you { Spacer(minLength: 40) }
-                    Text(line.role == .shua ? SparkLink.styled(line.text.isEmpty ? "…" : line.text) : AttributedString(line.text))
-                        .font(line.role == .shua ? Noir.voice(17) : Noir.body).lineSpacing(2).textSelection(.enabled)
-                        .foregroundStyle(line.failed ? .orange : .white)
-                        .padding(.horizontal, line.role == .you ? 14 : 0).padding(.vertical, line.role == .you ? 9 : 2)
-                        .background(line.role == .you ? AnyShapeStyle(.white.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(line.role == .shua ? SparkLink.styled(line.text.isEmpty ? "…" : line.text) : AttributedString(line.text))
+                            .font(line.role == .shua ? Noir.voice(17) : Noir.body).lineSpacing(2).textSelection(.enabled)
+                            .foregroundStyle(line.failed ? .orange : .white)
+                            .padding(.horizontal, line.role == .you ? 14 : 0).padding(.vertical, line.role == .you ? 9 : 2)
+                            .background(line.role == .you ? AnyShapeStyle(.white.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        ForEach(line.links, id: \.self) { LinkCard(url: $0) }
+                    }
                     if line.role == .shua { Spacer(minLength: 24) }
                 }
             }
@@ -411,7 +393,7 @@ private struct ConversationCard: View {
 }
 
 /// While you hold: the room dims and your words appear, in serif, big.
-private struct ListeningOverlay: View {
+struct ListeningOverlay: View {
     let heard: String
     let accent: Color
     var body: some View {
@@ -428,7 +410,7 @@ private struct ListeningOverlay: View {
 }
 
 /// Typing to Shua: a clean sheet with the keyboard up.
-private struct AskSheet: View {
+struct AskSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -515,22 +497,25 @@ extension SparkLink {
     }
 }
 
-/// The light behind Shua: warm and slow at rest, amber when something needs you, green when something lands.
-struct Glow: View {
-    let mood: SparkMood
-    var accent: Color = .shuaPurple
+
+/// A page Shua found or brought up, as a card you can tap: its site, and where on it.
+struct LinkCard: View {
+    let url: URL
     var body: some View {
-        let tint: Color = switch mood {
-        case .concerned: .orange
-        case .happy: .green
-        case .thinking, .speaking: accent
-        case .sleepy: .indigo
-        case .idle: accent
+        Link(destination: url) {
+            HStack(spacing: 10) {
+                Image(systemName: "safari").font(.system(size: 15, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text((url.host() ?? url.absoluteString).replacingOccurrences(of: "www.", with: "")).font(Noir.title).lineLimit(1)
+                    if url.path().count > 1 { Text(url.path()).font(.system(size: 12)).foregroundStyle(Noir.soft).lineLimit(1) }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .bold)).foregroundStyle(Noir.soft)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        ZStack {
-            Color.black
-            RadialGradient(colors: [tint.opacity(0.35), .clear], center: .top, startRadius: 0, endRadius: 420)
-        }
-        .animation(.smooth(duration: 1.2), value: mood)
+        .accessibilityLabel("Open \(url.host() ?? "link")")
     }
 }

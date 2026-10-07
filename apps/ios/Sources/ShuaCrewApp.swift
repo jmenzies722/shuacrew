@@ -13,14 +13,16 @@ private struct PhoneRoot: View {
     @State private var tab: PhoneTab = .shua
     var body: some View {
             TabView(selection: $tab) {
-                // Shua first: everything goes through Shua.
+                // Shua first: everything goes through Shua. Today, Crew and Settings carry Shua in the tab bar's
+                // accessory: its words, and a mic to hold.
                 Tab("Shua", systemImage: "sparkle", value: .shua) { NavigationStack { SparkHomeView() } }
-                // Live from your Mac once paired (iCloud sync stays under Settings → Advanced).
-                // Shua lives on every tab: tap the mini Shua to come home, hold it to talk.
-                Tab("Today", systemImage: "sun.max", value: .today) { NavigationStack { ShuaTodayView() }.overlay(alignment: .bottomTrailing) { MiniShua() } }
-                Tab("Crew", systemImage: "person.3.sequence", value: .crew) { NavigationStack { ShuaCrewView() }.overlay(alignment: .bottomTrailing) { MiniShua() } }
-                Tab("Settings", systemImage: "slider.horizontal.3", value: .settings) { NavigationStack { ShuaSettingsView() }.overlay(alignment: .bottomTrailing) { MiniShua() } }
+                Tab("Today", systemImage: "sun.max.fill", value: .today) { NavigationStack { ShuaTodayView() } }
+                Tab("Crew", systemImage: "person.3.fill", value: .crew) { NavigationStack { ShuaCrewView() } }
+                Tab("Settings", systemImage: "gearshape.fill", value: .settings) { NavigationStack { ShuaSettingsView() } }
             }
+            .tabBarMinimizeBehavior(.onScrollDown) // the tab bar folds away while you read
+            .tabViewBottomAccessory(isEnabled: tab != .shua) { ShuaAccessory() }
+            .environment(\.openTab, { t in withAnimation(.smooth) { tab = t } })
             .tint(link.look?.accentColor ?? .shuaPurple) // your accent from the Mac (ShuaCrew purple until it's shared)
             .environment(link)
             .environment(\.goHome, { withAnimation(.smooth) { tab = .shua } })

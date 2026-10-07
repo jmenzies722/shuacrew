@@ -10,10 +10,10 @@
 		19B356F2653F35A563E90014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 24EE70911A11EF56A7E77608 /* Assets.xcassets */; };
 		27A8A1C0726488733F892649 /* ShuaCrewWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 498B60CD833C407B768D71E8 /* ShuaCrewWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		30B2DC64B1C0A6AA77D663FC /* PhoneNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE5A820775E9BF5FA7623433 /* PhoneNotifications.swift */; };
+		3A3C597FB812452825377F5E /* DeskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A84A2A0BFB3A0906F7DFEA /* DeskView.swift */; };
 		3CFE4B0124D9D178C46064E4 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFCFF83093186660C1D0AA5C /* TodayView.swift */; };
 		44D3E6853CDA1603DEB18B12 /* MobileModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A42D081D1DCF32EFE38088F /* MobileModelTests.swift */; };
 		60237F035AD01EA8AFD1A8A8 /* ShuaEyes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22F9EADDD15C3F690F55E8B8 /* ShuaEyes.swift */; };
-		607950A1FA7B6DB08C5DDDD9 /* DockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7640A326CBD43710645D66C1 /* DockView.swift */; };
 		611C06B440CD3E08B8BE8EC5 /* SparkFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21201FDDEB759B0C3E0E240F /* SparkFace.swift */; };
 		63B3D615391C60024224A8B6 /* EyesViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A129E3B51E786BAFE292775 /* EyesViews.swift */; };
 		64E85EDE2EC9B888650695D3 /* SparkHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC020B17C7E33D6AD8CC1ACE /* SparkHomeView.swift */; };
@@ -104,7 +104,6 @@
 		630FEE223256A8F1F1E23593 /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
 		6A1F3D953A1A0C981624AFE6 /* ShuaEyesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaEyesTests.swift; sourceTree = "<group>"; };
 		6C970161BF6CE29920ED105A /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
-		7640A326CBD43710645D66C1 /* DockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockView.swift; sourceTree = "<group>"; };
 		76985A7B67B903A4829F6EA3 /* EyesFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyesFeed.swift; sourceTree = "<group>"; };
 		81DD07F211CA959B50DADB47 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8A129E3B51E786BAFE292775 /* EyesViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyesViews.swift; sourceTree = "<group>"; };
@@ -115,6 +114,7 @@
 		AD2A012F25E3B975CCAB5DEC /* ShuaCrewWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShuaCrewWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AFCFF83093186660C1D0AA5C /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		BEE50C7AB0E0B552CF09E5F9 /* ShuaTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaTabs.swift; sourceTree = "<group>"; };
+		C0A84A2A0BFB3A0906F7DFEA /* DeskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskView.swift; sourceTree = "<group>"; };
 		C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalView.swift; sourceTree = "<group>"; };
 		C52F7BA64C4F514ACA8FDAE9 /* ShuaEverywhere.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaEverywhere.swift; sourceTree = "<group>"; };
 		C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppDelegate.swift; sourceTree = "<group>"; };
@@ -207,7 +207,7 @@
 			isa = PBXGroup;
 			children = (
 				1AEC99DEA66413AD96EB0B8F /* DefaultShua.json */,
-				7640A326CBD43710645D66C1 /* DockView.swift */,
+				C0A84A2A0BFB3A0906F7DFEA /* DeskView.swift */,
 				76985A7B67B903A4829F6EA3 /* EyesFeed.swift */,
 				8A129E3B51E786BAFE292775 /* EyesViews.swift */,
 				6C970161BF6CE29920ED105A /* PairView.swift */,
@@ -467,7 +467,7 @@
 			files = (
 				890106C728C1A23CD17F2B75 /* ApprovalView.swift in Sources */,
 				7D60BD1ADFEB6B6F423BAFA7 /* CrewView.swift in Sources */,
-				607950A1FA7B6DB08C5DDDD9 /* DockView.swift in Sources */,
+				3A3C597FB812452825377F5E /* DeskView.swift in Sources */,
 				8DA3C857979316FD824E2E25 /* EyesFeed.swift in Sources */,
 				63B3D615391C60024224A8B6 /* EyesViews.swift in Sources */,
 				9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */,

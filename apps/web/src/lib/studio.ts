@@ -218,9 +218,9 @@ export type ProducerMove =
 
 /** Spoken commands come wrapped in politeness: "hey Shua, can you pause the music please". Unwrap to the command. */
 export function commandText(q: string): string {
-  return q.trim()
+  return q.trim().replace(/^From my iPhone:\s*/i, "") // asked from the phone: the same command (measured: "Pause music" from the iPhone went to a model and never paused)
     .replace(/^(hey|hi|ok|okay|yo)[,!\s]+/i, "").replace(/^(shua|spark)[,!:\s]+/i, "")
-    .replace(/^(can|could|would|will) you( please)?\s+/i, "").replace(/^please\s+/i, "").replace(/^(go ahead and|just)\s+/i, "")
+    .replace(/^(can|could|would|will) you( please| actually| just)*\s+/i, "").replace(/^please\s+/i, "").replace(/^(go ahead and|just)\s+/i, "")
     .replace(/[.!?]+$/, "").replace(/[\s,]+(please|for me|now|right now|thanks|thank you)\s*$/i, "").replace(/[.!?,]+$/, "").trim();
 }
 /** Moods Spark plays from your library by genre ("something chill"), never searched as a song title. */

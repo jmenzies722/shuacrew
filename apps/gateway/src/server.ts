@@ -1,4 +1,6 @@
 import { setupCheckRoutes } from "./setup-check-routes.js";
+import { forgetRun } from "./forget.js";
+import { requestFreshStart } from "./fresh-start.js";
 import { personalSetupRoutes } from "./personal-setup-routes.js";
 import { workflowTeachingRoutes } from "./workflow-teaching-routes.js";
 import { z } from "zod";
@@ -585,6 +587,28 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       return reply.code(409).send({ error: "stop the session before archiving it" });
     }
     store.append("run.archived", { reason: "archived by you" }, { run: run.id });
+    return { ok: true };
+  });
+
+  // Delete for good: the session, everything made from it and its files — gone everywhere, live (forget.ts). Only a
+  // contentless run.deleted stays in the log, which re-links around the gap and still verifies.
+  app.delete<{ Params: { id: string } }>("/api/runs/:id", async (request, reply) => {
+    const id = request.params.id, run = state.runs[id];
+    if (!/^[\w-]{1,80}$/.test(id)) return reply.code(400).send({ error: "no such session" });
+    if (run && ["running", "planning", "queued", "awaiting_approval", "paused"].includes(run.status)) return reply.code(409).send({ error: "Stop the session before deleting it." });
+    if (!run && !store.forRun(id).length) return reply.code(404).send({ error: "no such session" });
+    const gone = forgetRun(id, { store, home: path.dirname(store.path), learning: options.learning, library: options.library });
+    return { ok: true, ...gone, files: gone.files.length };
+  });
+
+  // Start fresh (Settings → Data): erase what you made, keep your setup. It runs on the next boot (fresh-start.ts) so
+  // nothing has the log open; this leaves the marker and restarts the gateway (launchd brings it straight back).
+  app.post<{ Body: { confirm?: string } }>("/api/fresh-start", async (request, reply) => {
+    if (request.body?.confirm !== "start fresh") return reply.code(400).send({ error: 'Type "start fresh" to confirm.' });
+    const busy = Object.values(state.runs).filter((r) => ["running", "planning", "queued", "awaiting_approval"].includes(r.status));
+    if (busy.length) return reply.code(409).send({ error: `Stop the ${busy.length} running session${busy.length === 1 ? "" : "s"} first.` });
+    requestFreshStart(path.dirname(store.path));
+    setTimeout(() => process.kill(process.pid, "SIGTERM"), 400);
     return { ok: true };
   });
 

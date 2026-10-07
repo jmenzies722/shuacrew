@@ -289,6 +289,8 @@ const TAGGED = /<(do|act|point|guide|draw|visual|zoom)>\s*([\s\S]*?)\s*<\/\1>/gi
 export function fenced(text: string): string {
   return text.includes("<") ? text.replace(TAGGED, (_m, kind: string, body: string) => `\`\`\`${kind.toLowerCase()} ${body}\`\`\``) : text;
 }
+/** Web-search citation markers ("\uE200cite\uE202turn1reddit16\uE201"), finished or still streaming: never shown or said. */
+export const uncited = (text: string) => (text.includes("\uE200") ? text.replace(/[ \t]?\uE200[^\uE201]*(\uE201|$)/g, "") : text);
 
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
 export function completedBlocks(text: string, size?: ShotSize | null): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> {
@@ -305,9 +307,37 @@ export function completedBlocks(text: string, size?: ShotSize | null): Array<{ k
       out.push({ key: `${m.index}:act`, kind: "act", raw: size ? pixelsToFractions(raw, "act", size) : raw });
       continue;
     }
+    const media = m[1]!.toLowerCase() === "act" ? mediaKeys(m[2]!) : null;
+    if (media) { out.push({ key: `${m.index}:do`, kind: "do", raw: `\`\`\`do ${JSON.stringify(media)}\`\`\`` }); continue; }
     out.push({ key: `${m.index}:${kind}`, kind, raw: size && /^(act|point|guide|draw|zoom)$/.test(kind) ? pixelsToFractions(m[0], kind, size) : m[0] });
   }
   return out;
+}
+
+/** Media keys by exact name (MEDIA_PLAY_PAUSE, MediaNextTrack, AudioVolumeUp…), so "backspace" or "space" never match. */
+const MEDIA_KEYS: Record<string, string> = {
+  playpause: "toggle", play: "play", pause: "pause", stop: "pause", next: "next", skip: "next", fastforward: "next",
+  prev: "previous", previous: "previous", rewind: "previous", volumeup: "volume_up", volup: "volume_up",
+  volumedown: "volume_down", voldown: "volume_down", mute: "mute", volumemute: "mute",
+};
+/**
+ * A media key "pressed" as a screen step (measured 2026-10-07: {"type":"keypress","key":"MEDIA_PLAY_PAUSE"} for
+ * "pause music") is the media action it meant: it runs without screen access, with Music hidden, and says what it did.
+ * Null unless every step is a media key.
+ */
+export function mediaKeys(body: string): Array<{ type: "media"; command: string }> | null {
+  let v: unknown;
+  try { v = JSON.parse(body.trim()); } catch { return null; }
+  const out: Array<{ type: "media"; command: string }> = [];
+  for (const o of Array.isArray(v) ? v : [v]) {
+    const r = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;
+    if (!/^(key|keys|keypress|press_key|hotkey)$/.test(String(r.type)) || typeof (r.key ?? r.keys) !== "string") return null;
+    const name = String(r.key ?? r.keys).toLowerCase().replace(/[^a-z]/g, "").replace(/^(media|audio|key)/, "").replace(/track$/, "");
+    const command = MEDIA_KEYS[name];
+    if (!command) return null;
+    out.push({ type: "media", command });
+  }
+  return out.length ? out : null;
 }
 
 const ACT_KINDS = new Set(["press", "click", "type", "key", "scroll", "done"]);
@@ -517,7 +547,7 @@ export function describeAction(a: Action): string {
     case "open_settings": return `Open ${PANES.find((p) => p.key === a.pane)?.name ?? "Settings"}`;
     case "mac": return a.op === "chess" ? "Read the board and find the best move" : a.op === "find" ? `Search your Mac for “${a.query}”` : a.op === "read" ? `Read ${a.path?.split("/").pop()}` : a.op === "recent" ? "Your recent files" : a.op === "calendar" ? "Check your calendar" : a.op === "reminders" ? "Check your reminders" : a.op === "add_reminder" ? `Remind you: ${a.title}` : a.op === "send_message" ? `Send “${a.text}” to ${a.to}` : a.op === "facetime" ? `Call ${a.to} on FaceTime${a.audio ? " audio" : ""}` : a.op === "directions" ? `Directions to ${a.to}` : a.op === "delete_reminders" || a.op === "complete_reminders" ? `${a.op === "delete_reminders" ? "Delete" : "Finish"} ${a.all ? `all your reminders${a.list ? ` in ${a.list}` : ""}` : `${a.titles?.length ?? 0} reminder${a.titles?.length === 1 ? "" : "s"}`}` : a.op === "complete_reminder" ? `Mark “${a.title}” done` : a.op === "delete_reminder" ? `Delete the reminder “${a.title}”` : a.op === "delete_event" ? `Delete “${a.title}” from your calendar${a.date ? ` (${a.date.slice(0, 10)})` : ""}` : a.op === "delete_note" ? `Delete the note “${a.title}”` : a.op === "notes" ? (a.query ? `Search your notes for “${a.query}”` : "Your latest notes") : a.op === "contacts" ? `Look up ${a.query}` : a.op === "music_now" ? "Check what's playing" : a.op === "music_playlists" ? "Check your playlists" : a.op === "notes_new" ? `New note: ${a.title ?? "…"}` : a.op === "calendar_add" ? `Add “${a.title}” to your calendar` : a.op === "new_folder" ? `New folder “${a.name}”` : a.op === "reveal" ? `Show ${a.path?.split("/").pop()} in Finder` : a.op === "open_file" ? `Open ${a.path?.split("/").pop()}` : a.op === "browser_tabs" ? "Check your open tabs" : "Check your Mac";
     case "note": return "Add to your note";
-    case "media": return a.command === "play_similar" ? a.mood ? `Play something ${a.mood} from your library` : (a.by === "vibe" ? "Play something similar from your library" : "Play another song from your library") : a.command === "play_query" ? `Play “${a.query}”` : a.command === "playlist" ? `Play your ${a.query} playlist` : a.command === "open_query" ? `Open ${a.query}` : a.command === "shuffle" ? `Shuffle ${a.on === false ? "off" : "on"}` : a.command === "repeat" ? `Repeat ${a.mode ?? "all"}` : a.command === "love" ? "Favourite this song" : a.command === "add_to_library" ? "Add this song to your library" : `Music: ${a.command.replace(/_/g, " ")}`;
+    case "media": return a.command === "play_similar" ? a.mood ? `Play something ${a.mood} from your library` : (a.by === "vibe" ? "Play something similar from your library" : "Play another song from your library") : a.command === "play_query" ? `Play “${a.query}”` : a.command === "playlist" ? `Play your ${a.query} playlist` : a.command === "open_query" ? `Open ${a.query}` : a.command === "shuffle" ? `Shuffle ${a.on === false ? "off" : "on"}` : a.command === "repeat" ? `Repeat ${a.mode ?? "all"}` : a.command === "love" ? "Favourite this song" : a.command === "add_to_library" ? "Add this song to your library" : ({ toggle: "Play/pause the music", pause: "Pause the music", play: "Play the music", next: "Next song", previous: "Previous song", volume_up: "Turn the music up", volume_down: "Turn the music down", mute: "Mute the music" } as Record<string, string>)[a.command] ?? `Music: ${a.command.replace(/_/g, " ")}`;
     case "system": return { dark_mode: "Dark mode", sleep_display: "Sleep display", volume: `Volume to ${a.level}%`, volume_up: "Volume up", volume_down: "Volume down", mute: a.on === false ? "Unmute" : "Mute", lock: "Lock your Mac", screenshot: "Take a screenshot", wifi: `Wi-Fi ${a.on === false ? "off" : "on"}`, bluetooth: `Bluetooth ${a.on === false ? "off" : "on"}`, night_shift: a.on === undefined ? "Toggle Night Shift" : `Night Shift ${a.on ? "on" : "off"}`, browser_js: "Let Shua work inside web pages (Allow JavaScript from Apple Events)", bluetooth_device: `${a.on === false ? "Disconnect" : "Connect"} ${a.device ?? "the device"}`, empty_trash: "Empty the Trash" }[a.what];
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
@@ -591,6 +621,13 @@ function toAct(o: Record<string, unknown>): Act | null {
     }
   } catch { return null; }
 }
+/** A reply that was only actions (no words): what it did, in plain words, so its bubble is never empty. */
+export function actionsOnly(text: string): string[] {
+  if (speakable(text)) return [];
+  if (/```phone\b/i.test(text)) return ["Brought it up on your iPhone"];
+  return completedBlocks(text).flatMap((b) => (b.kind === "do" ? parseActions(b.raw).map(describeAction) : b.kind === "act" ? parseActs(b.raw).map(describeAct) : [])).slice(0, 4);
+}
+
 export function describeAct(a: Act): string {
   switch (a.type) {
     case "press": return `Press “${a.label}”`;
@@ -615,14 +652,14 @@ export function restingReply(text: string) { return speakable(text).replace(/\[(
 
 /** What the bubble shows: the reply without machine-readable blocks. */
 export function speakable(text: string) {
-  return withoutPositions(noEmoji(fenced(text)).replace(/```(point|do|guide|draw|act|next|visual|zoom)[\s\S]*?(```|$)/gi, "").replace(/<(do|act|point|guide|draw|visual|zoom)>[\s\S]*$/i, "")).trim();
+  return withoutPositions(noEmoji(fenced(uncited(text))).replace(/```(point|do|guide|draw|act|next|visual|zoom|phone)[\s\S]*?(```|$)/gi, "").replace(/<(do|act|point|guide|draw|visual|zoom)>[\s\S]*$/i, "")).trim();
 }
 /**
  * "Switched it for you." — with nothing actually done. True when a reply says it did (or is doing) something on the
  * Mac but carries no block that would do it. Spark gets sent straight back to either do it or say it can't.
  */
 export function claimsWithoutAction(text: string): boolean {
-  if (/```(do|act|guide|point|draw)\b|<(do|act|guide|point|draw)>/i.test(text)) return false;
+  if (/```(do|act|guide|point|draw|phone)\b|<(do|act|guide|point|draw)>/i.test(text)) return false;
   const said = speakable(text).toLowerCase();
   if (/\b(can'?t|cannot|couldn'?t|unable|not able|won'?t|isn'?t possible|don'?t have)\b/.test(said)) return false;
   const claimed = /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)

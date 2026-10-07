@@ -42,6 +42,10 @@ import { selectIntelligence } from "./intelligence.js";
 import type { LatencyBook } from "./latency.js";
 import { inputDigest } from "./mobile/digest.js";
 
+/** Web-search citation markers (measured 2026-10-07: "won by 23. \uE200cite\uE202turn1reddit16\uE201") are for the
+ *  model's own UI, not yours: never recorded in a reply the Mac, the iPhone or the voice reads. */
+export const uncited = (text: string) => (text.includes("\uE200") ? text.replace(/[ \t]?\uE200[^\uE201]*\uE201/g, "") : text);
+
 const BACKLOG = "In your backlog: start it when you're ready";
 export interface LaunchSpec {
   baseCommit?: string;
@@ -519,7 +523,7 @@ export class Supervisor {
             this.rec("run.session", { runtime: runtime.id, id: event.id }, { run: runId });
             break;
           case "text":
-            if (event.final) this.rec("agent.message", { turn, text: event.text, final: true }, { run: runId });
+            if (event.final) this.rec("agent.message", { turn, text: uncited(event.text), final: true }, { run: runId });
             else { buffered += event.text; said += event.text; }
             break;
           case "thinking":
@@ -584,7 +588,7 @@ export class Supervisor {
             if (lean && model && firstWordAt) this.options.latency?.record(runtime.id, model, firstWordAt - started);
             // Measured: Codex can end a turn with an empty trailing message after streaming the real reply (an act block),
             // and an empty final reply means nothing it asked for runs. Keep what it actually said.
-            this.rec("agent.message", { turn, text: event.text?.trim() ? event.text : said.trim(), final: true }, { run: runId });
+            this.rec("agent.message", { turn, text: uncited(event.text?.trim() ? event.text : said.trim()), final: true }, { run: runId });
             this.rec(
               "turn.completed",
               { turn, route: { runtime: runtime.id, model, effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },

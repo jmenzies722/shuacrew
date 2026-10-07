@@ -49,6 +49,8 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
     catch (e) { setError((e as Error).message); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  // A deleted session takes its flashcards, plans and fit checks with it: show Learn as it is now.
+  useEffect(() => { const on = () => void load(); window.addEventListener("shuacrew:deleted", on); return () => window.removeEventListener("shuacrew:deleted", on); }, [load]);
   const reload = useCallback(() => { void load(); }, [load]);
   const open = (tab: LibraryTab) => { setLibraryTab(tab); setMode("library"); };
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); setError(""); try { await fn(); } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); } };
