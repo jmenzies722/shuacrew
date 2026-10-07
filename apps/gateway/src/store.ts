@@ -8,7 +8,7 @@
  * Nothing leaves this file un-redacted: agent output can contain secrets an agent printed by
  * accident, so bodies are redacted *before* they are stored and hashed — the log never holds them.
  */
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import {
@@ -60,6 +60,8 @@ export class EventStore {
       CREATE INDEX IF NOT EXISTS events_run  ON events (run, seq);
       CREATE INDEX IF NOT EXISTS events_kind ON events (kind, seq);
     `);
+    // Owner-only, like every other private file here (a fresh log, or one restored from a backup, came out 0644).
+    if (file !== ":memory:") for (const f of [file, `${file}-wal`, `${file}-shm`]) { try { chmodSync(f, 0o600); } catch { /* not there yet */ } }
     this.insert = this.db.prepare(
       "INSERT INTO events (seq, at, kind, run, session, body, prev, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );

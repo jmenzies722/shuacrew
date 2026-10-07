@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { Learning } from "./learning.js";
-import { applyLearnOps, careerContext, certPatch, jobPatch, newCert, newJob, parseCertPlan, parseFit, parseOpenings } from "./learning-career.js";
+import { applyLearnOps, careerContext, certPatch, jobPatch, learnBrief, learnReminders, newCert, newJob, parseCertPlan, parseFit, parseOpenings } from "./learning-career.js";
 
 const tmp = () => path.join(mkdtempSync(path.join(os.tmpdir(), "shua-career-")), "learning.json");
 
@@ -121,4 +121,41 @@ it("applies Shua's changes when an organize turn finishes", async () => {
   store.append("run.status", { status: "done" }, { run: "r_org" });
   expect(l.get().certs.map((c) => [c.code, c.status])).toEqual([["SAA-C03", "planned"]]);
   await app.close(); store.close();
+});
+
+it("Shua anywhere sees Learn in a few lines, and its changes land the same way the organizer's do", () => {
+  const learning = new Learning(tmp()), now = Date.parse("2026-10-07T12:00:00Z");
+  expect(learnBrief(learning.get(), 0, now)).toBe("No goal set yet.\nFlashcards: 0, 0 due now.");
+  const ops = [{ op: "goal", goal: "AI Platform Engineer" }, { op: "cert", name: "AWS Solutions Architect – Associate", code: "SAA-C03", status: "booked", examDate: "2026-11-02" }, { op: "job", company: "Anthropic", role: "AI Platform Engineer", stage: "applied", next: "Follow up with the recruiter", nextAt: "2026-10-14" }];
+  expect(applyLearnOps(learning, "```learn\n" + JSON.stringify(ops) + "\n```", now)).toEqual(["goal: AI Platform Engineer", "cert added: SAA-C03", "job added: Anthropic"]);
+  const brief = learnBrief(learning.get(), 2, now);
+  expect(brief).toContain("Goal: AI Platform Engineer");
+  expect(brief).toContain("exam 2026-11-02 (26 days)");
+  expect(brief).toContain("Anthropic · AI Platform Engineer: applied, next: Follow up with the recruiter by 2026-10-14");
+  expect(brief).toContain("Flashcards: 0, 2 due now.");
+  // The same cert again is an update, never a duplicate.
+  expect(applyLearnOps(learning, '```learn\n[{"op":"cert","code":"SAA-C03","status":"passed"}]\n```', now)).toEqual(["cert updated: SAA-C03"]);
+  expect(learning.get().certs).toHaveLength(1);
+});
+
+it("reminds about exams within a month and follow-ups due by tomorrow, soonest first", () => {
+  const learning = new Learning(tmp()), now = new Date(2026, 9, 7, 9, 0).getTime(), at = (d: number, h = 9) => new Date(2026, 9, 7 + d, h).getTime();
+  const ops = [
+    { op: "cert", name: "AWS Solutions Architect – Associate", code: "SAA-C03", status: "booked", examDate: new Date(at(12)).toISOString().slice(0, 10) },
+    { op: "cert", name: "CKA", status: "planned", examDate: new Date(at(60)).toISOString().slice(0, 10) }, // too far out
+    { op: "cert", name: "Terraform Associate", status: "passed", examDate: new Date(at(2)).toISOString().slice(0, 10) }, // done
+    { op: "job", company: "Anthropic", stage: "applied", next: "Follow up with the recruiter", nextAt: new Date(at(0)).toISOString().slice(0, 10) },
+    { op: "job", company: "Vercel", stage: "interviewing", next: "Send thank-you note", nextAt: new Date(at(-2)).toISOString().slice(0, 10) },
+    { op: "job", company: "Stripe", stage: "saved", next: "Apply", nextAt: new Date(at(9)).toISOString().slice(0, 10) }, // not yet
+    { op: "job", company: "Old Co", stage: "closed", next: "x", nextAt: new Date(at(0)).toISOString().slice(0, 10) },
+  ];
+  applyLearnOps(learning, "```learn\n" + JSON.stringify(ops) + "\n```", now);
+  const r = learnReminders(learning.get(), now);
+  expect(r.map((x) => [x.kind, x.days, x.text])).toEqual([
+    ["followup", -2, "Overdue by 2 days: Send thank-you note (Vercel)."],
+    ["followup", 0, "Today: Follow up with the recruiter (Anthropic)."],
+    ["exam", 12, "Your SAA-C03 exam is in 12 days."],
+  ]);
+  expect(learnReminders(learning.get(), at(11)).find((x) => x.kind === "exam")).toMatchObject({ days: 1, text: "Your SAA-C03 exam is tomorrow." });
+  expect(learnReminders(learning.get(), at(12)).find((x) => x.kind === "exam")).toMatchObject({ days: 0, text: "Your SAA-C03 exam is today. You've got this." });
 });

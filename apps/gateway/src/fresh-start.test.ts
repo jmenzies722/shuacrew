@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -57,4 +57,11 @@ it("a fresh home with no database yet still starts clean", () => {
   expect(out).toMatchObject({ kept: 0, erased: 0 });
   const fresh = new EventStore(path.join(home, "shuacrew.db"));
   expect([...fresh.read(0)]).toHaveLength(0); fresh.close();
+});
+
+it("the fresh log is owner-only, like the one it replaced", () => {
+  const home = tmp();
+  performFreshStart(home, { codexHome: tmp(), claudeDirs: [] });
+  new EventStore(path.join(home, "shuacrew.db")).close();
+  expect(statSync(path.join(home, "shuacrew.db")).mode & 0o777).toBe(0o600);
 });

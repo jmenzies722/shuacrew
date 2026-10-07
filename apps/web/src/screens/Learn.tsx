@@ -50,7 +50,12 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
   }, []);
   useEffect(() => { void load(); }, [load]);
   // A deleted session takes its flashcards, plans and fit checks with it: show Learn as it is now.
-  useEffect(() => { const on = () => void load(); window.addEventListener("shuacrew:deleted", on); return () => window.removeEventListener("shuacrew:deleted", on); }, [load]);
+  useEffect(() => {
+    // Deleted, or changed by Shua from the notch, ⌘J or a hold-to-talk turn (another window: the storage event crosses it).
+    const on = () => void load(), stored = (e: StorageEvent) => { if (e.key === "shuacrew.learning.changed") on(); };
+    window.addEventListener("shuacrew:deleted", on); window.addEventListener("shuacrew:learning", on); window.addEventListener("storage", stored);
+    return () => { window.removeEventListener("shuacrew:deleted", on); window.removeEventListener("shuacrew:learning", on); window.removeEventListener("storage", stored); };
+  }, [load]);
   const reload = useCallback(() => { void load(); }, [load]);
   const open = (tab: LibraryTab) => { setLibraryTab(tab); setMode("library"); };
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); setError(""); try { await fn(); } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); } };

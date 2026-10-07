@@ -3,6 +3,8 @@ export interface MorningInput {
   now: Date; name?: string; goal?: string;
   headline?: string; finished: string[]; waiting: number; due: number;
   ventures: Array<{ name: string; stage: string }>; running: number;
+  /** Exam countdowns and follow-ups due (lib/learn-reminders), already in words. */
+  learn?: string[];
   /** Timed meetings still ahead today, from the calendar (only when connected). */
   meetings?: Array<{ title: string; time: string }>;
 }
@@ -54,6 +56,7 @@ export function morningBrief(i: MorningInput): string {
   const parts: string[] = [`${greeting(i.now.getHours())}${i.name ? `, ${i.name}` : ""}.`];
   if (i.finished.length) parts.push(`${i.finished.length === 1 ? `Your crew finished ${named(i.finished[0]!)}` : `Your crew finished ${i.finished.length} things, including ${named(i.finished[0]!)}`}.`);
   if (i.meetings?.length) parts.push(i.meetings.length === 1 ? `One meeting today: ${i.meetings[0]!.title} at ${i.meetings[0]!.time}.` : `${i.meetings.length} meetings today; the first is ${i.meetings[0]!.title} at ${i.meetings[0]!.time}.`);
+  for (const line of i.learn ?? []) parts.push(line);
   if (i.running) parts.push(`${i.running} session${i.running === 1 ? " is" : "s are"} working right now.`);
   if (i.waiting) parts.push(`${i.waiting} decision${i.waiting === 1 ? " is" : "s are"} waiting on you.`);
   if (i.due) parts.push(`You have ${i.due} review card${i.due === 1 ? "" : "s"} due${i.goal?.trim() ? ` on the road to ${i.goal.trim()}` : ""}.`);

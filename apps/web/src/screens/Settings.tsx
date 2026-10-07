@@ -4,6 +4,7 @@ import { ArrowUpRight, Bot, Fingerprint, HeartPulse, Bell, LayoutGrid, Check, Ke
 import { DEFAULT_APPEARANCE, type Appearance as Preferences } from "../lib/appearance";
 import { useLive } from "../lib/live";
 import { AlwaysOn, Appearance, BackupsPanel, RuntimeSettings } from "./Pages";
+import { StartFresh } from "../components/StartFresh";
 import { NotificationSettings } from "../components/NotificationSettings";
 import { VoiceSettings } from "../components/VoiceSettings";
 import { DeveloperSettings } from "../components/DeveloperSettings";
@@ -154,6 +155,7 @@ export function Settings() {
     </div> },
     { id: "service", section: "system", title: "Always on", terms: "background service login gateway uptime", body: <AlwaysOn /> },
     { id: "backups", section: "system", title: "Backups & recovery", terms: "data backup restore encryption history", body: <BackupsPanel /> },
+    { id: "start-fresh", section: "system", title: "Start fresh", terms: "erase reset wipe delete all data clean slate start over fresh zero", body: <StartFresh /> },
     { id: "updates", section: "system", title: "Updates & what's new", terms: "update updates version build commit changes what's new release reload latest", body: <UpdatesPanel pulse={pulse} onRefresh={pulse.refresh} /> },
   ];
   useEffect(() => {

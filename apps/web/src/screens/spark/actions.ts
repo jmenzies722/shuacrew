@@ -134,6 +134,12 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
     else post({type:"buddyOpen",path:"/learn"});
     return {ok:true,message:`Selected ${lesson.title}; requested opening Learning`};
   })().catch((e:Error)=>({ok:false,message:e.message}));
+  // Learn from anywhere: the changes land in the gateway like the organizer's; Learn (another window) refreshes at once.
+  if (a.type === "learn" && a.ops) return api<{ did: string[] }>("/api/learning/ops", { body: { ops: a.ops } }).then((r) => {
+    try { localStorage.setItem("shuacrew.learning.changed", String(Date.now())); } catch { /* the Learn page reloads when opened */ }
+    window.dispatchEvent(new Event("shuacrew:learning"));
+    return r.did.length ? { ok: true, message: `Learn: ${r.did.join(" · ")}` } : { ok: false, message: "Nothing in Learn changed (it needs a cert name, a company, or a goal)." };
+  }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
     .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {
@@ -216,7 +222,7 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   if (a.type === "crew_stop") return cancelRun(crewRef(a.ref)).then(() => ({ ok: true, message: "Stopped" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_open") { post({ type: "buddyOpen", path: `/sessions/${crewRef(a.ref)}` }); return Promise.resolve({ ok: true, message: "Requested opening that session" }); }
   if (a.type === "crew_message") return api(`/api/runs/${crewRef(a.ref)}/followup`, { body: { text: a.text } }).then(() => ({ ok: true, message: "Told them" }), (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "crew_delete") return removeSession(crewRef(a.ref), crewStatus(crewRef(a.ref))).then(() => ({ ok: true, message: "Removed the session from your chat list. Project files and audit history were kept." }), (e: Error) => ({ ok: false, message: e.message }));
+  if (a.type === "crew_delete") return removeSession(crewRef(a.ref), crewStatus(crewRef(a.ref))).then(() => ({ ok: true, message: "Deleted everywhere: its messages, files and what was made from it." }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "crew_review" && crewStatus(crewRef(a.ref)) !== "reviewing")
     return Promise.resolve({ ok: false, message: "That session is not waiting for review." });
   if (a.type === "crew_review") return api(`/api/runs/${crewRef(a.ref)}/review`, { body: { approve: a.approve, ...(a.lesson ? { lesson: a.lesson } : {}) } }).then(() => ({ ok: true, message: a.approve ? "Queued for merge" : a.lesson ? "Rejected it, and noted why" : "Rejected it" }), (e: Error) => ({ ok: false, message: e.message }));

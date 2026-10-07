@@ -47,7 +47,7 @@ export type Action =
   | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth" | "night_shift" | "browser_js" | "bluetooth_device" | "empty_trash"; on?: boolean; level?: number; device?: string }
   | { type: "shortcut"; name: string }
   | { type: "settings"; changes: SparkChanges }
-  | { type: "learn"; topic?: string; drill?: boolean; course?: string; lesson?: number }
+  | { type: "learn"; topic?: string; drill?: boolean; course?: string; lesson?: number; ops?: LearnOp[] }
   | { type: "venture"; name: string; pitch?: string; validate?: boolean }
   | { type: "playbook"; playbook: string; idea?: string; venture?: string }
   | { type: "remember"; text: string }
@@ -340,6 +340,27 @@ export function mediaKeys(body: string): Array<{ type: "media"; command: string 
   return out.length ? out : null;
 }
 
+/** A change to their Learn space, as the organizer writes it: goal, cert, job or milestone (upserts only, never a delete). */
+export type LearnOp = { op: "goal" | "cert" | "job" | "milestone" } & Record<string, string | number | boolean>;
+const LEARN_FIELDS: Record<LearnOp["op"], string[]> = {
+  goal: ["goal"], cert: ["name", "code", "provider", "status", "examDate", "notes"], job: ["company", "role", "stage", "next", "nextAt", "url", "location", "salary", "notes"], milestone: ["title", "roadmap", "index", "done"],
+};
+/** Only known ops and fields, short values: what Spark writes is untrusted until here. At most 8. */
+export function learnOps(v: unknown[]): LearnOp[] {
+  const out: LearnOp[] = [];
+  for (const o of v.slice(0, 8)) {
+    const r = (o && typeof o === "object" ? o : {}) as Record<string, unknown>, op = r.op as LearnOp["op"];
+    if (!(op in LEARN_FIELDS)) continue;
+    const clean: Record<string, string | number | boolean> = { op };
+    for (const k of LEARN_FIELDS[op]) { const x = r[k]; if (typeof x === "string" && x.trim()) clean[k] = x.trim().slice(0, 500); else if (typeof x === "number" || typeof x === "boolean") clean[k] = x; }
+    if (Object.keys(clean).length > 1) out.push(clean as LearnOp);
+  }
+  return out;
+}
+export const learnOpLabel = (o: LearnOp) => o.op === "goal" ? "Set your goal" : o.op === "cert" ? `${o.status === "passed" ? "Mark" : "Track"} ${o.code ?? o.name}${o.examDate ? ` (exam ${o.examDate})` : ""}` : o.op === "job" ? `${o.company}${o.stage ? `: ${o.stage}` : ""}` : `${o.done === false ? "Reopen" : "Finish"} “${o.title ?? "milestone"}”`;
+/** Asks about learning or career: Spark gets Learn's few lines, so it can answer and change it from anywhere. */
+export const asksAboutLearn = (q: string) => /\b(learn(ing)?|stud(y|ying)|cert(s|ification)?s?|exams?|jobs?|interview(s|ing)?|appl(y|ied|ication)|roadmap|career|flash ?cards?|course|lessons?|resume|recruiter|offer|goal)\b/i.test(q);
+
 const ACT_KINDS = new Set(["press", "click", "type", "key", "scroll", "done"]);
 /** The screen steps inside a do block, as act objects, and the do-actions around them; null when there are none. */
 export function slippedActs(body: string): { acts: Array<Record<string, unknown>>; rest: unknown[] } | null {
@@ -506,7 +527,7 @@ function toAction(v: unknown): Action | null {
     }
     case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
     case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
-    case "learn": { if (o.course !== undefined) { const course = str(o.course, 80); return course && /^[A-Za-z0-9_-]+$/.test(course) && Number.isInteger(o.lesson) && Number(o.lesson) >= 0 && Number(o.lesson) < 20 ? {type:"learn",course,lesson:Number(o.lesson)} : null; } const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
+    case "learn": { if (Array.isArray(o.ops)) { const ops = learnOps(o.ops); return ops.length ? { type: "learn", ops } : null; } if (o.course !== undefined) { const course = str(o.course, 80); return course && /^[A-Za-z0-9_-]+$/.test(course) && Number.isInteger(o.lesson) && Number(o.lesson) >= 0 && Number(o.lesson) < 20 ? {type:"learn",course,lesson:Number(o.lesson)} : null; } const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
@@ -551,7 +572,7 @@ export function describeAction(a: Action): string {
     case "system": return { dark_mode: "Dark mode", sleep_display: "Sleep display", volume: `Volume to ${a.level}%`, volume_up: "Volume up", volume_down: "Volume down", mute: a.on === false ? "Unmute" : "Mute", lock: "Lock your Mac", screenshot: "Take a screenshot", wifi: `Wi-Fi ${a.on === false ? "off" : "on"}`, bluetooth: `Bluetooth ${a.on === false ? "off" : "on"}`, night_shift: a.on === undefined ? "Toggle Night Shift" : `Night Shift ${a.on ? "on" : "off"}`, browser_js: "Let Shua work inside web pages (Allow JavaScript from Apple Events)", bluetooth_device: `${a.on === false ? "Disconnect" : "Connect"} ${a.device ?? "the device"}`, empty_trash: "Empty the Trash" }[a.what];
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
-    case "learn": return a.course ? `Open lesson ${(a.lesson ?? 0) + 1}` : a.drill ? "Quiz drill" : `Course: ${a.topic}`;
+    case "learn": return a.ops ? a.ops.map(learnOpLabel).join(" · ") : a.course ? `Open lesson ${(a.lesson ?? 0) + 1}` : a.drill ? "Quiz drill" : `Course: ${a.topic}`;
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
@@ -784,6 +805,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     [
       "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, learning, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
       'Learn anything: ```do [{"type":"learn","topic":"Kubernetes"}]``` · quiz what is due: ```do [{"type":"learn","drill":true}]```',
+      'Their Learn space (goal, certifications and exam dates, job search, roadmap) is yours to keep organized from anywhere: ```do [{"type":"learn","ops":[{"op":"cert","name":"AWS Solutions Architect – Associate","code":"SAA-C03","status":"planned|studying|booked|passed","examDate":"YYYY-MM-DD"},{"op":"job","company":"…","role":"…","stage":"saved|applied|interviewing|offer|closed","next":"…","nextAt":"YYYY-MM-DD","url":"https://…"},{"op":"goal","goal":"…"},{"op":"milestone","title":"words from its title","done":true}]}]``` — same cert code or company updates it; only what they told you (never invent dates, companies or URLs); there is no delete.',
       'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Building software, writing code in a repo, or a long written report they asked the crew to produce: ```do [{"type":"crew","ask":"…a clear, complete brief…","title":"Short task-specific title"}]```. Always supply a concise 3–7 word title describing the goal, not the first sentence of the prompt or the crew member name. If the user explicitly names or quotes a session title, preserve that title exactly and retain their naming instruction in the brief. Ordinary quoted task content is not a title instruction. Questions, facts, news, prices, comparisons, recommendations and "look it up": search yourself right now (WebSearch/WebFetch) and answer — never hand those to the crew. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',

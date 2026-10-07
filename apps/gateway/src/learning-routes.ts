@@ -4,7 +4,7 @@ import type { EventStore } from "./store.js";
 import type { Supervisor } from "./runs.js";
 import { randomUUID } from "node:crypto";
 import { Learning, analyze, parseBlock, parseCards, type Grade } from "./learning.js";
-import { applyLearnOps, captureCareer, careerContext, careerRoutes } from "./learning-career.js";
+import { applyLearnOps, captureCareer, careerContext, careerRoutes, learnBrief, learnReminders } from "./learning-career.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MODEL = { runtime: "codex", effort: "low" } as const; // Resolve a current model from the connected Codex catalogue.
@@ -86,6 +86,16 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const s = learning.get(), now = Date.now();
     const week = Array.from({ length: 14 }, (_, i) => { const d = new Date(now - (13 - i) * 86_400_000).toISOString().slice(0, 10); return { day: d, reviews: s.reviews.filter((r) => new Date(r.at).toISOString().slice(0, 10) === d).length }; });
     return { ...s, reviews: undefined, due: learning.due(now).length, days: week, totalReviews: s.reviews.length, drill: s.drills.find((d) => d.day === today()) ?? null };
+  });
+  // Shua, from anywhere (notch, ⌘J, hold ⌃⌥): what Learn holds, in a few lines — and the changes it decides on, applied
+  // exactly as the organizer's are (upserts by cert name/code or company; never a delete).
+  app.get("/api/learning/brief", async () => ({ text: learnBrief(learning.get(), learning.due(Date.now()).length) }));
+  // Exam countdowns and job follow-ups, for the notch's heads-ups and the morning brief.
+  app.get("/api/learning/reminders", async () => ({ reminders: learnReminders(learning.get()) }));
+  app.post<{ Body: { ops?: unknown } }>("/api/learning/ops", async (req, reply) => {
+    const ops = req.body?.ops;
+    if (!Array.isArray(ops) || !ops.length) return reply.code(400).send({ error: "ops: a list of Learn changes" });
+    return { did: applyLearnOps(learning, `\`\`\`learn\n${JSON.stringify(ops.slice(0, 20))}\n\`\`\``) };
   });
   app.post<{ Body: { goal?: string; about?: string; tracks?: unknown } }>("/api/learning/profile", async (req, reply) => {
     try { return learning.setProfile(req.body as never).profile; } catch (e) { return reply.code(400).send({ error: (e as Error).message.slice(0, 300) }); }

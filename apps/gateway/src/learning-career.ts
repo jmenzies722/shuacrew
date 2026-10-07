@@ -90,6 +90,45 @@ export function careerContext(s: LearningState, now = Date.now()): string {
   return [certs.length ? `Certifications: ${certs.join("; ")}.` : "", jobs.length ? `Job search: ${jobs.join("; ")}.` : ""].filter(Boolean).join("\n");
 }
 
+/** Learn in a few lines, for Shua anywhere (notch, ⌘J, hold ⌃⌥): the goal, the next milestone, certs and exams, the job search, what's due. */
+export function learnBrief(s: LearningState, due: number, now = Date.now()): string {
+  const road = [...s.roadmaps].reverse().find((r) => r.milestones.length), next = road?.milestones.find((m) => !m.done);
+  return [
+    s.profile.goal ? `Goal: ${s.profile.goal}` : "No goal set yet.",
+    road ? `Roadmap "${road.title}": ${road.milestones.filter((m) => m.done).length}/${road.milestones.length} milestones${next ? `, next: ${next.title}` : ", all done"}.` : "",
+    careerContext(s, now),
+    `Flashcards: ${s.cards.length}, ${due} due now.`,
+  ].filter(Boolean).join("\n");
+}
+
+export interface LearnReminder { id: string; kind: "exam" | "followup"; days: number; title: string; text: string }
+/**
+ * Whole calendar days from today (this Mac's clock) to a date. Exam and follow-up dates are calendar dates
+ * ("2026-10-19", stored as that day's UTC midnight), so their UTC date is the day — read in local time, New York
+ * saw every date a day early.
+ */
+const daysUntil = (at: number, now: number) => { const t = new Date(at), n = new Date(now); return Math.round((Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) - Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())) / 86_400_000); };
+/**
+ * What's coming that you'd want a nudge about: exams within 30 days (not passed), and job follow-ups due by tomorrow
+ * (overdue ones too, until done). Soonest first. The notch and the morning brief decide when to say each.
+ */
+export function learnReminders(s: LearningState, now = Date.now()): LearnReminder[] {
+  const out: LearnReminder[] = [];
+  for (const c of s.certs) {
+    if (!c.examDate || c.status === "passed") continue;
+    const days = daysUntil(c.examDate, now), name = c.code || c.name;
+    if (days < 0 || days > 30) continue;
+    out.push({ id: `exam:${c.id}`, kind: "exam", days, title: `${name} exam`, text: days === 0 ? `Your ${name} exam is today. You've got this.` : days === 1 ? `Your ${name} exam is tomorrow.` : `Your ${name} exam is in ${days} days.` });
+  }
+  for (const j of s.jobs) {
+    if (!j.nextAt || j.stage === "closed") continue;
+    const days = daysUntil(j.nextAt, now), what = j.next || "follow up";
+    if (days > 1) continue;
+    out.push({ id: `followup:${j.id}`, kind: "followup", days, title: `${j.company}: ${what}`, text: days < 0 ? `Overdue by ${-days} day${days === -1 ? "" : "s"}: ${what} (${j.company}).` : days === 0 ? `Today: ${what} (${j.company}).` : `Tomorrow: ${what} (${j.company}).` });
+  }
+  return out.sort((a, b) => a.days - b.days);
+}
+
 /** When a career run finishes: fill in what it produced (once). Returns true if it was one of ours. */
 export function captureCareer(learning: Learning, labels: string[], text: string): boolean {
   const tag = (k: string) => labels.find((l) => l.startsWith(`${k}:`))?.slice(k.length + 1);

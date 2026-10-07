@@ -80,6 +80,8 @@ export const briefDay = (now: number) => { const d = new Date(now); return `${d.
 export function morningBriefLine(o: {
   now: number; name?: string; weather?: { temp: number; label: string; hi?: number; lo?: number; rainSoon?: boolean } | null;
   agenda: Agenda | null; finished: string[]; approvals: number; due: number; goal?: string;
+  /** Exam countdowns and follow-ups due (lib/learn-reminders), already in words. */
+  learn?: string[];
 }): string {
   const s: string[] = [];
   s.push(`Good morning${o.name ? `, ${o.name}` : ""}.`);
@@ -92,6 +94,7 @@ export function morningBriefLine(o: {
   if (o.finished.length === 1) s.push(`Overnight, ${o.finished[0]}.`);
   else if (o.finished.length > 1) s.push(`Overnight the crew finished ${o.finished.length} things.`);
   if (o.approvals) s.push(`${o.approvals} decision${o.approvals === 1 ? " is" : "s are"} waiting on you.`);
+  for (const line of o.learn ?? []) s.push(line);
   if (o.due) s.push(`You have ${o.due} card${o.due === 1 ? "" : "s"} to review${o.goal ? ` toward ${o.goal}` : ""}, ${o.due * 0.4 < 1.5 ? "about a minute" : `about ${Math.round(o.due * 0.4)} minutes`}.`);
   return s.join(" ");
 }
