@@ -1131,6 +1131,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       supervisor.updateRuntimeStatus(runtime.id, status, models);
     }));
   };
+  // Warm the checks a pick reads (runtime status, Codex usage) at boot, so even the first ask after a restart is instant.
+  setTimeout(() => { void healCodex().catch(() => undefined); void refreshIntelligence("auto").catch(() => undefined); }, 1500).unref?.();
   app.post("/api/intelligence/select", async (request, reply) => {
     const parsed = IntelligenceRequestSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Invalid intelligence request" });
