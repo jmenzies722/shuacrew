@@ -441,6 +441,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   }, []);
   // Voice mode on: you're live (the same sound as holding fn). Off: a closing note. Not on first load.
   const voiceWas = useRef(voiceLive);
+  useEffect(() => macContext.keepFresh(), []); // asks never wait on a stale read of your Mac
   useEffect(() => { if (voiceWas.current !== voiceLive) { sound(voiceLive ? "listen" : "off"); if (voiceLive) macContext.prefetch(); } voiceWas.current = voiceLive; }, [voiceLive]);
   // Noticing you're stuck (see lib/stuck): glances while live watching is on; one gentle offer, then quiet.
   const [stuck, setStuck] = useState<StuckOffer | null>(null), stuckState = useRef(STUCK_START), quiet = useRef(false);

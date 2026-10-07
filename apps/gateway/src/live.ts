@@ -242,12 +242,23 @@ export class LiveVoice {
   /** For tests: the standby is ready to be taken. */
   warmed() { return this.standby.whenReady(); }
   /** Can Live take a call? Asked of Codex (~0.6 s), remembered for 30 s so a page checking often costs nothing. */
+  /**
+   * Whether Codex has usage left. Reading it spawns an app-server (~1 s), and every Shua ask used to wait for that
+   * whenever the last read was over 30 s old. Now a read under 10 minutes old answers at once and is refreshed behind
+   * it (a reset plan is noticed within a pick or two); only a cold start waits.
+   */
   readiness(): Promise<LiveReadiness> {
-    if (this.ready && Date.now() - this.ready.at < 30_000) return this.ready.value;
+    const age = this.ready ? Date.now() - this.ready.at : Infinity;
+    if (age < 30_000) return this.ready!.value;
     const value = this.readRateLimits().then(liveReadyFrom, () => ({ usable: true }));
+    if (age < 10 * 60_000) {
+      if (!this.refreshing) { this.refreshing = true; void value.finally(() => { this.ready = { at: Date.now(), value }; this.refreshing = false; }); }
+      return this.ready!.value;
+    }
     this.ready = { at: Date.now(), value };
     return value;
   }
+  private refreshing = false;
   private async readRateLimits(): Promise<Json> {
     const binary = this.options.binary ?? findBinary("codex");
     if (!binary) throw new Error("no codex");

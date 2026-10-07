@@ -1084,9 +1084,17 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     writeFileSync(seenFile, JSON.stringify(seen, null, 2));
     supervisor.accountsChanged(runtime);
   };
+  const statusRefreshing = new Set<string>();
   const statusOf = (runtime: Runtime, fresh: boolean) => {
     const hit = statusCache.get(runtime.id);
-    if (!fresh && hit && Date.now() - hit.at < 30_000) return hit.value;
+    const age = hit ? Date.now() - hit.at : Infinity;
+    if (!fresh && hit && age < 30_000) return hit.value;
+    // A pick never waits on a status re-check (~1 s of `codex login status`) when there's an answer from the last
+    // 10 minutes: it uses that and refreshes behind it. Only a cold start, or an explicit fresh read, waits.
+    if (!fresh && hit && age < 10 * 60_000) {
+      if (!statusRefreshing.has(runtime.id)) { statusRefreshing.add(runtime.id); void statusOf(runtime, true).finally(() => statusRefreshing.delete(runtime.id)); }
+      return hit.value;
+    }
     const value = runtime.status().catch((error: Error) => ({ installed: false, signedIn: null, detail: error.message, overridingKeys: [] })).then(status => { supervisor.updateRuntimeStatus(runtime.id, status); noticeAccounts(runtime.id, status); return status; });
     statusCache.set(runtime.id, { at: Date.now(), value });
     return value;

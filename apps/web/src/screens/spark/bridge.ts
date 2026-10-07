@@ -85,6 +85,16 @@ export function macContext(): Promise<string> {
   return age < 10 * 60_000 ? Promise.resolve(contextCache!.text) : fresh;
 }
 macContext.prefetch = () => { if (native() && (!contextCache || Date.now() - contextCache.at > 20_000)) void readMacContext(); };
+/**
+ * Keep the copy fresh while Shua is around, so no ask waits on a read: asks come minutes apart, and every one after a
+ * 10-minute quiet spell used to wait ~1.4 s (measured). A read every 4 minutes is cheap; returns a stop function.
+ */
+macContext.keepFresh = (every = 4 * 60_000) => {
+  if (!native()) return () => undefined;
+  macContext.prefetch();
+  const timer = setInterval(() => { if (!contextCache || Date.now() - contextCache.at > every - 5_000) void readMacContext(); }, every);
+  return () => clearInterval(timer);
+};
 function readMacContext(): Promise<string> {
   if (contextLoading) return contextLoading;
   contextLoading = new Promise<string>((resolve) => {
