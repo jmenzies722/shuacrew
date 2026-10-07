@@ -1,5 +1,7 @@
-import { expect, it } from "vitest";
-import { fitTimes, revealTimes, sentenceStart } from "./NotchCaption";
+import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SpokenReply, fitTimes, revealTimes, sentenceStart } from "./NotchCaption";
 
 it("re-times words to the sentence's real length, so the last word lands just before it ends", () => {
   const text = "Kokoro speaks a little faster than the guess", t = revealTimes(text);
@@ -36,4 +38,25 @@ it("ignores punctuation and case, and never looks behind where speech already is
 it("reports a line that isn't part of this reply (a notification), so the plain caption takes over", () => {
   expect(sentenceStart(words, ["Your", "timer", "is", "done."], 0)).toBe(-1);
   expect(sentenceStart(words, [], 0)).toBe(-1);
+});
+
+describe("SpokenReply shows the whole reply", () => {
+  const reply = "I still can't see your calendar, so I don't have three priorities to give you. The quickest fix is to paste your to-do list. Then I'll give you the top three in one line each.";
+  it("every word, in order, nothing cut with an ellipsis", () => {
+    const html = renderToStaticMarkup(createElement(SpokenReply, { text: reply, line: null, lines: 6 }));
+    const shown = [...html.matchAll(/<span data-i="\d+" class="[^"]+">([^<]+)<\/span>/g)].map((m) => m[1]).join(" ");
+    expect(shown.replace(/&#x27;/g, "'")).toBe(reply);
+    expect(html).not.toContain("…");
+    expect(html).toContain('style="--lines:6"');
+  });
+  it("not speaking: all of it reads as said; speaking: the voice's word is lit and the rest wait", () => {
+    expect(renderToStaticMarkup(createElement(SpokenReply, { text: reply, line: null }))).not.toMatch(/is-next|is-now/);
+    const speaking = renderToStaticMarkup(createElement(SpokenReply, { text: reply, line: { key: 1, text: "I still can't see your calendar, so I don't have three priorities to give you.", speed: 1 } }));
+    expect(speaking).toMatch(/data-i="0" class="is-now"/);
+    expect(speaking).toMatch(/data-i="1" class="is-next"/);
+  });
+  it("a caret only while it's still being written", () => {
+    expect(renderToStaticMarkup(createElement(SpokenReply, { text: "Working on", line: null, streaming: true }))).toContain("notch-caret");
+    expect(renderToStaticMarkup(createElement(SpokenReply, { text: "Done.", line: null }))).not.toContain("notch-caret");
+  });
 });

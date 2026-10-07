@@ -86,6 +86,8 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     private(set) var brief: ShuaBrief?
     /// This phone's conversation with the Mac's Shua: your asks and its replies, newest last.
     private(set) var chat: [ShuaLine] = []
+    /// The latest reply you've had time to read (mini Shua tucks its bubble away, on every tab).
+    var seenReply: UUID?
     /// Waiting on Shua's reply to something asked here.
     private(set) var asking = false
     @ObservationIgnored private var lookAt = Date.distantPast
@@ -268,6 +270,14 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
 
     // MARK: Shua
 
+    /// Something Shua says on its own, from this phone (what its eyes noticed): shown like a reply, and spoken.
+    func note(_ text: String) {
+        guard !asking else { return } // never talk over an answer on its way
+        chat.append(ShuaLine(role: .shua, text: text))
+        if chat.count > 40 { chat.removeFirst(chat.count - 40) }
+        speak(text)
+    }
+
     /// Ask the Mac's own Shua. It does it there (open apps, music, the crew, a brief…) and its reply streams back here.
     func ask(_ raw: String) async {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -398,9 +408,12 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
 
-    /// What a person reads: Shua's words without its machine blocks (```do …```) or bracketed notes.
+    /// What a person reads: Shua's words without its machine blocks (```do …```, or the same written as a tag:
+    /// `<do>{"type":"open","app":"Music"}</do>`) or bracketed notes.
     static func clean(_ text: String) -> String {
         var t = text.replacingOccurrences(of: "```[\\s\\S]*?(```|$)", with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"<(do|act|point|guide|draw|visual|zoom)>[\s\S]*?(</\1>|$)"#, with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: "[ \t]?\u{E200}[^\u{E201}]*(\u{E201}|$)", with: "", options: .regularExpression) // web-search citation markers
         t = t.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("[") }.joined(separator: "\n")
         return t.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
     }

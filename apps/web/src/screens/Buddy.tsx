@@ -63,6 +63,7 @@ import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
 import { upload, withAttachments } from "../lib/attachments";
+import { bigAsk } from "../lib/big-ask";
 import { earcon, soundStyle, warmSounds, type Earcon } from "../lib/earcons";
 import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
@@ -1277,7 +1278,11 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     const clearSubmittedDraft = () => { if (opt.origin !== "live") clearCompanionDraft(text, draftRevision); };
     const area = opt.area ?? (opt.origin === "live" ? null : selectedArea);
     if (!text.trim()) return;
-    const q = text.trim() + (area ? "\n\n[Selected area] Analyze only the attached cropped selection. It is a frozen screenshot, not the full display. Do not click, point, guide, or perform actions from crop coordinates. Explain what is visible and ask if context outside this box is needed." : ""); if (!q) return;
+    // Anything you paste reaches Shua whole: past ~24k characters it goes along as a file it reads (lib/big-ask.ts).
+    const big = bigAsk(text);
+    const pasting = big.file ? upload(new File([big.file.body], big.file.name, { type: "text/plain" })) : null;
+    pasting?.catch(() => {}); // reported where it's used
+    const q = big.ask + (area ? "\n\n[Selected area] Analyze only the attached cropped selection. It is a frozen screenshot, not the full display. Do not click, point, guide, or perform actions from crop coordinates. Explain what is visible and ask if context outside this box is needed." : ""); if (!q) return;
     const arrival = ++askArrival.current;
     architectureSession.current = reduceArchitectureSession(architectureSession.current, { type: "new-turn" });
     dismissLesson();
@@ -1419,6 +1424,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
       if (look && shooting && (!localNow || needsScreen(q) || opt.look || area)) { const { shot, files } = await shooting; if (stale()) return; if (!localNow) atts = files; if (area && localNow) throw new Error("Choose an image-capable model to analyze the selected area."); if (area) setSelectedArea(null); mark("look"); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
+      if (pasting) atts = [...atts, await pasting]; // the whole pasted text, as a file Shua reads
       const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
       const detail = crewDetail(crew.runs, crew.approvals, names, crew.plays);
       const now = crewNowBlock(track, todaysSet(crew.runs, crew.approvals, crew.members, crew.plays, Date.now()), Object.keys(crew.approvals).length) + (detail ? `\n${detail}` : "");
@@ -1916,14 +1922,14 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   // The island's one line: what it hears, says or does right now; else what needs you, the last reply, or the day.
   const lastReply = lastSpark ? prose(speakable(messages.at(-1)!.text)) : "";
   const replyText = streamText || (speaking ? lastReply : "");
-  const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string } =
+  const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string; reply?: boolean } =
     fnReady ? { text: "Listening… let go to send", live: true, shimmer: true }
     : (fnHeld || hearingNow) && heard ? { text: heard, live: true }
-    : streamingNow ? { text: visibleStream, live: true }
-    : speaking && caption ? { text: caption.text, live: true }
+    : streamingNow ? { text: visibleStream, live: true, reply: true }
+    : speaking && caption ? { text: caption.text, live: true, reply: true }
     : processing || working || !!busy ? { text: fnSent && heard ? heard : "Working on it", live: true, shimmer: true }
     : status === "paused" ? { ...pausedLine(recorded?.statusReason), tone: "hold" }
-    : lastReply ? { text: lastReply }
+    : lastReply ? { text: lastReply, reply: true }
     : { text: idleFocus.text, sub: idleFocus.sub, tone: idleFocus.tone };
   const callOwnsIsland = call.active && call.mode !== "silent";
   const islandChip = !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback ? (nextMoves[0] ?? (!messages.length ? idleFocus.ask : undefined) ?? nookStarters[0] ?? null) : null;
@@ -2153,7 +2159,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           : liveRuns[0] && prefs.notchActivities !== false ? <NotchActivity run={liveRuns[0]} more={liveRuns.length - 1} onOpen={() => (embedded ? window.shuacrew?.navigate(`/sessions/${liveRuns[0]!.id}`) : post({ type: "buddyOpen", path: `/sessions/${liveRuns[0]!.id}` }))} /> : null)}</div>
         <div className={`shua-island-body${islandMore || workflowsOpen || accessOpen || missionOpen ? " is-more" : ""}`} ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
           {/* One line, not a text box: what Shua is hearing, saying or doing right now — or your day at a glance. */}
-          {!callOwnsIsland && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}${islandHero.tone ? ` is-tone-${islandHero.tone}` : ""}`} onClick={openChat} title="Open the conversation">
+          {/* A reply is shown whole, live with the voice (scroll to re-read); everything else stays one tappable line. */}
+          {!callOwnsIsland && islandHero.reply && <div className={`isl-reply${islandHero.live ? " is-live" : ""}`} aria-label={`${companionName(prefs)}'s reply`}>
+            <SpokenReply text={streamText || lastReply || islandHero.text} line={speaking ? caption : null} streaming={!!streamText} lines={6} /></div>}
+          {!callOwnsIsland && !islandHero.reply && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}${islandHero.tone ? ` is-tone-${islandHero.tone}` : ""}`} onClick={openChat} title="Open the conversation">
             {islandHero.tone && islandHero.tone !== "calm" && <span className="isl-kicker"><i />{FOCUS_KICKER[islandHero.tone]}</span>}
             <span className="isl-hero-text">{islandHero.text}</span>{islandHero.sub && <small>{islandHero.sub}</small>}
           </button>}

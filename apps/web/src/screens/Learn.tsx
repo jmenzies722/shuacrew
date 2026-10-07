@@ -1,10 +1,11 @@
 /**
- * Learn: one place to get better. Today is a plan Shua builds from what you actually got right and wrong (graded
- * reviews, lapses, stale skills), not from your profile. Explain is the visual teacher. Library holds courses,
- * roadmap, cards, career kit and your goal. /learn and /teach both land here.
+ * Learn: one place to get better and get there. Today is the next thing to do, built from what you actually got right
+ * and wrong, your exams and your job follow-ups. Path is your roadmap; Certs and Jobs are your career; Library holds
+ * courses, cards and the career kit; Explain is the visual teacher. Ask Shua sits under all of it: say what happened
+ * and Shua keeps everything organized. /learn and /teach both land here.
  */
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BookOpen, Brain, Flame, GraduationCap, Library, Presentation, RotateCcw, Sparkles, Target, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Award, BookOpen, Brain, Briefcase, Flame, GraduationCap, Library, Presentation, RotateCcw, Sparkles, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { learningProgress } from "../lib/learning-progress";
@@ -12,11 +13,14 @@ import { companionName, useCompanion } from "../lib/companion";
 import { Learning, type Tab as LibraryTab } from "./Learning";
 import { Teaching } from "./Teaching";
 import { LearningProjects } from "../components/LearningProjects";
+import { CertsView, JobsView, LearnAsk, PathView, careerSteps, type Cert, type Job } from "./LearnCareer";
 import "./learn.css";
 import { ControlHeader, Readouts, Seg } from "../components/ControlRoom";
 import "./learn-today.css";
 
-type Mode = "today" | "explain" | "library";
+type Mode = "today" | "path" | "certs" | "jobs" | "library" | "explain";
+const MODES: ReadonlyArray<readonly [Mode, string]> = [["today", "Today"], ["path", "Path"], ["certs", "Certs"], ["jobs", "Jobs"], ["library", "Library"], ["explain", "Explain"]];
+const LAST = "shuacrew.learn.tab";
 interface Track { id: string; name: string; level: number; cards: number; due: number; reviews: number; accuracy: number | null; lapses: number; stale: boolean }
 interface Insights {
   tracks: Track[]; weakest: { id: string; name: string } | null; hardest: Array<{ front: string; lapses: number; track: string }>; stale: string[];
@@ -26,7 +30,7 @@ interface Insights {
 interface Course { id: string; title: string; topic: string; lessons: Array<{ title: string; done: boolean }> }
 interface Milestone { title: string; why: string; skills: string[]; project: string; weeks: number; done?: boolean }
 interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
-interface State { profile: { goal: string }; courses: Course[]; roadmaps?: Roadmap[] }
+interface State { profile: { goal: string }; courses: Course[]; roadmaps?: Roadmap[]; certs?: Cert[]; jobs?: Job[]; coach?: Record<string, { run: string }> }
 interface Step { id: string; icon: typeof Brain; title: string; why: string; cta: string; run: () => Promise<void> | void }
 
 const pct = (n: number | null) => (n === null ? "–" : `${Math.round(n * 100)}%`);
@@ -34,7 +38,9 @@ const pct = (n: number | null) => (n === null ? "–" : `${Math.round(n * 100)}%
 export function Learn({ initial = "today" }: { initial?: Mode }) {
   const name = companionName(useCompanion());
   const runs = useLive((s) => s.crew.runs);
-  const [mode, setMode] = useState<Mode>(initial);
+  // Where you were last time (Explain only when you came for it: /teach).
+  const [mode, setModeState] = useState<Mode>(() => { if (initial !== "today") return initial; try { const v = localStorage.getItem(LAST) as Mode | null; return v && MODES.some(([m]) => m === v) && v !== "explain" ? v : "today"; } catch { return "today"; } });
+  const setMode = (m: Mode) => { setModeState(m); try { localStorage.setItem(LAST, m); } catch { /* ignore */ } };
   const [libraryTab, setLibraryTab] = useState<LibraryTab | undefined>();
   const [insights, setInsights] = useState<Insights | null>(null), [state, setState] = useState<State | null>(null);
   const [busy, setBusy] = useState(""), [error, setError] = useState("");
@@ -43,6 +49,7 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
     catch (e) { setError((e as Error).message); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  const reload = useCallback(() => { void load(); }, [load]);
   const open = (tab: LibraryTab) => { setLibraryTab(tab); setMode("library"); };
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); setError(""); try { await fn(); } catch (e) { setError((e as Error).message.replace(/^\d+\s*/, "")); } finally { setBusy(""); } };
 
@@ -50,6 +57,8 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
   const plan: Step[] = [];
   if (insights && state) {
     if (insights.due > 0) plan.push({ id: "review", icon: RotateCcw, title: `Review ${insights.due} card${insights.due === 1 ? "" : "s"}`, why: `About ${Math.max(1, Math.round(insights.due * 0.4))} min. Spaced right before you'd forget them.`, cta: "Start review", run: () => open("review") });
+    // Your career next: an exam coming up, a follow-up that's due.
+    for (const step of careerSteps(state)) plan.push({ id: step.id, icon: step.kind === "cert" ? Award : Briefcase, title: step.title, why: step.why, cta: step.kind === "cert" ? "Open certs" : "Open jobs", run: () => setMode(step.kind === "cert" ? "certs" : "jobs") });
     const weak = insights.weakest && insights.tracks.find((t) => t.id === insights.weakest!.id);
     if (weak) plan.push({
       id: "drill", icon: Target, title: `Close the gap in ${weak.name}`,
@@ -92,9 +101,9 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
   const [first, ...then] = plan;
 
   return <div className="pane-scroll learn"><div className="pane-body pane-body-wide">
-    <ControlHeader title={mode === "today" ? headline || "Learn" : mode === "explain" ? "What do you want to understand?" : "Your library"} kicker={<><GraduationCap size={13} /> Learn with {name}</>}
+    <ControlHeader title={mode === "today" ? headline || "Learn" : mode === "explain" ? "What do you want to understand?" : mode === "path" ? "Your path" : mode === "certs" ? "Certifications" : mode === "jobs" ? "Your job search" : "Your library"} kicker={<><GraduationCap size={13} /> Learn with {name}</>}
       status={!insights ? "Reading where you stand…" : statLine} tone={!insights ? "idle" : insights.due ? "live" : "ok"}>
-      <Seg label="Learn" value={mode} onChange={(id) => { setMode(id); if (id === "library") setLibraryTab(undefined); }} options={[["today", "Today"], ["explain", "Explain"], ["library", "Library"]] as const} />
+      <Seg label="Learn" value={mode} onChange={(id) => { setMode(id); if (id === "library") setLibraryTab(undefined); }} options={MODES} />
     </ControlHeader>
     {error && <p className="lx-error" role="alert">{error}</p>}
     {mode === "today" && <div className="lt">
@@ -156,8 +165,13 @@ export function Learn({ initial = "today" }: { initial?: Mode }) {
         </aside>
       </div>
     </div>}
+    {mode === "path" && state && <PathView state={state} onChange={() => void load()} startCourse={(topic) => void run("course", async () => { await api("/api/learning/courses", { body: { topic } }); open("learn"); })} />}
+    {mode === "certs" && state && <CertsView state={state} tracks={insights?.tracks ?? []} onChange={() => void load()} review={() => open("review")}
+      quiz={(topic) => void run("quiz", async () => { await api("/api/learning/coach", { body: { mode: "quiz", fresh: true, message: `Quiz me for the ${topic} exam: its highest-weight topics first, one question at a time.` } }); open("coach"); })} />}
+    {mode === "jobs" && state && <JobsView state={state} onChange={() => void load()} />}
     {mode === "explain" && <Teaching bare />}
     {mode === "library" && <><LearningProjects /><Learning embedded initialTab={libraryTab} /></>}
+    {mode !== "explain" && state && <LearnAsk state={state} onChange={reload} />}
   </div></div>;
 }
 

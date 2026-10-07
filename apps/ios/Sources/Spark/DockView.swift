@@ -8,18 +8,21 @@ struct SecondScreen: View {
     let tilt: SparkTilt
     let listen: ShuaListen
     private var voice: ShuaVoice { .shared }
+    private var eyes: ShuaEyes { .shared }
     private var accent: Color { link.look?.accentColor ?? .shuaPurple }
+    @State private var waves = 0
+    @State private var seeing = false
 
     var body: some View {
         GeometryReader { geo in
             let wide = geo.size.width > geo.size.height
             ZStack {
-                ShuaStage(mood: mood, accent: accent)
+                NoirBackdrop(mood: mood, accent: accent, tilt: tilt.gaze, focus: wide ? UnitPoint(x: 0.25, y: 0.45) : UnitPoint(x: 0.5, y: 0.3), reach: 360)
                 let layout = wide ? AnyLayout(HStackLayout(spacing: 40)) : AnyLayout(VStackLayout(spacing: 24))
                 layout {
-                    ZStack {
-                        ShuaAura(active: voice.speaking || listen.listening || link.asking, accent: accent)
-                        ShuaCharacter(mood: mood, tilt: tilt.gaze).padding(wide ? 12 : 24)
+                    ZStack(alignment: .bottom) {
+                        ShuaFloor(accent: accent).offset(y: 10)
+                        ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).padding(wide ? 12 : 24)
                     }
                     .frame(maxWidth: wide ? geo.size.height * 0.85 : geo.size.width * 0.8)
                     .scaleEffect(listen.listening ? 1.05 : 1).animation(.spring(response: 0.35), value: listen.listening)
@@ -27,11 +30,11 @@ struct SecondScreen: View {
                         TimelineView(.periodic(from: .now, by: 1)) { ctx in
                             VStack(alignment: wide ? .leading : .center, spacing: 0) {
                                 Text(ctx.date, format: .dateTime.hour().minute())
-                                    .font(.system(size: wide ? 76 : 60, weight: .bold, design: .rounded)).monospacedDigit().contentTransition(.numericText())
-                                Text(ctx.date, format: .dateTime.weekday(.wide).month().day()).font(.system(.headline, design: .rounded)).foregroundStyle(.secondary)
+                                    .font(.system(size: wide ? 88 : 72, weight: .thin)).monospacedDigit().contentTransition(.numericText()).tracking(-1)
+                                Text(ctx.date, format: .dateTime.weekday(.wide).month().day()).noirLabel()
                             }
                         }
-                        SpeechLine(listening: listen.listening, heard: listen.heard, big: wide ? 24 : 22, leading: wide)
+                        Headline(listening: listen.listening, heard: listen.heard, compact: true).multilineTextAlignment(wide ? .leading : .center)
                         HStack(spacing: 16) {
                             if !link.approvals.isEmpty { Label("\(link.approvals.count) need\(link.approvals.count == 1 ? "s" : "") you", systemImage: "hand.raised.fill").foregroundStyle(.orange) }
                             let working = link.activeRuns.filter { $0.status != "awaiting_approval" }.count
@@ -39,11 +42,11 @@ struct SecondScreen: View {
                             let done = link.runs.filter(\.finished).count
                             if done > 0 { Label("\(done) done", systemImage: "checkmark.circle.fill").foregroundStyle(.secondary) }
                         }
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         if let a = link.approvals.first {
                             HStack(spacing: 10) {
-                                Button("Not now") { Task { await link.decide(a, allow: false) } }.buttonStyle(.bordered)
-                                Button { Task { await link.decide(a, allow: true) } } label: { Label("Allow", systemImage: "faceid") }.buttonStyle(.borderedProminent).tint(.orange)
+                                Button("Not now") { Task { await link.decide(a, allow: false) } }.buttonStyle(.glass)
+                                Button { Task { await link.decide(a, allow: true) } } label: { Label("Allow", systemImage: "faceid").foregroundStyle(.black) }.buttonStyle(.glassProminent).tint(.white)
                             }
                         }
                     }
@@ -60,6 +63,10 @@ struct SecondScreen: View {
                 .onEnded { _ in Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } })
             .animation(.smooth(duration: 0.35), value: listen.listening)
         }
+        .overlay(alignment: .topTrailing) { EyesButton(accent: accent) { seeing = true }.padding(20) }
+        .modifier(EyesReactions(listen: listen, waves: $waves, start: { Task { await listen.start() } },
+                                finish: { Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } }))
+        .fullScreenCover(isPresented: $seeing) { ShuaCam(listen: listen) }
         .preferredColorScheme(.dark)
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true; tilt.start() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
@@ -68,17 +75,23 @@ struct SecondScreen: View {
     private var mood: SparkMood {
         if voice.speaking { return .speaking }
         if listen.listening || link.asking { return .thinking }
+        if eyes.on, !eyes.present { return .sleepy }
         return link.mood
     }
 }
 
-/// Desk mode: the second screen, full screen, from the button. Double-tap anywhere to put it away.
+/// Desk mode: the second screen as a clock by your Mac, full screen. Close it with the button, or double-tap anywhere.
 struct DockView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var listen = ShuaListen()
     let tilt: SparkTilt
     var body: some View {
         SecondScreen(tilt: tilt, listen: listen)
+            .overlay(alignment: .topLeading) {
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).frame(width: 42, height: 42) }
+                    .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle())
+                    .padding(20).accessibilityLabel("Close desk mode")
+            }
             .onTapGesture(count: 2) { dismiss() }
             .statusBarHidden()
             .persistentSystemOverlays(.hidden)

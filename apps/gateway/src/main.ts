@@ -1,3 +1,4 @@
+import { macFirstName } from "./shua-look.js";
 import { shouldArchiveLiveCall } from "./live.js";
 /**
  * The gateway process: one long-running local daemon that owns sessions, runs, memory, schedules,
@@ -119,6 +120,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const terminals = new Terminals(zshIntegration(home));
   // Live calls reach Spark's Mac actions through this gateway's tool server, with a token per call.
   const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => { if (shouldArchiveLiveCall(settings.get().flags)) library.save({ title, content, summary, filename: "live-call.md", by: "agent" }); }, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
+    firstName: macFirstName, // Live greets you by your name, from this Mac's account
     mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }, 5_000); // spark_do confirms deletes itself; a call's Codex is warmed 5 s after boot
   tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;

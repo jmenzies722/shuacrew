@@ -495,3 +495,16 @@ it("knows when an ask is about ShuaCrew's own window", async () => {
   expect(aboutShuaCrewWindow("what is shuacrew?")).toBe(false);
   expect(aboutShuaCrewWindow("quit ShuaCrew")).toBe(false);
 });
+
+describe("blocks written as tags", () => {
+  it("runs and hides <do>…</do> like a fenced block, shorthand included", async () => {
+    const { completedBlocks, parseActions, speakable } = await import("./buddy");
+    const reply = 'Opening Music.\n<do>{"type":"open","app":"Music"}</do>';
+    expect(parseActions(reply)).toEqual([{ type: "open_app", name: "Music" }]);
+    expect(completedBlocks(reply).map((b) => b.kind)).toEqual(["do"]);
+    expect(speakable(reply)).toBe("Opening Music.");
+    expect(speakable('<do>{"type":"open","app":"Music"}</do>')).toBe("");
+    expect(speakable('On it. <do>{"type":"op')).toBe("On it."); // still streaming
+    expect(parseActions('<do>[{"type":"open","url":"https://apple.com"},{"type":"quit","name":"Music"}]</do>')).toEqual([{ type: "open_url", url: "https://apple.com" }, { type: "quit_app", name: "Music" }]);
+  });
+});

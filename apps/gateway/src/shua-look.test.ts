@@ -26,3 +26,9 @@ it("carries Shua's voice, validated, so the phone speaks with the same one", () 
   const odd = toLook({ markup: svg, css: "", voiceId: "../etc", voiceSpeed: 9 }, 1)!;
   expect(odd.voiceId).toBeUndefined(); expect(odd.voiceSpeed).toBeUndefined();
 });
+
+it("knows the Mac owner's first name for the greeting", async () => {
+  const { macFirstName } = await import("./shua-look.js");
+  const name = macFirstName();
+  expect(name === undefined || /^[\p{L}'-]+$/u.test(name)).toBe(true);
+});

@@ -281,9 +281,19 @@ export function pointingText(ctx: ScreenContext | undefined, lines: ScreenLine[]
   return out.join("\n");
 }
 
+/**
+ * Blocks Spark sometimes writes as tags instead of fences (measured 2026-10-07: `<do>{"type":"open","app":"Music"}</do>`,
+ * shown raw in the notch and on the iPhone and never run) become the fenced form everything else reads.
+ */
+const TAGGED = /<(do|act|point|guide|draw|visual|zoom)>\s*([\s\S]*?)\s*<\/\1>/gi;
+export function fenced(text: string): string {
+  return text.includes("<") ? text.replace(TAGGED, (_m, kind: string, body: string) => `\`\`\`${kind.toLowerCase()} ${body}\`\`\``) : text;
+}
+
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
 export function completedBlocks(text: string, size?: ShotSize | null): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> {
   const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> = [];
+  text = fenced(text);
   for (const m of text.matchAll(/```(do|act|point|guide|draw|visual|zoom)\s*([\s\S]*?)```/gi)) {
     const kind = m[1]!.toLowerCase() as "do";
     // Screen steps written inside a do block (measured: ```do [{"type":"act","action":"press","target":"#28"}]```) are
@@ -384,6 +394,11 @@ const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.
 function toAction(v: unknown): Action | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
+  // Shorthand Spark sometimes writes (measured: {"type":"open","app":"Music"}): the action it meant.
+  if (o.type === "open" || o.type === "quit") {
+    const type = o.type === "quit" ? "quit_app" : typeof o.url === "string" ? "open_url" : typeof o.path === "string" ? "open_path" : "open_app";
+    return toAction({ ...o, type, name: o.name ?? o.app, ...(type === "open_url" ? { app: undefined } : {}) });
+  }
   switch (o.type) {
     case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
     case "quit_app": { const name = str(o.name, 80); return name ? { type: "quit_app", name } : null; }
@@ -477,7 +492,7 @@ function toAction(v: unknown): Action | null {
 /** Every ```do``` block: one action or a list; anything unknown or unsafe-looking is dropped. At most 5. */
 export function parseActions(text: string): Action[] {
   const out: Action[] = [];
-  for (const m of text.matchAll(/```do\s*([\s\S]*?)```/gi)) {
+  for (const m of fenced(text).matchAll(/```do\s*([\s\S]*?)```/gi)) {
     try { const v = JSON.parse(m[1]!.trim()) as unknown; for (const a of Array.isArray(v) ? v : [v]) { const ok = toAction(a); if (ok) out.push(ok); } } catch { /* skip a malformed block */ }
   }
   return out.slice(0, 5);
@@ -599,13 +614,15 @@ export function actFollowUp(did: string, ok: boolean, screen: { width: number; h
 export function restingReply(text: string) { return speakable(text).replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`#>]+/g, "").replace(/\s+/g, " ").trim(); }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return withoutPositions(noEmoji(text).replace(/```(point|do|guide|draw|act|next|visual|zoom)[\s\S]*?(```|$)/gi, "")).trim(); }
+export function speakable(text: string) {
+  return withoutPositions(noEmoji(fenced(text)).replace(/```(point|do|guide|draw|act|next|visual|zoom)[\s\S]*?(```|$)/gi, "").replace(/<(do|act|point|guide|draw|visual|zoom)>[\s\S]*$/i, "")).trim();
+}
 /**
  * "Switched it for you." — with nothing actually done. True when a reply says it did (or is doing) something on the
  * Mac but carries no block that would do it. Spark gets sent straight back to either do it or say it can't.
  */
 export function claimsWithoutAction(text: string): boolean {
-  if (/```(do|act|guide|point|draw)\b/i.test(text)) return false;
+  if (/```(do|act|guide|point|draw)\b|<(do|act|guide|point|draw)>/i.test(text)) return false;
   const said = speakable(text).toLowerCase();
   if (/\b(can'?t|cannot|couldn'?t|unable|not able|won'?t|isn'?t possible|don'?t have)\b/.test(said)) return false;
   const claimed = /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)
@@ -635,24 +652,38 @@ export function parseNext(text: string): string[] {
   try { const v = JSON.parse(m[1]!.trim()) as unknown; return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 1).map((x) => x.trim().slice(0, 60)).slice(0, 3) : []; } catch { return []; }
 }
 
-/** Plain words for the voice: no markdown, no code, no link targets. */
+/**
+ * Plain words for the voice: no markdown, no code, no link targets. A table row is read as its cells ("Pro, $20"), a
+ * bare URL as its site ("terraform.io"), and no mark (* _ ` # > |) is ever left for the voice to say.
+ */
 export function spoken(text: string) {
-  return speakable(text).replace(/```[\s\S]*?(```|$)/g, " ").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/`([^`]*)`/g, "$1")
-    .replace(/^\s*(#+|[-*]|\d+\.)\s+/gm, "").replace(/[*_~>#]/g, "").replace(/\s+/g, " ").trim();
+  let t = speakable(text).replace(/```[\s\S]*?(```|$)/g, " ");
+  if (/^\s*\|.*\|\s*$/.test(t)) t = t.split("|").map((c) => c.trim()).filter((c) => /\w/.test(c)).join(", ");
+  return t.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/https?:\/\/(?:www\.)?([^\s/?#]+)\S*?(?=[.,!?;:]?(?:\s|$))/g, "$1")
+    .replace(/`([^`]*)`/g, "$1").replace(/^\s*(#+|[-*+•]|\d+[.)])\s+/gm, "").replace(/[*_~>#|`]/g, "").replace(/\s+/g, " ").trim();
 }
 
-/** Real-time speech: the whole sentences that arrived since `from` in a streaming reply. Stops at any code block. */
+/**
+ * Real-time speech: the whole sentences that arrived since `from` in a streaming reply. Finished fenced blocks (code,
+ * and Shua's own do / visual / next blocks) end a sentence and are never read — and the talking carries on after them
+ * (it used to stop at the first one, so everything after an action went unsaid). A block still being written holds
+ * speech at its start until it closes. Speech stops only at a `---` that opens a written design (a heading follows),
+ * which is read on screen, not aloud. A long sentence with no full stop yet starts at a natural pause, not at its end.
+ */
 export function nextSentences(text: string, from: number, final = false): { chunks: string[]; upto: number } {
-  const rule = text.search(/\n-{3,}\s*\n/), tick = text.indexOf("```");
-  const fence = rule >= 0 && (tick < 0 || rule < tick) ? rule : tick;
-  const end = fence >= 0 ? fence : text.length;
+  // Finished blocks become whitespace of the same length (so positions stay true) that starts with a sentence break.
+  const masked = text.replace(/```[\s\S]*?```/g, (m) => "\n" + " ".repeat(m.length - 1));
+  const open = masked.indexOf("```"), design = masked.search(/\n-{3,}[ \t]*\n\s*#/);
+  const end = Math.min(open >= 0 ? open : masked.length, design >= 0 ? design : masked.length);
   if (from >= end) return { chunks: [], upto: from };
-  const tail = text.slice(from, end);
+  const tail = masked.slice(from, end);
   let cut = 0;
   for (const m of tail.matchAll(/[.!?:](?=\s)|\n/g)) cut = m.index! + 1;
-  if (final || fence >= 0) cut = tail.length;
+  if (final || end < masked.length) cut = tail.length;
   // Start talking sooner: at the very start of a reply, the first clause (6+ words, up to a comma) goes out on its own.
   if (!cut && from === 0) { const clause = /^\s*(?:\S+\s+){5,}?\S+?[,;—–](?=\s)/.exec(tail); if (clause) cut = clause[0].length; }
+  // A run-on with no full stop yet: don't make the voice wait for the end — break at a comma, else a space.
+  if (!cut && tail.length > 220) { const soft = Math.max(tail.lastIndexOf(", ", 200), tail.lastIndexOf("; ", 200)); cut = soft > 60 ? soft + 1 : tail.lastIndexOf(" ", 200) + 1; }
   const chunks = tail.slice(0, cut).split(/(?<=[.!?:])\s+|\n+/).map(spoken).filter((s) => /\w/.test(s));
   return { chunks, upto: from + cut };
 }
