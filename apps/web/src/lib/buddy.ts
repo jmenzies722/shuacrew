@@ -281,9 +281,19 @@ export function pointingText(ctx: ScreenContext | undefined, lines: ScreenLine[]
   return out.join("\n");
 }
 
+/**
+ * Blocks Spark sometimes writes as tags instead of fences (measured 2026-10-07: `<do>{"type":"open","app":"Music"}</do>`,
+ * shown raw in the notch and on the iPhone and never run) become the fenced form everything else reads.
+ */
+const TAGGED = /<(do|act|point|guide|draw|visual|zoom)>\s*([\s\S]*?)\s*<\/\1>/gi;
+export function fenced(text: string): string {
+  return text.includes("<") ? text.replace(TAGGED, (_m, kind: string, body: string) => `\`\`\`${kind.toLowerCase()} ${body}\`\`\``) : text;
+}
+
 /** Machine blocks that have finished streaming, in order: each can run the moment it's complete. */
 export function completedBlocks(text: string, size?: ShotSize | null): Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> {
   const out: Array<{ key: string; kind: "do" | "act" | "point" | "guide" | "draw" | "visual" | "zoom"; raw: string }> = [];
+  text = fenced(text);
   for (const m of text.matchAll(/```(do|act|point|guide|draw|visual|zoom)\s*([\s\S]*?)```/gi)) {
     const kind = m[1]!.toLowerCase() as "do";
     // Screen steps written inside a do block (measured: ```do [{"type":"act","action":"press","target":"#28"}]```) are
@@ -384,6 +394,11 @@ const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.
 function toAction(v: unknown): Action | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
+  // Shorthand Spark sometimes writes (measured: {"type":"open","app":"Music"}): the action it meant.
+  if (o.type === "open" || o.type === "quit") {
+    const type = o.type === "quit" ? "quit_app" : typeof o.url === "string" ? "open_url" : typeof o.path === "string" ? "open_path" : "open_app";
+    return toAction({ ...o, type, name: o.name ?? o.app, ...(type === "open_url" ? { app: undefined } : {}) });
+  }
   switch (o.type) {
     case "open_app": { const name = str(o.name, 80); return name ? { type: "open_app", name } : null; }
     case "quit_app": { const name = str(o.name, 80); return name ? { type: "quit_app", name } : null; }
@@ -477,7 +492,7 @@ function toAction(v: unknown): Action | null {
 /** Every ```do``` block: one action or a list; anything unknown or unsafe-looking is dropped. At most 5. */
 export function parseActions(text: string): Action[] {
   const out: Action[] = [];
-  for (const m of text.matchAll(/```do\s*([\s\S]*?)```/gi)) {
+  for (const m of fenced(text).matchAll(/```do\s*([\s\S]*?)```/gi)) {
     try { const v = JSON.parse(m[1]!.trim()) as unknown; for (const a of Array.isArray(v) ? v : [v]) { const ok = toAction(a); if (ok) out.push(ok); } } catch { /* skip a malformed block */ }
   }
   return out.slice(0, 5);
@@ -599,13 +614,15 @@ export function actFollowUp(did: string, ok: boolean, screen: { width: number; h
 export function restingReply(text: string) { return speakable(text).replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`#>]+/g, "").replace(/\s+/g, " ").trim(); }
 
 /** What the bubble shows: the reply without machine-readable blocks. */
-export function speakable(text: string) { return withoutPositions(noEmoji(text).replace(/```(point|do|guide|draw|act|next|visual|zoom)[\s\S]*?(```|$)/gi, "")).trim(); }
+export function speakable(text: string) {
+  return withoutPositions(noEmoji(fenced(text)).replace(/```(point|do|guide|draw|act|next|visual|zoom)[\s\S]*?(```|$)/gi, "").replace(/<(do|act|point|guide|draw|visual|zoom)>[\s\S]*$/i, "")).trim();
+}
 /**
  * "Switched it for you." — with nothing actually done. True when a reply says it did (or is doing) something on the
  * Mac but carries no block that would do it. Spark gets sent straight back to either do it or say it can't.
  */
 export function claimsWithoutAction(text: string): boolean {
-  if (/```(do|act|guide|point|draw)\b/i.test(text)) return false;
+  if (/```(do|act|guide|point|draw)\b|<(do|act|guide|point|draw)>/i.test(text)) return false;
   const said = speakable(text).toLowerCase();
   if (/\b(can'?t|cannot|couldn'?t|unable|not able|won'?t|isn'?t possible|don'?t have)\b/.test(said)) return false;
   const claimed = /\b(i'?ve |i have |i'?m |i am |i |i'?ll |just )?(switched|switching|turned (it )?(on|off)|turning (it )?(on|off)|opened|opening|paused|pausing|resumed|playing|started|starting|launched|launching|enabled|disabled|toggled|muted|unmuted|skipped|changed|set it|set your|closed|created|added|saved|sent|moved)\b/.test(said)

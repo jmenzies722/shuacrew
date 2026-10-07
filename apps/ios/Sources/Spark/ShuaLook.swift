@@ -12,6 +12,8 @@ struct ShuaLook: Codable, Equatable, Sendable {
     /// Shua's voice on the Mac (ShuaCrew's voice engine), so the phone speaks with the same one.
     var voiceId: String?
     var voiceSpeed: Double?
+    /// Your first name, from the Mac's account: "Good morning, Josh."
+    var firstName: String?
     var at: Double
 
     private static let storeKey = "shua.look"

@@ -1,65 +1,117 @@
 import SwiftUI
 
-/// The light Shua lives in: a slow, living mesh gradient in your accent, warmer while Shua talks, amber when
-/// something needs you, green when something lands, deep and quiet when it sleeps. Never distracting: it drifts.
-struct ShuaStage: View {
+/// Noir: black, lit like a stage. A key light in your accent behind Shua (brighter while it talks, amber when something
+/// needs you, green when something lands, dim when it sleeps), a faint rim of light from above, and a vignette. The
+/// layers drift a touch against the phone's tilt, so the screen has depth: never a flat fill.
+struct NoirBackdrop: View {
     let mood: SparkMood
     var accent: Color = .shuaPurple
+    var tilt: CGVector = .zero
+    /// Where the key light sits (Shua's position on screen).
+    var focus: UnitPoint = UnitPoint(x: 0.5, y: 0.28)
+    var reach: CGFloat = 380
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { ctx in
-            let t = still ? 0 : ctx.date.timeIntervalSinceReferenceDate
-            MeshGradient(width: 3, height: 3, points: points(t), colors: colors, smoothsColors: true)
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: still)) { ctx in
+            let breath = still ? 1 : 1 + 0.04 * sin(ctx.date.timeIntervalSinceReferenceDate * 0.8)
+            let at = UnitPoint(x: focus.x - tilt.dx * 0.04, y: focus.y - tilt.dy * 0.03)
+            ZStack {
+                Color.black
+                RadialGradient(colors: [key.opacity(intensity), key.opacity(intensity * 0.28), .clear], center: at, startRadius: 0, endRadius: reach * breath)
+                RadialGradient(colors: [key.opacity(intensity * 0.35), .clear], center: UnitPoint(x: at.x, y: at.y + 0.3), startRadius: 0, endRadius: reach * 0.7)
+                LinearGradient(colors: [.white.opacity(0.07), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.35))
+                RadialGradient(colors: [.clear, .black.opacity(0.75)], center: .center, startRadius: 220, endRadius: 760)
+            }
         }
-        .overlay(LinearGradient(colors: [.clear, .black.opacity(0.55), .black], startPoint: .center, endPoint: .bottom))
-        .animation(.smooth(duration: 1.4), value: mood)
+        .animation(.smooth(duration: 1.2), value: mood)
         .ignoresSafeArea()
     }
 
-    /// The middle points wander a little; the edges stay put, so the light moves without the frame moving.
-    private func points(_ t: Double) -> [SIMD2<Float>] {
-        let w = { (speed: Double, phase: Double, amount: Float) in Float(sin(t * speed + phase)) * amount }
-        return [
-            [0, 0], [0.5 + w(0.21, 0, 0.12), 0], [1, 0],
-            [0, 0.5 + w(0.17, 1, 0.1)], [0.5 + w(0.13, 2, 0.16), 0.45 + w(0.19, 3, 0.12)], [1, 0.5 + w(0.15, 4, 0.1)],
-            [0, 1], [0.5 + w(0.11, 5, 0.12), 1], [1, 1],
-        ]
-    }
-
-    private var colors: [Color] {
-        let key: Color = switch mood {
+    private var key: Color {
+        switch mood {
         case .concerned: .orange
         case .happy: .green
         case .sleepy: .indigo
         default: accent
         }
-        let lit = mood == .speaking ? 0.85 : mood == .thinking ? 0.7 : mood == .sleepy ? 0.35 : 0.55
-        return [
-            key.opacity(lit), Color(red: 0.08, green: 0.07, blue: 0.16), key.mix(with: .purple, by: 0.4).opacity(lit * 0.9),
-            Color(red: 0.05, green: 0.05, blue: 0.1), key.opacity(lit * 0.45), Color(red: 0.06, green: 0.04, blue: 0.12),
-            .black, .black, .black,
-        ]
+    }
+    private var intensity: Double {
+        switch mood {
+        case .speaking: 0.34
+        case .thinking: 0.27
+        case .sleepy: 0.12
+        default: 0.2
+        }
     }
 }
 
-/// A soft ring behind Shua that breathes while it talks or listens: you can see it's alive before it says a word.
+/// Kept for older call sites: the Noir backdrop.
+typealias ShuaStage = NoirBackdrop
+
+/// Where Shua stands: a soft lit floor and a contact shadow, so it's in a place, not pasted on.
+struct ShuaFloor: View {
+    var accent: Color = .shuaPurple
+    var body: some View {
+        ZStack {
+            Ellipse().fill(RadialGradient(colors: [accent.opacity(0.28), .clear], center: .center, startRadius: 0, endRadius: 140)).frame(width: 280, height: 70)
+            Ellipse().fill(.black.opacity(0.65)).frame(width: 150, height: 22).blur(radius: 10)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A breathing ring for the talk orb while Shua listens or speaks.
 struct ShuaAura: View {
     let active: Bool
     var accent: Color = .shuaPurple
     @State private var pulse = false
     var body: some View {
         ZStack {
-            Circle().fill(RadialGradient(colors: [accent.opacity(active ? 0.45 : 0.18), .clear], center: .center, startRadius: 10, endRadius: 170))
-                .scaleEffect(pulse && active ? 1.12 : 1)
-            Circle().strokeBorder(accent.opacity(active ? 0.5 : 0.12), lineWidth: 1.5)
-                .scaleEffect(pulse && active ? 1.18 : 0.98)
-                .opacity(pulse && active ? 0 : 1)
+            Circle().strokeBorder(accent.opacity(active ? 0.55 : 0), lineWidth: 2).scaleEffect(pulse && active ? 1.5 : 1).opacity(pulse && active ? 0 : 1)
+            Circle().strokeBorder(accent.opacity(active ? 0.35 : 0), lineWidth: 1.5).scaleEffect(pulse && active ? 1.9 : 1.1).opacity(pulse && active ? 0 : 1)
         }
-        .animation(active ? .easeInOut(duration: 1.1).repeatForever(autoreverses: false) : .smooth, value: pulse)
+        .animation(active ? .easeOut(duration: 1.4).repeatForever(autoreverses: false) : .smooth, value: pulse)
         .onAppear { pulse = true }
         .allowsHitTesting(false)
     }
+}
+
+/// Your font (Settings → Font): SF Pro unless you pick another. Every Noir style reads it, so changing it restyles
+/// the whole app at once.
+enum ShuaFont: String, CaseIterable, Identifiable {
+    case sf, rounded, serif, mono
+    var id: String { rawValue }
+    var name: String {
+        switch self { case .sf: "SF Pro"; case .rounded: "SF Rounded"; case .serif: "New York"; case .mono: "SF Mono" }
+    }
+    var design: Font.Design {
+        switch self { case .sf: .default; case .rounded: .rounded; case .serif: .serif; case .mono: .monospaced }
+    }
+}
+
+@MainActor @Observable final class ShuaType {
+    static let shared = ShuaType()
+    var font: ShuaFont { didSet { UserDefaults.standard.set(font.rawValue, forKey: "shua.font") } }
+    private init() { font = ShuaFont(rawValue: UserDefaults.standard.string(forKey: "shua.font") ?? "") ?? .sf }
+}
+
+/// The type scale, in your font: large tight headlines, an easy reading size for what Shua says, small tracked labels.
+@MainActor enum Noir {
+    private static var design: Font.Design { ShuaType.shared.font.design }
+    static func display(_ size: CGFloat = 34) -> Font { .system(size: size, weight: .bold, design: design) }
+    static func voice(_ size: CGFloat = 23) -> Font { .system(size: size, weight: .medium, design: design) }
+    static var lead: Font { .system(size: 17, weight: .regular, design: design) }
+    static var body: Font { .system(size: 16, weight: .regular, design: design) }
+    static var title: Font { .system(size: 17, weight: .semibold, design: design) }
+    static var label: Font { .system(size: 12, weight: .semibold, design: design) }
+    static let soft = Color.white.opacity(0.62)
+    static let faint = Color.white.opacity(0.38)
+}
+
+extension View {
+    /// A small tracked label: NEEDS YOUR OK, WORKING NOW…
+    func noirLabel(_ color: Color = Noir.faint) -> some View { font(Noir.label).tracking(1.4).textCase(.uppercase).foregroundStyle(color) }
 }
 
 /// Words a person would use: what a command is for, why it's asking, and hello by the time of day.

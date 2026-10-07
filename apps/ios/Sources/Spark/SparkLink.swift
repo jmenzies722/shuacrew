@@ -86,6 +86,8 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     private(set) var brief: ShuaBrief?
     /// This phone's conversation with the Mac's Shua: your asks and its replies, newest last.
     private(set) var chat: [ShuaLine] = []
+    /// The latest reply you've had time to read (mini Shua tucks its bubble away, on every tab).
+    var seenReply: UUID?
     /// Waiting on Shua's reply to something asked here.
     private(set) var asking = false
     @ObservationIgnored private var lookAt = Date.distantPast
@@ -398,9 +400,11 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
 
-    /// What a person reads: Shua's words without its machine blocks (```do …```) or bracketed notes.
+    /// What a person reads: Shua's words without its machine blocks (```do …```, or the same written as a tag:
+    /// `<do>{"type":"open","app":"Music"}</do>`) or bracketed notes.
     static func clean(_ text: String) -> String {
         var t = text.replacingOccurrences(of: "```[\\s\\S]*?(```|$)", with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"<(do|act|point|guide|draw|visual|zoom)>[\s\S]*?(</\1>|$)"#, with: "", options: .regularExpression)
         t = t.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("[") }.joined(separator: "\n")
         return t.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
     }

@@ -14,11 +14,11 @@ struct SecondScreen: View {
         GeometryReader { geo in
             let wide = geo.size.width > geo.size.height
             ZStack {
-                ShuaStage(mood: mood, accent: accent)
+                NoirBackdrop(mood: mood, accent: accent, tilt: tilt.gaze, focus: wide ? UnitPoint(x: 0.25, y: 0.45) : UnitPoint(x: 0.5, y: 0.3), reach: 360)
                 let layout = wide ? AnyLayout(HStackLayout(spacing: 40)) : AnyLayout(VStackLayout(spacing: 24))
                 layout {
-                    ZStack {
-                        ShuaAura(active: voice.speaking || listen.listening || link.asking, accent: accent)
+                    ZStack(alignment: .bottom) {
+                        ShuaFloor(accent: accent).offset(y: 10)
                         ShuaCharacter(mood: mood, tilt: tilt.gaze).padding(wide ? 12 : 24)
                     }
                     .frame(maxWidth: wide ? geo.size.height * 0.85 : geo.size.width * 0.8)
@@ -27,11 +27,11 @@ struct SecondScreen: View {
                         TimelineView(.periodic(from: .now, by: 1)) { ctx in
                             VStack(alignment: wide ? .leading : .center, spacing: 0) {
                                 Text(ctx.date, format: .dateTime.hour().minute())
-                                    .font(.system(size: wide ? 76 : 60, weight: .bold, design: .rounded)).monospacedDigit().contentTransition(.numericText())
-                                Text(ctx.date, format: .dateTime.weekday(.wide).month().day()).font(.system(.headline, design: .rounded)).foregroundStyle(.secondary)
+                                    .font(.system(size: wide ? 88 : 72, weight: .thin)).monospacedDigit().contentTransition(.numericText()).tracking(-1)
+                                Text(ctx.date, format: .dateTime.weekday(.wide).month().day()).noirLabel()
                             }
                         }
-                        SpeechLine(listening: listen.listening, heard: listen.heard, big: wide ? 24 : 22, leading: wide)
+                        Headline(listening: listen.listening, heard: listen.heard, compact: true).multilineTextAlignment(wide ? .leading : .center)
                         HStack(spacing: 16) {
                             if !link.approvals.isEmpty { Label("\(link.approvals.count) need\(link.approvals.count == 1 ? "s" : "") you", systemImage: "hand.raised.fill").foregroundStyle(.orange) }
                             let working = link.activeRuns.filter { $0.status != "awaiting_approval" }.count
@@ -39,11 +39,11 @@ struct SecondScreen: View {
                             let done = link.runs.filter(\.finished).count
                             if done > 0 { Label("\(done) done", systemImage: "checkmark.circle.fill").foregroundStyle(.secondary) }
                         }
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         if let a = link.approvals.first {
                             HStack(spacing: 10) {
-                                Button("Not now") { Task { await link.decide(a, allow: false) } }.buttonStyle(.bordered)
-                                Button { Task { await link.decide(a, allow: true) } } label: { Label("Allow", systemImage: "faceid") }.buttonStyle(.borderedProminent).tint(.orange)
+                                Button("Not now") { Task { await link.decide(a, allow: false) } }.buttonStyle(.glass)
+                                Button { Task { await link.decide(a, allow: true) } } label: { Label("Allow", systemImage: "faceid").foregroundStyle(.black) }.buttonStyle(.glassProminent).tint(.white)
                             }
                         }
                     }
@@ -80,7 +80,8 @@ struct DockView: View {
     var body: some View {
         SecondScreen(tilt: tilt, listen: listen)
             .overlay(alignment: .topLeading) {
-                Button { dismiss() } label: { Image(systemName: "xmark").font(.headline).foregroundStyle(.secondary).frame(width: 40, height: 40).background(.ultraThinMaterial, in: Circle()) }
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).frame(width: 42, height: 42) }
+                    .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle())
                     .padding(20).accessibilityLabel("Close desk mode")
             }
             .onTapGesture(count: 2) { dismiss() }
