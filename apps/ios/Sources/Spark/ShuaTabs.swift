@@ -281,7 +281,7 @@ private struct LiveRun: View {
 private struct Working: View {
     let color: Color
     var body: some View {
-        TimelineView(.animation) { ctx in
+        TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in // 30 a second is smooth; the screen's 120 isn't needed
             GeometryReader { geo in
                 let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
                 Capsule().fill(.white.opacity(0.08))

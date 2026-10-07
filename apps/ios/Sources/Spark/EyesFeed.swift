@@ -11,6 +11,10 @@ final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AV
     private let visionQueue = DispatchQueue(label: "dev.shuacrew.eyes.vision", qos: .userInitiated)
     /// Vision is reading a frame: the next ones go straight past it.
     private var reading = false
+    /// Vision's own count and last answers (used only on Vision's queue).
+    private var reads = 0
+    private var lastFace: CGRect?
+    private var lastBody: BodyShape?
     private var trouble: (@Sendable (String?) -> Void)?
     private var watching = false
     private let output = AVCaptureVideoDataOutput()
@@ -179,22 +183,28 @@ final class EyesFeed: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AV
         // Up to 15 reads a second, on Vision's own queue; frames that arrive while it's busy just go by.
         guard tick % 2 == 0, !reading, let deliver else { return }
         reading = true
-        let frame = Pixels(buffer: pixels)
+        let frame = Pixels(buffer: pixels), desk = setup.lens == .front // read here, on the camera's queue, where it's set
         visionQueue.async { [self] in
-            let seen = read(frame.buffer, at: time.seconds)
+            let seen = read(frame.buffer, at: time.seconds, desk: desk)
             queue.async { self.reading = false }
             deliver(seen)
         }
     }
 
-    /// One frame through Vision: your face, a hand, your body.
-    private func read(_ pixels: CVPixelBuffer, at time: TimeInterval) -> EyesFrame {
-        try? VNImageRequestHandler(cvPixelBuffer: pixels, orientation: .up).perform([hands, faces, bodies])
-        let face = faces.results?.max { $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height }
-            .map { b in CGRect(x: b.boundingBox.minX, y: 1 - b.boundingBox.maxY, width: b.boundingBox.width, height: b.boundingBox.height) }
+    /// One frame through Vision. Your hand every time (signs need it); at the desk your face every time and your body
+    /// every third read, filming all of you the other way round — about a third less work than reading everything,
+    /// with the last answer standing in between.
+    private func read(_ pixels: CVPixelBuffer, at time: TimeInterval, desk: Bool) -> EyesFrame {
+        reads += 1
+        let wantFace = desk || reads % 3 == 0, wantBody = !desk || reads % 3 == 0
+        try? VNImageRequestHandler(cvPixelBuffer: pixels, orientation: .up).perform([hands] + (wantFace ? [faces] : []) + (wantBody ? [bodies] : []))
+        if wantFace {
+            lastFace = faces.results?.max { $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height }
+                .map { b in CGRect(x: b.boundingBox.minX, y: 1 - b.boundingBox.maxY, width: b.boundingBox.width, height: b.boundingBox.height) }
+        }
+        if wantBody { lastBody = bodies.results?.first.flatMap(BodyShape.init(observation:)) }
         let hand = hands.results?.first.flatMap(HandShape.init(observation:))
-        let body = bodies.results?.first.flatMap(BodyShape.init(observation:))
-        return EyesFrame(time: time, face: face, hand: hand, body: body, size: CGSize(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels)))
+        return EyesFrame(time: time, face: lastFace, hand: hand, body: lastBody, size: CGSize(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels)))
     }
 
     private func jpeg(_ pixels: CVPixelBuffer) -> Data? {

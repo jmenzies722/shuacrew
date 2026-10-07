@@ -12,10 +12,13 @@ struct NoirBackdrop: View {
     var focus: UnitPoint = UnitPoint(x: 0.5, y: 0.28)
     var reach: CGFloat = 380
     @Environment(\.accessibilityReduceMotion) private var still
+    private var calm: Bool { still || ProcessInfo.processInfo.isLowPowerModeEnabled }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 24, paused: still)) { ctx in
-            let t = still ? 0 : ctx.date.timeIntervalSinceReferenceDate
+        // The light drifts so slowly that 10 updates a second is smooth — far cheaper than animating at the screen's
+        // 120. It holds still with Reduce Motion or Low Power Mode.
+        TimelineView(.animation(minimumInterval: 1 / 10, paused: calm)) { ctx in
+            let t = calm ? 0 : ctx.date.timeIntervalSinceReferenceDate
             ZStack {
                 Color.black
                 MeshGradient(width: 3, height: 3, points: points(at: t), colors: [
@@ -25,9 +28,9 @@ struct NoirBackdrop: View {
                 ], smoothsColors: true)
                 LinearGradient(colors: [.white.opacity(0.06), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.3))
                 RadialGradient(colors: [.clear, .black.opacity(0.7)], center: .center, startRadius: 240, endRadius: 820)
-                Grain()
             }
         }
+        .overlay { Grain() } // static: drawn once
         .animation(.smooth(duration: 1.2), value: mood)
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -77,7 +80,7 @@ struct Grain: View {
     }()
     var body: some View {
         if let tile = Self.tile {
-            Rectangle().fill(.image(tile)).opacity(0.05).blendMode(.overlay).allowsHitTesting(false)
+            Rectangle().fill(.image(tile)).opacity(0.035).allowsHitTesting(false)
         }
     }
 }
@@ -104,9 +107,15 @@ struct ShuaAura: View {
             Circle().strokeBorder(accent.opacity(active ? 0.55 : 0), lineWidth: 2).scaleEffect(pulse && active ? 1.5 : 1).opacity(pulse && active ? 0 : 1)
             Circle().strokeBorder(accent.opacity(active ? 0.35 : 0), lineWidth: 1.5).scaleEffect(pulse && active ? 1.9 : 1.1).opacity(pulse && active ? 0 : 1)
         }
-        .animation(active ? .easeOut(duration: 1.4).repeatForever(autoreverses: false) : .smooth, value: pulse)
-        .onAppear { pulse = true }
+        .onAppear { breathe(active) }
+        .onChange(of: active) { _, now in breathe(now) }
         .allowsHitTesting(false)
+    }
+
+    /// Rings while Shua listens or speaks; at rest, nothing animating at all (not even invisibly).
+    private func breathe(_ on: Bool) {
+        pulse = false
+        if on { withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { pulse = true } }
     }
 }
 
@@ -125,10 +134,11 @@ struct LitGlass: ViewModifier {
 
 extension View {
     func litGlass(_ radius: CGFloat = 28, tint: Color? = nil) -> some View { modifier(LitGlass(radius: radius, tint: tint)) }
-    /// Rows and cards ease in as they scroll into view and settle back as they leave: the list feels alive.
+    /// Rows and cards ease in as they scroll into view and settle back as they leave: the list feels alive. Opacity and
+    /// scale only — no blur, which costs a pass per card on every frame and reads as out of focus.
     func scrollSettle() -> some View {
         scrollTransition(.interactive, axis: .vertical) { content, phase in
-            content.opacity(phase.isIdentity ? 1 : 0.55).scaleEffect(phase.isIdentity ? 1 : 0.96).blur(radius: phase.isIdentity ? 0 : 1.5)
+            content.opacity(phase.isIdentity ? 1 : 0.7).scaleEffect(phase.isIdentity ? 1 : 0.97)
         }
     }
 }

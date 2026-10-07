@@ -66,7 +66,7 @@ struct SparkHomeView: View {
             .scrollIndicators(.hidden)
             .refreshable { await link.reload() }
             EdgeFade(edge: .top, height: 120)
-            EdgeFade(edge: .bottom, height: 230)
+            EdgeFade(edge: .bottom, height: 150)
             TopLine(desk: $desk).padding(.horizontal, 20).padding(.top, 4)
             if listen.listening { ListeningOverlay(heard: listen.heard, accent: accent).transition(.opacity) }
         }

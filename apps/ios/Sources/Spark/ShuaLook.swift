@@ -59,6 +59,8 @@ struct ShuaAvatar: UIViewRepresentable {
     let look: ShuaLook
     let mood: SparkMood
     var gaze: CGVector = .zero
+    /// How much it floats and sways (smaller copies less). WebKit animates it on the GPU: no work for the app per frame.
+    var lively: Double = 1
 
     @MainActor final class Coordinator {
         var loaded: ShuaLook?
@@ -117,11 +119,12 @@ struct ShuaAvatar: UIViewRepresentable {
     private func load(_ web: WKWebView, _ context: Context) {
         context.coordinator.loaded = look
         context.coordinator.mood = mood
-        web.loadHTMLString(Self.page(look, mood: mood), baseURL: nil)
+        web.loadHTMLString(Self.page(look, mood: mood, lively: lively), baseURL: nil)
     }
 
-    static func page(_ look: ShuaLook, mood: SparkMood) -> String {
+    static func page(_ look: ShuaLook, mood: SparkMood, lively: Double = 1) -> String {
         let markup = look.markup.replacingOccurrences(of: "mood-idle", with: "mood-\(mood.cssName)")
+        let lift = String(format: "%.1f", 5 * lively), sway = String(format: "%.2f", 1.6 * lively)
         return """
         <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>\(look.css)
         html,body{margin:0;height:100%;background:transparent;overflow:hidden}
@@ -131,7 +134,11 @@ struct ShuaAvatar: UIViewRepresentable {
         /* The phone's own life: moods ease in, eyes follow. */
         .robot-head,.robot-body,.robot-arm-right,.robot-arm-left{transition:transform .5s cubic-bezier(.2,.9,.3,1.15)}
         .robot-eyes{translate:var(--gx,0) var(--gy,0);transition:translate .18s ease-out,transform .5s cubic-bezier(.2,.9,.3,1.15)}
-        </style></head><body>\(markup)</body></html>
+        /* It floats and sways, animated by WebKit on the GPU. Still when you've asked for less motion. */
+        .drift{width:94vmin;height:94vmin;animation:drift 2.6s ease-in-out infinite alternate;will-change:transform}
+        @keyframes drift{from{transform:translateY(-\(lift)px) rotate(-\(sway)deg)}to{transform:translateY(\(lift)px) rotate(\(sway)deg)}}
+        @media (prefers-reduced-motion:reduce){.drift{animation:none}}
+        </style></head><body><div class="drift">\(markup)</div></body></html>
         """
     }
 }
@@ -154,17 +161,18 @@ struct ShuaCharacter: View {
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { ctx in
+            // The eyes wander a little while nothing else moves them: a few updates a second is plenty for that.
+            TimelineView(.periodic(from: .now, by: 0.4)) { ctx in
                 let t = ctx.date.timeIntervalSinceReferenceDate
-                let float = still ? 0 : sin(t * 1.2) * 5 * lively, sway = still ? 0 : sin(t * 0.55) * 1.6 * lively
-                let gaze = touch ?? CGVector(dx: tilt.dx * 1.4 + sin(t * 0.31) * 0.35, dy: tilt.dy * 1.4 + cos(t * 0.23) * 0.25)
+                let gaze = touch ?? CGVector(dx: tilt.dx * 1.4 + (still ? 0 : sin(t * 0.31) * 0.35), dy: tilt.dy * 1.4 + (still ? 0 : cos(t * 0.23) * 0.25))
                 let side = min(geo.size.width, geo.size.height)
                 character(mood: waving ? .happy : mood, gaze: gaze)
                     .frame(width: side, height: side) // always a square, centred: the drawing is never cut off
                     .rotation3DEffect(.degrees(Double(tilt.dx) * 10), axis: (x: 0, y: 1, z: 0))
                     .rotation3DEffect(.degrees(Double(-tilt.dy) * 6), axis: (x: 1, y: 0, z: 0))
-                    .rotationEffect(.degrees(sway + lean.dx * 9))
-                    .offset(x: tilt.dx * 6 + lean.dx * side * 0.09, y: float + tilt.dy * 4 + lean.dy * side * 0.03)
+                    .rotationEffect(.degrees(lean.dx * 9))
+                    .offset(x: tilt.dx * 6 + lean.dx * side * 0.09, y: tilt.dy * 4 + lean.dy * side * 0.03)
+                    .animation(.smooth(duration: 0.35), value: lean)
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
             .contentShape(Rectangle())
@@ -187,7 +195,7 @@ struct ShuaCharacter: View {
 
     @ViewBuilder private func character(mood: SparkMood, gaze: CGVector) -> some View {
         if let look = link.look {
-            ShuaAvatar(look: look, mood: mood, gaze: gaze).aspectRatio(1, contentMode: .fit)
+            ShuaAvatar(look: look, mood: mood, gaze: gaze, lively: lively).aspectRatio(1, contentMode: .fit)
         } else {
             SparkFace(mood: mood, tilt: gaze)
         }

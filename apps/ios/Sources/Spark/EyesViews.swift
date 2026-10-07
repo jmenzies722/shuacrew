@@ -112,38 +112,51 @@ struct ShuaCam: View {
     private var rolling: Bool { eyes.recording != nil }
 
     var body: some View {
-        @Bindable var eyes = eyes
-        ZStack {
-            EyesPreview(accent: accent, showsBody: true).ignoresSafeArea()
-            if eyes.on, eyes.scene == .body, let body = eyes.body { FrameGuide(whole: body.framing == .whole).padding(.horizontal, 22).padding(.top, 108).padding(.bottom, 190).allowsHitTesting(false) }
+        VStack(spacing: 0) {
+            // The viewfinder: just you and the light controls at the top; nothing over the middle of the shot.
+            ZStack {
+                EyesPreview(accent: accent, showsBody: true)
+                if eyes.on, eyes.scene == .body, let body = eyes.body { FrameGuide(whole: body.framing == .whole).padding(.horizontal, 18).padding(.top, 128).padding(.bottom, 18).allowsHitTesting(false) } // the guides start below the top controls
+                VStack(spacing: 10) {
+                    topBar
+                    if eyes.scene == .body { lenses }
+                    status
+                    if prompter, !script.isEmpty, eyes.mode == .video { Prompter(text: script, rolling: eyes.recording?.started, speed: speed) }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16).padding(.top, 6)
+                if let n = eyes.countdown {
+                    Text("\(n)").font(.system(size: 150, weight: .bold)).monospacedDigit().foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 20).id(n).transition(.scale(scale: 1.6).combined(with: .opacity))
+                }
+                if !eyes.on { off }
+            }
+            .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 26, bottomTrailingRadius: 26, style: .continuous))
+            .ignoresSafeArea(edges: .top)
+            // The control band, solid black like the Camera app: what Shua says (or a tip), the modes, the shutter.
             VStack(spacing: 12) {
-                topBar
-                if eyes.scene == .body { lenses }
-                status
-                if prompter, !script.isEmpty, eyes.mode == .video { Prompter(text: script, rolling: eyes.recording?.started, speed: speed) }
-                Spacer(minLength: 0)
                 said
                 modes
-                HStack(alignment: .center) {
-                    Button { scripting = true } label: { Image(systemName: "text.alignleft").font(.system(size: 18, weight: .semibold)).frame(width: 52, height: 52) }
-                        .buttonStyle(.plain).glassEffect(prompter && !script.isEmpty ? .regular.tint(accent.opacity(0.5)).interactive() : .regular.interactive(), in: Circle())
-                        .accessibilityLabel("Script")
-                        .frame(maxWidth: .infinity)
-                    Shutter(mode: eyes.mode, rolling: rolling, counting: eyes.countdown != nil) { eyes.shutter() }
-                    ZStack(alignment: .bottom) {
-                        ShuaFloor(accent: accent).scaleEffect(0.35).offset(y: 6)
-                        ShuaCharacter(mood: mood, tilt: eyes.gaze ?? .zero, lively: 0.7, lean: eyes.lean, waves: waves).frame(width: 64, height: 64)
+                HStack {
+                    Button { scripting = true } label: {
+                        Image(systemName: "text.alignleft").font(.system(size: 18, weight: .semibold)).foregroundStyle(prompter && !script.isEmpty ? accent : .white)
+                            .frame(width: 50, height: 50).background(.white.opacity(0.1), in: Circle())
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.plain).accessibilityLabel("Script")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Shutter(mode: eyes.mode, rolling: rolling, counting: eyes.countdown != nil) { eyes.shutter() }
+                    ShuaCharacter(mood: mood, tilt: eyes.gaze ?? .zero, lively: 0.4, waves: waves)
+                        .frame(width: 42, height: 42)
+                        .frame(width: 50, height: 50)
+                        .background(.white.opacity(0.1), in: Circle())
+                        .overlay(Circle().strokeBorder(accent.opacity(eyes.present ? 0.8 : 0.25), lineWidth: 1.5))
+                        .clipShape(Circle())
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .accessibilityLabel("Shua")
                 }
-                Text(hint).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center)
             }
-            .padding(.horizontal, 18).padding(.bottom, 8)
-            if let n = eyes.countdown {
-                Text("\(n)").font(.system(size: 150, weight: .bold)).monospacedDigit().foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 20).id(n).transition(.scale(scale: 1.6).combined(with: .opacity))
-            }
-            if !eyes.on { off }
+            .padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 8)
+            .background(Color.black)
         }
         .background(Color.black.ignoresSafeArea())
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: eyes.countdown)
@@ -172,7 +185,7 @@ struct ShuaCam: View {
         return HStack(spacing: 10) {
             Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).frame(width: 40, height: 40) }
                 .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle()).accessibilityLabel("Close the camera")
-            Spacer()
+            Spacer(minLength: 4)
             HStack(spacing: 2) {
                 ForEach(EyesScene.allCases) { s in
                     Button { withAnimation(.smooth) { eyes.scene = s } } label: {
@@ -184,10 +197,10 @@ struct ShuaCam: View {
                 }
             }
             .padding(3).glassEffect(.regular, in: Capsule()).disabled(rolling)
+            Spacer(minLength: 4)
             Button { eyes.setup.fourK.toggle() } label: { Text(eyes.setup.fourK ? "4K" : "HD").font(.system(size: 13, weight: .heavy)).frame(width: 40, height: 40) }
                 .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle()).disabled(rolling)
                 .accessibilityLabel(eyes.setup.fourK ? "4K, tap for HD" : "HD, tap for 4K")
-            Spacer()
             Button { guide = true } label: { Image(systemName: "hand.raised").font(.system(size: 15, weight: .semibold)).frame(width: 40, height: 40) }
                 .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle()).accessibilityLabel("Signs Shua knows")
         }
@@ -251,16 +264,19 @@ struct ShuaCam: View {
         }
     }
 
-    /// What Shua is saying (or hearing) while you film.
-    @ViewBuilder private var said: some View {
-        let line: String? = listen.listening ? (listen.heard.isEmpty ? "I'm listening…" : listen.heard)
+    /// What Shua is saying (or hearing) while you film, or else the tip for this mode: a fixed two-line slot in the
+    /// band, so the viewfinder never jumps.
+    private var said: some View {
+        let words: String? = listen.listening ? (listen.heard.isEmpty ? "I'm listening…" : listen.heard)
             : link.asking ? "On it…"
             : link.chat.last(where: { $0.role == .shua }).flatMap { Date.now.timeIntervalSince($0.at) < 20 ? SparkLink.speakable($0.text) : nil }
-        if let line, !line.isEmpty {
-            Text(line).font(.system(size: 15, weight: .medium)).lineLimit(2).multilineTextAlignment(.center)
-                .padding(.horizontal, 16).padding(.vertical, 10).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .transition(.opacity)
-        }
+        return Text(words.flatMap { $0.isEmpty ? nil : $0 } ?? hint)
+            .font(.system(size: 13, weight: words == nil ? .medium : .semibold))
+            .foregroundStyle(words == nil ? Noir.faint : .white)
+            .lineLimit(2).multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity).frame(height: 36)
+            .contentTransition(.opacity)
+            .animation(.smooth(duration: 0.25), value: words)
     }
 
     private var modes: some View {
