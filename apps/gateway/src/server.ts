@@ -78,6 +78,7 @@ import { speechRoutes } from "./speech-routes.js";
 import type { SpeechService } from "./speech.js";
 import { speechManifest } from "./speech.js";
 import { VoiceSessions } from "./voice-sessions.js";
+import { eventsView, snapshotView } from "./snapshot-view.js";
 import { randomUUID } from "node:crypto";
 import type { RoomCoordinator } from "./rooms.js";
 import { roomRoutes } from "./room-routes.js";
@@ -392,7 +393,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     return { saved: store.finishAction(id, owner, { ok: result.ok, message: result.message, ...(result.run ? { run: result.run } : {}) }) };
   });
 
-  app.get("/api/snapshot", async () => state);
+  app.get("/api/snapshot", async () => snapshotView(state));
 
   // The morning briefing: today's digest, or make one now.
   const briefing = options.briefingAt === false ? undefined : new Briefing(store, () => state, options.briefingAt ?? "0 8 * * *");
@@ -455,7 +456,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   });
 
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>("/api/runs/:id/events", async (request) =>
-    store.forRun(request.params.id, Number(request.query.after ?? 0)),
+    eventsView(store.forRun(request.params.id, Number(request.query.after ?? 0)), state.runs[request.params.id]?.labels.includes("buddy") ?? false),
   );
 
   app.post<{ Body: { ask?: string; title?: string; repo?: string; project?: string; runtime?: string; model?: string; effort?: string; approveAll?: boolean; labels?: string[]; member?: string; venture?: string; intelligence?: IntelligenceRequest } }>(
