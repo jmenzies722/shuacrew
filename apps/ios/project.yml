@@ -21,6 +21,13 @@ targets:
       path: Resources/Info.plist
       properties:
         UIBackgroundModes: [fetch, remote-notification]
+        # The phone talks to your Mac by its Tailscale name over plain HTTP: the tunnel is WireGuard-encrypted, so only
+        # *.ts.net is allowed without TLS; everything else keeps App Transport Security.
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
     dependencies:
       - package: ShuaCrewMobile
       - target: ShuaCrewWatch

@@ -76,3 +76,11 @@ it("allowlist: reads the crew, decides, starts and follows up; never reconfigure
   expect(phoneAllowed("DELETE", "/api/snapshot")).toBe(false);
   expect(phoneAllowed("GET", "/api/runs/../settings")).toBe(false);
 });
+
+it("pairs by the Mac's Tailscale name, which iOS allows, when MagicDNS is on", async () => {
+  const { dnsNameFrom } = await import("./phone-door.js");
+  expect(dnsNameFrom(JSON.stringify({ Self: { DNSName: "Josh-MacBook-Pro.tail322510.ts.net." } }))).toBe("josh-macbook-pro.tail322510.ts.net");
+  expect(dnsNameFrom(JSON.stringify({ Self: { DNSName: "" } }))).toBeUndefined();
+  expect(dnsNameFrom(JSON.stringify({ Self: { DNSName: "evil.example.com." } }))).toBeUndefined();
+  expect(dnsNameFrom("not json")).toBeUndefined();
+});

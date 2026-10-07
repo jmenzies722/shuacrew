@@ -9,6 +9,7 @@
  * allowlist below get through at all.
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +34,27 @@ export function makePhoneKey(home: string): string {
   writeFileSync(file, key, { mode: 0o600 });
   chmodSync(file, 0o600);
   return key;
+}
+
+/** The MagicDNS name in `tailscale status --json` ("mac.tail1234.ts.net."), without the trailing dot. */
+export function dnsNameFrom(statusJson: string): string | undefined {
+  try {
+    const name = (JSON.parse(statusJson) as { Self?: { DNSName?: unknown } }).Self?.DNSName;
+    return typeof name === "string" && /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net\.?$/i.test(name) ? name.replace(/\.$/, "").toLowerCase() : undefined;
+  } catch { return undefined; }
+}
+
+/**
+ * This Mac's Tailscale name (MagicDNS), if Tailscale can tell us. The phone connects by name, not IP: iOS only lets
+ * the app speak plain HTTP to *.ts.net (the tunnel is already WireGuard-encrypted), never to a bare address.
+ */
+export function tailnetName(): string | undefined {
+  for (const bin of ["/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale"]) {
+    if (!existsSync(bin)) continue;
+    try { const name = dnsNameFrom(execFileSync(bin, ["status", "--json"], { timeout: 3000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })); if (name) return name; }
+    catch { /* not running, or not this one */ }
+  }
+  return undefined;
 }
 
 /** This Mac's Tailscale IPv4 (the 100.64.0.0/10 CGNAT range Tailscale hands out), if it's up. */
@@ -184,7 +206,9 @@ export function phonePairingRoutes(app: FastifyInstance, door: PhoneDoor, home: 
     const at = door.address();
     if (!at) return reply.code(409).send({ error: "Tailscale isn't up on this Mac — start it, then pair again", key: null });
     // What the QR carries: everything the phone needs, nothing it doesn't.
-    return { v: 1, host: at.host, port: at.port, key, name: os.hostname().replace(/\.local$/, "") };
+    // By name when MagicDNS is on (what iOS allows), else the address; the door listens on the address either way.
+    const named = at.host === tailnetAddress() ? tailnetName() : undefined; // a test or simulator door keeps its own address
+    return { v: 1, host: named ?? at.host, port: at.port, key, name: os.hostname().replace(/\.local$/, "") };
   });
   app.post("/api/phone/unpair", async (request, reply) => {
     if (!local(request)) return reply.code(403).send({ error: "not for other origins" });
