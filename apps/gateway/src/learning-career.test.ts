@@ -1,9 +1,9 @@
 import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
-import { Learning } from "./learning.js";
-import { applyLearnOps, careerContext, certPatch, jobPatch, learnBrief, learnReminders, newCert, newJob, parseCertPlan, parseFit, parseOpenings } from "./learning-career.js";
+import { describe, expect, it } from "vitest";
+import { Learning, LearningSchema, type LearningState } from "./learning.js";
+import { applyLearnOps, careerContext, gapsToPath, certPatch, jobPatch, learnBrief, learnReminders, newCert, newJob, parseCertPlan, parseFit, parseOpenings } from "./learning-career.js";
 
 const tmp = () => path.join(mkdtempSync(path.join(os.tmpdir(), "shua-career-")), "learning.json");
 
@@ -158,4 +158,24 @@ it("reminds about exams within a month and follow-ups due by tomorrow, soonest f
   ]);
   expect(learnReminders(learning.get(), at(11)).find((x) => x.kind === "exam")).toMatchObject({ days: 1, text: "Your SAA-C03 exam is tomorrow." });
   expect(learnReminders(learning.get(), at(12)).find((x) => x.kind === "exam")).toMatchObject({ days: 0, text: "Your SAA-C03 exam is today. You've got this." });
+});
+
+
+describe("a fit check's gaps feed your path", () => {
+  const base = (roadmaps: LearningState["roadmaps"] = []) => LearningSchema.parse({ roadmaps });
+  const job = { company: "Acme", role: "Platform Engineer" };
+  it("adds what the posting asks for that your roadmap doesn't cover, once", async () => {
+    const s = base([{ id: "r1", goal: "DevOps", months: 6, title: "DevOps", run: "", created: 1, milestones: [{ title: "Kubernetes fundamentals", why: "", skills: ["Kubernetes"], project: "", weeks: 2, done: false }] }]);
+    const { state, added } = gapsToPath(s, job, ["Kubernetes", "Terraform", "AWS networking"]);
+    expect(added).toEqual(["Terraform", "AWS networking"]); // Kubernetes is already on the path
+    expect(state.roadmaps[0]!.milestones.map((m) => m.title)).toEqual(["Kubernetes fundamentals", "Close the gap · Terraform", "Close the gap · AWS networking"]);
+    expect(state.roadmaps[0]!.milestones[1]!.why).toContain("Acme (Platform Engineer)");
+    expect(gapsToPath(state, job, ["Terraform"]).added).toEqual([]); // a second check adds nothing new
+  });
+  it("starts a roadmap for the job when you don't have one, and takes at most four", () => {
+    const { state, added } = gapsToPath(base(), job, ["Go", "Terraform", "AWS", "Helm", "Kafka"]);
+    expect(added).toHaveLength(4);
+    expect(state.roadmaps).toHaveLength(1);
+    expect(state.roadmaps[0]!.title).toBe("Close the gaps for Acme");
+  });
 });

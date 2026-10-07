@@ -29,6 +29,7 @@ function transcript(store: EventStore, run: string): { title: string; text: stri
 
 export function learningRoutes(app: FastifyInstance, deps: { learning: Learning; store: EventStore; supervisor: Supervisor }) {
   const { learning, store, supervisor } = deps;
+  const career = { fillNew: () => {} }; // filled in once the career routes are registered (below)
   const who = () => { const p = learning.get().profile; return `The learner's career goal: ${p.goal || "(not set)"}.${p.about ? ` About them: ${p.about}.` : ""}`; };
   const levelOf = (id: string) => learning.get().profile.tracks.find((t) => t.id === id);
 
@@ -95,7 +96,9 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
   app.post<{ Body: { ops?: unknown } }>("/api/learning/ops", async (req, reply) => {
     const ops = req.body?.ops;
     if (!Array.isArray(ops) || !ops.length) return reply.code(400).send({ error: "ops: a list of Learn changes" });
-    return { did: applyLearnOps(learning, `\`\`\`learn\n${JSON.stringify(ops.slice(0, 20))}\n\`\`\``) };
+    const did = applyLearnOps(learning, `\`\`\`learn\n${JSON.stringify(ops.slice(0, 20))}\n\`\`\``);
+    career.fillNew(); // a job Shua added with a link: read its posting
+    return { did };
   });
   app.post<{ Body: { goal?: string; about?: string; tracks?: unknown } }>("/api/learning/profile", async (req, reply) => {
     try { return learning.setProfile(req.body as never).profile; } catch (e) { return reply.code(400).send({ error: (e as Error).message.slice(0, 300) }); }
@@ -273,5 +276,5 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     learning.edit((s) => ({ ...s, coach: { ...s.coach, [mode]: { run, started: Date.now() } } }));
     return { run };
   });
-  careerRoutes(app, { learning, supervisor, who });
+  Object.assign(career, careerRoutes(app, { learning, supervisor, who }));
 }

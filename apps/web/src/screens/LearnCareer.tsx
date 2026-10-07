@@ -168,6 +168,17 @@ export function JobsView({ state, onChange }: { state: CareerState; onChange: ()
   const jobs = state.jobs ?? [];
   const [open, setOpen] = useState<string | null>(null), [showClosed, setShowClosed] = useState(false), [dragging, setDragging] = useState<string | null>(null), [over, setOver] = useState<string | null>(null);
   const [company, setCompany] = useState(""), [role, setRole] = useState(""), [url, setUrl] = useState(""), [busy, setBusy] = useState(""), [error, setError] = useState("");
+  // Paste a job link and Shua reads it: company and role fill in, and the posting comes along for the fit check.
+  const [posting, setPosting] = useState<{ url: string; description: string; location: string } | null>(null), [reading, setReading] = useState(false), [readNote, setReadNote] = useState("");
+  const readLink = async (link: string) => {
+    const u = link.trim(); if (!/^https?:\/\//i.test(u) || posting?.url === u || reading) return;
+    setReading(true); setReadNote("");
+    try {
+      const p = await api<{ url: string; company: string; role: string; location: string; description: string }>("/api/learning/jobs/read", { body: { url: u } });
+      setCompany((c) => c || p.company); setRole((r) => r || p.role); setPosting({ url: u, description: p.description, location: p.location });
+      setReadNote(`Shua read the posting${p.role ? `: ${p.role}` : ""}. Add it, then check your fit.`);
+    } catch (e) { setPosting(null); setReadNote(errText(e)); } finally { setReading(false); }
+  };
   const [research, setResearch] = useState<string | null>(() => { try { return localStorage.getItem("shuacrew.learn.research"); } catch { return null; } });
   const act = async (key: string, fn: () => Promise<unknown>) => { setBusy(key); setError(""); try { await fn(); onChange(); } catch (e) { setError(errText(e)); } finally { setBusy(""); } };
   const patch = (id: string, body: Record<string, unknown>) => act(`j:${id}`, () => api(`/api/learning/jobs/${id}`, { body }));
@@ -185,10 +196,15 @@ export function JobsView({ state, onChange }: { state: CareerState; onChange: ()
         {searching ? <><Loader2 size={13} className="lc-spin" /> Shua is searching…</> : <><Search size={13} /> Find openings</>}</button>
     </section>
     {error && <p className="lx-error" role="alert">{error}</p>}
-    <form className="lc-addrow" onSubmit={(e) => { e.preventDefault(); if (company.trim()) void act("add", async () => { await api("/api/learning/jobs", { body: { company: company.trim(), role: role.trim(), url: url.trim() } }); setCompany(""); setRole(""); setUrl(""); }); }}>
+    <form className="lc-addrow" onSubmit={(e) => { e.preventDefault(); if (company.trim()) void act("add", async () => {
+      const read = posting && posting.url === url.trim() ? { description: posting.description, location: posting.location } : {};
+      await api("/api/learning/jobs", { body: { company: company.trim(), role: role.trim(), url: url.trim(), ...read } }); setCompany(""); setRole(""); setUrl(""); setPosting(null); setReadNote(""); }); }}>
       <Briefcase size={14} /><input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" aria-label="Company" /><input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Role" aria-label="Role" />
-      <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Link to the posting (optional)" aria-label="Posting link" /><button type="submit" className="lc-go" disabled={!!busy || !company.trim()}><Plus size={13} /> Add</button>
+      <input value={url} onChange={(e) => setUrl(e.target.value)} onPaste={(e) => { const t = e.clipboardData.getData("text"); setTimeout(() => void readLink(t), 0); }} onBlur={() => void readLink(url)}
+        placeholder="Paste a job link: Shua reads it" aria-label="Posting link" />
+      <button type="submit" className="lc-go" disabled={!!busy || reading || !company.trim()}>{reading ? <><Loader2 size={13} className="lc-spin" /> Reading…</> : <><Plus size={13} /> Add</>}</button>
     </form>
+    {readNote && <p className="lc-hint" role="status">{readNote}</p>}
     <div className={`lc-board${selected ? " has-detail" : ""}`}>
       <div className="lc-cols" style={{ "--cols": columns.length } as React.CSSProperties}>{columns.map(([stage, label]) => {
         const list = jobs.filter((j) => j.stage === stage).sort((a, b) => (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity) || b.updated - a.updated);
@@ -224,6 +240,7 @@ function JobDetail({ job, busy, running, onClose, patch, fit, prep, openRun, rem
   job: Job; busy: string; running: boolean; onClose: () => void; patch: (b: Record<string, unknown>) => void; fit: () => void; prep: () => void; openRun: (id: string) => void; remove: () => void;
 }) {
   const [next, setNext] = useState(job.next), [nextAt, setNextAt] = useState(isoDay(job.nextAt)), [notes, setNotes] = useState(job.notes), [desc, setDesc] = useState(job.description);
+  const [readNote, setReadNote] = useState(""), [reading, setReading] = useState(false);
   return <motion.aside className="lc-detail" aria-label={`${job.company} details`} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 480, damping: 38 }}>
     <header><div><strong>{job.company}</strong><span>{[job.role, job.location, job.salary].filter(Boolean).join(" · ") || "Add the role in the posting below"}</span></div>
       <button type="button" className="lc-icon" aria-label="Close" onClick={onClose}><X size={14} /></button></header>
@@ -242,6 +259,12 @@ function JobDetail({ job, busy, running, onClose, patch, fit, prep, openRun, rem
       </div>
     </section>
     <label className="lc-field"><span>Job description</span><textarea rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => desc !== job.description && patch({ description: desc })} placeholder="Paste the posting here" /></label>
+    {job.url && !desc.trim() && <button type="button" className="lc-quiet" disabled={!!busy || reading} onClick={async () => {
+      setReading(true); setReadNote("");
+      try { const p = await api<{ description: string; role: string; location: string }>("/api/learning/jobs/read", { body: { url: job.url } }); setDesc(p.description); await patch({ description: p.description, ...(job.role ? {} : { role: p.role }), ...(job.location ? {} : { location: p.location }) }); }
+      catch (e) { setReadNote(errText(e)); } finally { setReading(false); }
+    }}>{reading ? <><Loader2 size={12} className="lc-spin" /> Reading the posting…</> : <><Sparkles size={12} /> Read the posting from its link</>}</button>}
+    {readNote && <p className="lc-hint" role="status">{readNote}</p>}
     <label className="lc-field"><span>Notes</span><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== job.notes && patch({ notes })} placeholder="Who you talked to, what they said, salary range…" /></label>
     <button type="button" className="lc-remove" disabled={!!busy} onClick={remove}><Trash2 size={12} /> Remove</button>
   </motion.aside>;

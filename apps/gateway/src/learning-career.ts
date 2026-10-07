@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { parseBlock, type Cert, type Job, type Learning, type LearningState } from "./learning.js";
+import { readPosting, type Posting } from "./learning-posting.js";
 import type { Supervisor } from "./runs.js";
 
 /**
@@ -130,6 +131,28 @@ export function learnReminders(s: LearningState, now = Date.now()): LearnReminde
 }
 
 /** When a career run finishes: fill in what it produced (once). Returns true if it was one of ours. */
+/**
+ * A fit check's gaps become your path: each skill the posting asks for that you don't show yet is a milestone on your
+ * current roadmap ("Close the gap · Kubernetes"), unless the roadmap already covers it by title or skill. No roadmap
+ * yet: one starts for this job. At most four from one posting, and a roadmap holds 24.
+ */
+export function gapsToPath(s: LearningState, job: Pick<Job, "company" | "role">, gaps: string[], now = Date.now()): { state: LearningState; added: string[] } {
+  const norm = (t: string) => t.toLowerCase().replace(/^close the gap\s*·\s*/, "").replace(/[^a-z0-9+#.]+/g, " ").trim();
+  const current = [...s.roadmaps].reverse().find((r) => r.milestones.length) ?? s.roadmaps.at(-1);
+  const road = current ?? { id: `rm_${randomUUID().slice(0, 8)}`, goal: `${job.role || "The role"} at ${job.company}`.slice(0, 200), months: 3, title: `Close the gaps for ${job.company}`.slice(0, 200), run: "", created: now, milestones: [] };
+  const covered = road.milestones.flatMap((m) => [norm(m.title), ...m.skills.map(norm)]).filter(Boolean);
+  const milestones = [...road.milestones], added: string[] = [];
+  for (const raw of gaps.slice(0, 4)) {
+    const gap = raw.trim(), key = norm(gap);
+    if (!key || milestones.length >= 24 || covered.some((c) => c === key || c.includes(key) || key.includes(c))) continue;
+    milestones.push({ title: `Close the gap · ${gap}`.slice(0, 200), why: `${job.company}${job.role ? ` (${job.role})` : ""} asks for it, and you don't show it yet.`.slice(0, 600), skills: [gap.slice(0, 80)], project: "", weeks: 2, done: false });
+    covered.push(key); added.push(gap);
+  }
+  if (!added.length) return { state: s, added };
+  const next = { ...road, milestones };
+  return { state: { ...s, roadmaps: current ? s.roadmaps.map((r) => (r.id === road.id ? next : r)) : [...s.roadmaps, next] }, added };
+}
+
 export function captureCareer(learning: Learning, labels: string[], text: string): boolean {
   const tag = (k: string) => labels.find((l) => l.startsWith(`${k}:`))?.slice(k.length + 1);
   if (labels.includes("learn-kind:cert-plan")) {
@@ -139,7 +162,12 @@ export function captureCareer(learning: Learning, labels: string[], text: string
   }
   if (labels.includes("learn-kind:job-fit")) {
     const id = tag("learn-job"), fit = parseFit(text);
-    if (id && fit) learning.edit((s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, fit: { run: j.fit?.run ?? "", ...fit } } : j)) }));
+    // The fit lands on the job, and its gaps become your next milestones (what the posting asks that you don't show).
+    if (id && fit) learning.edit((s) => {
+      const withFit = { ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, fit: { run: j.fit?.run ?? "", ...fit } } : j)) };
+      const job = withFit.jobs.find((j) => j.id === id);
+      return job ? gapsToPath(withFit, job, fit.gaps).state : withFit;
+    });
     return true;
   }
   if (labels.includes("learn-kind:job-research")) {
@@ -195,7 +223,15 @@ export function applyLearnOps(learning: Learning, text: string, now = Date.now()
   return did;
 }
 
-export function careerRoutes(app: FastifyInstance, deps: { learning: Learning; supervisor: Supervisor; who: () => string }) {
+export function careerRoutes(app: FastifyInstance, deps: { learning: Learning; supervisor: Supervisor; who: () => string; read?: (url: string) => Promise<Posting | string> }) {
+  const read = deps.read ?? ((url: string) => readPosting(url));
+  /** Fill a job from its posting: the description always; role and location only where they're empty. */
+  const fill = async (id: string, url: string) => {
+    const p = await read(url); if (typeof p === "string") return;
+    deps.learning.edit((s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, description: j.description || p.description, role: j.role || p.role.slice(0, 160), location: j.location || p.location.slice(0, 120), updated: Date.now() } : j)) }));
+  };
+  /** Jobs with a link but no description yet (Shua just added them): read their postings. */
+  const fillNew = () => { for (const j of deps.learning.get().jobs) if (j.url && !j.description) void fill(j.id, j.url); };
   const { learning, supervisor, who } = deps;
   const bad = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }, error: string) => reply.code(400).send({ error });
 
@@ -226,9 +262,16 @@ export function careerRoutes(app: FastifyInstance, deps: { learning: Learning; s
     return { run };
   });
 
+  // Paste a job link: Shua reads the posting (role, company, location, description) to fill the job.
+  app.post<{ Body: { url?: string } }>("/api/learning/jobs/read", async (req, reply) => {
+    const posting = await read(String(req.body?.url ?? ""));
+    return typeof posting === "string" ? bad(reply, posting) : posting;
+  });
   app.post<{ Body: Record<string, unknown> }>("/api/learning/jobs", async (req, reply) => {
     const j = newJob(req.body ?? {}); if (typeof j === "string") return bad(reply, j);
     learning.edit((s) => ({ ...s, jobs: [...s.jobs, j] }));
+    // A link and no description (added by Shua, or without reading it first): read the posting in the background.
+    if (j.url && !j.description) void fill(j.id, j.url);
     return j;
   });
   app.post<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/learning/jobs/:id", async (req, reply) => {
@@ -258,4 +301,5 @@ export function careerRoutes(app: FastifyInstance, deps: { learning: Learning; s
     const run = supervisor.launch({ ask, title: `Job search · ${query}`.slice(0, 90), ...DEEP, labels: ["learning", "learn-kind:job-research"] });
     return { run };
   });
+  return { fillNew };
 }
