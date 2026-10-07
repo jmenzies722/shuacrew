@@ -655,8 +655,17 @@ export class Supervisor {
   /** The runtime's own conversation for this run — only if that runtime owns it. */
   private backendSession(run: string, runtime: string): string | undefined {
     let found: string | undefined;
+    // Picking a different model starts a fresh conversation; re-sending the same choice (Shua sends its selection
+    // with every follow-up, effort varying per turn) must not. It used to: every Shua message got a brand-new Codex
+    // thread, paid a cold start, and kept only a recap of the conversation instead of the conversation itself.
+    let current: { runtime?: string; model?: string } = {};
     for (const e of this.store.forRun(run)) {
-      if (e.kind === "run.routed" && e.body.reason === "Model selected by you") found = undefined;
+      if (e.kind === "run.created") current = { runtime: e.body.runtime, model: e.body.model };
+      if (e.kind === "run.routed") {
+        const switched = e.body.runtime !== current.runtime || (e.body.model ?? "") !== (current.model ?? "");
+        if (e.body.reason === "Model selected by you" && switched) found = undefined;
+        current = { runtime: e.body.runtime, model: e.body.model ?? (e.body.runtime === current.runtime ? current.model : undefined) };
+      }
       if (e.kind === "run.session" && e.body.runtime === runtime) found = e.body.id;
     }
     return found;

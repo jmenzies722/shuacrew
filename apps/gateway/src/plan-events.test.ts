@@ -141,3 +141,30 @@ it("when Shua answers, its next reply's agent is readied straight away", async (
   expect(prepared).toHaveLength(1);
   expect(prepared[0]).toMatchObject({ id, lean: true, resume: "shua-thread" });
 });
+
+it("re-sending the same model choice keeps the conversation; choosing another model starts fresh", async () => {
+  const store = new EventStore(":memory:");
+  const started: Array<Parameters<Runtime["start"]>[0]> = [];
+  let thread = 0;
+  const fake: Runtime = Object.assign(Object.create(new MockRuntime({ pace: 0 })), {
+    id: "codex",
+    models: [{ id: "m-fast", label: "fast", tier: "fast" }, { id: "m-big", label: "big", tier: "frontier" }],
+    async *start(run: (typeof started)[number]) {
+      started.push(run);
+      yield { type: "session", id: run.resume ?? `thread-${++thread}` } as const;
+      yield { type: "text", text: "ok", final: true } as const;
+      yield { type: "done", text: "ok" } as const;
+    },
+  });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", fake]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-resume-")), roots: [] });
+  cleanups.push(() => { supervisor.shutdown(); store.close(); });
+  const id = supervisor.launch({ ask: "First", runtime: "codex", model: "m-fast" });
+  const wait = async (n: number) => { const end = Date.now() + 5000; while ((started.length < n || ["running", "queued"].includes(fold(store.read(0)).runs[id]?.status ?? "")) && Date.now() < end) await new Promise((r) => setTimeout(r, 15)); };
+  await wait(1);
+  supervisor.followUp(id, "Second", "you", undefined, { runtime: "codex", model: "m-fast", effort: "low" }); // same model, another effort
+  await wait(2);
+  expect(started[1]!.resume).toBe("thread-1");
+  supervisor.followUp(id, "Third", "you", undefined, { runtime: "codex", model: "m-big" }); // a different model
+  await wait(3);
+  expect(started[2]!.resume).toBeUndefined();
+});
