@@ -26,6 +26,7 @@ private struct PhoneRoot: View {
             .environment(\.goHome, { withAnimation(.smooth) { tab = .shua } })
             .preferredColorScheme(.dark) // Onyx: the phone is black like the Mac
             .fontDesign(ShuaType.shared.font.design) // your font everywhere, SF Pro unless you change it
+            .onChange(of: scenePhase) { _, now in Task { if now == .active { await ShuaEyes.shared.resume() } else if now == .background { await ShuaEyes.shared.pause() } } }
             .environmentObject(model)
             .task { await model.setForeground(scenePhase == .active) }
             .onChange(of: scenePhase) { _, phase in Task { await model.setForeground(phase == .active) } }

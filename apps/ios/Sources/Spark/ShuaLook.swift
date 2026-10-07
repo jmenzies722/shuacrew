@@ -145,6 +145,10 @@ struct ShuaCharacter: View {
     var tilt: CGVector = .zero
     /// Smaller copies (the mini Shua on other tabs) float less.
     var lively: Double = 1
+    /// Toward your hand when Shua's eyes see one (-1…1): it leans and drifts that way.
+    var lean: CGVector = .zero
+    /// Bump to make it wave (it saw you wave, or you're back).
+    var waves = 0
     @State private var touch: CGVector?
     @State private var waving = false
 
@@ -159,8 +163,8 @@ struct ShuaCharacter: View {
                     .frame(width: side, height: side) // always a square, centred: the drawing is never cut off
                     .rotation3DEffect(.degrees(Double(tilt.dx) * 10), axis: (x: 0, y: 1, z: 0))
                     .rotation3DEffect(.degrees(Double(-tilt.dy) * 6), axis: (x: 1, y: 0, z: 0))
-                    .rotationEffect(.degrees(sway))
-                    .offset(x: tilt.dx * 6, y: float + tilt.dy * 4)
+                    .rotationEffect(.degrees(sway + lean.dx * 9))
+                    .offset(x: tilt.dx * 6 + lean.dx * side * 0.09, y: float + tilt.dy * 4 + lean.dy * side * 0.03)
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
             .contentShape(Rectangle())
@@ -175,6 +179,7 @@ struct ShuaCharacter: View {
                 })
         }
         .sensoryFeedback(.impact(weight: .light), trigger: waving) { _, new in new }
+        .onChange(of: waves) { wave() }
         .accessibilityLabel("\(link.look?.name ?? "Shua"), \(mood.cssName)")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { wave() }

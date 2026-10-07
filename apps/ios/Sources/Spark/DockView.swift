@@ -8,7 +8,10 @@ struct SecondScreen: View {
     let tilt: SparkTilt
     let listen: ShuaListen
     private var voice: ShuaVoice { .shared }
+    private var eyes: ShuaEyes { .shared }
     private var accent: Color { link.look?.accentColor ?? .shuaPurple }
+    @State private var waves = 0
+    @State private var seeing = false
 
     var body: some View {
         GeometryReader { geo in
@@ -19,7 +22,7 @@ struct SecondScreen: View {
                 layout {
                     ZStack(alignment: .bottom) {
                         ShuaFloor(accent: accent).offset(y: 10)
-                        ShuaCharacter(mood: mood, tilt: tilt.gaze).padding(wide ? 12 : 24)
+                        ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).padding(wide ? 12 : 24)
                     }
                     .frame(maxWidth: wide ? geo.size.height * 0.85 : geo.size.width * 0.8)
                     .scaleEffect(listen.listening ? 1.05 : 1).animation(.spring(response: 0.35), value: listen.listening)
@@ -60,6 +63,10 @@ struct SecondScreen: View {
                 .onEnded { _ in Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } })
             .animation(.smooth(duration: 0.35), value: listen.listening)
         }
+        .overlay(alignment: .topTrailing) { EyesButton(accent: accent) { seeing = true }.padding(20) }
+        .modifier(EyesReactions(listen: listen, waves: $waves, start: { Task { await listen.start() } },
+                                finish: { Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } }))
+        .sheet(isPresented: $seeing) { EyesSheet() }
         .preferredColorScheme(.dark)
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true; tilt.start() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
@@ -68,6 +75,7 @@ struct SecondScreen: View {
     private var mood: SparkMood {
         if voice.speaking { return .speaking }
         if listen.listening || link.asking { return .thinking }
+        if eyes.on, !eyes.present { return .sleepy }
         return link.mood
     }
 }

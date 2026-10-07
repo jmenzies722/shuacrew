@@ -10,6 +10,9 @@ struct SparkHomeView: View {
     @State private var listen = ShuaListen()
     @State private var pairing = false
     @State private var docked = false
+    @State private var seeing = false
+    @State private var waves = 0
+    private var eyes: ShuaEyes { .shared }
     @State private var activity = false
     @State private var typing = false
     private var voice: ShuaVoice { .shared }
@@ -21,6 +24,8 @@ struct SparkHomeView: View {
         }
         .sheet(isPresented: $pairing) { PairView() }
         .sheet(isPresented: $activity) { ActivitySheet() }
+        .sheet(isPresented: $seeing) { EyesSheet() }
+        .modifier(EyesReactions(listen: listen, waves: $waves, start: startListening, finish: finishListening))
         .sheet(isPresented: $typing) { AskSheet { text in Task { await link.ask(text) } } }
         .fullScreenCover(isPresented: $docked) { DockView(tilt: tilt) }
         .toolbar(.hidden, for: .navigationBar)
@@ -35,10 +40,10 @@ struct SparkHomeView: View {
         ZStack {
             NoirBackdrop(mood: mood, accent: accent, tilt: tilt.gaze, focus: UnitPoint(x: 0.5, y: 0.27))
             VStack(spacing: 0) {
-                TopLine(docked: $docked).padding(.horizontal, 24).padding(.top, 6)
+                TopLine(docked: $docked, seeing: $seeing).padding(.horizontal, 24).padding(.top, 6)
                 ZStack(alignment: .bottom) {
                     ShuaFloor(accent: accent).offset(y: 18)
-                    ShuaCharacter(mood: mood, tilt: tilt.gaze).frame(minHeight: 150, maxHeight: 270)
+                    ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).frame(minHeight: 150, maxHeight: 270)
                 }
                 .padding(.top, 10)
                 .layoutPriority(-1) // Shua gives up room first, so nothing rides up under the status bar
@@ -77,14 +82,14 @@ struct SparkHomeView: View {
                     VStack(spacing: 4) {
                         ZStack(alignment: .bottom) {
                             ShuaFloor(accent: accent).scaleEffect(0.8).offset(y: 12)
-                            ShuaCharacter(mood: mood, tilt: tilt.gaze).frame(height: geo.size.height * 0.56)
+                            ShuaCharacter(mood: mood, tilt: eyes.gaze ?? tilt.gaze, lean: eyes.lean, waves: waves).frame(height: geo.size.height * 0.56)
                         }
                         Headline(listening: listen.listening, heard: listen.heard, compact: true, short: true).padding(.horizontal, 28).padding(.top, 8)
                     }
                     .padding(.bottom, 64) // clear of the tab bar
                     .frame(width: geo.size.width * 0.48)
                     VStack(spacing: 14) {
-                        TopLine(docked: $docked)
+                        TopLine(docked: $docked, seeing: $seeing)
                         Spacer(minLength: 0)
                         if let a = link.approvals.first { NeedsYouCard(approval: a) } else { Summary() }
                         Spacer(minLength: 0)
@@ -118,19 +123,22 @@ struct SparkHomeView: View {
     private var mood: SparkMood {
         if voice.speaking { return .speaking }
         if listen.listening || link.asking { return .thinking }
+        if eyes.on, !eyes.present { return .sleepy } // you've stepped away
         return link.mood
     }
 }
 
-/// The top line: live with which Mac, and the desk clock.
+/// The top line: live with which Mac, Shua's eyes, and the desk clock.
 private struct TopLine: View {
     @Environment(SparkLink.self) private var link
     @Binding var docked: Bool
+    @Binding var seeing: Bool
     var body: some View {
-        HStack {
+        HStack(spacing: 10) {
             StatusPill(state: link.state, mac: link.pairing?.name)
             Spacer()
             if link.state != .unpaired {
+                EyesButton(accent: link.look?.accentColor ?? .shuaPurple) { seeing = true }
                 Button { docked = true } label: { Label("Desk", systemImage: "clock").font(.system(size: 13, weight: .semibold)) }
                     .buttonStyle(.glass).controlSize(.small)
             }
