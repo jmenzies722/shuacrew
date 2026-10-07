@@ -64,7 +64,7 @@ struct DockView: View {
     private var line: (title: String, sub: String?) {
         if listen.listening { return (listen.heard.isEmpty ? "I'm listening…" : listen.heard, nil) }
         if let last = link.chat.last(where: { $0.role == .shua }), !last.text.isEmpty, last.pending || Date.now.timeIntervalSince(last.at) < 90 {
-            return (last.text, nil)
+            return (SparkLink.speakable(last.text), nil)
         }
         return link.caption
     }

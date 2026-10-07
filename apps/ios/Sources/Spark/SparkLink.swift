@@ -296,7 +296,7 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         }
         let final = Self.clean(latest)
         reply(final.isEmpty ? "Done." : final)
-        speak(final)
+        speak(Self.speakable(final))
     }
 
     /// Shua's reply, aloud, in the same voice as on the Mac: ShuaCrew's voice engine through the phone door, clip by
@@ -345,6 +345,20 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         guard let i = chat.lastIndex(where: { $0.role == .shua }) else { return }
         chat[i].text = text; chat[i].pending = false; chat[i].failed = failed
         UINotificationFeedbackGenerator().notificationOccurred(failed ? .error : .success)
+    }
+
+    /// What's said aloud: the words without Markdown (**bold**, `code`, # headings, - bullets, [links](…)), which a voice
+    /// would otherwise read as stars and symbols.
+    static func speakable(_ text: String) -> String {
+        var t = text.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"(?m)^\s{0,3}(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s?)"#, with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"(\*\*|__|\*|`|~~)"#, with: "", options: .regularExpression)
+        return t.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Shua's words as styled text: bold and italics and code as they're meant to look, never literal stars.
+    static func styled(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
 
     /// What a person reads: Shua's words without its machine blocks (```do …```) or bracketed notes.

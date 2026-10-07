@@ -134,7 +134,7 @@ private struct Conversation: View {
                             HStack(spacing: 5) { ForEach(0..<3) { i in Circle().frame(width: 6, height: 6).phaseAnimator([0.3, 1]) { c, p in c.opacity(p) } animation: { _ in .easeInOut(duration: 0.5).delay(Double(i) * 0.15) } } }
                                 .foregroundStyle(.secondary).padding(.vertical, 4)
                         } else {
-                            Text(line.text).font(.callout).textSelection(.enabled)
+                            Text(line.role == .shua ? SparkLink.styled(line.text) : AttributedString(line.text)).font(.callout).textSelection(.enabled)
                         }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
