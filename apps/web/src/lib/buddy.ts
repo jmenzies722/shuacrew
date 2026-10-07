@@ -635,24 +635,38 @@ export function parseNext(text: string): string[] {
   try { const v = JSON.parse(m[1]!.trim()) as unknown; return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 1).map((x) => x.trim().slice(0, 60)).slice(0, 3) : []; } catch { return []; }
 }
 
-/** Plain words for the voice: no markdown, no code, no link targets. */
+/**
+ * Plain words for the voice: no markdown, no code, no link targets. A table row is read as its cells ("Pro, $20"), a
+ * bare URL as its site ("terraform.io"), and no mark (* _ ` # > |) is ever left for the voice to say.
+ */
 export function spoken(text: string) {
-  return speakable(text).replace(/```[\s\S]*?(```|$)/g, " ").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/`([^`]*)`/g, "$1")
-    .replace(/^\s*(#+|[-*]|\d+\.)\s+/gm, "").replace(/[*_~>#]/g, "").replace(/\s+/g, " ").trim();
+  let t = speakable(text).replace(/```[\s\S]*?(```|$)/g, " ");
+  if (/^\s*\|.*\|\s*$/.test(t)) t = t.split("|").map((c) => c.trim()).filter((c) => /\w/.test(c)).join(", ");
+  return t.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/https?:\/\/(?:www\.)?([^\s/?#]+)\S*?(?=[.,!?;:]?(?:\s|$))/g, "$1")
+    .replace(/`([^`]*)`/g, "$1").replace(/^\s*(#+|[-*+•]|\d+[.)])\s+/gm, "").replace(/[*_~>#|`]/g, "").replace(/\s+/g, " ").trim();
 }
 
-/** Real-time speech: the whole sentences that arrived since `from` in a streaming reply. Stops at any code block. */
+/**
+ * Real-time speech: the whole sentences that arrived since `from` in a streaming reply. Finished fenced blocks (code,
+ * and Shua's own do / visual / next blocks) end a sentence and are never read — and the talking carries on after them
+ * (it used to stop at the first one, so everything after an action went unsaid). A block still being written holds
+ * speech at its start until it closes. Speech stops only at a `---` that opens a written design (a heading follows),
+ * which is read on screen, not aloud. A long sentence with no full stop yet starts at a natural pause, not at its end.
+ */
 export function nextSentences(text: string, from: number, final = false): { chunks: string[]; upto: number } {
-  const rule = text.search(/\n-{3,}\s*\n/), tick = text.indexOf("```");
-  const fence = rule >= 0 && (tick < 0 || rule < tick) ? rule : tick;
-  const end = fence >= 0 ? fence : text.length;
+  // Finished blocks become whitespace of the same length (so positions stay true) that starts with a sentence break.
+  const masked = text.replace(/```[\s\S]*?```/g, (m) => "\n" + " ".repeat(m.length - 1));
+  const open = masked.indexOf("```"), design = masked.search(/\n-{3,}[ \t]*\n\s*#/);
+  const end = Math.min(open >= 0 ? open : masked.length, design >= 0 ? design : masked.length);
   if (from >= end) return { chunks: [], upto: from };
-  const tail = text.slice(from, end);
+  const tail = masked.slice(from, end);
   let cut = 0;
   for (const m of tail.matchAll(/[.!?:](?=\s)|\n/g)) cut = m.index! + 1;
-  if (final || fence >= 0) cut = tail.length;
+  if (final || end < masked.length) cut = tail.length;
   // Start talking sooner: at the very start of a reply, the first clause (6+ words, up to a comma) goes out on its own.
   if (!cut && from === 0) { const clause = /^\s*(?:\S+\s+){5,}?\S+?[,;—–](?=\s)/.exec(tail); if (clause) cut = clause[0].length; }
+  // A run-on with no full stop yet: don't make the voice wait for the end — break at a comma, else a space.
+  if (!cut && tail.length > 220) { const soft = Math.max(tail.lastIndexOf(", ", 200), tail.lastIndexOf("; ", 200)); cut = soft > 60 ? soft + 1 : tail.lastIndexOf(" ", 200) + 1; }
   const chunks = tail.slice(0, cut).split(/(?<=[.!?:])\s+|\n+/).map(spoken).filter((s) => /\w/.test(s));
   return { chunks, upto: from + cut };
 }

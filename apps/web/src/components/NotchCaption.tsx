@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { CaptionLine } from "../lib/buddy-voice";
 import { prose } from "../lib/plain";
 
@@ -87,10 +87,11 @@ export function sentenceStart(words: string[], sentence: string[], from: number)
 }
 
 /**
- * The reply in the notch as ONE continuous surface. It streams in as it's written; when Shua starts speaking, nothing
- * is swapped out — the words already said brighten in place and the rest wait, softly, a few words ahead. (It used
- * to replace the streamed paragraph with a fresh word-by-word caption of sentence one: the text you were reading
- * vanished and started over.) A spoken line that isn't part of this reply falls back to the plain caption.
+ * The reply in the notch as ONE continuous surface, all of it. It streams in as it's written (new words fade in); when
+ * Shua speaks, the words already said brighten in place, the word being said glows with an underline sweeping under it,
+ * and the rest wait, dimmed. The view glides with the voice so the current word stays in sight, and you can scroll back
+ * to re-read (it follows again a few seconds later). It used to show only a 3-line window around the voice, and the open
+ * notch cut the reply at two lines with "…". A spoken line that isn't part of this reply falls back to the plain caption.
  */
 export function SpokenReply({ text, line, streaming = false, lines = 3 }: { text: string; line: CaptionLine | null; streaming?: boolean; lines?: number }) {
   const words = prose(text).split(/\s+/).filter(Boolean);
@@ -115,10 +116,35 @@ export function SpokenReply({ text, line, streaming = false, lines = 3 }: { text
   }, [line]);
   if (line && lost) return <NotchCaption line={line} lines={lines} />;
   const speaking = !!line;
-  // Speaking: the view follows the voice (what's been said, and a dozen words ahead). Otherwise: everything so far.
-  const shown = speaking ? words.slice(0, Math.min(words.length, said + 12)) : words;
-  return <Rolling className="notch-caption is-reply" lines={lines}>
-    {shown.map((w, i) => <span key={i} className={!speaking || i < said ? "is-said" : "is-next"}>{w} </span>)}
+  // What the view follows: the word being said; or, while it's still being written, the newest word.
+  const focus = speaking ? Math.min(said, words.length - 1) : streaming ? words.length - 1 : -1;
+  return <ReplyScroll lines={lines} focus={focus}>
+    {words.map((w, i) => <Fragment key={i}><span data-i={i} className={!speaking || i < said ? "is-said" : i === said ? "is-now" : "is-next"}>{w}</span>{" "}</Fragment>)}
     {streaming && <i className="notch-caret" />}
-  </Rolling>;
+  </ReplyScroll>;
+}
+
+/**
+ * A few lines tall, scrollable, and it follows `focus` (a word index) smoothly — the current line sits a little below
+ * the middle, so you see what was just said and what's next. Your own scrolling pauses the following for 4 s.
+ */
+function ReplyScroll({ lines, focus, children }: { lines: number; focus: number; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null), touched = useRef(0);
+  const [edges, setEdges] = useState({ above: false, below: false });
+  const measure = () => { const b = box.current; if (!b) return; const above = b.scrollTop > 2, below = b.scrollTop + b.clientHeight < b.scrollHeight - 2; setEdges((e) => (e.above === above && e.below === below ? e : { above, below })); };
+  useLayoutEffect(() => {
+    const b = box.current; if (!b) return;
+    if (focus >= 0 && performance.now() - touched.current > 4000) {
+      const word = b.querySelector<HTMLElement>(`[data-i="${focus}"]`);
+      if (word) {
+        const target = Math.max(0, Math.min(b.scrollHeight - b.clientHeight, word.offsetTop + word.offsetHeight - b.clientHeight * 0.68));
+        if (Math.abs(target - b.scrollTop) > 2) b.scrollTo({ top: target, behavior: calm() ? "auto" : "smooth" });
+      }
+    }
+    measure();
+  });
+  return <div ref={box} className={`notch-reply${edges.above ? " is-above" : ""}${edges.below ? " is-below" : ""}`} style={{ "--lines": lines } as CSSProperties}
+    aria-live="polite" onScroll={measure} onWheel={() => { touched.current = performance.now(); }} onPointerDown={() => { touched.current = performance.now(); }}>
+    <p>{children}</p>
+  </div>;
 }

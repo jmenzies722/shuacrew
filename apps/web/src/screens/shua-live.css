@@ -81,6 +81,35 @@
 :root[data-motion="reduced"] :is(.isl-btn.is-talk, .buddy-talk).is-holding::after { animation: none; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) :is(.isl-btn.is-talk, .buddy-talk).is-holding::after { animation: none; } }
 
+/* ── The reply, live: all of it, in step with the voice ─────────────────────────────────────────────────────────
+   Said words are bright, the word being said glows with an accent underline sweeping under it, the rest wait dimmed;
+   streamed words fade in as they arrive. Scrolls (no bar) with soft fades where there's more above or below. */
+.notch-reply { --lh: 1.5em; position: relative; max-height: calc(var(--lh) * var(--lines, 3)); overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: none; text-align: left; line-height: var(--lh); color: #f4f1f8; }
+.notch-reply::-webkit-scrollbar { display: none; }
+.notch-reply > p { margin: 0; }
+.notch-reply.is-above { -webkit-mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9)); mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9)); }
+.notch-reply.is-below { -webkit-mask-image: linear-gradient(#000 calc(100% - var(--lh) * .9), transparent); mask-image: linear-gradient(#000 calc(100% - var(--lh) * .9), transparent); }
+.notch-reply.is-above.is-below { -webkit-mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9), #000 calc(100% - var(--lh) * .9), transparent); mask-image: linear-gradient(transparent, #000 calc(var(--lh) * .9), #000 calc(100% - var(--lh) * .9), transparent); }
+/* (The fade-in is the word's only animation: the underline lives on ::after, so a word changing state never restarts it.) */
+.notch-reply span { position: relative; transition: color .18s ease, text-shadow .3s ease; animation: reply-word-in .32s cubic-bezier(.2, .8, .2, 1) backwards; }
+.notch-reply .is-said { color: #f6f4fa; }
+.notch-reply .is-next { color: rgba(244, 241, 248, .36); }
+.notch-reply .is-now { color: #fff; text-shadow: 0 0 14px color-mix(in srgb, var(--amber) 80%, transparent), 0 0 1px rgba(255, 255, 255, .7); }
+.notch-reply .is-now::after { content: ""; position: absolute; left: 0; right: 0; bottom: .05em; height: 2px; border-radius: 2px; background: var(--amber);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--amber) 80%, transparent); transform-origin: 0 50%; animation: reply-word-now .34s cubic-bezier(.3, .7, .3, 1) both; }
+@keyframes reply-word-in { from { opacity: 0; } }
+@keyframes reply-word-now { from { transform: scaleX(0); } }
+/* In the notch: island type sizes. The open island gives the reply room (6 lines) and a breath of the accent while it's live. */
+.buddy.is-docked .shua-island .notch-reply { font-size: 14px; --lh: 1.55em; letter-spacing: .005em; }
+.isl-reply { position: relative; padding: 2px 2px 0; }
+.buddy.is-docked .shua-island .isl-reply .notch-reply { font-size: 15px; font-weight: 500; --lh: 1.5em; letter-spacing: -.005em; }
+.isl-reply.is-live::before { content: ""; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 2px; border-radius: 2px; background: var(--amber); box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 70%, transparent); animation: isl-reply-pulse 1.8s ease-in-out infinite; }
+@keyframes isl-reply-pulse { 50% { opacity: .45; } }
+:root[data-idle] :is(.notch-reply span, .notch-reply .is-now::after, .isl-reply.is-live::before) { animation-play-state: running; } /* the notch is seen while ShuaCrew is in the background: never pause it here */
+:root[data-motion="reduced"] :is(.notch-reply span, .notch-reply .is-now::after, .isl-reply.is-live::before) { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) :is(.notch-reply span, .notch-reply .is-now::after, .isl-reply.is-live::before) { animation: none !important; } }
+
 /* ── At rest and with Reduce motion ──────────────────────────────────────────────────────────────────────────────── */
 :root[data-idle] .buddy-card.spk :is(.spk-status, .spk-status .spk-dot, .spk-status .spk-dot::after, .spk-typing span, .buddy-msg.is-live .prose-agent > :last-child::after) { animation-play-state: paused; }
 :root[data-motion="reduced"] .buddy-card.spk :is(.spk-status, .spk-status .spk-dot, .spk-status .spk-dot::after, .spk-typing span, .buddy-msg.is-live .prose-agent > :last-child::after, .buddy-send, .spk-options-panel) { animation: none !important; }
