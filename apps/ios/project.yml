@@ -43,6 +43,9 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Hold the mic to talk to Shua.
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: Turns what you say into words for Shua, on this iPhone when it can.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # Sideways it becomes the second screen, so landscape is supported.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
   ShuaCrewWatch:

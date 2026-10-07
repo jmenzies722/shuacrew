@@ -1,60 +1,71 @@
 import SwiftUI
 
-/// Today, once you're paired: the Mac's brief — what needs you, what's working and on what, what finished and how,
-/// what runs next — read from the crew's own record, refreshed as things change.
+/// Today: your day at a glance, in Shua's light. What needs you, what's moving, what finished, what's coming up on its
+/// own, then one tap to have Shua talk you through it. Built from the crew's own record, live.
 struct ShuaTodayView: View {
     @Environment(SparkLink.self) private var link
     var body: some View {
-        if link.pairing == nil { PairFirst(title: "Today", line: "Pair with your Mac and your day shows up here: what needs you, what's working, what finished.") } else { brief }
+        if link.pairing == nil { PairFirst(title: "Today", line: "Pair with your Mac and your day shows up here: what needs you, what's working, what finished.") } else { day }
     }
 
-    private var brief: some View {
-        List {
-            Section {
-                HStack(spacing: 14) {
-                    ShuaCharacter(mood: link.mood).frame(width: 64, height: 64)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(link.brief?.headline ?? "Reading your crew…").font(.title3.weight(.semibold))
-                        Text(Date.now, format: .dateTime.weekday(.wide).month().day()).font(.subheadline).foregroundStyle(.secondary)
+    private var day: some View {
+        ZStack {
+            ShuaStage(mood: .idle, accent: link.look?.accentColor ?? .shuaPurple).opacity(0.6)
+            ScrollView {
+                VStack(spacing: 18) {
+                    HStack(spacing: 14) {
+                        ShuaCharacter(mood: link.mood).frame(width: 72, height: 72)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(Plainly.hello()).font(.system(.title2, design: .rounded).weight(.bold))
+                            Text(link.statusSentence).font(.system(.body, design: .rounded)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
                     }
-                }
-                .listRowBackground(Color.clear)
-                if let b = link.brief {
+                    .padding(.horizontal, 20)
                     HStack(spacing: 10) {
-                        Stat(value: b.waiting, label: "need you", tint: .orange)
-                        Stat(value: b.working, label: "working", tint: .green)
-                        Stat(value: b.finished, label: "finished", tint: link.look?.accentColor ?? .shuaPurple)
+                        Stat(value: link.approvals.count, label: "need you", tint: .orange)
+                        Stat(value: link.activeRuns.filter { $0.status != "awaiting_approval" }.count, label: "working", tint: .green)
+                        Stat(value: link.runs.filter(\.finished).count, label: "done", tint: link.look?.accentColor ?? .shuaPurple)
                     }
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .padding(.horizontal, 20)
+                    ForEach(link.approvals) { NeedsYouCard(approval: $0) }
+                    if !link.activeRuns.filter({ $0.status != "awaiting_approval" }).isEmpty { WorkingCard() }
+                    let finished = link.runs.filter(\.finished).sorted { $0.updatedAt > $1.updatedAt }
+                    if !finished.isEmpty {
+                        ShuaCard(title: "Finished", symbol: "checkmark.circle.fill", tint: link.look?.accentColor ?? .shuaPurple) {
+                            ForEach(finished.prefix(6)) { run in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(run.title).font(.body.weight(.semibold))
+                                    if !run.ticker.isEmpty { Text(run.ticker).font(.subheadline).foregroundStyle(.secondary) }
+                                }
+                            }
+                        }
+                    }
+                    if let next = link.brief?.next, !next.isEmpty {
+                        ShuaCard(title: "Coming up on its own", symbol: "calendar.badge.clock", tint: .cyan) {
+                            ForEach(next) { item in
+                                HStack {
+                                    Text(item.name).font(.body.weight(.medium))
+                                    Spacer()
+                                    Text(item.at, format: .dateTime.hour().minute()).font(.body.monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    Button { Task { await link.ask("What's going on? Give me the short version.") } } label: {
+                        Label("Have Shua talk me through it", systemImage: "sparkles").font(.headline).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large).tint(link.look?.accentColor ?? .shuaPurple)
+                    .padding(.horizontal, 20).disabled(link.asking)
                 }
+                .padding(.vertical, 12).padding(.bottom, 40)
+                .frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
-            ForEach(sections, id: \.title) { section in
-                Section(section.title) {
-                    ForEach(section.rows, id: \.self) { row in Text(row).font(.callout) }
-                }
-            }
-            Section {
-                Button { Task { await link.ask("What's going on? Give me the short version.") } } label: { Label("Ask Shua to walk me through it", systemImage: "sparkles") }
-                    .disabled(link.asking)
-            }
+            .scrollIndicators(.hidden)
+            .refreshable { await link.reload() }
         }
         .navigationTitle("Today")
-        .refreshable { await link.reload() }
-    }
-
-    /// The brief's plain lines as sections: "WAITING ON YOU (2):" heads the "- …" lines under it.
-    private var sections: [(title: String, rows: [String])] {
-        var out: [(title: String, rows: [String])] = [], info: [String] = []
-        for line in link.brief?.lines ?? [] {
-            if line.hasPrefix("- "), !out.isEmpty { out[out.count - 1].rows.append(String(line.dropFirst(2))) }
-            else if let colon = line.firstIndex(of: ":"), line[..<colon].uppercased() == line[..<colon], line.hasSuffix(":") {
-                out.append((title: line[..<colon].replacingOccurrences(of: #"\s*\(\d+\)"#, with: "", options: .regularExpression).capitalized, rows: []))
-            } else if let colon = line.firstIndex(of: ":") {
-                info.append(line[..<colon].capitalized + ":" + line[line.index(after: colon)...])
-            }
-        }
-        if !info.isEmpty { out.append((title: "At a glance", rows: info)) }
-        return out.filter { !$0.rows.isEmpty }
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 
@@ -62,16 +73,17 @@ private struct Stat: View {
     let value: Int, label: String, tint: Color
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(value)").font(.title.weight(.semibold).monospacedDigit()).foregroundStyle(value > 0 ? tint : .secondary).contentTransition(.numericText())
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text("\(value)").font(.system(.title, design: .rounded).weight(.bold).monospacedDigit()).foregroundStyle(value > 0 ? tint : .secondary).contentTransition(.numericText())
+            Text(label).font(.system(.caption, design: .rounded).weight(.medium)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.08)))
     }
 }
 
-/// Crew, once you're paired: everything working now and what finished, live, and a box to hand the crew something.
+/// Crew: hand them something, see what needs you and what's moving, live.
 struct ShuaCrewView: View {
     @Environment(SparkLink.self) private var link
     @State private var task = ""
@@ -81,69 +93,55 @@ struct ShuaCrewView: View {
     }
 
     private var crew: some View {
-        List {
-            Section {
-                HStack {
-                    TextField("Hand the crew a task…", text: $task, axis: .vertical).lineLimit(1...4).focused($typing)
-                    Button {
-                        let t = task
-                        Task { if await link.start(ask: t) { task = ""; typing = false } }
-                    } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
-                        .disabled(task.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .tint(link.look?.accentColor ?? .shuaPurple)
-                }
-            } footer: { Text("It starts a crew session on your Mac. Anything that needs your OK comes back here.") }
-            if !link.approvals.isEmpty {
-                Section("Needs you") {
-                    ForEach(link.approvals) { a in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(a.tool).font(.headline)
-                            Text(a.summary).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(3)
-                            HStack {
-                                Button("Deny", role: .destructive) { Task { await link.decide(a, allow: false) } }.buttonStyle(.bordered)
-                                Spacer()
-                                Button { Task { await link.decide(a, allow: true) } } label: { Label("Allow", systemImage: "faceid") }.buttonStyle(.borderedProminent).tint(.orange)
+        ZStack {
+            ShuaStage(mood: .idle, accent: link.look?.accentColor ?? .shuaPurple).opacity(0.5)
+            ScrollView {
+                VStack(spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .bottom, spacing: 10) {
+                            TextField("What should the crew do?", text: $task, axis: .vertical).lineLimit(1...5).focused($typing)
+                                .font(.system(.body, design: .rounded))
+                            Button {
+                                let t = task
+                                Task { if await link.start(ask: t) { task = ""; typing = false } }
+                            } label: { Image(systemName: "arrow.up").font(.headline).foregroundStyle(.white).frame(width: 36, height: 36).background((link.look?.accentColor ?? .shuaPurple).gradient, in: Circle()) }
+                                .disabled(task.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                        .padding(14)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        Text("Starts a crew session on your Mac. Anything that needs your OK comes back here.").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 6)
+                    }
+                    .padding(.horizontal, 20)
+                    ForEach(link.approvals) { NeedsYouCard(approval: $0) }
+                    let working = link.activeRuns.filter { $0.status != "awaiting_approval" }
+                    if working.isEmpty {
+                        ShuaCard(title: "Working now", symbol: "bolt.fill", tint: .green) { Text("Nobody's working right now. Hand the crew something above.").font(.body).foregroundStyle(.secondary) }
+                    } else { WorkingCard() }
+                    let recent = link.runs.filter { !$0.active }.sorted { $0.updatedAt > $1.updatedAt }.prefix(10)
+                    if !recent.isEmpty {
+                        ShuaCard(title: "Recently", symbol: "clock.arrow.circlepath", tint: .secondary) {
+                            ForEach(Array(recent)) { run in
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Image(systemName: run.finished ? "checkmark.circle.fill" : run.status == "failed" ? "exclamationmark.triangle.fill" : "circle.dotted")
+                                        .foregroundStyle(run.finished ? .green : run.status == "failed" ? .red : .secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(run.title).font(.body.weight(.semibold))
+                                        if !run.ticker.isEmpty { Text(run.ticker).font(.subheadline).foregroundStyle(.secondary).lineLimit(3) }
+                                    }
+                                }
                             }
                         }
-                        .padding(.vertical, 4)
                     }
                 }
+                .padding(.vertical, 12).padding(.bottom, 40)
+                .frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
-            Section("Working now") {
-                if link.activeRuns.isEmpty { Text("Nobody's working right now.").foregroundStyle(.secondary) }
-                ForEach(link.activeRuns) { run in CrewRow(run: run) }
-            }
-            let recent = link.runs.filter { !$0.active }.sorted { $0.updatedAt > $1.updatedAt }.prefix(12)
-            if !recent.isEmpty {
-                Section("Recently") { ForEach(Array(recent)) { run in CrewRow(run: run) } }
-            }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .refreshable { await link.reload() }
         }
         .navigationTitle("Crew")
-    }
-}
-
-private struct CrewRow: View {
-    @Environment(SparkLink.self) private var link
-    let run: CrewRun
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle().fill(color).frame(width: 9, height: 9).padding(.top, 6)
-                .phaseAnimator(run.active ? [0.35, 1] : [1]) { c, p in c.opacity(p) } animation: { _ in .easeInOut(duration: 0.9) }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(run.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                Text(run.ticker.isEmpty ? run.status.replacingOccurrences(of: "_", with: " ") : run.ticker).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
-            }
-        }
-        .swipeActions { if run.active { Button("Stop", role: .destructive) { Task { await link.cancel(run) } } } }
-    }
-    private var color: Color {
-        switch run.status {
-        case "running", "planning": .green
-        case "awaiting_approval": .orange
-        case "failed": .red
-        case "done", "merged": .secondary
-        default: .gray
-        }
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 
@@ -157,17 +155,17 @@ struct ShuaSettingsView: View {
         Form {
             Section {
                 HStack(spacing: 14) {
-                    ShuaCharacter(mood: link.mood).frame(width: 56, height: 56)
+                    ShuaCharacter(mood: link.mood).frame(width: 60, height: 60)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(link.look?.name ?? "Shua").font(.headline)
+                        Text(link.look?.name ?? "Shua").font(.system(.title3, design: .rounded).weight(.semibold))
                         Text(status).font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
-            } footer: { Text(link.look == nil ? "Your own Shua appears here once ShuaCrew on your Mac shares it." : "This is your Shua as you designed it on the Mac. Change it there and it updates here.") }
-            Section("Mac") {
+            } footer: { Text("This is your Shua as you designed it on the Mac. Change it there and it updates here.") }
+            Section("Your Mac") {
                 if let p = link.pairing {
                     LabeledContent("Paired with", value: p.name)
-                    LabeledContent("Over", value: "Tailscale · \(p.host)")
+                    LabeledContent("Connection", value: "Tailscale, encrypted")
                     Button("Unpair this iPhone", role: .destructive) { confirmUnpair = true }
                 } else {
                     Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder") }
@@ -175,7 +173,7 @@ struct ShuaSettingsView: View {
             }
             Section {
                 Toggle("Shua speaks its replies", isOn: $voiceOn).onChange(of: voiceOn) { _, on in ShuaVoice.shared.enabled = on }
-            } header: { Text("Voice") } footer: { Text("Uses the best voice installed on this iPhone. Add a Premium voice in Settings → Accessibility → Spoken Content for the most natural sound.") }
+            } header: { Text("Voice") } footer: { Text("Shua speaks with the same voice as on your Mac.") }
             Section { NavigationLink("iCloud sync (advanced)") { SettingsView() } }
         }
         .navigationTitle("Settings")
@@ -199,16 +197,15 @@ private struct PairFirst: View {
     let line: String
     @State private var pairing = false
     var body: some View {
-        VStack(spacing: 18) {
-            Spacer()
-            ShuaCharacter(mood: .sleepy).frame(height: 180)
-            Text(line).font(.title3.weight(.medium)).multilineTextAlignment(.center).padding(.horizontal, 32)
-            Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }
-                .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 32)
-            Spacer()
+        ZStack {
+            ShuaStage(mood: .sleepy, accent: link.look?.accentColor ?? .shuaPurple)
+            VStack(spacing: 18) {
+                ShuaCharacter(mood: .sleepy).frame(height: 180)
+                Text(line).font(.system(.title3, design: .rounded).weight(.medium)).multilineTextAlignment(.center).padding(.horizontal, 32)
+                Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder").font(.headline).frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 32)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .background(Glow(mood: .sleepy, accent: link.look?.accentColor ?? .shuaPurple).ignoresSafeArea())
         .navigationTitle(title)
         .sheet(isPresented: $pairing) { PairView() }
     }

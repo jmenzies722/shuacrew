@@ -1,55 +1,66 @@
 import SwiftUI
 
-/// Desk mode: your iPhone on its stand as Shua's second screen next to the Mac. Your own character, big; what Shua
-/// is saying (as it says it) or what the crew is doing; the time; what's waiting. Hold Shua to talk to it. The screen
-/// stays awake while it's up; double-tap anywhere to put it away.
-struct DockView: View {
+/// The second screen: your iPhone on its side next to the Mac, like StandBy but for Shua. Your Shua big on the left;
+/// on the right the time, what Shua is saying as it says it (or what's going on), and what needs you, with Allow one
+/// tap away. Hold anywhere to talk. Shown automatically in landscape, or full screen from desk mode.
+struct SecondScreen: View {
     @Environment(SparkLink.self) private var link
-    @Environment(\.dismiss) private var dismiss
-    @State private var listen = ShuaListen()
     let tilt: SparkTilt
+    let listen: ShuaListen
     private var voice: ShuaVoice { .shared }
+    private var accent: Color { link.look?.accentColor ?? .shuaPurple }
 
     var body: some View {
         GeometryReader { geo in
             let wide = geo.size.width > geo.size.height
             ZStack {
-                Glow(mood: mood, accent: link.look?.accentColor ?? .shuaPurple).ignoresSafeArea()
+                ShuaStage(mood: mood, accent: accent)
                 let layout = wide ? AnyLayout(HStackLayout(spacing: 40)) : AnyLayout(VStackLayout(spacing: 24))
                 layout {
-                    ShuaCharacter(mood: mood, tilt: tilt.gaze)
-                        .frame(maxWidth: wide ? geo.size.height * 0.8 : geo.size.width * 0.78)
-                        .scaleEffect(listen.listening ? 1.05 : 1).animation(.spring(response: 0.35), value: listen.listening)
-                        .gesture(LongPressGesture(minimumDuration: 0.25).sequenced(before: DragGesture(minimumDistance: 0))
-                            .onChanged { _ in if !listen.listening { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); Task { await listen.start() } } }
-                            .onEnded { _ in Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } })
-                        .accessibilityLabel("Hold to talk to Shua")
-                    VStack(alignment: wide ? .leading : .center, spacing: 12) {
-                        TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                            Text(ctx.date, format: .dateTime.hour().minute())
-                                .font(.system(size: wide ? 84 : 64, weight: .semibold, design: .rounded))
-                                .monospacedDigit().contentTransition(.numericText())
-                        }
-                        Text(line.title).font(.title2.weight(.medium)).lineLimit(wide ? 4 : 3)
-                            .contentTransition(.opacity).animation(.smooth, value: line.title)
-                        if let sub = line.sub { Text(sub).font(.headline).foregroundStyle(.secondary).lineLimit(2) }
-                        HStack(spacing: 18) {
-                            if !link.approvals.isEmpty { Label("\(link.approvals.count) waiting", systemImage: "hand.raised.fill").foregroundStyle(.orange) }
-                            if !link.activeRuns.isEmpty { Label("\(link.activeRuns.count) working", systemImage: "bolt.fill").foregroundStyle(.green) }
-                            if let b = link.brief, b.finished > 0 { Label("\(b.finished) done today", systemImage: "checkmark.circle.fill").foregroundStyle(.secondary) }
-                        }
-                        .font(.headline)
+                    ZStack {
+                        ShuaAura(active: voice.speaking || listen.listening || link.asking, accent: accent)
+                        ShuaCharacter(mood: mood, tilt: tilt.gaze).padding(wide ? 12 : 24)
                     }
-                    .multilineTextAlignment(wide ? .leading : .center)
+                    .frame(maxWidth: wide ? geo.size.height * 0.85 : geo.size.width * 0.8)
+                    .scaleEffect(listen.listening ? 1.05 : 1).animation(.spring(response: 0.35), value: listen.listening)
+                    VStack(alignment: wide ? .leading : .center, spacing: 14) {
+                        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                            VStack(alignment: wide ? .leading : .center, spacing: 0) {
+                                Text(ctx.date, format: .dateTime.hour().minute())
+                                    .font(.system(size: wide ? 76 : 60, weight: .bold, design: .rounded)).monospacedDigit().contentTransition(.numericText())
+                                Text(ctx.date, format: .dateTime.weekday(.wide).month().day()).font(.system(.headline, design: .rounded)).foregroundStyle(.secondary)
+                            }
+                        }
+                        SpeechLine(listening: listen.listening, heard: listen.heard, big: wide ? 24 : 22, leading: wide)
+                        HStack(spacing: 16) {
+                            if !link.approvals.isEmpty { Label("\(link.approvals.count) need\(link.approvals.count == 1 ? "s" : "") you", systemImage: "hand.raised.fill").foregroundStyle(.orange) }
+                            let working = link.activeRuns.filter { $0.status != "awaiting_approval" }.count
+                            if working > 0 { Label("\(working) working", systemImage: "bolt.fill").foregroundStyle(.green) }
+                            let done = link.runs.filter(\.finished).count
+                            if done > 0 { Label("\(done) done", systemImage: "checkmark.circle.fill").foregroundStyle(.secondary) }
+                        }
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        if let a = link.approvals.first {
+                            HStack(spacing: 10) {
+                                Button("Not now") { Task { await link.decide(a, allow: false) } }.buttonStyle(.bordered)
+                                Button { Task { await link.decide(a, allow: true) } } label: { Label("Allow", systemImage: "faceid") }.buttonStyle(.borderedProminent).tint(.orange)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: wide ? .infinity : nil, alignment: wide ? .leading : .center)
                 }
-                .padding(32)
+                .padding(.horizontal, wide ? 40 : 24).padding(.vertical, 24)
+                if listen.listening {
+                    Rectangle().fill(.black.opacity(0.35)).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
+                }
             }
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) { dismiss() }
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0))
+                .onChanged { value in if case .second(true, _) = value, !listen.listening { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); Task { await listen.start() } } }
+                .onEnded { _ in Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } })
+            .animation(.smooth(duration: 0.35), value: listen.listening)
         }
         .preferredColorScheme(.dark)
-        .statusBarHidden()
-        .persistentSystemOverlays(.hidden)
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true; tilt.start() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
@@ -59,13 +70,17 @@ struct DockView: View {
         if listen.listening || link.asking { return .thinking }
         return link.mood
     }
+}
 
-    /// Shua's own words while it's answering (or just did), else what the crew is doing.
-    private var line: (title: String, sub: String?) {
-        if listen.listening { return (listen.heard.isEmpty ? "I'm listening…" : listen.heard, nil) }
-        if let last = link.chat.last(where: { $0.role == .shua }), !last.text.isEmpty, last.pending || Date.now.timeIntervalSince(last.at) < 90 {
-            return (SparkLink.speakable(last.text), nil)
-        }
-        return link.caption
+/// Desk mode: the second screen, full screen, from the button. Double-tap anywhere to put it away.
+struct DockView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var listen = ShuaListen()
+    let tilt: SparkTilt
+    var body: some View {
+        SecondScreen(tilt: tilt, listen: listen)
+            .onTapGesture(count: 2) { dismiss() }
+            .statusBarHidden()
+            .persistentSystemOverlays(.hidden)
     }
 }

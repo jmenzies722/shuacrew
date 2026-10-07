@@ -24,6 +24,7 @@
 		7531069D72A58DE6C7ED4F3E /* ShuaCrewApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB17EECD4F91FAF99439190E /* ShuaCrewApp.swift */; };
 		7D60BD1ADFEB6B6F423BAFA7 /* CrewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 518EF07C6987A5237AFF5235 /* CrewView.swift */; };
 		890106C728C1A23CD17F2B75 /* ApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */; };
+		96875225F37363634DF5C763 /* ShuaStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E7CADB086BDD41BD875D3F /* ShuaStage.swift */; };
 		9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */; };
 		A32F1A1883340C01E5501D19 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C970161BF6CE29920ED105A /* PairView.swift */; };
 		AA5ED4D6262CB46E629342B3 /* DefaultShua.json in Resources */ = {isa = PBXBuildFile; fileRef = 1AEC99DEA66413AD96EB0B8F /* DefaultShua.json */; };
@@ -109,6 +110,7 @@
 		C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppDelegate.swift; sourceTree = "<group>"; };
 		D27A7D2FA09061C8A150F530 /* ShuaCrewWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaCrewWatchApp.swift; sourceTree = "<group>"; };
 		E246E7A19D93D8C091FBAACD /* ShuaVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaVoice.swift; sourceTree = "<group>"; };
+		E3E7CADB086BDD41BD875D3F /* ShuaStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaStage.swift; sourceTree = "<group>"; };
 		E69C60B1D61E9AC5FEA342A3 /* SparkLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkLink.swift; sourceTree = "<group>"; };
 		ECA9AE331B6B0918A9D7A3BD /* ShuaCrewTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ShuaCrewTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FE5A820775E9BF5FA7623433 /* PhoneNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNotifications.swift; sourceTree = "<group>"; };
@@ -197,6 +199,7 @@
 				7640A326CBD43710645D66C1 /* DockView.swift */,
 				6C970161BF6CE29920ED105A /* PairView.swift */,
 				1D218FD1D749616D739F669C /* ShuaLook.swift */,
+				E3E7CADB086BDD41BD875D3F /* ShuaStage.swift */,
 				BEE50C7AB0E0B552CF09E5F9 /* ShuaTabs.swift */,
 				E246E7A19D93D8C091FBAACD /* ShuaVoice.swift */,
 				21201FDDEB759B0C3E0E240F /* SparkFace.swift */,
@@ -456,6 +459,7 @@
 				6A7D387DF7AE36FF71FA4480 /* SettingsView.swift in Sources */,
 				7531069D72A58DE6C7ED4F3E /* ShuaCrewApp.swift in Sources */,
 				FF5DF1BF1EB1D297AB84DD47 /* ShuaLook.swift in Sources */,
+				96875225F37363634DF5C763 /* ShuaStage.swift in Sources */,
 				72E0387EE50F6C57CA938E70 /* ShuaTabs.swift in Sources */,
 				68CFDD6341CFC7C825AA106D /* ShuaVoice.swift in Sources */,
 				611C06B440CD3E08B8BE8EC5 /* SparkFace.swift in Sources */,
@@ -622,6 +626,8 @@
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Turns what you say into words for Shua, on this iPhone when it can.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -681,6 +687,8 @@
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Turns what you say into words for Shua, on this iPhone when it can.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
