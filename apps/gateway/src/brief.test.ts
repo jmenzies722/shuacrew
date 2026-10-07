@@ -22,7 +22,7 @@ it("says what's working, what's waiting and why, what finished and failed, and w
   ]);
   const b = crewBrief({ state, now, schedules: [{ name: "Morning standup", paused: false, next: [now + 17 * 3_600_000] }, { name: "Paused one", paused: true, next: [now + 60_000] }] });
   expect(b.headline).toBe("1 thing needs you, 1 working");
-  expect(b.waiting[0]).toMatchObject({ title: "Ship landing page", what: "run `git push origin main`", why: "outward-facing" });
+  expect(b.waiting[0]).toMatchObject({ title: "Ship landing page", what: "push to GitHub", why: "it reaches beyond this Mac or is hard to undo", command: "git push origin main" });
   expect(b.working[0]).toMatchObject({ title: "Fix login bug", who: "Codex" });
   expect(b.finished.map((f) => f.title)).toEqual(["Summarize platform plan"]);
   expect(b.failed[0]).toEqual({ id: "r4", title: "Old flaky job", why: "tests kept failing" });
@@ -40,4 +40,15 @@ it("is honest when nothing is happening", () => {
 it("describes what an approval wants to do", () => {
   expect(asking("Edit", { file_path: "/a/b/auth.ts" })).toBe("change auth.ts");
   expect(asking("mcp__notion__create_page", {})).toBe("use notion · create_page");
+});
+
+it("says what a command is for, the way a person would", async () => {
+  const { plainly, because } = await import("./brief.js");
+  expect(plainly(`/bin/zsh -lc "pwd && rg --files -g '*.swift'"`)).toBe("look through the project's files");
+  expect(plainly("pnpm test")).toBe("run the tests");
+  expect(plainly("git add -A && git commit -m x && git push")).toBe("push to GitHub");
+  expect(plainly("rm -rf build && npm run build")).toBe("delete files");
+  expect(plainly("ffmpeg -i a.mov b.mp4")).toBe("run a command");
+  expect(because("default.ask", "no rule covers this call, so a person decides")).toBe("it hasn't asked to do this before");
+  expect(because("custom", "matches your rule")).toBe("matches your rule");
 });

@@ -3,7 +3,7 @@
  * waiting on you and why, what finished (and how it went), what failed, what's queued, today's usage and limits, and
  * what runs next on its own. Built only from recorded state, so every name and number in it is real.
  */
-import type { CrewState, RunView } from "@shuacrew/core";
+import { bareCommand, segments, unwrapShell, type CrewState, type RunView } from "@shuacrew/core";
 import type { FastifyInstance } from "fastify";
 
 export interface BriefInput {
@@ -16,7 +16,8 @@ export interface BriefInput {
 export interface Brief {
   headline: string;
   working: Array<{ id: string; title: string; who: string; step: string; minutes: number }>;
-  waiting: Array<{ id: string; run: string | null; title: string; tool: string; what: string; why: string }>;
+  /** what: in words ("look through the project's files"); command: the exact command, for whoever wants to check. */
+  waiting: Array<{ id: string; run: string | null; title: string; tool: string; what: string; why: string; command?: string }>;
   finished: Array<{ id: string; title: string; who: string; result: string; files: number; checks: string }>;
   failed: Array<{ id: string; title: string; why: string }>;
   queued: number;
@@ -31,10 +32,35 @@ const clip = (s: string, n: number) => { const t = s.replace(/\s+/g, " ").trim()
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const compact = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+/** What a command is for, the way a person would say it. The most consequential part of a chain wins. */
+const PLAIN: Array<[RegExp, string]> = [
+  [/^git\s+push\b/, "push to GitHub"], [/^(rm|rmdir)\b/, "delete files"], [/^git\s+commit\b/, "save the changes in git"],
+  [/^git\s+(checkout|switch|merge|rebase|reset)\b/, "change git branches"], [/^(npm|pnpm|yarn|bun)\s+(install|i|add)\b|^(pip3?|uv)\s+(install|add)\b|^brew\s+install\b/, "install packages"],
+  [/^(mv)\b/, "move files"], [/^(cp)\b/, "copy files"], [/^(curl|wget)\b/, "fetch something from the web"],
+  [/^osascript\b/, "control an app on your Mac"], [/^open\b/, "open something on your Mac"],
+  [/^(npm|pnpm|yarn|bun)\s+(run\s+)?test\b|^(vitest|jest|pytest)\b|^(swift|cargo|go)\s+test\b/, "run the tests"],
+  [/^(npm|pnpm|yarn|bun)\s+(run\s+)?build\b|^(tsc|xcodebuild)\b|^(swift|cargo|go)\s+build\b|^make\b/, "build the project"],
+  [/^(mkdir|touch)\b/, "create files"], [/^git\s+(status|diff|log|show|blame|branch)\b/, "check the code changes"],
+  [/^(rg|grep|ag|fd|find|ls|tree|cat|head|tail|wc|pwd|sed\s+-n|awk|stat|file|du|cd)\b/, "look through the project's files"],
+];
+export function plainly(command: string): string {
+  const parts = segments(unwrapShell(command)).map((s) => bareCommand(s).trim());
+  for (const [pattern, words] of PLAIN) if (parts.some((p) => pattern.test(p))) return words;
+  return "run a command";
+}
+
+/** Why it's asking, in words: the policy's own reason, unless it's one of the stock ones. */
+export function because(rule: string | undefined, reason: string): string {
+  if (rule === "default.ask") return "it hasn't asked to do this before";
+  if (rule === "ask.outward") return "it reaches beyond this Mac or is hard to undo";
+  if (rule?.startsWith("platform.")) return "it changes live infrastructure";
+  return reason;
+}
+
 /** What an approval is asking to do, in words: the command, the file, or the tool. */
 export function asking(tool: string, input: unknown): string {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  if (typeof o.command === "string") return `run \`${clip(o.command, 80)}\``;
+  if (typeof o.command === "string") return plainly(o.command);
   const file = o.file_path ?? o.path;
   if (typeof file === "string") return `${/Edit|Write|apply_patch/.test(tool) ? "change" : "open"} ${file.split("/").pop()}`;
   if (typeof o.url === "string") return `open ${o.url}`;
@@ -47,7 +73,10 @@ export function crewBrief({ state, now, since = startOfDay(now), schedules = [] 
   const working = runs.filter((r) => WORKING.has(r.status)).sort((a, b) => a.createdAt - b.createdAt)
     .map((r) => ({ id: r.id, title: r.title, who: who(r), step: clip(r.currentTool ? `using ${r.currentTool.replace(/^mcp__/, "")}` : r.ticker || "thinking", 90), minutes: Math.max(0, Math.round((now - r.createdAt) / 60_000)) }));
   const waiting = Object.values(state.approvals).sort((a, b) => a.at - b.at)
-    .map((a) => ({ id: a.id, run: a.run, title: (a.run && state.runs[a.run]?.title) || "A session", tool: a.tool, what: asking(a.tool, a.input), why: a.reason }));
+    .map((a) => {
+      const command = typeof (a.input as { command?: unknown } | null)?.command === "string" ? clip(unwrapShell((a.input as { command: string }).command), 160) : undefined;
+      return { id: a.id, run: a.run, title: (a.run && state.runs[a.run]?.title) || "A session", tool: a.tool, what: asking(a.tool, a.input), why: because(a.rule, a.reason), ...(command ? { command } : {}) };
+    });
   const finished = runs.filter((r) => (r.status === "done" || r.status === "merged" || r.status === "reviewing") && r.updatedAt >= since).sort((a, b) => b.updatedAt - a.updatedAt)
     .map((r) => { const passed = r.checks.filter((c) => c.passed).length;
       return { id: r.id, title: r.title, who: who(r), result: clip(r.ticker || "finished", 140), files: r.files.length, checks: r.checks.length ? `${passed}/${r.checks.length} checks passed` : "" }; });

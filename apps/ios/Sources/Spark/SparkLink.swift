@@ -19,6 +19,7 @@ struct CrewRun: Identifiable, Hashable, Sendable {
     let status: String
     let ticker: String
     let updatedAt: Double
+    var createdAt: Double = 0
     var active: Bool { ["queued", "planning", "running", "awaiting_approval", "reviewing"].contains(status) }
     var finished: Bool { ["done", "merged"].contains(status) }
 }
@@ -30,6 +31,9 @@ struct ShuaBrief: Equatable, Sendable {
     let waiting: Int
     let working: Int
     let finished: Int
+    /// What runs on its own next (the Mac's schedules): name and when.
+    var next: [Upcoming] = []
+    struct Upcoming: Equatable, Sendable, Identifiable { let name: String; let at: Date; var id: String { name + "\(at.timeIntervalSince1970)" } }
 }
 
 /// One line of this phone's conversation with Shua.
@@ -54,6 +58,11 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     let reason: String
     let summary: String
     let at: Double
+    /// In words: what it wants ("look through the project's files") and why it's asking.
+    var what = ""
+    var why = ""
+    /// The exact command, without Codex's shell wrapper, for whoever wants to check.
+    var command: String?
 }
 
 /// The live line to the Mac: a paired key, the gateway's own snapshot, and its event stream over Tailscale.
@@ -95,7 +104,31 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         // Development: `simctl launch` with SIMCTL_CHILD_SPARK_PAIRING='{json}' pairs the simulator without a camera.
         if let dev = ProcessInfo.processInfo.environment["SPARK_PAIRING"], let p = try? JSONDecoder().decode(SparkPairing.self, from: Data(dev.utf8)) { pairing = p }
         state = pairing == nil ? .unpaired : .connecting
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SHUA_DEMO"] == "1" { demo() }
+        #endif
     }
+
+    #if DEBUG
+    /// Simulator only: a believable day, so every screen can be seen without a Mac. Never in a release build.
+    private func demo() {
+        let now = Date.now.timeIntervalSince1970 * 1000
+        pairing = SparkPairing(v: 1, host: "demo.ts.net", port: 0, key: String(repeating: "d", count: 32), name: "Josh's MacBook Pro")
+        state = .live
+        runs = [
+            CrewRun(id: "r1", title: "Frame: architecture review", status: "awaiting_approval", ticker: "Mapping the project before reading the core modules", updatedAt: now - 60_000, createdAt: now - 14 * 60_000),
+            CrewRun(id: "r2", title: "Landing page for Shua Labs", status: "running", ticker: "Writing the pricing section", updatedAt: now - 5_000, createdAt: now - 6 * 60_000),
+            CrewRun(id: "r3", title: "Fix the flaky upload test", status: "done", ticker: "Fixed: the retry now waits for the upload to settle. 42 tests pass.", updatedAt: now - 30 * 60_000, createdAt: now - 50 * 60_000),
+        ]
+        approvals = [CrewApproval(id: "a1", run: "r1", tool: "commandExecution", risk: "medium", reason: "no rule covers this call, so a person decides",
+                                  summary: "pwd && rg --files -g '*.swift'", at: now - 60_000, what: "look through the project's files", why: "It hasn't asked to do this before.", command: "pwd && rg --files -g '*.swift'")]
+        brief = ShuaBrief(headline: "1 thing needs you, 1 working", lines: [], waiting: 1, working: 1, finished: 1,
+                          next: [.init(name: "Morning standup", at: .now.addingTimeInterval(3 * 3600)), .init(name: "Nightly backup", at: .now.addingTimeInterval(11 * 3600))])
+        chat = [ShuaLine(role: .you, text: "What's going on?"),
+                ShuaLine(role: .shua, text: "**One thing needs you:** the Frame review wants to look through the project's files. The landing page is being written now, and the upload test fix finished with all 42 tests passing.")]
+        todayRuns = 3
+    }
+    #endif
 
     var activeRuns: [CrewRun] { runs.filter(\.active).sorted { $0.updatedAt > $1.updatedAt } }
 
@@ -126,6 +159,9 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     // MARK: Connection
 
     func start() {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SHUA_DEMO"] == "1" { return }
+        #endif
         guard pairing != nil, loop == nil else { return }
         loop = Task { [weak self] in await self?.run() }
     }
@@ -222,7 +258,8 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
             briefAt = .now
             let text = (j["text"] as? String) ?? ""
             brief = ShuaBrief(headline: (j["headline"] as? String) ?? "", lines: text.split(separator: "\n").map(String.init).filter { !$0.hasPrefix("HEADLINE") },
-                              waiting: (j["waiting"] as? [Any])?.count ?? 0, working: (j["working"] as? [Any])?.count ?? 0, finished: (j["finished"] as? [Any])?.count ?? 0)
+                              waiting: (j["waiting"] as? [Any])?.count ?? 0, working: (j["working"] as? [Any])?.count ?? 0, finished: (j["finished"] as? [Any])?.count ?? 0,
+                              next: ((j["next"] as? [[String: Any]]) ?? []).compactMap { n in (n["name"] as? String).map { ShuaBrief.Upcoming(name: $0, at: Date(timeIntervalSince1970: ((n["at"] as? Double) ?? 0) / 1000)) } })
         }
     }
 
@@ -435,7 +472,7 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
 
     private static func run(from j: [String: Any]) -> CrewRun? {
         guard let id = j["id"] as? String, let status = j["status"] as? String, j["archived"] as? Bool != true else { return nil }
-        return CrewRun(id: id, title: (j["title"] as? String) ?? "Untitled", status: status, ticker: (j["ticker"] as? String) ?? "", updatedAt: (j["updatedAt"] as? Double) ?? 0)
+        return CrewRun(id: id, title: (j["title"] as? String) ?? "Untitled", status: status, ticker: (j["ticker"] as? String) ?? "", updatedAt: (j["updatedAt"] as? Double) ?? 0, createdAt: (j["createdAt"] as? Double) ?? 0)
     }
 
     private static func approval(from j: [String: Any]) -> CrewApproval? {
@@ -444,8 +481,12 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         // What a person needs to judge it: the command, the file, or the URL, never the whole payload.
         let summary = (input?["command"] ?? input?["file_path"] ?? input?["path"] ?? input?["url"]) as? String
             ?? (input.flatMap { try? JSONSerialization.data(withJSONObject: $0) }.map { String(decoding: $0, as: UTF8.self) } ?? "")
+        let command = (input?["command"] as? String).map(Plainly.unwrap)
+        let path = (input?["file_path"] ?? input?["path"]) as? String
         return CrewApproval(id: id, run: j["run"] as? String, tool: tool, risk: (j["risk"] as? String) ?? "", reason: (j["reason"] as? String) ?? "",
-                            summary: String(summary.prefix(300)), at: (j["at"] as? Double) ?? 0)
+                            summary: String((command ?? summary).prefix(300)), at: (j["at"] as? Double) ?? 0,
+                            what: Plainly.asking(tool: tool, command: command, path: path), why: Plainly.why(rule: j["rule"] as? String, reason: (j["reason"] as? String) ?? ""),
+                            command: command.map { String($0.prefix(300)) })
     }
 }
 
