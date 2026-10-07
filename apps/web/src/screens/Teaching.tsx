@@ -21,7 +21,7 @@ const baseSource = (title: string, text: string): TeachingSource => ({
   mime: null,
   capture: null,
 });
-export function Teaching({ compact = false, bare = false, initialQuestion = "", initialReference = "" }: { compact?: boolean; /** Inside Learn: Learn's header speaks for it. */ bare?: boolean; initialQuestion?: string; initialReference?: string }) {
+export function Teaching({ compact = false, bare = false, initialQuestion = "", initialReference = "", autoAsk = false }: { compact?: boolean; /** Inside Learn: Learn's header speaks for it. */ bare?: boolean; initialQuestion?: string; initialReference?: string; /** Start explaining initialQuestion at once (asked from Learn's "Learn anything"). */ autoAsk?: boolean }) {
   const [pinned, setPinned] = useState<ArchitectureLesson | null>(null);
   useEffect(() => {
     const read = () => {
@@ -99,6 +99,9 @@ export function Teaching({ compact = false, bare = false, initialQuestion = "", 
       setPending(false);
     }
   };
+  // Asked from Learn's "Learn anything": begin straight away, once.
+  const asked = useRef(false);
+  useEffect(() => { if (autoAsk && initialQuestion.trim() && !asked.current) { asked.current = true; void explain(initialQuestion); } }, [autoAsk, initialQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
   const readFile = async (file: File) => {
     if (file.size > 2000000) throw new Error("Use a file smaller than 2 MB, or paste the relevant excerpt.");
     if (/^image\/(png|jpeg|webp)$/.test(file.type)) {
