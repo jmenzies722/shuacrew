@@ -243,7 +243,10 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         do {
             let head = try await refresh() // only what happens after this moment is part of the answer
-            let posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text])
+            // The notch may be reconnecting for a moment (a restart on the Mac): try once more before saying it isn't open.
+            let posted: Data
+            do { posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text]) }
+            catch let e as LinkError where e.code == 409 { try await Task.sleep(for: .seconds(3)); posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text]) }
             guard let id = (try? JSONSerialization.jsonObject(with: posted) as? [String: Any])?["id"] as? String else { throw URLError(.cannotParseResponse) }
             var run: String?
             for _ in 0..<40 where run == nil {

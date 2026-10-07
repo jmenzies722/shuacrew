@@ -941,7 +941,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   // Every step Shua takes on screen and whether it worked, so its accuracy is measured.
   if (options.store.path !== ":memory:") { registerShuaJournal(app, path.dirname(options.store.path)); registerShuaLook(app, path.dirname(options.store.path)); }
   // Shua from your iPhone: asks relayed to the Mac's own Shua in the notch.
-  registerShuaRemote(app);
+  registerShuaRemote(app, undefined, store);
   if (options.ventures) ideaRoutes(app, options.ventures, auto?.scheduler);
   if (auto) standupRoutes(app, auto.scheduler);
   if (auto) routineRoutes(app, auto.scheduler);
