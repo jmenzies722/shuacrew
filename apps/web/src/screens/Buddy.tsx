@@ -1,4 +1,5 @@
 import { companionName } from "../lib/companion";
+import { answerPhone, PHONE_ASK, yourWords } from "../lib/shua-remote";
 import { actionSequence } from "../lib/action-sequence";
 import { NotchTeachingBar } from "../components/NotchTeachingBar";
 import { NotchEqualizer } from "../components/NotchEqualizer";
@@ -53,7 +54,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ComposerActions } from "../components/ComposerActions";
 import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompanionDraftRevision, restoreCompanionDraft, setCompanionDraft, useCompanionDraft } from "../lib/companion-draft";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, ArrowUpRight, Cpu, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Smartphone, Cpu, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, decideApproval, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -69,7 +70,7 @@ import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
 import { crewAsks, crewDetail, crewFinished, lastAskedApproval, noteAsked, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark, loadWeather, describe } from "../lib/weather";
-import { aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { actionsOnly, aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -134,17 +135,25 @@ type Msg = { who: "you" | "spark"; text: string; key: string; live?: boolean; id
  */
 const SparkRow = memo(function SparkRow({ m, did, color, wide, setWide, reduceMotion, showAgain }: { m: Msg; did?: Did; color: string; wide: boolean; setWide: (v: boolean) => void; reduceMotion: boolean; showAgain: (label: string) => void }) {
   const p = m.who === "spark" && !m.live ? parsePoint(m.text) : null;
+  const only = m.who === "spark" && !m.live && !did ? actionsOnly(m.text) : [];
   const body = m.who === "spark" ? <>{splitDiagrams(speakable(m.text)).map((part, k) => part.kind === "diagram"
     ? (m.live ? <p key={k} className="buddy-typing">Drawing the diagram…</p> : <Diagram key={k} code={part.value} color={color} expanded={wide} onExpand={(v) => setWide(v)} onSave={(name, svg) => post({ type: "saveFile", name, text: svg })} />)
     : <Markdown key={k} text={part.value.replace(/^\s*-{3,}\s*$/m, "")} streaming={m.live} />)}
+    {only.length > 0 && <div className="buddy-did is-quiet">{only.map((label, j) => <span key={j}><Check size={11} /> {label}</span>)}</div>}
     {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
-    {p && <button type="button" className="buddy-point" onClick={() => showAgain(p.label ?? "")}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
+    {p && <button type="button" className="buddy-point" onClick={() => showAgain(p.label ?? "")}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : <YourWords text={m.text} />;
   // Yours lifts out of the composer (origin bottom-right, shua-live.css); Shua's settles in from just below.
   return <motion.div initial={reduceMotion ? false : m.who === "you" ? { opacity: 0, y: 18, scale: 0.94 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: m.who === "you" ? 520 : 380, damping: m.who === "you" ? 32 : 30 }}
     className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
     <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
   </motion.div>;
 }, (a, b) => a.m.text === b.m.text && a.m.who === b.m.who && a.m.live === b.m.live && a.did === b.did && a.color === b.color && a.wide === b.wide && a.reduceMotion === b.reduceMotion && a.showAgain === b.showAgain);
+
+/** What you said, as you said it: asks from your iPhone carry a small phone mark instead of the note Shua reads. */
+function YourWords({ text }: { text: string }) {
+  const w = yourWords(text);
+  return w.phone ? <><Smartphone size={11} className="buddy-from-phone" aria-label="From your iPhone" />{w.text}</> : <>{text}</>;
+}
 
 /** The conversation's text box: the only part of the notch that re-renders as you type (grows with your text up to 150 px). */
 function DraftArea({ inputRef, placeholder, onKeyDown }: { inputRef: React.RefObject<HTMLTextAreaElement | null>; placeholder: string; onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void }) {
@@ -182,13 +191,21 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   }, [voice.on, voice.id, liveVoice]);
   const [openState, setOpen] = useState(false), open = embedded || openState, [tab, setTab] = useState<"chat" | "widgets" | "teach">("chat"), see = useScreenAccess();
   const [brief, setBriefState] = useState<{ q: string; a: string } | null>(null);
+  // The iPhone ask the notch is on: done here instantly (no conversation turn), its answer goes straight back to the phone.
+  const phoneAsk = useRef<{ id: string; q: string; at: number } | null>(null);
+  const answerPhoneAsk = (q: string, a: string, ok: boolean) => {
+    const p = phoneAsk.current;
+    if (!p || Date.now() - p.at > 60_000 || yourWords(q.trim()).text !== yourWords(p.q).text) return;
+    phoneAsk.current = null; answerPhone(p.id, a, ok);
+  };
   const setBrief = (value: { q: string; a: string } | null) => {
     if (value && liveTurn.current && value.q.trim() === liveTurn.current.request.text.trim()) { liveTurn.current.summary = value.a; queueMicrotask(notifyLiveTurn); }
+    if (value) answerPhoneAsk(value.q, value.a, true);
     setBriefState(value);
   };
   const [busy, setBusy] = useState(""), [error, setErrorState] = useState(""), [speaking, setSpeaking] = useState(false);
   // UI errors (including delayed microphone/guide errors) cannot settle an execution.
-  const setError = setErrorState;
+  const setError = (message: string) => { if (message && phoneAsk.current && Date.now() - phoneAsk.current.at < 15_000) answerPhoneAsk(phoneAsk.current.q, message, false); setErrorState(message); };
   const [done, setDone] = useState<Record<string, Done[]>>({});
   const corrected = useRef(new Set<string>()); // replies whose failed action Shua already owned up to
   // What's actually installed, told to Spark once per conversation (cached with its rules), so it never offers an app you don't have.
@@ -380,7 +397,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const [selectingArea, setSelectingArea] = useState(false);
   const areaSelecting = useRef(false);
   const chooseAreaRef = useRef<(analyze?: boolean) => Promise<void>>(async () => {});
-  const [completionReports, setCompletionReports] = useState<Array<{id:string;text:string}>>(() => {
+  const [completionReports, setCompletionReports] = useState<Array<{id:string;text:string;title?:string}>>(() => {
     try { const value:unknown = JSON.parse(localStorage.getItem("shuacrew.completion-reports") ?? "[]"); return Array.isArray(value) ? value.filter(r => r && typeof r.id === "string" && typeof r.text === "string" && !(r.text.includes("crew standup was not completed or saved") && r.text.includes("invalid null duration"))).slice(-20) : []; } catch { return []; }
   });
   useEffect(() => { try { localStorage.setItem("shuacrew.completion-reports",JSON.stringify(completionReports)); } catch { /* optional local history */ } }, [completionReports]);
@@ -504,7 +521,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       prepareCall: () => { setNotchTucked(false); setOpen(false); setMini(prefsRef.current.desktopPlacement !== "notch"); setNook(false); setArmed(true); },
       ask: (text: string) => { speech.current.unlock(); setOpen(true); setTab("chat"); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
-      notchAsk: (text: string) => { speech.current.unlock(); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
+      notchAsk: (text: string, phone?: string) => { speech.current.unlock(); setArmed(true); if (phone) phoneAsk.current = { id: phone, q: text.trim().slice(0, 4000), at: Date.now() }; if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
       holdKey: (phase: string) => holdKeyRef.current(phase),
       // "Brief me" and self-tests: the morning brief, now.
@@ -980,7 +997,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     if (!latest || latest.turns !== run.turns || latest.status !== run.status || !mine()) return;
     setBubble({text:line,path:`/sessions/${id}`});
     setNotchUpdate({ title: autopilotResult(run.title, run.status) ?? run.title, text: line, path: `/sessions/${id}`, tone: run.status === "failed" ? "wait" : "done", run: id, turn: run.turns });
-    setCompletionReports(current => [...current,{id:key,text:line}].slice(-20));
+    setCompletionReports(current => [...current,{id:key,text:line,title:run.title}].slice(-20));
     logSense("heard", "Session summary", line);
     sound(run.status === "failed" ? "error" : "done");
     if (getBuddyVoice().on) news.add(line, () => { const current = useLive.getState().crew.runs[id]; return mine() && current?.turns === run.turns && current.status === run.status; });
@@ -1448,7 +1465,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const identity = `CURRENT COMPANION IDENTITY: Your name is ${companionName(prefs)}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\nSCREEN STATE: ${screenAllowed(readSee(), liveScreen.current) ? "Screen requests are enabled. Do not ask to turn on the eye." : "Screen requests are off. Do not capture or interact with the screen."} ${screen ? "Fresh screen evidence is attached to this turn." : "No screenshot attached this turn; that is not a macOS permission denial."}\nMAC CONTROL NOW: ${prefs.control === "off" ? "Mouse and keyboard are disabled by the user. Do not emit act blocks." : `Native action bridge is available with ${prefs.control === "ask" ? "approval before each step" : "automatic steps within the requested task"}. Accessibility ${hands.trusted ? "is granted" : "has not been confirmed; report a native denial if returned"}. Emit do blocks to open apps and one act block per observed desktop step; do not describe this as screenshot-only.`}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}${rightNow}${cursorGuide}\n${focusContext(focus.current, crew.runs)}`;
       const refreshedRules = convo && convo.rules !== SPARK_RULES ? buddyPrompt("Continue this conversation using these updated instructions.", screen, {name:companionName(prefs),tone:prefs.tone,length:prefs.length,control:prefs.control}, now, appNowBase) : "";
       const page = await inAppPage, inAppNote = inApp ? `THIS ASK IS INSIDE SHUACREW. Your screen view can't show ShuaCrew's window, so never use act, point or the Dock for it, and never touch other apps' windows to reach it. Open pages with go and press controls with ui by their exact names.${page ? `\n${shuacrewPageText(page)}` : ""}` : "";
-      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote].filter(Boolean).join("\n\n");
+      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, yourWords(q).phone && PHONE_ASK].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
       const screenLines = screen ? [screen.text.length ? screenText(screen.text, 2500, screen) : "", elementsText(screen.context, 120, screen)].filter(Boolean).join("\n") : "";
@@ -1460,7 +1477,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       if (convo && status === "paused" && disposition === "new") await cancelRun(convo.run);
       if (wantLocal && disposition === "new") {
         setBrief(null);
-        const r = await api<{ id: string }>("/api/runs", { body: { ask: `<spark-system>\n${localSys}\n\n${appNowBase}\n</spark-system>\n${liveLocal}`, title: `${companionName(prefs)} · ${q.slice(0, 60)}`, runtime: "local", model: selected.model, intelligence, labels: ["buddy"] } });
+        const r = await api<{ id: string }>("/api/runs", { body: { ask: `<spark-system>\n${localSys}\n\n${appNowBase}\n</spark-system>\n${liveLocal}`, title: `${companionName(prefs)} · ${yourWords(q).text.slice(0, 60)}`, runtime: "local", model: selected.model, intelligence, labels: ["buddy"] } });
         if (stale()) { await cancelRun(r.id).catch(() => {}); return; }
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: "local", model: selected.model, rules: SPARK_RULES, previous: priorConversations(convo) }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
         clearSubmittedDraft(); return;
@@ -1473,7 +1490,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         mark("post"); await followSelected(convo.run, withAttachments(withMap((screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(Use the connected CONCEPT STUDIO architecture visual first, then --- and the readable written design. No competing Mermaid unless requested.)` : q)) + crewLive, atts));
       } else {
         setBrief(null);
-        mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: companionName(prefs), tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, architectureContext(architectureSession.current), installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${companionName(prefs)} · ${q.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort, labels: ["buddy"] } });
+        mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: companionName(prefs), tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, architectureContext(architectureSession.current), installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${companionName(prefs)} · ${yourWords(q).text.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort, labels: ["buddy"] } });
         if (stale()) { await cancelRun(r.id).catch(() => {}); return; }
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model, rules: SPARK_RULES, previous: priorConversations(convo) }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
@@ -1669,7 +1686,12 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     setArmed(true); speech.current.unlock(); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, conversation: !prefs.conversation }); };
   toggleTalkRef.current = toggleTalk;
   const reset = () => { dismissLesson(); speech.current.stop(); architectureSession.current = reduceArchitectureSession(architectureSession.current, { type: "reset" }); architectureMessage.current = ""; lessonNarrationOwner.current = ""; stopTask(); stopGuide(); setConvo(null); setBrief(null); setDone({}); try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
-  const lastQuestion = [...messages].reverse().find((m) => m.who === "you")?.text;
+  // The conversation was deleted (here, in the app, or from the iPhone): start fresh rather than point at nothing.
+  useEffect(() => {
+    const on = (e: Event) => { if (convo && (e as CustomEvent<string[]>).detail.includes(convo.run)) reset(); };
+    window.addEventListener("shuacrew:deleted", on); return () => window.removeEventListener("shuacrew:deleted", on);
+  });
+  const lastQuestion = yourWords([...messages].reverse().find((m) => m.who === "you")?.text ?? "").text || undefined;
   // The composer grows with what you type (one line when empty, up to about six).
   useEffect(() => { const el = input.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 150)}px`; }, [open, tab]);
   const focusPct = timer ? 1 - remainingFocusMs(timer, now) / timer.durationMs : 0;
@@ -2044,14 +2066,14 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
             <div className="spk-row is-you"><div className="buddy-msg is-you">{brief.q}</div></div>
             <div className="spk-row"><div className="buddy-msg is-spark"><Markdown text={brief.a} /></div></div>
           </>}
-          {completionReports.map(report => <div key={report.id} className="spk-row"><div className="buddy-msg is-spark"><div className="flex items-center justify-between gap-3"><small>Session update</small><button type="button" aria-label="Dismiss session update" title="Dismiss update" onClick={() => setCompletionReports(current => current.filter(item => item.id !== report.id))}><X size={14} /></button></div><p>{report.text}</p></div></div>)}
+          {completionReports.map(report => <div key={report.id} className="spk-row"><div className="buddy-msg is-spark"><div className="flex items-center justify-between gap-3"><small>{report.title ?? "From the crew"}</small><button type="button" aria-label="Dismiss" title="Dismiss" onClick={() => setCompletionReports(current => current.filter(item => item.id !== report.id))}><X size={14} /></button></div><p>{report.text}</p></div></div>)}
           {(phase === "hearing" || phase === "transcribing") && <motion.div className="spk-row is-you" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
             <div className="buddy-msg is-you is-hearing">{heard || (phase === "hearing" ? "Listening…" : "…")}<i className="spk-live-caret" /></div>
           </motion.div>}
           {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={26} crop="portrait" /></span><p className="buddy-typing spk-typing"><span /><span /><span /> {busy || "thinking"}</p></motion.div>}
           {(quick.length > 0 || (convo && !working && !busy && lastQuestion)) && <details className="spk-followups">
             <summary>Continue conversation <ChevronRight size={12} /></summary>
-          {lastSpark && !working && !busy && <Recommendations ask={[...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? ""} />}
+          {lastSpark && !working && !busy && <Recommendations ask={yourWords([...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? "").text} />}
           {quick.length > 0 && <motion.div className="spk-quick" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>{quick.map((q) => <button key={q} type="button" onClick={() => void ask(q)}>{q}</button>)}</motion.div>}
           {convo && !working && !busy && lastQuestion && <button type="button" className="buddy-handoff" onClick={() => void perform({ type: "crew", ask: lastQuestion }).then((r) => r.run && (embedded ? window.shuacrew?.navigate(`/sessions/${r.run}`) : post({ type: "buddyOpen", run: r.run })))}><Send size={11} /> Hand this to the crew as a full session</button>}
           </details>}

@@ -8,7 +8,8 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 
-export interface RemoteAsk { id: string; text: string; at: number; status: "sent" | "taken"; run?: string; /** Found in the record: final. */ seen?: boolean }
+export interface RemoteAsk { id: string; text: string; at: number; status: "sent" | "taken" | "answered"; run?: string; /** Found in the record: final. */ seen?: boolean;
+  /** Done on the Mac without a model turn (pause, next, volume, open…): what Shua said, for the phone to show. */ answer?: string; ok?: boolean }
 type Listener = (ask: RemoteAsk) => void;
 
 export class ShuaRemote {
@@ -46,6 +47,13 @@ export class ShuaRemote {
     if (!ask.seen) { ask.status = "taken"; ask.run = run; } // the record, once seen, outranks a guess
     return true;
   }
+  /** The notch did it itself, instantly. Only while nothing has taken it: a conversation turn, once recorded, is the answer. */
+  answer(id: string, text: string, ok: boolean): boolean {
+    const ask = this.asks.get(id);
+    if (!ask || ask.status !== "sent") return false;
+    ask.status = "answered"; ask.answer = text.slice(0, 2000); ask.ok = ok;
+    return true;
+  }
   get(id: string) { return this.asks.get(id); }
 }
 
@@ -69,6 +77,10 @@ export function registerShuaRemote(app: FastifyInstance, remote = new ShuaRemote
   app.post<{ Params: { id: string }; Body: { run?: string } }>("/api/shua/remote/:id/take", async (request, reply) => {
     const run = typeof request.body?.run === "string" ? request.body.run : "";
     return run && remote.take(request.params.id, run) ? { ok: true } : reply.code(404).send({ error: "Unknown ask." });
+  });
+  app.post<{ Params: { id: string }; Body: { text?: string; ok?: boolean } }>("/api/shua/remote/:id/answer", async (request, reply) => {
+    const text = remoteText(request.body?.text);
+    return text && remote.answer(request.params.id, text, request.body?.ok !== false) ? { ok: true } : reply.code(409).send({ error: "Already answered, or unknown." });
   });
   app.get("/api/shua/remote/events", (req, reply) => {
     reply.hijack();

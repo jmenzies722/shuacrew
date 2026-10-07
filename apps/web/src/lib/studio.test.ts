@@ -289,3 +289,10 @@ describe("instant facts", () => {
     expect(factMove("why is the crew doing that")).toBeNull();
   });
 });
+
+it("a command from the iPhone, or asked politely, is the same instant command", () => {
+  expect(move("From my iPhone: Pause music")).toEqual({ kind: "player", cmd: "pause" });
+  expect(move("Can you actually pause the music")).toMatchObject({ kind: "player", cmd: "pause" });
+  expect(move("From my iPhone: play Smino")).toEqual({ kind: "play", query: "Smino" });
+  expect(move("From my iPhone: what's the square root of 69")?.kind).not.toBe("play");
+});

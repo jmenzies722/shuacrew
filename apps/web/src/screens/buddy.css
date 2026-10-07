@@ -42,6 +42,9 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .buddy-did { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .buddy-did button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11px; animation: buddy-in .3s cubic-bezier(.2,.9,.3,1.3); }
 .buddy-did .is-ok { color: var(--good, #34d399); background: color-mix(in srgb, var(--good, #34d399) 14%, transparent); }
+/* A reply that was only actions: what Shua did, quietly (no empty bubble). */
+.buddy-did.is-quiet { margin-top: 0; }
+.buddy-did.is-quiet span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11px; color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
 .buddy-did .is-bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .buddy-handoff { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-3); } .buddy-handoff:hover { color: var(--amber); }
 .buddy-note { margin: -4px 14px 10px; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -116,6 +119,8 @@ html:has(.buddy:not(.is-embedded)), body:has(.buddy:not(.is-embedded)), body:has
 .spk-mini { display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 2px; border-radius: 9px; background: color-mix(in srgb, var(--spark-color) 12%, var(--raised)); flex-shrink: 0; overflow: hidden; }
 .spk .buddy-msg { font-size: 13.5px; line-height: 1.6; }
 .spk .buddy-msg.is-spark { flex: 1; min-width: 0; padding: 10px 13px; border-radius: 14px 14px 14px 5px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+/* Asked from your iPhone: a quiet mark, not a label. */
+.buddy-from-phone { display: inline-block; margin: 0 6px 1px 0; vertical-align: -1px; opacity: 0.55; }
 .spk .buddy-msg.is-you { max-width: 82%; padding: 9px 13px; border-radius: 14px 14px 5px 14px; color: var(--text); background: color-mix(in srgb, var(--spark-color) 16%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spark-color) 28%, transparent); }
 .spk .buddy-msg .prose-agent > *:first-child { margin-top: 0; } .spk .buddy-msg .prose-agent > *:last-child { margin-bottom: 0; }
 .spk .buddy-msg.is-live .prose-agent > :last-child::after { content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--spark-color); animation: spk-caret 1s steps(2) infinite; }
