@@ -121,6 +121,28 @@ it("a new session prepared while you type matches its first turn, under the id i
   expect(supervisor.prepareNew({ ask: "Fix it", runtime: "codex", repo: "/some/repo" })).toBeUndefined(); // its worktree doesn't exist yet
 });
 
+it("a new conversation with Shua can be warmed while you talk, and the turn uses it", async () => {
+  const { warmKey } = await import("@shuacrew/runtimes");
+  const store = new EventStore(":memory:");
+  const prepared: Array<Parameters<NonNullable<Runtime["prepare"]>>[0]> = [];
+  const started: Array<Parameters<Runtime["start"]>[0]> = [];
+  const fake: Runtime = Object.assign(Object.create(new MockRuntime({ pace: 0 })), {
+    id: "codex",
+    prepare: (run: (typeof prepared)[number]) => void prepared.push(run),
+    async *start(run: (typeof started)[number]) { started.push(run); yield { type: "session", id: "thread-7" } as const; yield { type: "done", text: "Hi." } as const; },
+  });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", fake]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-buddy-")), roots: [] });
+  cleanups.push(() => { supervisor.shutdown(); store.close(); });
+  const id = supervisor.prepareNew({ ask: "Shua conversation", runtime: "codex", model: "gpt-5", effort: "low", labels: ["buddy"] });
+  expect(id).toMatch(/^r_/);
+  expect(prepared[0]!.lean).toBe(true); // a conversation thread, not an engineering one
+  expect(supervisor.launch({ ask: "You are Shua… What's on today?", title: "Shua · What's on today?", runtime: "codex", model: "gpt-5", effort: "low", labels: ["buddy"] }, id)).toBe(id);
+  const end = Date.now() + 5000;
+  while (!started.length && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+  expect(warmKey(prepared[0]!)).toBe(warmKey(started[0]!)); // the warmed thread is the one the turn adopts
+  expect(supervisor.prepareNew({ ask: "Study plan", runtime: "codex", labels: ["learning"] })).toBeUndefined(); // other labelled work isn't warmed
+});
+
 it("when Shua answers, its next reply's agent is readied straight away", async () => {
   const store = new EventStore(":memory:");
   const prepared: Array<Parameters<NonNullable<Runtime["prepare"]>>[0]> = [];

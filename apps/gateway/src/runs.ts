@@ -209,7 +209,10 @@ export class Supervisor {
    * a repo session's worktree doesn't exist until launch. Undefined when there's nothing to get ahead of.
    */
   prepareNew(draft: LaunchSpec): string | undefined {
-    if (this.halted || draft.repo || draft.parent || draft.labels?.length || draft.hold || draft.later || !draft.ask?.trim()) return undefined;
+    // Labelled work is shaped by its labels; Shua's own conversation ("buddy", a lean thread) is the one exception, so a
+    // new conversation with Shua can be warmed while you talk or type.
+    const labels = draft.labels ?? [];
+    if (this.halted || draft.repo || draft.parent || labels.some((l) => l !== "buddy") || draft.hold || draft.later || !draft.ask?.trim()) return undefined;
     let routed: ReturnType<Supervisor["route"]>;
     try { routed = this.route(draft); } catch { return undefined; }
     const spec = routed.spec;
@@ -219,7 +222,7 @@ export class Supervisor {
     // Shaped exactly as its run.created will be, so the turn's thread matches the one started here.
     const created = { labels: spec.labels ?? [], model: spec.model, effort: spec.effort, member: routed.member ? spec.member : undefined, venture: spec.venture };
     const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(id, created, runtime);
-    runtime.prepare({ lean, id, ask: "", cwd: this.options.workspace, model, effort, disableNativeAgents, mcpServers, plugins: lean ? undefined : this.options.plugins?.(runtime.id), system: this.instructions(id, created, runtime) }, agentEnv(process.env, runtime.authMode));
+    runtime.prepare({ lean, id, ask: "", cwd: this.options.workspace, model, effort, disableNativeAgents, mcpServers, plugins: lean ? undefined : this.options.plugins?.(runtime.id), system: lean ? undefined : this.instructions(id, created, runtime) }, agentEnv(process.env, runtime.authMode)); // a lean (Shua) turn carries no extra instructions, so neither does its warmed thread
     return id;
   }
 

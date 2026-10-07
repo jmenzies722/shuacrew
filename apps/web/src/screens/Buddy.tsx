@@ -434,6 +434,20 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const recorded = convo ? crew.runs[convo.run] : undefined;
   const actualRuntime = recorded?.runtime ?? convo?.runtime;
   const actualModel = recorded?.model ?? convo?.model;
+  // A head start for a new conversation: the moment you start talking or typing, the session that will carry your
+  // words is reserved and its Codex started, so a new conversation's first reply comes as fast as a follow-up's. It's
+  // used only if the turn's pick matches (same brain, model and effort); otherwise the turn starts as it always did.
+  const headStart = useRef<{ id: string; key: string; at: number } | null>(null), lastPick = useRef<{ runtime: string; model: string; effort: string } | null>(null);
+  const warmNew = () => {
+    const p = lastPick.current; if (!p || p.runtime === "local" || embedded) return;
+    if (turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status, contextUsed, rules: convo.rules } : null, { runtime: p.runtime, model: p.model, rules: SPARK_RULES }) !== "new") return;
+    const key = `${p.runtime}|${p.model}|${p.effort}`, h = headStart.current;
+    if (h && h.key === key && Date.now() - h.at < 75_000) return; // ready (or getting ready) for this pick
+    headStart.current = { id: "", key, at: Date.now() };
+    void api<{ id: string | null }>("/api/runs/prepare", { body: { ask: "Shua conversation", runtime: p.runtime, model: p.model, effort: p.effort, labels: ["buddy"] } })
+      .then((r) => { headStart.current = r.id ? { id: r.id, key, at: Date.now() } : null; }, () => { headStart.current = null; });
+  };
+  const warmRef = useRef(warmNew); warmRef.current = warmNew;
   useEffect(() => {
     if (!open && !islandMore) return; // the chat, or the notch's More panel, both say which brain answers
     let alive = true;
@@ -1457,6 +1471,9 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       if (!selected.runtime) throw new Error(selected.reason);
       const brain = selected.runtime, wantLocal = brain === "local";
       const effort = intelligence.tier === "frontier" ? "high" : intelligence.tier === "balanced" ? "medium" : "low";
+      lastPick.current = { runtime: brain, model: selected.model ?? "", effort };
+      const warm = headStart.current; headStart.current = null;
+      const reservedId = warm?.id && warm.key === `${brain}|${selected.model ?? ""}|${effort}` && Date.now() - warm.at < 85_000 ? warm.id : undefined;
       const followSelected = (run: string, text: string) => api(`/api/runs/${run}/followup`, { body: { text, runtime: selected.runtime, model: selected.model, intelligence, selection: { runtime: selected.runtime, model: selected.model, effort } } });
       const disposition = turnDisposition(convo ? { runtime: actualRuntime, model: actualModel, status, contextUsed, rules: convo.rules } : null, { ...selected, rules: SPARK_RULES });
       if (disposition === "wait") throw new Error("This turn is still running. Wait or stop it before switching models.");
@@ -1514,7 +1531,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         mark("post"); await followSelected(convo.run, withAttachments(withMap((screen ? `${q}\n\n[screen] A fresh screenshot is attached (${screen.width}×${screen.height}). Point, guide, draw or act if it helps.${screen.text.length ? `\n\n${screenText(screen.text, 6000, screen)}` : ""}${screen.context ? `\n\n${elementsText(screen.context, 120, screen)}` : ""}${screen.context && pointingText(screen.context, screen.text, screen) ? `\n\n${pointingText(screen.context, screen.text, screen)}` : ""}` : isDesign(q) ? `${q}\n\n(Use the connected CONCEPT STUDIO architecture visual first, then --- and the readable written design. No competing Mermaid unless requested.)` : q)) + crewLive, atts));
       } else {
         setBrief(null);
-        mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: companionName(prefs), tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, architectureContext(architectureSession.current), installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${companionName(prefs)} · ${yourWords(q).text.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort, labels: ["buddy"] } });
+        mark("post"); const r = await api<{ id: string }>("/api/runs", { body: { ask: withAttachments(buddyPrompt(q, screen, { name: companionName(prefs), tone: prefs.tone, length: prefs.length, control: prefs.control, shortcuts: hands.shortcuts, voices, voice: prefs.conversation, memory: memory.facts, goal: memory.goal }, now, [appNow, architectureContext(architectureSession.current), installed.current && `INSTALLED APPS (open_app only these; asked for one that isn't here, say it isn't installed and offer its website or the App Store): ${installed.current}`, recap && `EARLIER IN THIS CONVERSATION (carry on naturally):\n${recap}`].filter(Boolean).join("\n\n")), atts), title: `${companionName(prefs)} · ${yourWords(q).text.slice(0, 60)}`, runtime: brain, model: selected.model, intelligence, effort, labels: ["buddy"], ...(reservedId ? { reservedId } : {}) } });
         if (stale()) { await cancelRun(r.id).catch(() => {}); return; }
         const next = { run: r.id, first: q.split("\n\n[screen]")[0]!, runtime: brain, model: selected.model, rules: SPARK_RULES, previous: priorConversations(convo) }; handled.current = 0; setConvo(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
       }
@@ -1621,7 +1638,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const holdStart = () => {
     if (holdAt.current !== null) return;
     holdAt.current = performance.now(); holdCapturing.current = true;
-    setArmed(true); speech.current.unlock(); pop("listen"); setFnSent(false); setFnHeld(true);
+    setArmed(true); speech.current.unlock(); pop("listen"); setFnSent(false); setFnHeld(true); warmRef.current();
     if (viaLive()) { liveFn("down"); liveFn("hold"); return; }
     const m = mic.current;
     // Hands-free with the open mic off: borrow push-to-talk for this one hold, so the mic closes again once it sends.
@@ -2138,7 +2155,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         <button type="button" className={`buddy-see ${see || liveOn ? "is-on" : ""}`} aria-pressed={see || liveOn} title={liveOn ? "Watching your screen live. Stop watching to turn screen access off." : see ? "Screen enabled: I'll capture it when needed. macOS permission is checked on capture." : "Screen off: I won't look"} onClick={() => { if (liveOn) { post({ type: "buddyLive", on: false }); saveSee(false); } else saveSee(!see); }}>{see || liveOn ? <Eye size={15} /> : <EyeOff size={15} />}</button>
         <button type="button" className="buddy-see buddy-area" title="Select an area to analyze" aria-label="Select an area to analyze" disabled={selectingArea || working || !!busy} onClick={() => void chooseArea()}><Maximize2 size={15} /></button>
         <DraftArea inputRef={input} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"}
-          onKeyDown={(e) => { if (slashKeys.current?.(e)) return; if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } }} />
+          onKeyDown={(e) => { warmRef.current(); if (slashKeys.current?.(e)) return; if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } }} />
         <ShuaSlash commands={slashCommands} keys={slashKeys} />
         {liveVoiceOn
           // Live is the voice: the talk button is the call — tap to talk to Shua, tap again to hang up.

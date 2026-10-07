@@ -616,10 +616,11 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   app.post<{ Params: { id: string } }>("/api/runs/:id/start", async (request, reply) =>
     supervisor.startBacklog(request.params.id) ? { ok: true } : reply.code(409).send({ error: "that session isn't waiting in your backlog" }));
   // You're typing a new session: reserve its id and start its agent now; launch with { reservedId } to use it.
-  app.post<{ Body: { ask?: string; runtime?: string; model?: string; effort?: string; member?: string } }>("/api/runs/prepare", async (request) => {
+  app.post<{ Body: { ask?: string; runtime?: string; model?: string; effort?: string; member?: string; labels?: unknown } }>("/api/runs/prepare", async (request) => {
     const body = request.body ?? {};
     if (!body.runtime && !body.model && !body.member) await refreshIntelligence("auto");
-    return { id: supervisor.prepareNew({ ask: body.ask ?? "", runtime: body.runtime, model: body.model, effort: body.effort, member: body.member }) ?? null };
+    const labels = Array.isArray(body.labels) && body.labels.every((l) => l === "buddy") && body.labels.length ? ["buddy"] : undefined;
+    return { id: supervisor.prepareNew({ ask: body.ask ?? "", runtime: body.runtime, model: body.model, effort: body.effort, member: body.member, labels }) ?? null };
   });
   // You're typing a follow-up: start its agent now, so the turn begins the moment you send it.
   app.post<{ Params: { id: string } }>("/api/runs/:id/prepare", async (request) => ({ prepared: supervisor.prepare(request.params.id) }));
