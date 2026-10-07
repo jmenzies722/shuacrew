@@ -4,6 +4,9 @@ import type { EventStore } from "./store.js";
 import type { Supervisor } from "./runs.js";
 import { randomUUID } from "node:crypto";
 import { Learning, analyze, parseBlock, parseCards, type Grade } from "./learning.js";
+import path from "node:path";
+import { ExamPrep } from "./exam-prep.js";
+import { examRoutes } from "./exam-routes.js";
 import { applyLearnOps, captureCareer, careerContext, careerRoutes, learnBrief, learnReminders } from "./learning-career.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -30,6 +33,8 @@ function transcript(store: EventStore, run: string): { title: string; text: stri
 export function learningRoutes(app: FastifyInstance, deps: { learning: Learning; store: EventStore; supervisor: Supervisor }) {
   const { learning, store, supervisor } = deps;
   const career = { fillNew: () => {} }; // filled in once the career routes are registered (below)
+  // Exam prep: blueprints, the question bank, your answers and mock exams, in their own file beside Learn's.
+  const exam = examRoutes(app, { prep: new ExamPrep(path.join(path.dirname(learning.file), "exam-prep.json")), learning, supervisor });
   const who = () => { const p = learning.get().profile; return `The learner's career goal: ${p.goal || "(not set)"}.${p.about ? ` About them: ${p.about}.` : ""}`; };
   const levelOf = (id: string) => learning.get().profile.tracks.find((t) => t.id === id);
 
@@ -43,6 +48,7 @@ export function learningRoutes(app: FastifyInstance, deps: { learning: Learning;
     const tag = (k: string) => created.body.labels.find((l) => l.startsWith(`${k}:`))?.slice(k.length + 1);
     // Certs and jobs (a study plan's steps, a job's fit, openings found); a study plan's cards still go to the deck below.
     captureCareer(learning, created.body.labels, text);
+    exam.capture(created.body.labels, text, e.run); // an exam guide researched, or practice questions written
     // A course plan: fill the course's lessons (once).
     const courseId = tag("learn-course");
     if (created.body.labels.includes("learn-kind:course-plan") && courseId) {

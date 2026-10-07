@@ -104,7 +104,7 @@ export function parseBlock(text: string, name: string, key?: string): unknown {
 
 export class Learning {
   private value: LearningState;
-  constructor(private file: string) {
+  constructor(readonly file: string) {
     let v: LearningState = LearningSchema.parse({});
     try {
       if (existsSync(file)) {
