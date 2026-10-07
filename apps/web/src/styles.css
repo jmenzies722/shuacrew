@@ -900,14 +900,13 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 
 /* ══ Motion ══════════════════════════════════════════════════════════ */
 /* The live logo: agents orbit, the core breathes. */
-.logo-mark :is(.logo-orbit, .logo-core) { display: block; transform-origin: 50% 50%; will-change: transform; }
-.logo-mark.is-live .logo-orbit { animation: logo-orbit 36s linear infinite; }
-.logo-mark.is-live .logo-core { animation: logo-breathe 4.8s ease-in-out infinite; }
-@keyframes logo-orbit { to { transform: rotate(360deg); } }
-@keyframes logo-breathe { 50% { transform: scale(1.07); opacity: .88; } }
+.logo-mark .logo-core { display: block; transform-origin: 50% 50%; will-change: transform; }
+/* Shua blinks now and then: a quick close and open, then a long rest. */
+.logo-mark.is-live .logo-core { animation: logo-blink 6.5s ease-in-out infinite; }
+@keyframes logo-blink { 0%, 93%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(.12); } }
 .hero-mark { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
 .hero-mark:hover { transform: translateY(-2px) scale(1.04); }
-.hero-mark:hover .logo-orbit { animation-duration: 6s; }
+.hero-mark:hover .logo-core { animation-duration: 2.4s; } /* Shua notices you */
 
 /* The active screen's pill slides between icons. */
 .rail-item { position: relative; }

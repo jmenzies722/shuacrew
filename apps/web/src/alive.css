@@ -12,9 +12,9 @@
   --accent-glow: color-mix(in srgb, var(--amber) 45%, transparent);
   /* The logo's own tokens (LogoMark): a tile of the palette's inks, lit by the accent. */
   --logo-hi: color-mix(in srgb, var(--amber) 38%, #fff);
-  --logo-tile-a: color-mix(in srgb, var(--amber) 16%, var(--raised));
-  --logo-tile-b: color-mix(in srgb, var(--amber) 6%, var(--ink));
-  --logo-tile-c: color-mix(in srgb, var(--amber) 4%, var(--sunken));
+  --logo-tile-a: #1b1b1d; /* the app icon's black: the same in every theme */
+  --logo-tile-b: #0b0b0c;
+  --logo-tile-c: #000;
 }
 :root[data-theme="light"] {
   --logo-hi: color-mix(in srgb, var(--amber) 55%, #fff);
@@ -24,7 +24,7 @@
 }
 
 /* ── The mark, everywhere ──────────────────────────────────────────────────────────────────── */
-.logo-mark .logo-core { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--amber) 60%, transparent)); }
+.logo-mark .logo-core { filter: drop-shadow(0 0 2.5px rgb(255 171 46 / .7)); } /* Shua's eyes glow amber, as in the icon */
 /* Top-bar mark only outside the Mac app (there, the window's traffic lights sit in that corner). */
 .tb-logo { display: none; place-items: center; width: 26px; height: 26px; }
 :root:not([data-shell="mac"]) .tb-logo { display: inline-grid; }

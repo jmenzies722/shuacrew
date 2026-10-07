@@ -393,20 +393,16 @@ final class Tray: NSObject, UNUserNotificationCenterDelegate {
 
     static let amber = NSColor(srgbRed: 1, green: 0.69, blue: 0.125, alpha: 1)
 
-    /// The ShuaCrew mark as a template image, so it follows the menu bar's light or dark.
+    /// The ShuaCrew mark as a template image, so it follows the menu bar's light or dark: Shua's visor and two eyes,
+    /// the app icon's drawing at 18pt.
     static let glyph: NSImage = {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             NSColor.black.set()
-            let ring = NSBezierPath(ovalIn: NSRect(x: 5, y: 5, width: 8, height: 8))
-            ring.lineWidth = 1.6
-            ring.stroke()
-            let outer = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 14, height: 14))
-            outer.lineWidth = 1
-            NSColor.black.withAlphaComponent(0.45).set()
-            outer.stroke()
-            NSColor.black.set()
-            for (x, y) in [(9.0, 16.0), (15.1, 5.5), (2.9, 5.5)] {
-                NSBezierPath(ovalIn: NSRect(x: x - 1.9, y: y - 1.9, width: 3.8, height: 3.8)).fill()
+            let visor = NSBezierPath(roundedRect: NSRect(x: 2.3, y: 4.6, width: 13.4, height: 8.8), xRadius: 4.1, yRadius: 4.1)
+            visor.lineWidth = 1.4
+            visor.stroke()
+            for x in [6.1, 10.4] as [CGFloat] {
+                NSBezierPath(roundedRect: NSRect(x: x, y: 7.0, width: 1.6, height: 4.0), xRadius: 0.8, yRadius: 0.8).fill()
             }
             return true
         }
