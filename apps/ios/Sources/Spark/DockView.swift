@@ -72,13 +72,17 @@ struct SecondScreen: View {
     }
 }
 
-/// Desk mode: the second screen, full screen, from the button. Double-tap anywhere to put it away.
+/// Desk mode: the second screen as a clock by your Mac, full screen. Close it with the button, or double-tap anywhere.
 struct DockView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var listen = ShuaListen()
     let tilt: SparkTilt
     var body: some View {
         SecondScreen(tilt: tilt, listen: listen)
+            .overlay(alignment: .topLeading) {
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.headline).foregroundStyle(.secondary).frame(width: 40, height: 40).background(.ultraThinMaterial, in: Circle()) }
+                    .padding(20).accessibilityLabel("Close desk mode")
+            }
             .onTapGesture(count: 2) { dismiss() }
             .statusBarHidden()
             .persistentSystemOverlays(.hidden)

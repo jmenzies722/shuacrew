@@ -18,7 +18,7 @@ struct SparkHomeView: View {
     var body: some View {
         Group {
             if vertical == .compact, link.state != .unpaired {
-                SecondScreen(tilt: tilt, listen: listen) // sideways: the second screen, no button needed
+                landscape // sideways: everything, side by side; desk mode is still one tap away
             } else {
                 portrait
             }
@@ -77,6 +77,59 @@ struct SparkHomeView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Sideways: Shua live and large on the left, everything else on the right, nothing lost. Edge to edge, no bars.
+    private var landscape: some View {
+        GeometryReader { geo in
+            ZStack {
+                ShuaStage(mood: mood, accent: accent)
+                HStack(spacing: 0) {
+                    // Left: Shua, and what it's saying under it.
+                    VStack(spacing: 6) {
+                        ZStack {
+                            ShuaAura(active: voice.speaking || listen.listening || link.asking, accent: accent)
+                                .frame(width: geo.size.height * 0.7, height: geo.size.height * 0.7)
+                            ShuaCharacter(mood: mood, tilt: tilt.gaze).frame(height: geo.size.height * 0.5)
+                        }
+                        SpeechLine(listening: listen.listening, heard: listen.heard, big: 21)
+                            .lineLimit(5).padding(.horizontal, 24)
+                    }
+                    .frame(width: geo.size.width * 0.44)
+                    .padding(.bottom, 56)
+                    VStack(spacing: 10) {
+                        HStack {
+                            StatusPill(state: link.state, mac: link.pairing?.name)
+                            Spacer()
+                            Button { history = true } label: { Image(systemName: "text.bubble") }.buttonStyle(.bordered).buttonBorderShape(.circle).accessibilityLabel("Conversation")
+                            Button { docked = true } label: { Image(systemName: "clock") }.buttonStyle(.bordered).buttonBorderShape(.circle).accessibilityLabel("Desk clock")
+                        }
+                        .padding(.horizontal, 20)
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Suggestions()
+                                ForEach(link.approvals) { NeedsYouCard(approval: $0) }
+                                if !link.activeRuns.filter({ $0.status != "awaiting_approval" }).isEmpty { WorkingCard() }
+                                DoneCard()
+                            }
+                            .padding(.bottom, 12)
+                        }
+                        .scrollIndicators(.hidden)
+                        Composer(listen: listen, typing: $typing, start: startListening, finish: finishListening)
+                            .padding(.bottom, 64) // clear of the tab bar
+                    }
+                    .padding(.top, 12)
+                    .frame(width: geo.size.width * 0.56)
+                }
+                if listen.listening { ListeningOverlay(heard: listen.heard, accent: accent).transition(.opacity) }
+            }
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0))
+                .onChanged { value in if case .second(true, _) = value, !listen.listening { startListening() } }
+                .onEnded { _ in finishListening() })
+            .animation(.smooth(duration: 0.35), value: listen.listening)
+        }
+        .ignoresSafeArea(edges: [.top, .horizontal])
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func startListening() { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); Task { await listen.start() } }
