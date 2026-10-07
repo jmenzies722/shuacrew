@@ -30,7 +30,8 @@
 .receipt.is-ok .receipt-verdict { color: var(--ok); }
 .receipt.is-wait .receipt-verdict { color: var(--wait); }
 .receipt.is-bad .receipt-verdict { color: var(--bad); }
-.receipt-verdict code { font: 400 11px var(--font-mono); color: var(--text-3); }
+.receipt-verdict { min-width: 0; max-width: 100%; }
+.receipt-verdict code { font: 400 11px var(--font-mono); color: var(--text-3); min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .receipt-files { color: var(--text-2); text-decoration: underline dotted color-mix(in srgb, var(--text) 30%, transparent); text-underline-offset: 3px; }
 .receipt-files:hover { color: var(--text); }
 .receipt-plan { font-variant-numeric: tabular-nums; }
