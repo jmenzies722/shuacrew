@@ -18,4 +18,6 @@ it("renders your Shua as self-contained markup the phone can show, and the gatew
   expect(/@import|url\(\s*["']?(?!#|data:image\/svg)|expression\(|<\/?style/i.test(look.css)).toBe(false);
   expect(look.markup.length).toBeLessThan(250_000);
   expect(look.accent).toMatch(/^#[0-9a-f]{6}$/);
+  expect(look.voiceId).toMatch(/^[a-z][a-z0-9-]*$/);
+  expect(look.voiceSpeed).toBeGreaterThanOrEqual(0.8);
 });

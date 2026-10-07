@@ -5,6 +5,10 @@ import SwiftUI
 struct ShuaTodayView: View {
     @Environment(SparkLink.self) private var link
     var body: some View {
+        if link.pairing == nil { PairFirst(title: "Today", line: "Pair with your Mac and your day shows up here: what needs you, what's working, what finished.") } else { brief }
+    }
+
+    private var brief: some View {
         List {
             Section {
                 HStack(spacing: 14) {
@@ -73,6 +77,10 @@ struct ShuaCrewView: View {
     @State private var task = ""
     @FocusState private var typing: Bool
     var body: some View {
+        if link.pairing == nil { PairFirst(title: "Crew", line: "Pair with your Mac to watch your crew work live, hand them tasks and approve what they ask.") } else { crew }
+    }
+
+    private var crew: some View {
         List {
             Section {
                 HStack {
@@ -181,5 +189,27 @@ struct ShuaSettingsView: View {
         case .offline(let why): why
         case .unpaired: "Not paired yet"
         }
+    }
+}
+
+/// Before pairing: your Shua, one line on what this tab will show, and the way to pair.
+private struct PairFirst: View {
+    @Environment(SparkLink.self) private var link
+    let title: String
+    let line: String
+    @State private var pairing = false
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer()
+            ShuaCharacter(mood: .sleepy).frame(height: 180)
+            Text(line).font(.title3.weight(.medium)).multilineTextAlignment(.center).padding(.horizontal, 32)
+            Button { pairing = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }
+                .buttonStyle(.borderedProminent).controlSize(.large).padding(.horizontal, 32)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .background(Glow(mood: .sleepy, accent: link.look?.accentColor ?? .shuaPurple).ignoresSafeArea())
+        .navigationTitle(title)
+        .sheet(isPresented: $pairing) { PairView() }
     }
 }

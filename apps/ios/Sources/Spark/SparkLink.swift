@@ -243,7 +243,10 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         do {
             let head = try await refresh() // only what happens after this moment is part of the answer
-            let posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text])
+            // The notch may be reconnecting for a moment (a restart on the Mac): try once more before saying it isn't open.
+            let posted: Data
+            do { posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text]) }
+            catch let e as LinkError where e.code == 409 { try await Task.sleep(for: .seconds(3)); posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text]) }
             guard let id = (try? JSONSerialization.jsonObject(with: posted) as? [String: Any])?["id"] as? String else { throw URLError(.cannotParseResponse) }
             var run: String?
             for _ in 0..<40 where run == nil {
@@ -293,7 +296,45 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         }
         let final = Self.clean(latest)
         reply(final.isEmpty ? "Done." : final)
-        ShuaVoice.shared.say(final)
+        speak(Self.speakable(final))
+    }
+
+    /// Shua's reply, aloud, in the same voice as on the Mac: ShuaCrew's voice engine through the phone door, clip by
+    /// clip as they're made. The iPhone's own voice only if the engine can't be reached.
+    func speak(_ text: String) {
+        let voice = ShuaVoice.shared
+        guard voice.enabled, !text.isEmpty else { return }
+        guard let id = look?.voiceId, pairing != nil else { voice.say(text); return }
+        let speed = min(1.2, max(0.8, look?.voiceSpeed ?? 1)), g = voice.begin()
+        Task { [weak self] in
+            guard let self else { return }
+            var spoke = false
+            for piece in Self.pieces(text) {
+                guard let stream = try? await self.stream("/phone/api/speech/synthesize", body: ["id": "phone-\(g)-\(UUID().uuidString.prefix(8))", "generation": 1, "voiceId": id, "text": piece, "speed": speed]) else { break }
+                do {
+                    for try await line in stream.lines {
+                        guard let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], j["type"] as? String == "audio",
+                              let b64 = j["data"] as? String, let clip = Data(base64Encoded: b64) else { continue }
+                        voice.enqueue(clip, generation: g); spoke = true
+                    }
+                } catch { break }
+            }
+            if !spoke { voice.say(text) } // the engine isn't there: still say it
+        }
+    }
+
+    /// The engine takes up to 600 characters a request: whole sentences, packed.
+    static func pieces(_ text: String) -> [String] {
+        var out: [String] = [], current = ""
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { s, _, _, _ in
+            guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return }
+            for part in stride(from: 0, to: s.count, by: 560).map({ String(s.dropFirst($0).prefix(560)) }) {
+                if current.count + part.count + 1 > 560, !current.isEmpty { out.append(current); current = "" }
+                current += current.isEmpty ? part : " " + part
+            }
+        }
+        if !current.isEmpty { out.append(current) }
+        return out
     }
 
     private func update(_ text: String, pending: Bool) {
@@ -304,6 +345,20 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         guard let i = chat.lastIndex(where: { $0.role == .shua }) else { return }
         chat[i].text = text; chat[i].pending = false; chat[i].failed = failed
         UINotificationFeedbackGenerator().notificationOccurred(failed ? .error : .success)
+    }
+
+    /// What's said aloud: the words without Markdown (**bold**, `code`, # headings, - bullets, [links](…)), which a voice
+    /// would otherwise read as stars and symbols.
+    static func speakable(_ text: String) -> String {
+        var t = text.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"(?m)^\s{0,3}(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s?)"#, with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"(\*\*|__|\*|`|~~)"#, with: "", options: .regularExpression)
+        return t.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Shua's words as styled text: bold and italics and code as they're meant to look, never literal stars.
+    static func styled(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
 
     /// What a person reads: Shua's words without its machine blocks (```do …```) or bracketed notes.
@@ -348,6 +403,19 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     }
 
     // MARK: Plumbing
+
+    /// A streamed POST (newline-delimited JSON) through the phone door.
+    private func stream(_ path: String, body: [String: Any]) async throws -> URLSession.AsyncBytes {
+        guard let pairing, let url = URL(string: "http://\(pairing.host):\(pairing.port)\(path)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue(pairing.key, forHTTPHeaderField: "x-shuacrew-key")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (bytes, response) = try await session.bytes(for: request)
+        guard ((response as? HTTPURLResponse)?.statusCode ?? 0) == 200 else { throw URLError(.badServerResponse) }
+        return bytes
+    }
 
     private func request(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> Data {
         guard let pairing, let url = URL(string: "http://\(pairing.host):\(pairing.port)\(path)") else { throw URLError(.badURL) }

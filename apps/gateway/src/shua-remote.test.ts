@@ -37,3 +37,24 @@ it("lets the phone ask and follow, but never listen or take", () => {
   expect(phoneAllowed("GET", "/api/shua/remote/events")).toBe(false);
   expect(phoneAllowed("POST", "/api/shua/remote/ra_0123456789ab/take")).toBe(false);
 });
+
+it("finds the conversation from the record, over the notch's guess", () => {
+  let t = 1000; const remote = new ShuaRemote(() => t);
+  remote.subscribe(() => {});
+  const ask = remote.send("What's going on?")!;
+  remote.take(ask.id, "r_old"); // the notch read its old conversation too early
+  remote.observe({ kind: "run.created", run: "r_new", body: { ask: "You are Shua… From my iPhone: What's going on?" } });
+  expect(remote.get(ask.id)).toMatchObject({ status: "taken", run: "r_new" });
+  // Unrelated turns, or ones from long ago, don't move it.
+  remote.observe({ kind: "turn.started", run: "r_other", body: { text: "From my iPhone: play jazz" } });
+  t += 200_000; remote.observe({ kind: "turn.started", run: "r_late", body: { text: "From my iPhone: What's going on?" } });
+  expect(remote.get(ask.id)?.run).toBe("r_new");
+});
+
+it("never lets a late guess overwrite what the record showed", () => {
+  const remote = new ShuaRemote(() => 1); remote.subscribe(() => {});
+  const ask = remote.send("open Safari")!;
+  remote.observe({ kind: "run.followup", run: "r_real", body: { text: "From my iPhone: open Safari" } });
+  remote.take(ask.id, "r_stale");
+  expect(remote.get(ask.id)?.run).toBe("r_real");
+});

@@ -21,6 +21,13 @@ targets:
       path: Resources/Info.plist
       properties:
         UIBackgroundModes: [fetch, remote-notification]
+        # The phone talks to your Mac by its Tailscale name over plain HTTP: the tunnel is WireGuard-encrypted, so only
+        # *.ts.net is allowed without TLS; everything else keeps App Transport Security.
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
     dependencies:
       - package: ShuaCrewMobile
       - target: ShuaCrewWatch
@@ -28,9 +35,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.shuacrew.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ShuaCrew
         INFOPLIST_KEY_NSFaceIDUsageDescription: Authenticate before allowing a specific crew action on your Mac.
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan the pairing code on your Mac to connect Shua.
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Hold the mic to talk to Shua.
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: Turns what you say into words for Shua, on this iPhone when it can.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -46,6 +55,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.shuacrew.ios.watchkitapp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ShuaCrew
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: dev.shuacrew.ios

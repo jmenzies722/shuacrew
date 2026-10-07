@@ -16,6 +16,9 @@ export interface ShuaLook {
   css: string;
   /** Your accent, for the phone's tint (#rrggbb). */
   accent: string;
+  /** Shua's voice on the Mac, so the phone speaks with the same one (ShuaCrew's voice engine). */
+  voiceId?: string;
+  voiceSpeed?: number;
   at: number;
 }
 
@@ -29,7 +32,9 @@ export function toLook(v: unknown, now = Date.now()): ShuaLook | null {
   if (/@import|url\(\s*["']?(?!#|data:image\/svg)|expression\(|<\/?style/i.test(css)) return null;
   const accent = typeof o.accent === "string" && /^#[0-9a-f]{6}$/i.test(o.accent) ? o.accent.toLowerCase() : "#8e48ff";
   const name = typeof o.name === "string" && o.name.trim() ? o.name.trim().slice(0, 24) : "Shua";
-  return { name, markup, css, accent, at: now };
+  const voiceId = typeof o.voiceId === "string" && /^[a-z][a-z0-9-]{0,39}$/.test(o.voiceId) ? o.voiceId : undefined;
+  const speed = Number(o.voiceSpeed), voiceSpeed = Number.isFinite(speed) && speed >= 0.8 && speed <= 1.2 ? speed : undefined;
+  return { name, markup, css, accent, ...(voiceId ? { voiceId } : {}), ...(voiceSpeed ? { voiceSpeed } : {}), at: now };
 }
 
 export function registerShuaLook(app: FastifyInstance, home: string) {
@@ -39,7 +44,7 @@ export function registerShuaLook(app: FastifyInstance, home: string) {
     const look = toLook(request.body);
     if (!look) return reply.code(400).send({ error: "Not a character: markup and CSS only." });
     const before = read();
-    if (before && before.markup === look.markup && before.css === look.css && before.accent === look.accent && before.name === look.name) return { saved: false };
+    if (before && before.markup === look.markup && before.css === look.css && before.accent === look.accent && before.name === look.name && before.voiceId === look.voiceId && before.voiceSpeed === look.voiceSpeed) return { saved: false };
     writeFileSync(file, JSON.stringify(look), { mode: 0o600 });
     return { saved: true };
   });

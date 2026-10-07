@@ -8,7 +8,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 
-export interface RemoteAsk { id: string; text: string; at: number; status: "sent" | "taken"; run?: string }
+export interface RemoteAsk { id: string; text: string; at: number; status: "sent" | "taken"; run?: string; /** Found in the record: final. */ seen?: boolean }
 type Listener = (ask: RemoteAsk) => void;
 
 export class ShuaRemote {
@@ -26,10 +26,24 @@ export class ShuaRemote {
     for (const fn of this.listeners) fn(ask);
     return ask;
   }
+  /**
+   * The conversation that carries an ask, read from the record itself: the run whose turn starts "From my iPhone: …".
+   * Authoritative over the notch's guess (measured: the notch reported its old conversation while Shua started a new one).
+   */
+  observe(e: { kind: string; run?: string | null; body: unknown }): void {
+    if (!e.run || !["run.created", "run.followup", "turn.started"].includes(e.kind)) return;
+    const b = (e.body ?? {}) as { text?: unknown; ask?: unknown }, text = typeof b.text === "string" ? b.text : typeof b.ask === "string" ? b.ask : "";
+    if (!text.includes("From my iPhone: ")) return;
+    const now = this.now();
+    for (const ask of [...this.asks.values()].reverse()) {
+      if (now - ask.at > 120_000 || ask.run === e.run) continue;
+      if (text.includes(`From my iPhone: ${ask.text.slice(0, 60)}`)) { ask.status = "taken"; ask.run = e.run; ask.seen = true; return; }
+    }
+  }
   take(id: string, run: string): boolean {
     const ask = this.asks.get(id);
     if (!ask) return false;
-    ask.status = "taken"; ask.run = run;
+    if (!ask.seen) { ask.status = "taken"; ask.run = run; } // the record, once seen, outranks a guess
     return true;
   }
   get(id: string) { return this.asks.get(id); }
@@ -41,7 +55,8 @@ export function remoteText(v: unknown): string | null {
   return t ? t.slice(0, 2000) : null;
 }
 
-export function registerShuaRemote(app: FastifyInstance, remote = new ShuaRemote()) {
+export function registerShuaRemote(app: FastifyInstance, remote = new ShuaRemote(), store?: { subscribe(fn: (e: { kind: string; run?: string | null; body: unknown }) => void): () => void }) {
+  store?.subscribe((e) => remote.observe(e));
   // From the phone (through the phone door's allowlist).
   app.post("/api/shua/remote", async (request, reply) => {
     const text = remoteText((request.body as { text?: unknown } | undefined)?.text);

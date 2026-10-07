@@ -12,11 +12,11 @@ private struct PhoneRoot: View {
     @State private var link = SparkLink()
     var body: some View {
             TabView {
-                // Shua first: everything goes through Shua. Today keeps the iCloud-synced view (usage, request history).
+                // Shua first: everything goes through Shua.
                 Tab("Shua", systemImage: "sparkle") { NavigationStack { SparkHomeView() } }
-                // Paired: the live views from your Mac. Not yet: the iCloud-synced ones, as before.
-                Tab("Today", systemImage: "sun.max") { NavigationStack { if link.pairing != nil { ShuaTodayView() } else { TodayView() } } }
-                Tab("Crew", systemImage: "person.3.sequence") { NavigationStack { if link.pairing != nil { ShuaCrewView() } else { CrewView() } } }
+                // Live from your Mac once paired (iCloud sync stays under Settings → Advanced).
+                Tab("Today", systemImage: "sun.max") { NavigationStack { ShuaTodayView() } }
+                Tab("Crew", systemImage: "person.3.sequence") { NavigationStack { ShuaCrewView() } }
                 Tab("Settings", systemImage: "slider.horizontal.3") { NavigationStack { ShuaSettingsView() } }
             }
             .tint(link.look?.accentColor ?? .shuaPurple) // your accent from the Mac (ShuaCrew purple until it's shared)

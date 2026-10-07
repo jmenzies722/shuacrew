@@ -9,10 +9,18 @@ struct ShuaLook: Codable, Equatable, Sendable {
     var markup: String
     var css: String
     var accent: String
+    /// Shua's voice on the Mac (ShuaCrew's voice engine), so the phone speaks with the same one.
+    var voiceId: String?
+    var voiceSpeed: Double?
     var at: Double
 
     private static let storeKey = "shua.look"
-    static func cached() -> ShuaLook? { UserDefaults.standard.data(forKey: storeKey).flatMap { try? JSONDecoder().decode(ShuaLook.self, from: $0) } }
+    /// The last one the Mac shared, else the one this app was built with (your Shua at build time), so it's yours
+    /// from the first launch, before pairing.
+    static func cached() -> ShuaLook? {
+        if let saved = UserDefaults.standard.data(forKey: storeKey).flatMap({ try? JSONDecoder().decode(ShuaLook.self, from: $0) }) { return saved }
+        return Bundle.main.url(forResource: "DefaultShua", withExtension: "json").flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(ShuaLook.self, from: $0) }
+    }
     func cache() { if let data = try? JSONEncoder().encode(self) { UserDefaults.standard.set(data, forKey: Self.storeKey) } }
 
     /// Your accent from the Mac, for the glow and tint.
