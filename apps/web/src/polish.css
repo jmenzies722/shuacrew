@@ -33,6 +33,3 @@
 /* Composed fields show focus on their rounded container, not a second white rectangle. */
 .workspace-frame :is(.composer-box,.rx-composer,.buddy-input,.coach-input,.pane-search,.edit-bubble) :is(input,textarea):focus-visible { outline:none; }
 .workspace-frame :is(.buddy-input,.coach-input,.pane-search,.edit-bubble):focus-within { box-shadow:0 0 0 1px var(--amber); }
-.companion-model-picker { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:var(--text-2); font-size:12px; padding:8px 0; }
-.companion-model-picker select { min-width:0; max-width:100%; padding:7px 9px; border:1px solid var(--line-strong); border-radius:8px; color:var(--text); background:var(--ink); }
-.companion-model-picker small { width:100%; color:var(--text-3); font-size:10.5px; }

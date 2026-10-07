@@ -240,3 +240,17 @@
 :root[data-motion="reduced"] .settings-tile:hover { transform: none; }
 @media (max-width: 850px) { .settings-pulse { display: none; } }
 .settings-card.upd { padding: 18px 20px; border-radius: 14px; }
+
+/* Shua on your iPhone: status line, then a QR on white so any camera reads it in any palette. */
+.phone-pair { display: grid; gap: 10px; }
+.phone-pair-head { display: flex; align-items: center; gap: 8px; }
+.phone-pair-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.phone-pair-dot.is-on { background: var(--amber); box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 22%, transparent); }
+.phone-pair-code { display: flex; gap: 18px; align-items: center; animation: phone-pair-in 260ms cubic-bezier(.2,.9,.3,1.2) both; }
+.phone-pair-code .phone-qr { width: 168px; height: 168px; padding: 8px; border-radius: 14px; background: #fff; flex: none; box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--amber) 55%, transparent); }
+.phone-pair-code .phone-qr svg { width: 100%; height: 100%; display: block; }
+.phone-pair-steps ol { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 4px; color: var(--text-2); }
+.phone-pair-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.phone-pair-error { color: var(--danger, #ff6b6b); font-size: 12.5px; }
+@keyframes phone-pair-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .phone-pair-code { animation: none; } }

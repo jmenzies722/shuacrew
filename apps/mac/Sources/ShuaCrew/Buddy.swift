@@ -105,7 +105,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.writingToolsBehavior = .none
         config.mediaTypesRequiringUserActionForPlayback = [] // Spark talks back as the answer streams in
-        web = WKWebView(frame: .zero, configuration: config)
+        web = FirstClickWebView(frame: .zero, configuration: config)
         web.setValue(false, forKey: "drawsBackground")
         panel = BuddyPanel(contentRect: NSRect(origin: .zero, size: closed), styleMask: [.borderless], backing: .buffered, defer: false)
         super.init()
@@ -130,6 +130,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         notchSurface.layer?.cornerRadius = 28
         notchSurface.layer?.cornerCurve = .continuous
         notchSurface.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        // Depth under the open island (the page's own shadow goes away once this backdrop takes over).
+        notchSurface.layer?.shadowColor = NSColor.black.cgColor
+        notchSurface.layer?.shadowOpacity = 0.6
+        notchSurface.layer?.shadowRadius = 26
+        notchSurface.layer?.shadowOffset = CGSize(width: 0, height: -14)
         notchSurface.isHidden = true
         root.addSubview(notchSurface)
         for view in [web, grip] as [NSView] { view.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(view) }
@@ -206,6 +211,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             loaded = true
             web.load(URLRequest(url: URL(string: "/buddy", relativeTo: gateway.base)!))
             startFnKey()
+            startChordKey()
         }
         panel.orderFrontRegardless()
         updateCursorBuddy()
@@ -272,7 +278,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private var followTimer: Timer?
     private func updateFollow() {
         let active = following && !isOpen && !guiding && !docked && !isMini
-        panel.ignoresMouseEvents = active || (docked && !isOpen && !isNook)
+        panel.ignoresMouseEvents = active || (docked && !isOpen && !isNook && !pointerInNook)
         guard active else { followTimer?.invalidate(); followTimer = nil; return }
         guard followTimer == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
@@ -310,24 +316,39 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         leaveTimer = timer
     }
 
+    private var nookMonitors: [Any] = []
     private func updateNookWatch() {
         updateLeaveWatch()
         let watch = docked && !isOpen
-        guard watch else { nookTimer?.invalidate(); nookTimer = nil; pointerInNook = false; return }
+        guard watch else {
+            nookTimer?.invalidate(); nookTimer = nil; pointerInNook = false
+            for m in nookMonitors { NSEvent.removeMonitor(m) }
+            nookMonitors = []
+            return
+        }
         guard nookTimer == nil else { return }
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                guard let housing = self.notchHousing else { return }
-                let target = self.isNook ? NotchIsland.openTarget(housing: housing, flare: self.islandFlare, drop: self.islandDrop) : NotchIsland.hoverTarget(housing: housing)
-                let inside = target.contains(NSEvent.mouseLocation)
-                guard inside != self.pointerInNook else { return }
-                self.pointerInNook = inside
-                self.web.evaluateJavaScript("window.buddy && window.buddy.nook && window.buddy.nook(\(inside))")
-            }
+        // Seen the moment the pointer moves there (a 10 Hz poll used to add up to 100 ms before the notch reacted);
+        // monitors cost nothing while the mouse is still. Mouse events need no Accessibility permission.
+        let moved: (NSEvent) -> Void = { [weak self] _ in MainActor.assumeIsolated { self?.checkNookPointer() } }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: moved) { nookMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { moved($0); return $0 }) { nookMonitors.append(local) }
+        // A slow backstop for moves no monitor saw (another app grabbed the mouse, the pointer warped).
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkNookPointer() }
         }
         RunLoop.main.add(timer, forMode: .common)
         nookTimer = timer
+    }
+    private func checkNookPointer() {
+        guard docked, !isOpen, let housing = notchHousing else { return }
+        let target = isNook ? NotchIsland.openTarget(housing: housing, flare: islandFlare, drop: islandDrop) : NotchIsland.hoverTarget(housing: housing)
+        let inside = target.contains(NSEvent.mouseLocation)
+        guard inside != pointerInNook else { return }
+        pointerInNook = inside
+        // Clickable the instant you arrive, not after the page answers: a quick move-and-click used to fall through
+        // to the menu bar while the hover went page → React → back here.
+        panel.ignoresMouseEvents = !(isNook || inside)
+        web.evaluateJavaScript("window.buddy && window.buddy.nook && window.buddy.nook(\(inside))")
     }
 
     // MARK: fn key (Globe): hold to select an exact screen area
@@ -368,6 +389,49 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             fnSignal(fnGesture.up(at: now))
         }
     }
+    // MARK: hold ⌃⌥ to talk, from any app
+    /// Control + Option held on their own: Shua listens while you hold them and sends when you let go (ChordHold).
+    /// The page plays the pops and owns the microphone; this only watches the keys (Accessibility, like fn).
+    private var chord = ChordHold()
+    private var chordMonitors: [Any] = []
+    private var chordTimer: Timer?
+    private var chordEnabled = UserDefaults.standard.object(forKey: "buddyHoldChord") as? Bool ?? true
+    private func startChordKey() {
+        for m in chordMonitors { NSEvent.removeMonitor(m) }
+        chordMonitors = []
+        guard chordEnabled else { return }
+        let seen: @Sendable (NSEvent) -> Void = { [weak self] event in
+            let type = event.type, flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            Task { @MainActor in self?.chordEvent(type: type, flags: flags) }
+        }
+        let kinds: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: kinds, handler: seen) { chordMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: kinds, handler: { event in seen(event); return event }) { chordMonitors.append(local) }
+    }
+    private func chordEvent(type: NSEvent.EventType, flags: NSEvent.ModifierFlags) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if type != .flagsChanged { chordSignal(chord.otherInput()); return }
+        let others = !flags.subtracting([.control, .option, .capsLock, .numericPad]).isEmpty
+        chordSignal(chord.flags(control: flags.contains(.control), option: flags.contains(.option), others: others, at: now))
+        if chord.armed, chordTimer == nil {
+            let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    guard self.chord.armed else { self.chordTimer?.invalidate(); self.chordTimer = nil; return }
+                    self.chordSignal(self.chord.tick(at: ProcessInfo.processInfo.systemUptime))
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common); chordTimer = timer
+        } else if !chord.armed { chordTimer?.invalidate(); chordTimer = nil }
+    }
+    private func chordSignal(_ signal: ChordHold.Signal) {
+        guard signal != .none else { return }
+        Self.appendSelfTest("CHORD \(signal) at=\(ProcessInfo.processInfo.systemUptime)\n")
+        if signal == .press || signal == .holdStart { if !Self.enabled { setEnabled(true) }; start() }
+        let phase: String = switch signal { case .press: "press"; case .holdStart: "start"; case .holdEnd: "end"; default: "cancel" }
+        web.evaluateJavaScript("window.buddy && window.buddy.holdKey && window.buddy.holdKey('\(phase)')")
+    }
+
     /// What you last drew with your cursor while talking (circle / underline / scribble), for the next look.
     private var lastGesture: (gesture: PointerGesture, at: Date)?
     /// Hands-free: recording the cursor silently while you talk (no fn), to catch a deliberate circle.
@@ -495,23 +559,55 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     /// Grow or shrink around the bottom-right corner, so Spark stays put and the empty, clear area never blocks your clicks.
     /// AppKit owns the continuous rounded backdrop; WebKit contains the existing chat.
+    /// The size of the page's pill when it started opening (measured by the page), so the backdrop grows out of it.
+    private var surfaceFrom: CGSize?
     private func updateNotchSurface() {
-        guard docked, isNook, !isOpen, let housing = notchHousing, let root = panel.contentView else { notchSurface.isHidden = true; return }
+        guard docked, isNook, !isOpen, let housing = notchHousing, let root = panel.contentView else { hideNotchSurface(); return }
         let width = min(root.bounds.width, housing.width + 2 * islandFlare)
         let height = min(root.bounds.height, housing.height + islandDrop)
         let frame = CGRect(x: (root.bounds.width - width) / 2, y: root.bounds.height - height, width: width, height: height)
-        let wasHidden = notchSurface.isHidden
-        notchSurface.isHidden = false
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = wasHidden || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.36
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
-            notchSurface.animator().frame = frame
+        var start: (bounds: CGRect, position: CGPoint)?
+        if notchSurface.isHidden {
+            // It used to appear at full size in one frame (a pop). Now it starts as the pill you were looking at.
+            let from = surfaceFrom ?? CGSize(width: housing.width + 92, height: housing.height)
+            notchSurface.layer?.removeAllAnimations()
+            notchSurface.frame = CGRect(x: (root.bounds.width - from.width) / 2, y: root.bounds.height - from.height, width: from.width, height: from.height)
+            // Read back as model values: the presentation layer still holds the size it last showed (fully open).
+            if let layer = notchSurface.layer { start = (layer.bounds, layer.position) }
+            notchSurface.isHidden = false
+            // Only now may the page clear its own black shape; clearing it earlier left a frame with no island at all.
+            web.evaluateJavaScript("document.documentElement.dataset.nativeNotchShown = 'true'")
         }
+        surfaceFrom = nil
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { notchSurface.frame = frame } else { springSurface(to: frame, from: start) }
+    }
+    /// Grow or settle on Core Animation's clock: smooth at the display's refresh rate even while the page is busy
+    /// rendering what just opened. Position and size share one spring, so the top edge stays flush with the screen.
+    private func springSurface(to frame: CGRect, from start: (bounds: CGRect, position: CGPoint)? = nil) {
+        guard let layer = notchSurface.layer else { notchSurface.frame = frame; return }
+        let now = layer.presentation() ?? layer
+        let fromBounds = start?.bounds ?? now.bounds, fromPosition = start?.position ?? now.position
+        notchSurface.frame = frame
+        guard fromBounds.size != layer.bounds.size || fromPosition != layer.position else { return }
+        for (key, from, to) in [("bounds", NSValue(rect: fromBounds), NSValue(rect: layer.bounds)), ("position", NSValue(point: fromPosition), NSValue(point: layer.position))] {
+            let spring = CASpringAnimation(perceptualDuration: 0.46, bounce: 0.2)
+            spring.keyPath = key
+            spring.fromValue = from
+            spring.toValue = to
+            spring.duration = spring.settlingDuration
+            layer.add(spring, forKey: "island." + key)
+        }
+    }
+    private func hideNotchSurface() {
+        guard !notchSurface.isHidden else { return }
+        notchSurface.layer?.removeAllAnimations()
+        notchSurface.isHidden = true
+        web.evaluateJavaScript("delete document.documentElement.dataset.nativeNotchShown")
     }
 
     private func place(size: NSSize) {
         requestedSize = size
-        if !(docked && isNook && !isOpen) { notchSurface.isHidden = true }
+        if !(docked && isNook && !isOpen) { hideNotchSurface() }
         guard let primary = NSScreen.main ?? NSScreen.screens.first else { return }
         let corner = savedCorner() ?? defaultCorner()
         let screen = docked
@@ -528,7 +624,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             notchHousing = housing
             grip.isHidden = true
             panel.level = .statusBar
-            panel.ignoresMouseEvents = !isNook
+            panel.ignoresMouseEvents = !(isNook || pointerInNook)
             let canvas = NotchIsland.canvas(housing: housing, screen: screen.frame)
             if panel.frame != canvas { panel.setFrame(canvas, display: true, animate: false) }
             updateNotchSurface()
@@ -632,6 +728,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if open && !isOpen && following && !docked && !isMini { rememberCorner() }
             isMini = !open && (body["mini"] as? Bool ?? false)
             isNook = docked && !open && (body["nook"] as? Bool ?? false)
+            if let from = body["from"] as? [String: Double], let w = from["w"], let h = from["h"], w > 0, h > 0 { surfaceFrom = CGSize(width: w, height: h) }
             // Record open/closed BEFORE re-checking the hover watch: checking first saw the chat as still open when it
             // closed, stopped watching, and nothing restarted it, so hovering the notch did nothing after a click.
             isOpen = open
@@ -944,6 +1041,9 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if on { raise() }
         case "buddyRaise":
             raise()
+        case "buddyHoldChord":
+            if let on = body["on"] as? Bool { chordEnabled = on; UserDefaults.standard.set(on, forKey: "buddyHoldChord"); startChordKey() }
+            send("shuacrew:holdChord", ["on": chordEnabled, "trusted": SparkHands.trusted], to: sender)
         case "buddyFnKey":
             if let on = body["on"] as? Bool { fnEnabled = on; UserDefaults.standard.set(on, forKey: "buddyFnKey"); startFnKey() }
             // 0 = Do Nothing; 1 input source, 2 emoji, 3 dictation — those also fire when fn is pressed.
@@ -1047,7 +1147,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let pack = (body["pack"] as? String).flatMap(EarconSynth.Pack.init(rawValue:)) { SparkSounds.shared.pack = pack }
             if let kind = (body["kind"] as? String).flatMap(EarconSynth.Kind.init(rawValue:)) {
                 Self.appendSelfTest("CUE web \(kind.rawValue) allowed=\(SparkSounds.shared.fnSoundGate.allowsWeb(kind))\n")
-                if SparkSounds.shared.fnSoundGate.allowsWeb(kind) { SparkSounds.shared.play(kind) }
+                if SparkSounds.shared.fnSoundGate.allowsWeb(kind) { SparkSounds.shared.play(kind, only: (body["only"] as? String).flatMap(EarconSynth.Pack.init(rawValue:))) }
             }
         case "buddySoundStyle":
             if let style = body["style"] as? String { SparkSounds.shared.style = style }
@@ -1477,6 +1577,48 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             }
             return
         }
+        if spec == "notch:motion" { // first-click acceptance, the backdrop's open curve, page frame times → spark-selftest.log
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(3))
+                let log = { (line: String) in Self.appendSelfTest("NOTCH MOTION " + line + "\n") }
+                if let housing = self.notchHousing {
+                    let point = self.panel.convertPoint(fromScreen: NSPoint(x: housing.midX, y: housing.midY))
+                    let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: self.panel.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
+                    log("firstMouse=\(self.web.acceptsFirstMouse(for: down)) panelKey=\(self.panel.isKeyWindow) appActive=\(NSApp.isActive) ignoresMouse=\(self.panel.ignoresMouseEvents)")
+                }
+                // The page's frames while something changes: every rAF delta for `ms`, measured inside the real web view.
+                let frames = { (action: String, ms: Int) async -> String in
+                    let script = "const d=[];let last=0,on=true;const loop=t=>{if(last)d.push(t-last);last=t;if(on)requestAnimationFrame(loop)};requestAnimationFrame(loop);await new Promise(r=>setTimeout(r,60));\(action);await new Promise(r=>setTimeout(r,\(ms)));on=false;const s=[...d].sort((a,b)=>a-b);const q=x=>(s[Math.min(s.length-1,Math.floor(x*s.length))]||0).toFixed(1);return `frames=${d.length} p50=${q(.5)} p95=${q(.95)} max=${(s.at(-1)||0).toFixed(1)} over25=${d.filter(x=>x>25).length} over50=${d.filter(x=>x>50).length}`"
+                    let result = try? await self.web.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: .page)
+                    return (result as? String) ?? "no result"
+                }
+                // The backdrop's real on-screen size, sampled each display frame while the nook opens.
+                var curve: [String] = []
+                let sampler = Task { @MainActor in
+                    for _ in 0..<40 {
+                        let b = (self.notchSurface.isHidden ? nil : (self.notchSurface.layer?.presentation() ?? self.notchSurface.layer)?.bounds)
+                        curve.append(b.map { "\(Int($0.width))x\(Int($0.height))" } ?? "hidden")
+                        try? await Task.sleep(for: .milliseconds(16))
+                    }
+                }
+                log("nook-open " + (await frames("window.buddy.nook(true)", 900)))
+                _ = await sampler.value
+                log("backdrop " + curve.joined(separator: " "))
+                log("nook-close " + (await frames("window.buddy.nook(false)", 900)))
+                try? await Task.sleep(for: .milliseconds(500))
+                log("chat-open " + (await frames("window.buddy.toggle()", 1000)))
+                log("chat-close " + (await frames("window.buddy.toggle()", 900)))
+                // Hold-to-talk pops: one sound in the pop pack, through the page's real bridge; the chosen pack must not move.
+                let packBefore = SparkSounds.shared.pack.rawValue
+                _ = try? await self.web.evaluateJavaScript("window.webkit.messageHandlers.shuacrew.postMessage({ type: 'buddySound', kind: 'listen', only: 'pop' }); true")
+                try? await Task.sleep(for: .milliseconds(500))
+                log("pop packBefore=\(packBefore) packAfter=\(SparkSounds.shared.pack.rawValue) style=\(SparkSounds.shared.style)")
+                let hook = (try? await self.web.evaluateJavaScript("typeof (window.buddy && window.buddy.holdKey)")) as? String ?? "?"
+                log("chord enabled=\(self.chordEnabled) monitors=\(self.chordMonitors.count) trusted=\(SparkHands.trusted) pageHook=\(hook)")
+            }
+            return
+        }
         if spec == "notch:shot" { // the notch at rest, its nook open, and typed into: ~/.shuacrew/selftest-notch-<state>.png
             Task { @MainActor [weak self] in
                 guard let self, let screen = self.panel.screen ?? NSScreen.main else { return }
@@ -1695,6 +1837,13 @@ final class BuddyPanel: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         flushTop ? frameRect : super.constrainFrameRect(frameRect, to: screen)
     }
+}
+
+/// The notch's page takes the click that also brings it forward. A stock WKWebView accepts that first click only
+/// while text is selected, so tapping a button in the notch from another app just made the panel key and the
+/// button needed a second tap (verified: acceptsFirstMouse was false for a non-key panel).
+final class FirstClickWebView: WKWebView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// Over the character: a click opens or closes the card, a drag moves Spark anywhere.

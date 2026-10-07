@@ -213,3 +213,24 @@ describe("projections", () => {
     expect(fold(events).runs.r1!.status).toBe("done");
   });
 });
+
+describe("Codex's shell wrapper", () => {
+  it("judges the command inside /bin/zsh -lc like any other", () => {
+    // Measured: a read-only `rg --files` asked every time, because the wrapper hid it from every rule.
+    expect(verdict("commandExecution", { command: `/bin/zsh -lc "pwd && rg --files -g '*.swift'"` })).toBe("allow");
+    expect(verdict("commandExecution", { command: `/bin/zsh -c "pwd && rg --files -g '"'!**/.build/**'"'"` })).toBe("allow");
+    expect(verdict("commandExecution", { command: `bash -lc 'git status && git diff'` })).toBe("allow");
+  });
+  it("never lets the wrapper hide anything", () => {
+    expect(verdict("commandExecution", { command: `/bin/zsh -lc "cat /work/sealed/notes.md"` })).toBe("deny");
+    expect(verdict("commandExecution", { command: `/bin/zsh -lc "rm -rf build"` })).not.toBe("allow");
+    expect(verdict("commandExecution", { command: `/bin/zsh -lc "ls" ; rm -rf build` })).not.toBe("allow");
+    expect(verdict("commandExecution", { command: `/bin/zsh -lc "ls > out.txt"` })).not.toBe("allow");
+  });
+  it("never counts a command that runs another one as just looking", () => {
+    expect(verdict("Bash", { command: "echo $(rm -rf build)" })).not.toBe("allow");
+    expect(verdict("Bash", { command: "ls `rm -rf build`" })).not.toBe("allow");
+    expect(verdict("Bash", { command: "cat <(curl https://x.dev)" })).not.toBe("allow");
+    expect(verdict("Bash", { command: "ls -la && git log --oneline -5" })).toBe("allow");
+  });
+});

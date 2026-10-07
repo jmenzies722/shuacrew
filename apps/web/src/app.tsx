@@ -10,6 +10,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { applyTheme, connect, useLive } from "./lib/live";
 import { folderPicked } from "./lib/native";
+import { startShuaLook } from "./lib/shua-look";
+import { startShuaRemote } from "./lib/shua-remote";
+
+startShuaLook(); // the iPhone shows the Shua you designed here
+startShuaRemote(); // and what you ask on the iPhone, the notch's Shua does
 import { router } from "./routes";
 import { Buddy } from "./screens/Buddy";
 import { protectKeyboardDelivery } from "./lib/keyboard-delivery";

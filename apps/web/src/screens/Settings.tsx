@@ -8,6 +8,7 @@ import { NotificationSettings } from "../components/NotificationSettings";
 import { VoiceSettings } from "../components/VoiceSettings";
 import { DeveloperSettings } from "../components/DeveloperSettings";
 import { openMobileSettings } from "../lib/native";
+import { PhonePairing } from "../components/PhonePairing";
 import { ToolCardSettings } from "../components/ToolCardSettings";
 import { Segmented, SettingRow } from "../components/SettingControls";
 import { BudgetSettings, PreferencesTransfer, SessionDefaults } from "../components/WorkspaceSettings";
@@ -117,6 +118,7 @@ export function Settings() {
     { id: "storage", section: "system", title: "Storage", terms: "disk storage size space database library models snapshots usage bytes", body: <StorageUsage /> },
     { id: "spark", section: "shua", title: "Make it yours", terms: "shua companion speech male female accent audition preview voice engine spark notch presence brain intelligence desktop buddy companion character orb byte kit blob robot name nickname colour color size personality tone voice talk speak hotkey shortcut guide show me steps spotlight clicky screen screenshot point open apps actions", body: <SparkSettings searching={!!query.trim()} /> },
     { id: "tool-cards", section: "workspace", title: "Tools & connector cards", terms: "mcp icons brands logo cards density errors inspect output", body: <ToolCardSettings /> },
+    { id: "phone-pair", section: "mobile", title: "Shua on your iPhone", terms: "phone iphone pair pairing qr code tailscale shua spark pocket remote", body: <PhonePairing /> },
     { id: "mobile-sync", section: "mobile", title: "iPhone & Apple Watch", terms: "phone iphone watch mobile cloudkit icloud pairing remote approval sync", body: <div className="settings-card">
       <p>Choose which crew rooms leave this Mac, compare pairing fingerprints, and revoke devices in the native setup window. Mobile sync is off by default.</p>
       <button className="settings-link-card" onClick={() => { if (!openMobileSettings()) setNotice("Open ShuaCrew for Mac to configure mobile sync. No browser credentials or cloud connection were created."); }}><Smartphone size={22} /><span><strong>Open native Mobile settings <span>↗</span></strong><small>Checks this build’s signing and CloudKit setup. Opening settings never enables sync.</small></span></button>

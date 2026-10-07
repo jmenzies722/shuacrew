@@ -19,6 +19,7 @@ import { autopilotRequest, autopilotTarget, autopilotResult, readAutopilotWatch,
 import { approvalSummary } from "../lib/approval-summary";
 import { commandAnnouncement } from "../lib/command-narration";
 import { scheduleNotchClose } from "../lib/notch-hover";
+import { installPress } from "../lib/press";
 import { CompanionApproval } from "../components/CompanionApproval";
 import { notchActivity } from "../lib/notch-activity";
 import { notchPreviewWanted, notchReplyText } from "../lib/notch-presentation";
@@ -35,6 +36,7 @@ import "./shua-panel.css";
 import { pageContext } from "../components/WorkspaceSpark";
 import { useTeaching, pausePractice } from "../lib/teaching";
 import { CompanionModelPicker, modelPreference } from "../components/CompanionModelPicker";
+import { ShuaSlash, type SlashCommand } from "../components/ShuaSlash";
 import { setSparkFull, takeSparkSuggestion, watchSparkSuggestion } from "../lib/spark-panel";
 import { logSense } from "../lib/spark-log";
 import { asksAboutEarlier, recall } from "../lib/screen-memory";
@@ -51,7 +53,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ComposerActions } from "../components/ComposerActions";
 import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompanionDraftRevision, restoreCompanionDraft, setCompanionDraft, useCompanionDraft } from "../lib/companion-draft";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, ArrowUpRight, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Cpu, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, decideApproval, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -81,6 +83,7 @@ import { useLook } from "../lib/look";
 import "../components/companion.css";
 import "./buddy.css";
 import "./spark-design.css";
+import "./shua-live.css";
 
 /** Mac actions whose result Spark says out loud when it lands (you'd otherwise have to go and check). */
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
@@ -135,7 +138,8 @@ const SparkRow = memo(function SparkRow({ m, did, color, wide, setWide, reduceMo
     : <Markdown key={k} text={part.value.replace(/^\s*-{3,}\s*$/m, "")} streaming={m.live} />)}
     {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
     {p && <button type="button" className="buddy-point" onClick={() => showAgain(p.label ?? "")}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : m.text;
-  return <motion.div initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 380, damping: 30 }}
+  // Yours lifts out of the composer (origin bottom-right, shua-live.css); Shua's settles in from just below.
+  return <motion.div initial={reduceMotion ? false : m.who === "you" ? { opacity: 0, y: 18, scale: 0.94 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: m.who === "you" ? 520 : 380, damping: m.who === "you" ? 32 : 30 }}
     className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
     <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
   </motion.div>;
@@ -156,6 +160,9 @@ function DraftInput(props: Omit<React.InputHTMLAttributes<HTMLInputElement>, "va
 export function Buddy({ embedded = false, full = false, onClose, page }: { embedded?: boolean; full?: boolean; onClose?: () => void; page?: string } = {}) {
   const lesson = useTeaching().document, practicing = !!lesson?.practice.active;
   const reduceMotion = useReducedMotion();
+  // Every button in Shua answers on press, before any click handler or render (lib/press.ts).
+  const pressRoot = useRef<HTMLDivElement>(null);
+  useEffect(() => installPress(pressRoot.current), []);
   // The draft is read when it's sent, never subscribed to here: typing re-renders only the text box and send button.
   const setDraft = setCompanionDraft;
   const prefs = useCompanion(), voice = useBuddyVoice(), track = useNowPlaying(), { sounds } = useLook();
@@ -198,6 +205,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   // A diagram on the big canvas: the panel grows so a system design has room.
   const [wide, setWide] = useState(false);
   const optionsPanel = useRef<HTMLDetailsElement>(null);
+  // The model list mounts only while Options is open: it polls the gateway, and opening the chat shouldn't pay for it.
+  const [optionsOpen, setOptionsOpen] = useState(false);
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (optionsPanel.current && !optionsPanel.current.contains(event.target as Node)) optionsPanel.current.open = false; };
     document.addEventListener("pointerdown", outside);
@@ -249,8 +258,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     return () => cancelAnimationFrame(frame);
   }, [fnPreparing]);
   const [fnHeld, setFnHeld] = useState(false), [fnSent, setFnSent] = useState(false);
-  const fnCapturing = useRef(false);
+  /** A hold-to-talk turn owns the mic until it settles: the mic-sync effect must not stop it mid-hold. */
+  const holdCapturing = useRef(false);
   useMicLevelVar(talkBtn); // the talk button pulses with your voice without re-rendering Shua
+  const islTalkBtn = useRef<HTMLButtonElement>(null); useMicLevelVar(islTalkBtn); // and the notch's, while you hold it
   // A command waiting for your yes.
   /** Your last spoken turn: stays in the notch, shimmering, until Spark starts answering — so you can see it heard you. */
   const [asking, setAsking] = useState<{ kind: "run" | "delete"; command: string; why: string; yes?: string; answer: (yes: boolean) => void } | null>(null);
@@ -426,10 +437,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     window.addEventListener("pointerdown", warm, { once: true }); window.addEventListener("keydown", warm, { once: true });
     const t = setTimeout(warm, 1500); // the Mac app lets it start without a gesture
     return () => { clearTimeout(t); window.removeEventListener("pointerdown", warm); window.removeEventListener("keydown", warm); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   // Voice mode on: you're live (the same sound as holding fn). Off: a closing note. Not on first load.
   const voiceWas = useRef(voiceLive);
-  useEffect(() => { if (voiceWas.current !== voiceLive) { sound(voiceLive ? "listen" : "off"); if (voiceLive) macContext.prefetch(); } voiceWas.current = voiceLive; }, [voiceLive]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (voiceWas.current !== voiceLive) { sound(voiceLive ? "listen" : "off"); if (voiceLive) macContext.prefetch(); } voiceWas.current = voiceLive; }, [voiceLive]);
   // Noticing you're stuck (see lib/stuck): glances while live watching is on; one gentle offer, then quiet.
   const [stuck, setStuck] = useState<StuckOffer | null>(null), stuckState = useRef(STUCK_START), quiet = useRef(false);
   // What Music or Spotify is playing, for the notch (asked of the Mac app; faster while the island is open).
@@ -462,7 +473,13 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   }, []);
   useEffect(() => { if (convo) for (const c of priorConversations(convo)) void loadRun(c.run); }, [convo, loadRun]);
   // The native panel sizes itself to what's showing, so the clear rest never blocks your clicks.
-  useEffect(() => { if (!embedded) post({ type: "buddyExpand", open, mini: mini && !open, nook: nook && !open && prefs.desktopPlacement === "notch", wide: open && wide, peek: !open && (practicing || !!bubble || !!guide || morning || evening || !!track.id), size: prefs.size, desktopPlacement: prefs.desktopPlacement }); }, [open, mini, nook, bubble, guide, prefs.size, prefs.desktopPlacement, wide, embedded, morning, evening, track.id, practicing]);
+  useEffect(() => {
+    if (embedded) return;
+    const nooked = nook && !open && prefs.desktopPlacement === "notch";
+    // The island's size right now (its open spring has just begun): the native backdrop grows out of exactly this.
+    const shape = nooked ? document.querySelector(".shua-island-shape")?.getBoundingClientRect() : undefined;
+    post({ type: "buddyExpand", open, mini: mini && !open, nook: nooked, from: shape && { w: shape.width, h: shape.height }, wide: open && wide, peek: !open && (practicing || !!bubble || !!guide || morning || evening || !!track.id), size: prefs.size, desktopPlacement: prefs.desktopPlacement });
+  }, [open, mini, nook, bubble, guide, prefs.size, prefs.desktopPlacement, wide, embedded, morning, evening, track.id, practicing]);
   // Focus only when the user opens a writing surface, never on background status updates.
   useEffect(() => {
     if (!open || tab !== "chat") return;
@@ -488,6 +505,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
       notchAsk: (text: string) => { speech.current.unlock(); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       nook: (inside: boolean) => nookHover.current(inside),
+      holdKey: (phase: string) => holdKeyRef.current(phase),
       // "Brief me" and self-tests: the morning brief, now.
       morning: () => morningRef.current(),
       // The Mac app calls this when the pointer has left the opened notch for a moment: back to rest, unless you're typing.
@@ -1513,7 +1531,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     m.onYield = () => { if (prefsRef.current.interrupt) { logSense("heard", "Interrupted", ""); speech.current.stop(); } };
     m.onDropped = () => { setFnSent(false); speech.current.duck(false); };
     m.outputLevel = () => speech.current.level();
-    if (fnCapturing.current) return;
+    if (holdCapturing.current) return;
     m.mode = wakeTurn.current ? "auto" : prefs.listen; m.lang = prefs.language;
     if (voiceLive) m.mode = "auto";
     // With Live as the voice the classic open mic stays off: a call is the conversation.
@@ -1533,8 +1551,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   useEffect(() => {
     if (prefs.listen !== "hold" || !open || tab === "teach") return;
     const typing = (t: EventTarget | null) => { const el = t as HTMLElement | null; if (!el) return false; if (el === input.current) return !!input.current?.value; return !!el.closest?.("input,textarea,select,[contenteditable=true],.xterm"); };
-    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); setArmed(true); if (viaLive()) { liveFn("down"); liveFn("hold"); } else { speech.current.unlock(); void mic.current.press(); } };
-    const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; if (viaLive()) liveFn("release"); else mic.current.release(); };
+    const down = (e: KeyboardEvent) => { if (e.code !== "Space" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return; e.preventDefault(); holdRef.current.start(); };
+    const up = (e: KeyboardEvent) => { if (e.code !== "Space") return; holdRef.current.end(); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); mic.current.release(); };
   }, [prefs.listen, liveVoice, open, tab]);
@@ -1542,6 +1560,66 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const prefsRef = useRef(prefs); prefsRef.current = prefs;
   /** Talking goes to a Live call when that's your voice and Live can take it (connected lately, plan not used up). */
   const viaLive = () => liveVoiceRef.current;
+  // ── Hold to talk ── Press and hold Talk (notch or chat), or Space in Hold mode: a pop the instant the mic opens and a
+  // softer one as you let go and it sends (a press under 0.3 s is a cancel, with a closing pop). In Hands-free mode a
+  // quick tap still toggles the conversation; holding past a beat talks just this once. The notch lights its listening
+  // state on press (fnHeld) and its working sweep after release (fnSent), the same path fn push-to-talk used.
+  const holdAt = useRef<number | null>(null), holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined), holdTemp = useRef(false);
+  const pop = (k: Earcon) => { const p = prefsRef.current; earcon(k, p.sounds, 0.8, undefined, p.holdPops ? "pop" : undefined); };
+  const holdSettled = () => {
+    if (holdAt.current !== null || !holdCapturing.current) return;
+    holdCapturing.current = false;
+    if (holdTemp.current) { holdTemp.current = false; mic.current.mode = prefsRef.current.listen; }
+  };
+  const holdStart = () => {
+    if (holdAt.current !== null) return;
+    holdAt.current = performance.now(); holdCapturing.current = true;
+    setArmed(true); speech.current.unlock(); pop("listen"); setFnSent(false); setFnHeld(true);
+    if (viaLive()) { liveFn("down"); liveFn("hold"); return; }
+    const m = mic.current;
+    // Hands-free with the open mic off: borrow push-to-talk for this one hold, so the mic closes again once it sends.
+    if (!holdTemp.current && m.mode !== "hold" && !(prefsRef.current.conversation && prefsRef.current.listen !== "hold")) { holdTemp.current = true; m.mode = "hold"; }
+    void m.press();
+  };
+  const holdEnd = () => {
+    clearTimeout(holdTimer.current);
+    const at = holdAt.current; if (at === null) return;
+    holdAt.current = null; setFnHeld(false);
+    const spoke = performance.now() - at >= 300;
+    if (viaLive()) liveFn("release"); else { mic.current.release(); if (spoke) setFnSent(true); }
+    pop(spoke ? "sent" : "off");
+    setTimeout(holdSettled, 8000); // a mic that never reported back must not keep the guard
+  };
+  const holdRef = useRef({ start: holdStart, end: holdEnd }); holdRef.current = { start: holdStart, end: holdEnd };
+  /** Hold ⌃⌥ from any app (the Mac app watches the keys, ChordHold): `press` warms the mic so the first word is kept,
+   *  `start`/`end` are the hold itself, `cancel` means the chord was a shortcut — close the mic again, silently. */
+  const holdKey = (phase: string) => {
+    if (phase === "start") { holdStart(); return; }
+    if (phase === "end") { holdEnd(); return; }
+    if (viaLive() || holdAt.current !== null) return;
+    const m = mic.current;
+    if (phase === "press") {
+      holdCapturing.current = true;
+      if (!holdTemp.current && m.mode !== "hold" && !(prefsRef.current.conversation && prefsRef.current.listen !== "hold")) { holdTemp.current = true; m.mode = "hold"; }
+      void m.warm();
+      setTimeout(() => { if (holdAt.current === null) { m.cool(); holdSettled(); } }, 4000); // a lost key-up never strands the mic
+    } else if (phase === "cancel") { m.cool(); holdSettled(); }
+  };
+  const holdKeyRef = useRef(holdKey); holdKeyRef.current = holdKey;
+  /** A Talk button: in Hold mode pressing talks; in Hands-free a tap does `tap` and holding past 0.26 s talks once. */
+  const talkPress = (tap: () => void) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      clearTimeout(holdTimer.current);
+      if (prefsRef.current.listen === "hold") { e.preventDefault(); holdStart(); return; }
+      holdTimer.current = setTimeout(() => holdRef.current.start(), 260);
+    },
+    onPointerUp: () => { clearTimeout(holdTimer.current); if (holdAt.current !== null) holdEnd(); else if (prefsRef.current.listen !== "hold") tap(); },
+    onPointerCancel: () => { clearTimeout(holdTimer.current); holdEnd(); },
+    // Keyboard (Enter/Space on the focused button) taps; pointer clicks were handled on release.
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0 && prefsRef.current.listen !== "hold") tap(); },
+  });
   // Guidance stays visible over the app being practiced without taking keyboard
   // focus. Pausing restores the user's normal pin preference.
   useEffect(() => { if (!embedded) post({ type: "buddyOnTop", on: prefs.onTop || practicing }); }, [prefs.onTop, practicing, embedded]);
@@ -1575,7 +1653,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     const t = setTimeout(() => { post({ type: "buddyDuck", on: false }); void radioCommand({ cmd: "unduck" }); }, 2000);
     return () => clearTimeout(t);
   }, [talking]);
-  const setListen = (listen: "auto" | "hold") => { setArmed(true); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, listen }); };
+  const setListen = (listen: "auto" | "hold") => { setArmed(true); const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, listen }); if (listen === "hold" && cur.holdPops) { pop("listen"); setTimeout(() => pop("sent"), 420); } };
+  const toggleHoldPops = () => { const cur = parseCompanion(JSON.parse(localStorage.getItem("shuacrew.companion") ?? "null")); saveCompanion({ ...cur, holdPops: !cur.holdPops }); if (!cur.holdPops && cur.sounds !== "off") { earcon("listen", cur.sounds, 0.8, undefined, "pop"); setTimeout(() => earcon("sent", cur.sounds, 0.8, undefined, "pop"), 420); } };
   const toggleTalk = () => {
     modeSwitchCaptureBlock.current = false;
     if (liveActive()) { if (getLiveSnapshot().mode !== "talk") startNativeLive("talk"); else endLive(); return; }
@@ -1690,6 +1769,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.
   const fnReady = notched && fnHeld && !heard;
   useEffect(() => { if (speaking || streamText) setFnSent(false); }, [speaking, streamText]);
+  useEffect(() => { if (!["starting", "hearing", "transcribing"].includes(phase)) holdSettled(); }, [phase]);
   useEffect(() => { if (phase === "error" || error) { setFnHeld(false); setFnSent(false); } }, [phase, error]); // never stuck "listening"
   const streamingNow = !!visibleStream && !speaking && !hearingNow;
   const live$ = useRef({ speaking: false, streaming: false, active: false, listening: false }); live$.current = { speaking, streaming: !!streamText, active: !!busy || working, listening: hearingNow || fnHeld || phase === "transcribing" };
@@ -1727,7 +1807,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     for (const [id, run] of Object.entries(regular)) {
       if (before[id] && before[id] !== run.status && autopilotResult(run.title, run.status)) void announceCompletion(id);
     }
-  }, [crew.runs, autopilotWatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [crew.runs, autopilotWatch]);
   // The crew needs your OK: Spark says so and offers to answer (a bare "yes" approves it). Only new requests.
   const approvalsWas = useRef<Set<string> | null>(null);
   useEffect(() => {
@@ -1741,7 +1821,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     const approvalRun = approval?.run ? crew.runs[approval.run] : undefined;
     if (approvalRun) setNotchUpdate({ title: "Your crew needs a decision", text: ask.line, path: `/sessions/${approvalRun.id}`, tone: "wait", run: approvalRun.id, turn: approvalRun.turns, approval: ask.id });
     if (getBuddyVoice().on) news.add(ask.line, () => !!useLive.getState().crew.approvals[ask.id] && mine() && getBuddyVoice().on && !speech.current.silenced, () => noteAsked(ask.line, ask.id));
-  }, [crew.approvals]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [crew.approvals]);
   // No canned "On it" when you finish talking (it sounded robotic): the model's own first sentence is specific and
   // arrives in ~1.2 s, and the notch shows a small wave during the gap. The quiet clock restarts so progress waits its 4 s.
   const newTurn = () => { ownLines.current.clear(); lastSound.current = Date.now(); };
@@ -1778,7 +1858,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     onScreen={() => { if (see || liveOn) void interrupt(); if (liveOn) post({ type: "buddyLive", on: false }); saveSee(!(see || liveOn)); }}
     onAccessibility={() => post({ type: "buddyHands", ask: true })} onControl={control => { if (control === "off") void interrupt(); saveCompanion({ ...prefs, control, autonomy: 2 }); }}
     onClose={() => setAccessOpen(false)} onManage={() => post({ type: "buddyOpen", path: "/integrations" })} />
-    : <AssistantDeck focusLeft={timer ? `${Math.max(1, Math.ceil(remainingFocusMs(timer, now) / 60000))}m left` : undefined} nowPlaying={media} state={presentation.current} connection={commandConnection} screenEnabled={see || liveOn} evidence={observationEvidence} trusted={hands.trusted} control={prefs.control}
+    : <AssistantDeck holdToSpeak={{ on: prefs.listen === "hold", toggle: () => setListen(prefs.listen === "hold" ? "auto" : "hold") }} focusLeft={timer ? `${Math.max(1, Math.ceil(remainingFocusMs(timer, now) / 60000))}m left` : undefined} nowPlaying={media} state={presentation.current} connection={commandConnection} screenEnabled={see || liveOn} evidence={observationEvidence} trusted={hands.trusted} control={prefs.control}
       background={Object.values(crew.runs).filter(r => r.id !== convo?.run && isTopLevelWork(r, crew.runs) && ["queued", "planning", "running", "awaiting_approval", "paused"].includes(r.status))} brain={choice?.runtime ? { label: `${({ claude: "Claude", codex: "Codex", local: "This Mac" } as Record<string, string>)[choice.runtime] ?? choice.runtime} · ${choice.model}`, note: /usage limit/.test(choice.reason) ? choice.reason.split(" · ")[0] : undefined } : choice ? { label: "No model right now", note: choice.reason } : undefined} onMission={() => setMissionOpen(true)} onWorkflows={() => setWorkflowsOpen(true)} onAsk={text => void ask(text)} onStop={() => void interrupt()} onAccess={() => setAccessOpen(true)} onRun={id => post({ type: "buddyOpen", path: `/sessions/${id}` })} />;
   const pointerStatus = pointerFeedback && <div className="notch-pointer-status" role="status"><MousePointer2 size={14} /><span>{pointerFeedback.message}</span>{pointerFeedback.phase === "blocked" ? <button type="button" onClick={() => showAgain(pointerFeedback.label)}>Find again</button> : pointerFeedback.phase !== "displayed" ? <button type="button" onClick={() => void interrupt()}>Cancel</button> : null}<button type="button" aria-label="Dismiss pointer feedback" onClick={() => { pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" }); }}><X size={12} /></button></div>;
   const islandWanted = prefs.desktopPlacement === "notch" && notchPreviewWanted({ active: (call.active ? !!liveNotchText(call.feed, call.spokenText) || !!call.approval : !!(heard && (fnHeld || hearingNow || processing)) || !!(prefs.notchCaptions && ((speaking && caption) || visibleStream))) || !!error || pointerFeedback?.phase === "blocked" || !!pending || !!asking || !!task || (prefs.notchActivities !== false && liveRuns.length > 0), tucked: notchTucked, expanded: islandOpen || open });
@@ -1798,7 +1878,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     const observer = new ResizeObserver(measure); observer.observe(element); measure();
     return () => observer.disconnect();
   }, [islandLive]);
-  useEffect(() => { if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `island ${islandLive ? "live" : "rest"} drop=${islandDropNow} t=${Math.round(performance.now())} speaking=${+speaking} caption=${+!!caption} streaming=${+streamingNow} voice=${+getBuddyVoice().on} captions=${+prefs.notchCaptions} placement=${prefs.desktopPlacement} chat=${+open} nook=${+islandOpen}`, output: "" }); }, [islandLive, islandDropNow, speaking, !!caption, streamingNow, open, islandOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `island ${islandLive ? "live" : "rest"} drop=${islandDropNow} t=${Math.round(performance.now())} speaking=${+speaking} caption=${+!!caption} streaming=${+streamingNow} voice=${+getBuddyVoice().on} captions=${+prefs.notchCaptions} placement=${prefs.desktopPlacement} chat=${+open} nook=${+islandOpen}`, output: "" }); }, [islandLive, islandDropNow, speaking, !!caption, streamingNow, open, islandOpen]);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
   // how big it is so the hover area matches what you see.
   useEffect(() => {
@@ -1837,7 +1917,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const lastReply = lastSpark ? prose(speakable(messages.at(-1)!.text)) : "";
   const replyText = streamText || (speaking ? lastReply : "");
   const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string } =
-    (fnHeld || hearingNow) && heard ? { text: heard, live: true }
+    fnReady ? { text: "Listening… let go to send", live: true, shimmer: true }
+    : (fnHeld || hearingNow) && heard ? { text: heard, live: true }
     : streamingNow ? { text: visibleStream, live: true }
     : speaking && caption ? { text: caption.text, live: true }
     : processing || working || !!busy ? { text: fnSent && heard ? heard : "Working on it", live: true, shimmer: true }
@@ -1867,6 +1948,25 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const mood = (prefs.celebration !== "off" && (cheer || eventMood === "happy")) ? "happy" : speaking ? "speaking" : working || busy ? "thinking" : eventMood === "concerned" ? "concerned" : sleepy ? "sleepy" : "idle";
   const liveVoiceOn = liveVoice;
   const talkEnabled = call.active && call.mode === "talk" || voiceLive;
+  // Type "/" in the composer: the conversation's controls without hunting through menus (/model opens the model list).
+  const slashKeys = useRef<((e: React.KeyboardEvent) => boolean) | null>(null);
+  const openModels = () => {
+    const d = optionsPanel.current; if (!d) return;
+    d.open = true;
+    setTimeout(() => (d.querySelector(".model-pick [aria-checked='true']") as HTMLElement | null)?.focus(), 80);
+  };
+  const slashCommands: SlashCommand[] = [
+    { name: "model", hint: "Choose the model that answers", icon: Cpu, run: openModels, state: prefs.modelChoice === "fastest" ? "Fastest" : prefs.modelChoice ? prefs.modelChoice.slice(prefs.modelChoice.indexOf(":") + 1) : "Auto" },
+    { name: "new", hint: "Start a fresh conversation", icon: RotateCcw, run: reset, hidden: !convo || working || !!busy || !!task },
+    { name: "voice", hint: "Spoken replies", icon: voice.on ? Volume2 : VolumeX, state: voice.on ? "On" : "Off", run: () => { speech.current.unlock(); if (voice.on) speech.current.stop(); saveBuddyVoice({ on: !voice.on }); } },
+    { name: "hold", hint: "Hold Talk to speak, with pops", icon: Mic, state: prefs.listen === "hold" ? "On" : "Off", run: () => setListen(prefs.listen === "hold" ? "auto" : "hold") },
+    { name: "talk", hint: "Hands-free conversation", icon: AudioLines, state: talkEnabled || prefs.conversation ? "On" : "Off", run: toggleTalk },
+    { name: "screen", hint: "Let me see your screen when it helps", icon: Eye, state: see || liveOn ? "On" : "Off", run: () => { if (liveOn) { post({ type: "buddyLive", on: false }); saveSee(false); } else saveSee(!see); } },
+    { name: "teach", hint: "Visual teaching", icon: BookOpen, run: () => setTab("teach") },
+    { name: "widgets", hint: "Widgets & approvals", icon: LayoutGrid, run: () => setTab("widgets") },
+    { name: "crew", hint: "Hand a task to the crew to finish", icon: Send, run: () => { setDraft("agent: "); input.current?.focus(); } },
+    { name: "full", hint: full ? "Leave full screen" : "Full screen", icon: Maximize2, hidden: !embedded, run: () => setSparkFull(!full) },
+  ];
   const card = <section className={`buddy-card spk ${embedded ? "is-embedded" : ""} ${full ? "is-full" : ""} ${!embedded && prefs.desktopPlacement === "notch" ? "is-notched" : ""} ${callOwnsIsland ? "is-calling" : ""}`} style={sparkVars(prefs.color)} data-chat-style={prefs.chatStyle} data-chat-tone={prefs.chatTone} data-chat-corners={prefs.chatCorners} data-chat-text={prefs.chatText} data-chat-header={prefs.chatHeader} aria-label={`Ask ${companionName(prefs)}`} onPointerDown={() => setArmed(true)} onKeyDown={(e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
     e.preventDefault(); e.stopPropagation();
@@ -1877,18 +1977,19 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         <div className="spk-who"><strong>{companionName(prefs)}</strong><span role="status" title={`${statusLabel} · ${displayProvider}`} className={`spk-status spk-pill is-${status$.split(" ")[0]}`}>{statusLive ? <VoiceWaveform compact state={buddyState} readLevel={readVoiceLevel} /> : <i className={`spk-dot ${working || busy ? "is-busy" : ""}`} />}{statusLabel}<span className="spk-provider">· {displayProvider}</span></span></div>
         <button type="button" aria-label="Visual teaching" title="Visual teaching" aria-pressed={tab === "teach"} onClick={() => setTab(tab === "teach" ? "chat" : "teach")}><BookOpen size={15} /></button>
         <button type="button" aria-label={tab === "chat" ? "Open widgets" : "Back to chat"} title={tab === "chat" ? "Widgets & approvals" : "Back to chat"} aria-pressed={tab === "widgets"} onClick={() => setTab(tab === "chat" ? "widgets" : "chat")} className="spk-widget-toggle">{tab === "chat" ? <LayoutGrid size={15} /> : <MessageCircle size={15} />}{approvals > 0 && <i />}</button>
-        <details className="spk-options" ref={optionsPanel} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
+        <details className="spk-options" ref={optionsPanel} onToggle={(e) => setOptionsOpen(e.currentTarget.open)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
           <summary aria-label="Conversation options" title="Conversation options"><SlidersHorizontal size={15} /></summary>
           <div className="spk-options-panel">
             <span className="spk-options-label">CONVERSATION</span>
-            <CompanionModelPicker />
+            {optionsOpen && <CompanionModelPicker />}
             <p className="spk-routing">{choiceError ? "Provider check unavailable — retry when connected" : choice?.runtime ? `${choice.runtime === "local" ? "This Mac" : choice.runtime} · ${choice.model}${actualRuntime && actualRuntime !== choice.runtime ? " · ready to try next turn" : ""}` : choice?.reason ?? "Checking connected providers…"}</p>
             <button type="button" onClick={() => { speech.current.unlock(); if (voice.on) speech.current.stop(); saveBuddyVoice({ on: !voice.on }); }}>{voice.on ? <Volume2 size={15} /> : <VolumeX size={15} />}<span>Spoken replies</span><b>{voice.on ? "On" : "Off"}</b></button>
             <button type="button" aria-pressed={prefs.conversation} onClick={toggleTalk}><Mic size={15} /><span>Hands-free conversation</span><b>{prefs.conversation ? "On" : "Off"}</b></button>
             <div className="spk-option-row"><span>Microphone mode</span><div className="spk-listen" role="radiogroup" aria-label="How to talk">
               <button type="button" role="radio" aria-checked={prefs.listen === "auto"} onClick={() => setListen("auto")} className={prefs.listen === "auto" ? "is-on" : ""}>Hands-free</button>
-              <button type="button" role="radio" aria-checked={prefs.listen === "hold"} onClick={() => setListen("hold")} className={prefs.listen === "hold" ? "is-on" : ""}>Hold</button>
+              <button type="button" role="radio" aria-checked={prefs.listen === "hold"} onClick={() => setListen("hold")} className={prefs.listen === "hold" ? "is-on" : ""}>Hold to speak</button>
             </div></div>
+            {prefs.sounds !== "off" && <button type="button" aria-pressed={prefs.holdPops} onClick={toggleHoldPops}><Sparkles size={15} /><span>Pop sounds when you hold</span><b>{prefs.holdPops ? "On" : "Off"}</b></button>}
             <button type="button" aria-pressed={liveOn} disabled={liveBusy} onClick={toggleLive}><Eye size={15} /><span>Watch screen live</span><b>{liveOn ? "On" : "Off"}</b></button>
             {!embedded && <button type="button" onClick={() => { setWide(v => !v); if (optionsPanel.current) optionsPanel.current.open = false; }}><Maximize2 size={15} /><span>{wide ? "Compact conversation" : "Roomier canvas"}</span></button>}
             {convo && !embedded && <button type="button" onClick={() => post({ type: "buddyOpen", run: convo.run })}><MessageCircle size={15} /><span>Open in ShuaCrew</span></button>}
@@ -1974,24 +2075,24 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
         <button type="button" className={`buddy-see ${see || liveOn ? "is-on" : ""}`} aria-pressed={see || liveOn} title={liveOn ? "Watching your screen live. Stop watching to turn screen access off." : see ? "Screen enabled: I'll capture it when needed. macOS permission is checked on capture." : "Screen off: I won't look"} onClick={() => { if (liveOn) { post({ type: "buddyLive", on: false }); saveSee(false); } else saveSee(!see); }}>{see || liveOn ? <Eye size={15} /> : <EyeOff size={15} />}</button>
         <button type="button" className="buddy-see buddy-area" title="Select an area to analyze" aria-label="Select an area to analyze" disabled={selectingArea || working || !!busy} onClick={() => void chooseArea()}><Maximize2 size={15} /></button>
         <DraftArea inputRef={input} placeholder={prefs.conversation && phase === "listening" ? "Listening… or type" : see ? "Ask or tell me to do it…" : "Ask me anything…"}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } }} />
+          onKeyDown={(e) => { if (slashKeys.current?.(e)) return; if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void ask(); } }} />
+        <ShuaSlash commands={slashCommands} keys={slashKeys} />
         {liveVoiceOn
           // Live is the voice: the talk button is the call — tap to talk to Shua, tap again to hang up.
           ? <button type="button" className={`buddy-talk is-live ${talkEnabled ? "is-on" : ""}`} aria-pressed={talkEnabled} title={talkEnabled ? "End the call with Shua" : "Enable continuous listening"} aria-label={talkEnabled ? "End call" : "Talk to Shua"} onClick={toggleTalk} ref={talkBtn}><AudioLines size={15} /></button>
           : prefs.listen === "hold"
-          ? <button type="button" className={`buddy-talk is-hold is-${phase}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" ref={talkBtn}
-              onPointerDown={(e) => { e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArmed(true); speech.current.unlock(); mic.current.mode = "hold"; void mic.current.press(); }}
-              onPointerUp={() => mic.current.release()} onPointerCancel={() => mic.current.release()}><AudioLines size={15} /></button>
-          : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Click to stop listening." : "Talk hands-free: just speak, no buttons"} onClick={toggleTalk} ref={talkBtn}><AudioLines size={15} /></button>}
+          ? <button type="button" className={`buddy-talk is-hold is-${phase}${fnHeld ? " is-holding" : ""}`} title="Hold to talk (or hold Space) — let go to send" aria-label="Hold to talk" ref={talkBtn}
+              {...talkPress(() => {})}><AudioLines size={15} /></button>
+          : <button type="button" className={`buddy-talk ${prefs.conversation ? "is-on" : ""} is-${phase}${fnHeld ? " is-holding" : ""}`} aria-pressed={prefs.conversation} title={prefs.conversation ? "Conversation on: just talk. Tap to stop listening · hold to talk once." : "Tap to talk hands-free · hold to talk once"} {...talkPress(toggleTalk)} ref={talkBtn}><AudioLines size={15} /></button>}
         <ComposerActions active={!!busy || working || speaking} onStop={() => void interrupt()} />
       </form>}
     </section>;
-  if (embedded) return <div className="buddy is-open is-embedded" style={sparkVars(prefs.color)}>{card}</div>;
-  return <div className={`buddy ${open ? "is-open" : ""} ${prefs.desktopPlacement === "notch" ? "is-docked" : ""}`} data-size={prefs.size} data-notch-glow={prefs.notchGlow} data-notch-size={prefs.notchSize} data-presence={prefs.presence} data-celebration={prefs.celebration} style={sparkVars(prefs.color)}>
+  if (embedded) return <div ref={pressRoot} className="buddy is-open is-embedded" style={sparkVars(prefs.color)}>{card}</div>;
+  return <div ref={pressRoot} className={`buddy ${open ? "is-open" : ""} ${prefs.desktopPlacement === "notch" ? "is-docked" : ""}`} data-size={prefs.size} data-notch-glow={prefs.notchGlow} data-notch-size={prefs.notchSize} data-presence={prefs.presence} data-celebration={prefs.celebration} style={sparkVars(prefs.color)}>
     <AnimatePresence>{open && <motion.div key="card" className={`spk-pop ${notched ? "is-notched" : ""}`} style={notched ? { "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px` } as CSSProperties : undefined}
       // In the notch the chat grows out of the island like Dynamic Island: the black shape springs open from the notch
       // (transform only, top-centre), and what's inside arrives a beat later (spark-design.css). Elsewhere it rises in.
-      initial={reduceMotion ? false : notched ? { opacity: 0, scaleX: 0.7, scaleY: 0.3, y: -4 } : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, scale: 1, scaleX: 1, scaleY: 1 }}
+      initial={reduceMotion || notched ? false /* notched: a CSS keyframe pours it open on the compositor (spark-design.css) */ : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, scale: 1, scaleX: 1, scaleY: 1 }}
       exit={reduceMotion ? { opacity: 0 } : notched ? { opacity: 0, scaleX: 0.82, scaleY: 0.4, y: -4, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } } : { opacity: 0 }}
       transition={reduceMotion ? { duration: 0 } : notched ? { type: "spring", stiffness: 380, damping: 32, mass: 0.9 } : { type: "spring", stiffness: 420, damping: 34 }}>
       {notched && <div className="shua-chat-cap" aria-hidden="true"><span /><span className="shua-island-cam" /><span /></div>}
@@ -2089,7 +2190,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
               <ComposerActions compact active={!!busy || working || speaking} onStop={() => void interrupt()} tabIndex={islandOpen ? 0 : -1} />
             </form>
             </> : <>
-              <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn is-talk${talkEnabled ? " is-on" : ""}`} aria-pressed={talkEnabled} onClick={toggleTalk} title={talkEnabled ? "End the conversation" : "Talk"} aria-label={talkEnabled ? "End call" : "Talk"}>{talkEnabled ? <Square size={13} /> : <Mic size={15} />}</button>
+              <button type="button" ref={islTalkBtn} tabIndex={islandOpen ? 0 : -1} className={`isl-btn is-talk${talkEnabled ? " is-on" : ""}${fnHeld ? " is-holding" : ""}`} aria-pressed={talkEnabled} {...talkPress(toggleTalk)}
+                title={prefs.listen === "hold" ? "Hold to talk · let go to send" : talkEnabled ? "Tap to end the conversation · hold to talk once" : "Tap for hands-free · hold to talk"} aria-label={prefs.listen === "hold" ? "Hold to talk" : talkEnabled ? "End call" : "Talk"}>{talkEnabled && !fnHeld ? <Square size={13} /> : <Mic size={15} />}</button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn" onClick={() => { setIslandTyping(true); post({ type: "buddyNookFocus" }); }} title="Type" aria-label="Type"><Keyboard size={15} /></button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${see || liveOn ? " is-on" : ""}`} aria-pressed={see || liveOn} onClick={() => { if (see || liveOn) void interrupt(); if (liveOn) post({ type: "buddyLive", on: false }); saveSee(!(see || liveOn)); }} title={see || liveOn ? "Stop looking at the screen" : "Look at my screen"} aria-label="Screen"><Eye size={15} /></button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${islandMore ? " is-on" : ""}`} aria-pressed={islandMore} onClick={() => setIslandMore(v => !v)} title="Missions, workflows, access" aria-label="More"><Ellipsis size={15} /></button>

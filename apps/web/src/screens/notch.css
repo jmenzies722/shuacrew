@@ -101,13 +101,15 @@
 /* ── The open body: every block cascades in, a beat after the shape lands ───────────────────────────── */
 .shua-island-body { padding: 4px 16px 16px; gap: 10px; transition: opacity .2s, transform .4s var(--n-spring); }
 .shua-island.is-open .shua-island-body { transition-delay: .1s; }
-.shua-island.is-open .shua-island-body > * { animation: n-rise .5s var(--n-settle) both; }
+/* `backwards`: once arrived, no transform lingers (a filling transform boxes in any menu or popover inside). */
+.shua-island.is-open .shua-island-body > * { animation: n-rise .5s var(--n-settle) backwards; }
 .shua-island.is-open .shua-island-body > :nth-child(1) { animation-delay: .1s; }
 .shua-island.is-open .shua-island-body > :nth-child(2) { animation-delay: .15s; }
 .shua-island.is-open .shua-island-body > :nth-child(3) { animation-delay: .2s; }
 .shua-island.is-open .shua-island-body > :nth-child(4) { animation-delay: .25s; }
 .shua-island.is-open .shua-island-body > :nth-child(n+5) { animation-delay: .3s; }
-@keyframes n-rise { from { opacity: 0; transform: translateY(-6px) scale(.985); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+/* Transform + opacity only: a blur filter on every row repainted each of them on every frame of the open. */
+@keyframes n-rise { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes n-fade-right { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 @keyframes n-fade-left { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
 
