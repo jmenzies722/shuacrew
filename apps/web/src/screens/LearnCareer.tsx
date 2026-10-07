@@ -6,13 +6,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowRight, ArrowUp, Award, BadgeCheck, Briefcase, CalendarClock, Check, ExternalLink, Flag, Loader2, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X } from "lucide-react";
+import { ArrowRight, ArrowUp, Award, BadgeCheck, Briefcase, CalendarClock, Check, ChevronDown, ExternalLink, Flag, Loader2, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import { Markdown } from "../components/Markdown";
 import { article, goalRole } from "../lib/learn-today";
 import "./learn-career.css";
+import "./learn-exam.css";
 
 export interface Milestone { title: string; why: string; skills: string[]; project: string; weeks: number; done?: boolean }
 export interface Roadmap { id: string; goal: string; months: number; title: string; run: string; created: number; milestones: Milestone[] }
@@ -39,49 +40,79 @@ export function when(t: number, now = Date.now()) {
 }
 
 // ── Path ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * Your roadmap, focused: where you are now (what it is, how to prove it, the two things to do next), then the rest of
+ * the path as one line each — open any to see it. A new roadmap folds away until you want one.
+ */
 export function PathView({ state, onChange, startCourse }: { state: CareerState; onChange: () => void; startCourse: (topic: string) => void }) {
-  const runs = useRunStatus(), reduce = useReducedMotion();
-  const goal = state.profile.goal.trim();
+  const runs = useRunStatus();
+  const goal = state.profile.goal.trim(), role = goalRole(goal);
   const all = [...(state.roadmaps ?? [])].sort((a, b) => b.created - a.created);
   const ready = all.filter((r) => r.milestones.length);
-  const [pick, setPick] = useState<string | null>(null);
+  const [pick, setPick] = useState<string | null>(null), [open, setOpen] = useState<number | null>(null), [planning, setPlanning] = useState(false);
   const road = ready.find((r) => r.id === pick) ?? ready.find((r) => r.goal.trim().toLowerCase() === goal.toLowerCase()) ?? ready[0];
   const building = all.filter((r) => !r.milestones.length && active(runs[r.run]?.status));
   const drafts = all.filter((r) => !r.milestones.length && !active(runs[r.run]?.status));
-  const [newGoal, setNewGoal] = useState(goal), [months, setMonths] = useState(6), [busy, setBusy] = useState(""), [error, setError] = useState("");
+  const [newGoal, setNewGoal] = useState(role || goal), [months, setMonths] = useState(6), [busy, setBusy] = useState(""), [error, setError] = useState("");
   const act = async (key: string, fn: () => Promise<unknown>) => { setBusy(key); setError(""); try { await fn(); onChange(); } catch (e) { setError(errText(e)); } finally { setBusy(""); } };
+  const mark = (i: number, done: boolean) => road && act(`m${i}`, () => api(`/api/learning/roadmaps/${road.id}/milestones/${i}`, { body: { done } }));
   const done = road ? road.milestones.filter((m) => m.done).length : 0, current = road ? road.milestones.findIndex((m) => !m.done) : -1;
+  const now = road && current >= 0 ? road.milestones[current] : undefined;
   const weeksLeft = road ? road.milestones.filter((m) => !m.done).reduce((n, m) => n + (m.weeks || 0), 0) : 0;
-  return <div className="lc">
+  const form = <form className="lc-new" onSubmit={(e) => { e.preventDefault(); if (newGoal.trim()) void act("roadmap", async () => { await api("/api/learning/roadmaps", { body: { goal: newGoal.trim(), months } }); setPlanning(false); }); }}>
+    <span className="lt-kicker">{road ? "A new roadmap" : "Build your roadmap"}</span>
+    <div><input value={newGoal} onChange={(e) => setNewGoal(e.target.value)} placeholder="Where you're headed, e.g. DevOps Engineer" aria-label="Goal" />
+      <select value={months} onChange={(e) => setMonths(Number(e.target.value))} aria-label="Months">{[3, 6, 9, 12].map((n) => <option key={n} value={n}>{n} months</option>)}</select>
+      <button type="submit" className="lc-go" disabled={!!busy || !newGoal.trim() || building.length > 0}>{building.length ? <><Loader2 size={13} className="lc-spin" /> Writing…</> : busy === "roadmap" ? "Starting…" : <>Build it <ArrowRight size={13} /></>}</button></div>
+  </form>;
+  return <div className="lc lr">
     <section className="lc-head">
-      <div><h2>{road ? (road.title || `${road.months} months to ${road.goal}`) : goal ? `A plan to become ${article(goalRole(goal))} ${goalRole(goal)}` : "Where are you headed?"}</h2>
-        {road && <p className="lc-sub">{done} of {road.milestones.length} milestones · about {Math.max(1, Math.round(weeksLeft))} weeks to go</p>}</div>
-      {ready.length > 1 && <div className="lc-pills" role="tablist" aria-label="Roadmaps">{ready.map((r) => <button key={r.id} type="button" role="tab" aria-selected={r.id === road?.id} className={r.id === road?.id ? "is-on" : ""} onClick={() => setPick(r.id)}>{r.title || r.goal}</button>)}</div>}
+      <div><h2>{road ? (road.title || `${road.months} months to ${road.goal}`) : role ? `A plan to become ${article(role)} ${role}` : "Where are you headed?"}</h2>
+        {road && <p className="lc-sub">{done} of {road.milestones.length} milestones done · about {Math.max(1, Math.round(weeksLeft))} weeks to go</p>}</div>
+      {road && <div className="lr-tools">
+        {ready.length > 1 && <select value={road.id} onChange={(e) => { setPick(e.target.value); setOpen(null); }} aria-label="Roadmap">{ready.map((r) => <option key={r.id} value={r.id}>{r.title || r.goal}</option>)}</select>}
+        <button type="button" className="xp-quiet is-wide" aria-expanded={planning} onClick={() => setPlanning((v) => !v)}>{planning ? <><X size={13} /> Close</> : <><Plus size={13} /> New roadmap</>}</button>
+      </div>}
     </section>
     {road && <div className="lc-progress" aria-hidden><i style={{ width: `${Math.round((done / road.milestones.length) * 100)}%` }} /></div>}
     {error && <p className="lx-error" role="alert">{error}</p>}
-    {road ? <ol className="lc-timeline">{road.milestones.map((m, i) => {
-      const state$ = m.done ? "is-done" : i === current ? "is-now" : "";
-      return <motion.li key={i} className={state$} initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.035, type: "spring", stiffness: 420, damping: 34 }}>
-        <span className="lc-node">{m.done ? <Check size={13} strokeWidth={3} /> : i + 1}</span>
-        <div className="lc-step">
-          <header><strong>{clean(m.title)}</strong><small>{m.weeks ? `${m.weeks} wk` : ""}</small></header>
-          {(i === current || !m.done) && m.why && <p>{m.why}</p>}
-          {m.project && i === current && <p className="lc-prove"><Flag size={12} /> <b>Prove it:</b> {m.project}</p>}
-          {m.skills.length > 0 && <div className="lc-chips">{m.skills.slice(0, 8).map((k) => <span key={k}>{k}</span>)}</div>}
-          <div className="lc-actions">
-            {i === current && <button type="button" className="lc-go" disabled={!!busy} onClick={() => startCourse(clean(m.title))}>Start a course on it <ArrowRight size={13} /></button>}
-            <button type="button" className={m.done ? "lc-quiet" : ""} disabled={!!busy} onClick={() => void act(`m${i}`, () => api(`/api/learning/roadmaps/${road.id}/milestones/${i}`, { body: { done: !m.done } }))}>{m.done ? "Undo" : "Mark done"}</button>
+    {(planning || !road) && form}
+    {!road && <div className="lc-empty"><Target size={18} /><p>{building.length ? "Shua is writing your roadmap: milestones in order, the skills each builds, and a project that proves it." : "A realistic plan: milestones in order, the skills each builds, and one project per step that proves it."}</p></div>}
+
+    {road && now && <article className="lr-now" aria-label="Where you are now">
+      <span className="xp-kicker">Now · step {current + 1} of {road.milestones.length}{now.weeks ? ` · about ${now.weeks} weeks` : ""}</span>
+      <h3>{clean(now.title)}</h3>
+      {now.why && <p className="lr-why">{now.why}</p>}
+      {now.project && <div className="lr-prove"><Flag size={15} /><div><b>Prove it</b><p>{now.project}</p></div></div>}
+      {now.skills.length > 0 && <p className="lr-skills"><span>Skills</span>{now.skills.join(" · ")}</p>}
+      <div className="lr-actions">
+        <button type="button" className="lc-go" disabled={!!busy} onClick={() => startCourse(clean(now.title))}>Learn it <ArrowRight size={13} /></button>
+        <button type="button" className="xp-quiet is-wide" disabled={!!busy} onClick={() => void mark(current, true)}><Check size={13} /> Mark done</button>
+      </div>
+    </article>}
+    {road && !now && <div className="lc-empty"><BadgeCheck size={18} /><p>Every milestone done. Plan the next path when you're ready.</p></div>}
+
+    {road && <ol className="lr-list" aria-label="The whole path">{road.milestones.map((m, i) => {
+      const isOpen = open === i;
+      return <li key={i} className={m.done ? "is-done" : i === current ? "is-now" : ""}>
+        <button type="button" className="lr-row" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i)}>
+          <span className="lr-node">{m.done ? <Check size={12} strokeWidth={3} /> : i + 1}</span>
+          <span className="lr-title">{clean(m.title)}</span>
+          {i === current && <em>Now</em>}
+          <small>{m.weeks ? `${m.weeks} wk` : ""}</small>
+          <ChevronDown size={15} className="lr-chev" />
+        </button>
+        {isOpen && <div className="lr-more">
+          {m.why && <p>{m.why}</p>}
+          {m.project && <p><b>Prove it:</b> {m.project}</p>}
+          {m.skills.length > 0 && <p className="lr-skills"><span>Skills</span>{m.skills.join(" · ")}</p>}
+          <div className="lr-actions">
+            {!m.done && i !== current && <button type="button" className="xp-quiet is-wide" disabled={!!busy} onClick={() => startCourse(clean(m.title))}>Learn it</button>}
+            <button type="button" className="xp-quiet is-wide" disabled={!!busy} onClick={() => void mark(i, !m.done)}>{m.done ? "Mark not done" : "Mark done"}</button>
           </div>
-        </div>
-      </motion.li>;
-    })}</ol> : <div className="lc-empty"><Target size={18} /><p>{building.length ? "Shua is writing your roadmap: milestones, the skills each builds, and a project that proves it." : "A realistic plan: milestones in order, the skills each builds, and one project per step that proves it."}</p></div>}
-    <form className="lc-new" onSubmit={(e) => { e.preventDefault(); if (newGoal.trim()) void act("roadmap", () => api("/api/learning/roadmaps", { body: { goal: newGoal.trim(), months } })); }}>
-      <span className="lt-kicker">{road ? "Plan another path" : "Build your roadmap"}</span>
-      <div><input value={newGoal} onChange={(e) => setNewGoal(e.target.value)} placeholder="Where you're headed, e.g. DevOps Engineer" aria-label="Goal" />
-        <select value={months} onChange={(e) => setMonths(Number(e.target.value))} aria-label="Months">{[3, 6, 9, 12].map((n) => <option key={n} value={n}>{n} months</option>)}</select>
-        <button type="submit" className="lc-go" disabled={!!busy || !newGoal.trim() || building.length > 0}>{building.length ? <><Loader2 size={13} className="lc-spin" /> Writing…</> : busy === "roadmap" ? "Starting…" : <>Build it <ArrowRight size={13} /></>}</button></div>
-    </form>
+        </div>}
+      </li>;
+    })}</ol>}
     {drafts.length > 0 && <p className="lc-drafts">{drafts.length} empty draft{drafts.length === 1 ? "" : "s"} that never got milestones.
       <button type="button" disabled={!!busy} onClick={() => void act("drafts", async () => { for (const d of drafts) await api(`/api/learning/roadmaps/${d.id}`, { method: "DELETE" }); })}>Clear {drafts.length === 1 ? "it" : "them"}</button></p>}
   </div>;
@@ -108,7 +139,9 @@ export function certIdeas(goal: string): Array<{ name: string; code: string; pro
   if (/(devops|platform|sre|cloud|infra|reliability)/.test(g)) return devops;
   return [devops[0]!, ai[1]!, devops[1]!];
 }
-export function CertsView({ state, tracks, onChange, review, quiz }: { state: CareerState; tracks: TrackInsight[]; onChange: () => void; review: () => void; quiz: (topic: string) => void }) {
+/** A cert Shua preps you for exam-style (Plan): its predicted score, the same number Plan shows. */
+export interface CertExam { certId: string; predicted: number; passing: number; answered: number; open: () => void }
+export function CertsView({ state, tracks, onChange, review, quiz, exam }: { state: CareerState; tracks: TrackInsight[]; onChange: () => void; review: () => void; quiz: (topic: string) => void; exam?: CertExam }) {
   const runs = useRunStatus(), navigate = useNavigate(), reduce = useReducedMotion();
   const certs = [...(state.certs ?? [])].sort((a, b) => (a.status === "passed" ? 1 : 0) - (b.status === "passed" ? 1 : 0) || (a.examDate ?? Infinity) - (b.examDate ?? Infinity));
   const [name, setName] = useState(""), [code, setCode] = useState(""), [date, setDate] = useState(""), [busy, setBusy] = useState(""), [error, setError] = useState(""), [dating, setDating] = useState<string | null>(null);
@@ -117,12 +150,13 @@ export function CertsView({ state, tracks, onChange, review, quiz }: { state: Ca
   const ideas = certIdeas(state.profile.goal).filter((i) => !certs.some((c) => c.code.toLowerCase() === i.code.toLowerCase()));
   return <div className="lc">
     <section className="lc-head"><div><h2>{certs.length ? `${certs.filter((c) => c.status !== "passed").length} in progress · ${certs.filter((c) => c.status === "passed").length} passed` : "Prove it on paper too"}</h2>
-      <p className="lc-sub">Shua builds each one a study plan with flashcards; readiness comes from how you actually do on them.</p></div></section>
+      <p className="lc-sub">Your exam's readiness comes from exam-style questions in Plan and Practice; other certifications get a study plan and flashcards.</p></div></section>
     {error && <p className="lx-error" role="alert">{error}</p>}
     <div className="lc-grid">{certs.map((c, i) => {
       const t = tracks.find((x) => x.id === c.track), planning = active(runs[c.plan ?? ""]?.status), days = c.examDate ? daysTo(c.examDate) : null;
       const stepsDone = c.steps.filter((s) => s.done).length, nextStep = c.steps.findIndex((s) => !s.done);
-      const readiness = t && t.reviews >= 5 && t.accuracy !== null ? Math.round(t.accuracy * 100) : null;
+      const ex = exam?.certId === c.id ? exam : undefined;
+      const readiness = !ex && t && t.reviews >= 5 && t.accuracy !== null ? Math.round(t.accuracy * 100) : null;
       return <motion.article key={c.id} className={`lc-card lc-cert is-${c.status}`} initial={reduce ? false : { opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: Math.min(i, 6) * 0.04, type: "spring", stiffness: 420, damping: 34 }}>
         <header>
           <span className="lc-badge"><Award size={15} /></span>
@@ -135,19 +169,21 @@ export function CertsView({ state, tracks, onChange, review, quiz }: { state: Ca
             {c.status !== "passed" && (c.examDate || dating === c.id
               ? <input type="date" autoFocus={dating === c.id} value={isoDay(c.examDate)} aria-label="Exam date" onBlur={() => setDating(null)} onChange={(e) => { setDating(null); void act(`d:${c.id}`, () => api(`/api/learning/certs/${c.id}`, { body: { examDate: e.target.value } })); }} />
               : <button type="button" className="lc-setdate" onClick={() => setDating(c.id)}>Set date</button>)}</label>
-          <span title={t ? `${t.cards} cards · ${t.due} due` : undefined}><Target size={13} />{readiness === null ? (t?.cards ? `${t.cards} cards · review to measure readiness` : "Readiness shows after a few reviews") : `${readiness}% right · ${t!.cards} cards`}</span>
+          {ex ? <span><Target size={13} />{ex.answered ? `Predicted ${ex.predicted} · pass ${ex.passing}` : "Take the diagnostic for a predicted score"}</span>
+            : <span title={t ? `${t.cards} cards · ${t.due} due` : undefined}><Target size={13} />{readiness === null ? (t?.cards ? `${t.cards} flashcards` : "No flashcards yet") : `Flashcards ${readiness}% right · ${t!.cards} cards`}</span>}
         </div>
         {readiness !== null && <div className="lc-meter" aria-label={`Readiness ${readiness}%`}><i style={{ width: `${readiness}%` }} data-tone={readiness < 60 ? "low" : readiness < 80 ? "mid" : "high"} /></div>}
-        {c.steps.length > 0 ? <ol className="lc-steps" aria-label="Study plan">{c.steps.map((s, k) => <li key={k} className={s.done ? "is-done" : k === nextStep ? "is-now" : ""}>
+        {ex ? null : c.steps.length > 0 ? <ol className="lc-steps" aria-label="Study plan">{c.steps.map((s, k) => <li key={k} className={s.done ? "is-done" : k === nextStep ? "is-now" : ""}>
           <button type="button" aria-pressed={s.done} aria-label={s.done ? `Undo ${s.title}` : `Done: ${s.title}`} disabled={!!busy} onClick={() => void act(`st:${c.id}:${k}`, () => api(`/api/learning/certs/${c.id}`, { body: { step: k, done: !s.done } }))}>{s.done && <Check size={11} strokeWidth={3} />}</button>
           <span>{s.title}</span></li>)}</ol>
           : c.status !== "passed" && <p className="lc-hint">{planning ? <><Loader2 size={13} className="lc-spin" /> Shua is writing your study plan and flashcards…</> : "No study plan yet: Shua can build one around your exam date."}</p>}
         <div className="lc-actions">
-          {c.status !== "passed" && !c.steps.length && <button type="button" className="lc-go" disabled={!!busy || planning} onClick={() => void act(`p:${c.id}`, () => api(`/api/learning/certs/${c.id}/plan`, { body: {} }))}>{planning ? "Writing…" : <>Build study plan <Sparkles size={13} /></>}</button>}
-          {c.steps.length > 0 && <span className="lc-count">{stepsDone}/{c.steps.length} steps</span>}
+          {ex && <button type="button" className="lc-go" onClick={ex.open}>Open your plan <ArrowRight size={13} /></button>}
+          {!ex && c.status !== "passed" && !c.steps.length && <button type="button" className="lc-go" disabled={!!busy || planning} onClick={() => void act(`p:${c.id}`, () => api(`/api/learning/certs/${c.id}/plan`, { body: {} }))}>{planning ? "Writing…" : <>Build study plan <Sparkles size={13} /></>}</button>}
+          {!ex && c.steps.length > 0 && <span className="lc-count">{stepsDone}/{c.steps.length} steps</span>}
           {t && t.due > 0 && <button type="button" onClick={review}>Review {t.due} due</button>}
           {c.status !== "passed" && <button type="button" onClick={() => quiz(`${c.code ? `${c.code} ` : ""}${c.name}`)}>Quiz me</button>}
-          {c.plan && <button type="button" className="lc-quiet" onClick={() => void navigate({ to: "/sessions/$id", params: { id: c.plan! } })}>Plan session <ExternalLink size={12} /></button>}
+          {!ex && c.plan && <button type="button" className="lc-quiet" onClick={() => void navigate({ to: "/sessions/$id", params: { id: c.plan! } })}>Plan session <ExternalLink size={12} /></button>}
         </div>
       </motion.article>;
     })}
@@ -156,7 +192,7 @@ export function CertsView({ state, tracks, onChange, review, quiz }: { state: Ca
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. Certified Kubernetes Administrator" aria-label="Certification name" />
         <div><input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code (CKA)" aria-label="Exam code" /><input type="date" className={date ? "" : "is-empty"} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Exam date" title="Exam date (optional)" />
           <button type="submit" className="lc-go" disabled={!!busy || !name.trim()}><Plus size={13} /> Add</button></div>
-        {ideas.length > 0 && <div className="lc-ideas"><small>For {state.profile.goal || "you"}:</small>{ideas.slice(0, 4).map((i) => <button key={i.code} type="button" disabled={!!busy} onClick={() => void add({ ...i, status: "planned" })} title={i.name}><Plus size={11} />{i.code}</button>)}</div>}
+        {ideas.length > 0 && <div className="lc-ideas"><small>{goalRole(state.profile.goal) ? `Suggested for ${article(goalRole(state.profile.goal))} ${goalRole(state.profile.goal)}` : "Suggested"}</small>{ideas.slice(0, 4).map((i) => <button key={i.code} type="button" disabled={!!busy} onClick={() => void add({ ...i, status: "planned" })} title={i.name}><Plus size={11} />{i.code}</button>)}</div>}
       </form>
     </div>
   </div>;

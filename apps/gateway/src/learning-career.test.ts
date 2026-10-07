@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Learning, LearningSchema, type LearningState } from "./learning.js";
-import { applyLearnOps, careerContext, gapsToPath, certPatch, jobPatch, learnBrief, learnReminders, newCert, newJob, parseCertPlan, parseFit, parseOpenings } from "./learning-career.js";
+import { applyLearnOps, careerContext, clip, gapsToPath, certPatch, jobPatch, learnBrief, learnReminders, newCert, newJob, parseCertPlan, parseFit, parseOpenings } from "./learning-career.js";
 
 const tmp = () => path.join(mkdtempSync(path.join(os.tmpdir(), "shua-career-")), "learning.json");
 
@@ -34,6 +34,10 @@ it("patches only known fields, ticks steps, and stamps passing once", () => {
 it("reads Shua's plans, fits and openings, and drops anything invented or malformed", () => {
   expect(parseCertPlan('Plan…\n```cert\n{"steps":["Week 1 · IAM",{"title":"Week 2 · VPC"},"",3]}\n```')).toEqual([{ title: "Week 1 · IAM", done: false }, { title: "Week 2 · VPC", done: false }]);
   expect(parseCertPlan("no plan")).toEqual([]);
+  const long = "Week 2 · Study SDLC Automation. In your sandbox, build a Git-backed CodePipeline and CodeBuild workflow that tests and packages a small API. Store versioned artifacts in S3.";
+  expect(clip(long, 120)).toMatch(/ [A-Za-z]+…$/); // ends on a whole word
+  expect(clip(long, 120).length).toBeLessThanOrEqual(120);
+  expect(clip("short", 120)).toBe("short");
   expect(parseFit('```fit\n{"score": 72.4, "summary": "Strong infra, light on Kubernetes.", "gaps": ["Kubernetes", "", "Go"]}\n```')).toEqual({ score: 72, summary: "Strong infra, light on Kubernetes.", gaps: ["Kubernetes", "Go"] });
   expect(parseFit('```fit\n{"score": 400, "summary": "x"}\n```')?.score).toBeUndefined();
   expect(parseOpenings('```jobs\n[{"company":"Grafana","role":"DevOps Engineer","url":"https://grafana.com/careers/1","why":"Observability"},{"company":"NoLink","role":"x"},{"company":"Bad","url":"file:///etc/passwd"}]\n```'))

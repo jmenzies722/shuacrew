@@ -40,7 +40,7 @@
 
 /* Journey: roadmap, certifications and job search as one story, with a sticky way between them. */
 .lf-journey { display: grid; gap: 26px; }
-.lf-journey-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; padding: 8px 0; background: linear-gradient(var(--bg, #0b0b0c) 70%, transparent); }
+.lf-journey-nav { display: flex; flex-wrap: wrap; gap: 6px; }
 .lf-journey-nav button { height: 32px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: transparent; font-size: 13px; color: var(--text-2); }
 .lf-journey-nav button.is-on, .lf-journey-nav button:hover { color: var(--text); border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); background: color-mix(in srgb, var(--amber) 8%, transparent); }
 .lf-part { scroll-margin-top: 56px; }

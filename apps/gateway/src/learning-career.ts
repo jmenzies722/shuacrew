@@ -13,6 +13,8 @@ export const CERT_STATUS = ["planned", "studying", "booked", "passed"] as const;
 export const JOB_STAGES = ["saved", "applied", "interviewing", "offer", "closed"] as const;
 const DEEP = { runtime: "codex", effort: "medium" } as const;
 const str = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "");
+/** Long text cut where a word ends, marked with an ellipsis: never "Store versioned artif". */
+export const clip = (x: unknown, max: number) => { const t = str(x, Infinity); if (t.length <= max) return t; const cut = t.slice(0, max - 1); return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), max * 0.6)).replace(/[\s,;:.·-]+$/, "")}…`; };
 /** A date from the page: epoch ms, or anything Date.parse reads ("2026-11-20"). Empty clears it. */
 const when = (x: unknown): number | undefined => {
   if (typeof x === "number" && Number.isFinite(x) && x > 0) return x;
@@ -63,7 +65,7 @@ function safeUrl(x: unknown) { const u = str(x, 500); return /^https?:\/\//i.tes
 /** Shua's study plan for a cert: ordered steps (cards come separately, as a ```cards block). */
 export function parseCertPlan(text: string): Array<{ title: string; done: boolean }> {
   const plan = parseBlock(text, "cert", "steps") as { steps?: unknown } | undefined;
-  return Array.isArray(plan?.steps) ? plan!.steps.slice(0, 16).flatMap((x: unknown) => { const t = typeof x === "string" ? str(x, 200) : str((x as { title?: unknown })?.title, 200); return t ? [{ title: t, done: false }] : []; }) : [];
+  return Array.isArray(plan?.steps) ? plan!.steps.slice(0, 16).flatMap((x: unknown) => { const t = clip(typeof x === "string" ? x : (x as { title?: unknown })?.title, 280); return t ? [{ title: t, done: false }] : []; }) : [];
 }
 /** How a job fits: a 0–100 score, a short read, and the skills it asks for that you don't show yet. */
 export function parseFit(text: string): { score?: number; summary: string; gaps: string[] } | null {

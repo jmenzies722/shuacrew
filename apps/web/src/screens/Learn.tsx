@@ -11,7 +11,7 @@
  * Ask Shua sits under all of it. /learn and /teach land here; older links (today, journey, library, certs, jobs) find
  * their place.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Award, Plus } from "lucide-react";
 import { api } from "../lib/api";
 import { article, goalRole } from "../lib/learn-today";
@@ -28,7 +28,8 @@ type Mode = "plan" | "practice" | "learn" | "career" | "explain";
 type Part = "goal" | "path" | "certs" | "jobs" | "kit";
 type LearnPart = "tasks" | "learn" | "coach" | "work" | "projects";
 const MODES: ReadonlyArray<readonly [Mode, string]> = [["plan", "Plan"], ["practice", "Practice"], ["learn", "Learn"], ["career", "Career"]];
-const LAST = "shuacrew.learn.tab", CERT = "shuacrew.learn.cert";
+const CAREER: ReadonlyArray<readonly [Part, string]> = [["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"], ["goal", "Goal & skills"], ["kit", "Career kit"]];
+const LAST = "shuacrew.learn.tab", CERT = "shuacrew.learn.cert", PART = "shuacrew.learn.career";
 /** Older tabs and links: today → Plan, library → Learn, journey and its parts → Career. */
 const asMode = (v: string | null): Mode | null => v === "today" ? "plan" : v === "library" ? "learn" : v === "journey" || v === "path" || v === "certs" || v === "jobs" || v === "goal" ? "career" : MODES.some(([m]) => m === v) ? (v as Mode) : null;
 interface Insights { tracks: Array<{ id: string; name: string; level: number; cards: number; due: number; reviews: number; accuracy: number | null; lapses: number; stale: boolean }>; due: number }
@@ -43,7 +44,9 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
     try { return asMode(localStorage.getItem(LAST)) ?? "plan"; } catch { return "plan"; }
   });
   const setMode = (m: Mode) => { setModeState(m); if (m !== "explain") try { localStorage.setItem(LAST, m); } catch { /* ignore */ } };
-  const [part, setPart] = useState<Part | null>(initial === "path" || initial === "certs" || initial === "jobs" || initial === "goal" ? initial : null);
+  const [part, setPartState] = useState<Part | null>(initial === "path" || initial === "certs" || initial === "jobs" || initial === "goal" ? initial : null);
+  const setPart = (p: Part | null) => { setPartState(p); if (p) try { localStorage.setItem(PART, p); } catch { /* ignore */ } };
+  const careerPart: Part = part ?? (() => { try { const v = localStorage.getItem(PART); return CAREER.some(([id]) => id === v) ? (v as Part) : "path"; } catch { return "path"; } })();
   const [learnPart, setLearnPart] = useState<LearnPart>("tasks");
   const [asking, setAsking] = useState(""), [from, setFrom] = useState<Mode>("plan");
   const [insights, setInsights] = useState<Insights | null>(null), [state, setState] = useState<State | null>(null), [error, setError] = useState("");
@@ -81,14 +84,6 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
     setSession({ ...s, key: Date.now() } as typeof session); setMode("practice");
   };
 
-  // Career opened on a part (an old Certs or Jobs link, or a step): bring it into view.
-  const career = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (mode !== "career" || !part) return;
-    const t = setTimeout(() => career.current?.querySelector(`#learn-${part}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-    return () => clearTimeout(t);
-  }, [mode, part, state]);
-
   const goal = state?.profile.goal.trim() ?? "", role = goalRole(goal);
   const path = [...(state?.roadmaps ?? [])].filter((r) => r.milestones.length).sort((a, b) => b.created - a.created)[0];
   const next = path?.milestones.find((m) => !m.done);
@@ -98,7 +93,7 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
 
   return <div className="pane-scroll learn lf"><div className="pane-body pane-body-wide">
     <ControlHeader title={title} status={status} tone={!insights ? "idle" : view?.verdict?.level === "ready" ? "ok" : "live"}>
-      <Seg label="Learn" value={mode === "explain" ? from : mode} onChange={(id) => { setMode(id); setSession(null); setPart(null); }} options={MODES} />
+      <Seg label="Learn" value={mode === "explain" ? from : mode} onChange={(id) => { setMode(id); setSession(null); }} options={MODES} />
     </ControlHeader>
     {error && <p className="lx-error" role="alert">{error}</p>}
     {exam.error && <p className="lx-error" role="alert">{exam.error}</p>}
@@ -128,20 +123,20 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
           <button key={id} type="button" className={learnPart === id ? "is-on" : ""} onClick={() => setLearnPart(id)}>{label}</button>)}
       </nav>
       {learnPart === "tasks" ? (view && bp ? <ExamTasks view={view} onTeach={(t, d) => teach(lessonAsk(bp, d, t))} /> : <AddCert onAdded={() => void load()} />)
-        : <Learning embedded only={learnPart} onJourney={() => { setPart("path"); setMode("career"); }} />}
+        : <Learning key={learnPart} embedded only={learnPart} onJourney={() => { setPart("path"); setMode("career"); }} />}
     </div>}
 
-    {mode === "career" && state && <div className="lf-journey" ref={career}>
+    {mode === "career" && state && <div className="lf-journey">
       <nav className="lf-journey-nav" aria-label="Career">
-        {([["goal", "Goal & skills"], ["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"], ["kit", "Career kit"]] as const).map(([id, label]) => <button key={id} type="button" className={part === id ? "is-on" : ""}
-          onClick={() => { setPart(id); career.current?.querySelector(`#learn-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{label}</button>)}
+        {CAREER.map(([id, label]) => <button key={id} type="button" className={careerPart === id ? "is-on" : ""} aria-current={careerPart === id ? "page" : undefined} onClick={() => setPart(id)}>{label}</button>)}
       </nav>
-      <section id="learn-goal" className="lf-part"><Learning embedded only="profile" /></section>
-      <section id="learn-path" className="lf-part"><PathView state={state as never} onChange={() => void load()} startCourse={(topic) => void api("/api/learning/courses", { body: { topic } }).then(() => { setLearnPart("learn"); setMode("learn"); })} /></section>
-      <section id="learn-certs" className="lf-part"><CertsView state={state as never} tracks={insights?.tracks ?? []} onChange={() => void load()} review={() => start({ kind: "review" })}
-        quiz={() => start({ kind: "practice", mode: "quick", n: 10 })} /></section>
-      <section id="learn-jobs" className="lf-part"><JobsView state={state as never} onChange={() => void load()} /></section>
-      <section id="learn-kit" className="lf-part"><Learning embedded only="career" /></section>
+      {careerPart === "goal" && <Learning embedded only="profile" />}
+      {careerPart === "path" && <PathView state={state as never} onChange={() => void load()} startCourse={(topic) => void api("/api/learning/courses", { body: { topic } }).then(() => { setLearnPart("learn"); setMode("learn"); })} />}
+      {careerPart === "certs" && <CertsView state={state as never} tracks={insights?.tracks ?? []} onChange={() => void load()} review={() => start({ kind: "review" })}
+        quiz={() => start({ kind: "practice", mode: "quick", n: 10 })}
+        exam={active && view?.predicted && bp ? { certId: active.id, predicted: view.predicted.score, passing: bp.passing, answered: view.mastery?.answered ?? 0, open: () => setMode("plan") } : undefined} />}
+      {careerPart === "jobs" && <JobsView state={state as never} onChange={() => void load()} />}
+      {careerPart === "kit" && <Learning embedded only="career" />}
     </div>}
 
     {mode === "explain" && <div className="lf-explain">
