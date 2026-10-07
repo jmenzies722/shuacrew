@@ -66,7 +66,7 @@ struct SecondScreen: View {
         .overlay(alignment: .topTrailing) { EyesButton(accent: accent) { seeing = true }.padding(20) }
         .modifier(EyesReactions(listen: listen, waves: $waves, start: { Task { await listen.start() } },
                                 finish: { Task { let said = await listen.stop(); if !said.isEmpty { await link.ask(said) } } }))
-        .sheet(isPresented: $seeing) { EyesSheet() }
+        .fullScreenCover(isPresented: $seeing) { ShuaCam(listen: listen) }
         .preferredColorScheme(.dark)
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true; tilt.start() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }

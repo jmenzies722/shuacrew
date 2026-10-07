@@ -24,7 +24,7 @@ struct SparkHomeView: View {
         }
         .sheet(isPresented: $pairing) { PairView() }
         .sheet(isPresented: $activity) { ActivitySheet() }
-        .sheet(isPresented: $seeing) { EyesSheet() }
+        .fullScreenCover(isPresented: $seeing) { ShuaCam(listen: listen) }
         .modifier(EyesReactions(listen: listen, waves: $waves, start: startListening, finish: finishListening))
         .sheet(isPresented: $typing) { AskSheet { text in Task { await link.ask(text) } } }
         .fullScreenCover(isPresented: $docked) { DockView(tilt: tilt) }

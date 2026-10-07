@@ -106,3 +106,69 @@ private func frame(_ w: Int = 320, _ h: Int = 240) -> CVPixelBuffer {
     let seconds = try await AVURLAsset(url: out).load(.duration).seconds
     #expect(seconds > 0.8 && seconds < 1.2) // starts at zero, not at the camera clock's 100 s
 }
+
+/// A standing body, head to ankles, centred unless moved; arms down, one up, or both up.
+private func standing(x: CGFloat = 0, feetAt: CGFloat = 0.86, head: CGFloat = 0.2, left: CGPoint? = nil, right: CGPoint? = nil) -> BodyShape {
+    func p(_ px: CGFloat, _ py: CGFloat) -> CGPoint { CGPoint(x: px + x, y: py) }
+    return BodyShape(joints: [.nose: p(0.5, head), .neck: p(0.5, head + 0.07), .leftShoulder: p(0.42, head + 0.08), .rightShoulder: p(0.58, head + 0.08),
+                              .leftElbow: p(0.4, 0.4), .rightElbow: p(0.6, 0.4), .leftWrist: left.map { p($0.x, $0.y) } ?? p(0.4, 0.5), .rightWrist: right.map { p($0.x, $0.y) } ?? p(0.6, 0.5),
+                              .root: p(0.5, 0.52), .leftHip: p(0.45, 0.52), .rightHip: p(0.55, 0.52), .leftKnee: p(0.45, 0.7), .rightKnee: p(0.55, 0.7),
+                              .leftAnkle: p(0.45, feetAt), .rightAnkle: p(0.55, feetAt)])
+}
+
+@Test func coachesTheFramingWithoutLeftOrRight() {
+    #expect(standing().framing == .whole)
+    var noFeet = standing(); noFeet.joints[.leftAnkle] = nil; noFeet.joints[.rightAnkle] = nil
+    #expect(noFeet.framing == .stepBack)
+    #expect(standing(feetAt: 0.99).framing == .stepBack)
+    #expect(standing(head: 0.03).framing == .headroom)
+    #expect(standing(x: -0.3).framing == .offCenter)
+    #expect(BodyShape(joints: [:]).framing == .lost)
+}
+
+@Test func bothHandsUpStartsOrStopsOnceAndAWaveCarriesAcrossTheRoom() {
+    var m = Moments()
+    let up = standing(left: CGPoint(x: 0.4, y: 0.1), right: CGPoint(x: 0.6, y: 0.1))
+    var seen: [Moments.Kind] = [], t = 0.0
+    while t <= 2 { seen += m.feed(time: t, face: true, hand: nil, body: up); t += 1.0 / 15 }
+    #expect(seen.filter { $0 == .handsUp }.count == 1) // held 2 s: once, not again and again
+
+    var far = Moments(); seen = []; t = 0
+    while t <= 1.5 { seen += far.feed(time: t, face: false, hand: nil, body: standing(right: CGPoint(x: 0.66 + 0.06 * sin(2 * .pi * 1.5 * t), y: 0.15))); t += 1.0 / 15 }
+    #expect(seen.contains(.wave))
+    #expect(!seen.contains(.handsUp))
+}
+
+/// Silence, `frames` long at 44.1 kHz mono, at `t`.
+private func silence(at t: CMTime, frames: Int = 1470) -> CMSampleBuffer {
+    var asbd = AudioStreamBasicDescription(mSampleRate: 44100, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+                                           mBytesPerPacket: 2, mFramesPerPacket: 1, mBytesPerFrame: 2, mChannelsPerFrame: 1, mBitsPerChannel: 16, mReserved: 0)
+    var format: CMAudioFormatDescription?
+    CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format)
+    var block: CMBlockBuffer?
+    CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: frames * 2, blockAllocator: nil, customBlockSource: nil, offsetToData: 0,
+                                       dataLength: frames * 2, flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block)
+    CMBlockBufferFillDataBytes(with: 0, blockBuffer: block!, offsetIntoDestination: 0, dataLength: frames * 2)
+    var sample: CMSampleBuffer?
+    CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: block!, formatDescription: format!, sampleCount: frames,
+                                                         presentationTimeStamp: t, packetDescriptions: nil, sampleBufferOut: &sample)
+    return sample!
+}
+
+@Test func aVideoKeepsYourVoiceInSync() async throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("voice-test.mov")
+    let r = EyesRecorder(url: url, kind: .video, audio: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVNumberOfChannelsKey: 1, AVSampleRateKey: 44100, AVEncoderBitRateKey: 64000])
+    let pixels = frame()
+    r.appendAudio(silence(at: CMTime(seconds: 99.9, preferredTimescale: 44100))) // before the first frame: dropped, not a gap
+    for i in 0..<31 {
+        let t = CMTime(seconds: 100 + Double(i) / 30, preferredTimescale: 44100)
+        r.append(pixels, at: t); r.appendAudio(silence(at: t))
+        try await Task.sleep(for: .milliseconds(4))
+    }
+    let (out, _) = try #require(await r.finish())
+    let asset = AVURLAsset(url: out)
+    #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
+    #expect(try await asset.loadTracks(withMediaType: .video).count == 1)
+    let seconds = try await asset.load(.duration).seconds
+    #expect(seconds > 0.8 && seconds < 1.3)
+}

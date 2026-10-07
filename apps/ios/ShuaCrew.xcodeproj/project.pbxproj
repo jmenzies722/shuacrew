@@ -27,6 +27,7 @@
 		7741B8409F1851E8A0868A7B /* ShuaEyesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1F3D953A1A0C981624AFE6 /* ShuaEyesTests.swift */; };
 		7D60BD1ADFEB6B6F423BAFA7 /* CrewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 518EF07C6987A5237AFF5235 /* CrewView.swift */; };
 		890106C728C1A23CD17F2B75 /* ApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F7AB4CD5BF153156F65EE /* ApprovalView.swift */; };
+		8DA3C857979316FD824E2E25 /* EyesFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76985A7B67B903A4829F6EA3 /* EyesFeed.swift */; };
 		96875225F37363634DF5C763 /* ShuaStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E7CADB086BDD41BD875D3F /* ShuaStage.swift */; };
 		9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6AABDE9FDD9225E5DAE0735 /* MobileAppDelegate.swift */; };
 		A32F1A1883340C01E5501D19 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C970161BF6CE29920ED105A /* PairView.swift */; };
@@ -104,6 +105,7 @@
 		6A1F3D953A1A0C981624AFE6 /* ShuaEyesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuaEyesTests.swift; sourceTree = "<group>"; };
 		6C970161BF6CE29920ED105A /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
 		7640A326CBD43710645D66C1 /* DockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockView.swift; sourceTree = "<group>"; };
+		76985A7B67B903A4829F6EA3 /* EyesFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyesFeed.swift; sourceTree = "<group>"; };
 		81DD07F211CA959B50DADB47 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8A129E3B51E786BAFE292775 /* EyesViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyesViews.swift; sourceTree = "<group>"; };
 		93ED7261823C9AA050E21A63 /* ShuaCrew.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ShuaCrew.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -206,6 +208,7 @@
 			children = (
 				1AEC99DEA66413AD96EB0B8F /* DefaultShua.json */,
 				7640A326CBD43710645D66C1 /* DockView.swift */,
+				76985A7B67B903A4829F6EA3 /* EyesFeed.swift */,
 				8A129E3B51E786BAFE292775 /* EyesViews.swift */,
 				6C970161BF6CE29920ED105A /* PairView.swift */,
 				C52F7BA64C4F514ACA8FDAE9 /* ShuaEverywhere.swift */,
@@ -465,6 +468,7 @@
 				890106C728C1A23CD17F2B75 /* ApprovalView.swift in Sources */,
 				7D60BD1ADFEB6B6F423BAFA7 /* CrewView.swift in Sources */,
 				607950A1FA7B6DB08C5DDDD9 /* DockView.swift in Sources */,
+				8DA3C857979316FD824E2E25 /* EyesFeed.swift in Sources */,
 				63B3D615391C60024224A8B6 /* EyesViews.swift in Sources */,
 				9E2C53F25EAA447E990B0A9B /* MobileAppDelegate.swift in Sources */,
 				F8CA7A5BDFA537F02CE550F5 /* MobileModel.swift in Sources */,
@@ -636,9 +640,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShuaCrew;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scan your Mac's pairing code, and when you turn on Shua's eyes, see you to follow your face and hands, react to signs and record timelapses. It's all read on this iPhone.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan your Mac's pairing code, and when you turn on Shua's camera, see you to follow your face, hands and body, react to signs and film you. It's all read on this iPhone.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before allowing a specific crew action on your Mac.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hold the mic to talk to Shua.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hold the mic to talk to Shua, and record your voice in videos Shua films of you.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Shua saves your timelapses, recordings and snapshots to Photos.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Turns what you say into words for Shua, on this iPhone when it can.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -698,9 +702,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShuaCrew;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scan your Mac's pairing code, and when you turn on Shua's eyes, see you to follow your face and hands, react to signs and record timelapses. It's all read on this iPhone.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan your Mac's pairing code, and when you turn on Shua's camera, see you to follow your face, hands and body, react to signs and film you. It's all read on this iPhone.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before allowing a specific crew action on your Mac.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hold the mic to talk to Shua.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hold the mic to talk to Shua, and record your voice in videos Shua films of you.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Shua saves your timelapses, recordings and snapshots to Photos.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Turns what you say into words for Shua, on this iPhone when it can.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
