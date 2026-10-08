@@ -64,6 +64,35 @@ public enum NotchIsland {
     public static func openTarget(housing: CGRect, flare: CGFloat, drop: CGFloat) -> CGRect {
         CGRect(x: housing.minX - flare, y: housing.minY - drop, width: housing.width + 2 * flare, height: housing.height + drop).insetBy(dx: -14, dy: -14)
     }
+
+    /// The hover springs (perceptual duration, bounce). The page clips the island's contents with the same two curves
+    /// (apps/web/src/lib/spring-easing.ts, ISLAND_OPEN / ISLAND_TUCK), so shape and content move as one.
+    public static let openSpring = (duration: 0.42, bounce: 0.16)
+    public static let tuckSpring = (duration: 0.34, bounce: 0.0)
+    /// The page's concave "shoulders" where the island meets the top of the screen (buddy.css: 10 px radial corners).
+    public static let shoulder: CGFloat = 10
+
+    /// The island's outline in a canvas whose top edge is the top of the screen (AppKit coordinates, y up): concave
+    /// shoulders, straight sides, rounded bottom corners. Always the same sequence of elements whatever the size, so
+    /// Core Animation can spring one outline into another point for point.
+    public static func outline(width w: CGFloat, height h: CGFloat, radius: CGFloat, in canvas: CGSize) -> CGPath {
+        let s = shoulder, top = canvas.height, cx = canvas.width / 2
+        let width = max(w, 2), height = max(h, s + 2)
+        let r = max(0, min(radius, width / 2, height - s))
+        let left = cx - width / 2, right = cx + width / 2, bottom = top - height
+        let k: CGFloat = 0.5523 // cubic Bézier circle constant
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: left - s, y: top))
+        p.addCurve(to: CGPoint(x: left, y: top - s), control1: CGPoint(x: left - s + s * k, y: top), control2: CGPoint(x: left, y: top - s + s * k))
+        p.addLine(to: CGPoint(x: left, y: bottom + r))
+        p.addCurve(to: CGPoint(x: left + r, y: bottom), control1: CGPoint(x: left, y: bottom + r - r * k), control2: CGPoint(x: left + r - r * k, y: bottom))
+        p.addLine(to: CGPoint(x: right - r, y: bottom))
+        p.addCurve(to: CGPoint(x: right, y: bottom + r), control1: CGPoint(x: right - r + r * k, y: bottom), control2: CGPoint(x: right, y: bottom + r - r * k))
+        p.addLine(to: CGPoint(x: right, y: top - s))
+        p.addCurve(to: CGPoint(x: right + s, y: top), control1: CGPoint(x: right, y: top - s + s * k), control2: CGPoint(x: right + s - s * k, y: top))
+        p.closeSubpath()
+        return p
+    }
 }
 
 /// Where a highlight goes. Spark's pages describe a thing by its CENTRE and size, as fractions of the screen from the

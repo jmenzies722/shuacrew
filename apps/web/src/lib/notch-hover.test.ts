@@ -1,13 +1,14 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { scheduleNotchClose } from "./notch-hover";
+import { NOTCH_LEAVE_GRACE_MS, scheduleNotchClose } from "./notch-hover";
 
 afterEach(() => vi.useRealTimers());
 
 it("tucks away after the pointer leaves, with a small grace period", () => {
+  expect(NOTCH_LEAVE_GRACE_MS).toBeLessThanOrEqual(300); // leaving must feel immediate
   vi.useFakeTimers();
   const close = vi.fn();
   scheduleNotchClose(close, () => false);
-  vi.advanceTimersByTime(449);
+  vi.advanceTimersByTime(NOTCH_LEAVE_GRACE_MS - 1);
   expect(close).not.toHaveBeenCalled();
   vi.advanceTimersByTime(1);
   expect(close).toHaveBeenCalledOnce();
