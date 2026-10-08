@@ -1,0 +1,137 @@
+/*
+ * Learn, redesigned: one centred column of comfortable width, a real tab bar for the four places, and calm surfaces —
+ * one card per idea, hairline rows inside it (never boxes in boxes), sentence-case headings instead of shouting labels.
+ * Wide windows get a dashboard: the work on the left, where you stand in a rail on the right.
+ */
+.lv .pane-body-wide { max-width: 1180px; margin-inline: auto; padding-top: 8px; }
+.lv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* The tab bar: Plan · Practice · Learn · Career, with where you stand beside it */
+.lv-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 18px 0 20px; }
+.lv-tabs { display: inline-flex; gap: 2px; padding: 4px; border-radius: 14px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.lv-tabs button { height: 38px; padding: 0 18px; border: 0; border-radius: 11px; background: none; color: var(--text-2); font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; transition: color .15s, background .15s; }
+.lv-tabs button:hover { color: var(--text); }
+.lv-tabs button.is-on { color: var(--text); background: var(--raised, #1c1c20); box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent) inset, 0 4px 14px rgba(0, 0, 0, .25); }
+.lv-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lv-pill { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 99px; font-size: 13px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--amber) 12%, transparent); font-variant-numeric: tabular-nums; }
+.lv-pill.is-ready { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.lv-pill.is-quiet { color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+
+/* Surfaces */
+.lv-card { padding: 22px 24px; border-radius: 20px; border: 1px solid var(--line); background: var(--raised, rgba(255, 255, 255, .025)); }
+.lv-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.lv-h h3, .lv-card > h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.005em; color: var(--text); }
+.lv-h p, .lv-card > p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--text-3); }
+.lv-chip { flex: none; padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; color: var(--text-2); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.lv-wait { display: flex; gap: 14px; align-items: flex-start; } .lv-wait svg { color: var(--amber); margin-top: 3px; } .lv-wait h3 { margin: 0; font-size: 16px; } .lv-wait p { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
+
+/* The dashboard */
+.lv-plan, .lv-practice { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.lv-main, .lv-rail { display: grid; gap: 20px; min-width: 0; }
+@media (max-width: 1080px) { .lv-plan, .lv-practice { grid-template-columns: minmax(0, 1fr); } }
+
+/* Today's session: the one thing to do, up front */
+.lv-today { padding: 26px 28px; border-color: color-mix(in srgb, var(--amber) 26%, var(--line));
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--amber) 9%, transparent), transparent 55%), var(--raised, rgba(255, 255, 255, .025)); }
+.lv-today > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.lv-today h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.015em; color: var(--text); }
+.lv-today header p { margin: 4px 0 0; font-size: 14px; color: var(--text-2); }
+.lv-start { height: 42px !important; padding: 0 20px !important; font-size: 14.5px !important; }
+.lv-steps, .lv-modes ul { list-style: none; margin: 0; padding: 0; }
+.lv-steps li + li, .lv-modes li + li { border-top: 1px solid var(--line); }
+.lv-steps button, .lv-modes button { width: 100%; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 18px; align-items: center; gap: 14px; padding: 14px 8px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s; }
+.lv-steps button:hover, .lv-modes button:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.lv-step-icon, .lv-mode-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.lv-step-body, .lv-mode-body { display: grid; gap: 3px; min-width: 0; }
+.lv-step-body b, .lv-mode-body b { font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--text); }
+.lv-step-body small, .lv-mode-body small { font-size: 13.5px; line-height: 1.45; color: var(--text-3); }
+.lv-step-time, .lv-mode-meta { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lv-step-go { color: var(--text-3); transition: transform .15s, color .15s; }
+.lv-steps button:hover .lv-step-go, .lv-modes button:hover .lv-step-go { color: var(--text); transform: translateX(2px); }
+.lv-mode-body em { margin-left: 8px; padding: 2px 8px; border-radius: 99px; font-style: normal; font-size: 11px; font-weight: 650; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); vertical-align: 2px; }
+
+/* Domains: one row each, a bar with the 70% mark */
+.lv-legend { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
+.lv-legend i { width: 2px; height: 11px; border-radius: 1px; background: var(--text-2); }
+.lv-domains { list-style: none; margin: 4px 0 0; padding: 0; }
+.lv-domains > li + li { border-top: 1px solid var(--line); }
+.lv-domain { width: 100%; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(110px, 1fr) 48px 16px; align-items: center; gap: 16px; padding: 14px 8px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s; }
+.lv-domain:hover, .lv-domains > li.is-open .lv-domain { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.lv-dname { display: grid; gap: 3px; min-width: 0; }
+.lv-dname b { font-size: 14.5px; font-weight: 600; color: var(--text); }
+.lv-dname small { font-size: 12.5px; color: var(--text-3); }
+.lv-bar { position: relative; height: 6px; border-radius: 6px; background: color-mix(in srgb, var(--text) 9%, transparent); }
+.lv-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--amber); transition: width .5s cubic-bezier(.22, 1, .36, 1); }
+.lv-domains li.is-solid .lv-bar i, .lv-domains li.is-mastered .lv-bar i { background: var(--ok); }
+.lv-bar b { position: absolute; left: 70%; top: -4px; width: 2px; height: 14px; border-radius: 1px; background: var(--text-2); }
+.lv-pct { text-align: right; font-size: 15px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.lv-caret { color: var(--text-3); transition: transform .2s; }
+.lv-domains li.is-open .lv-caret { transform: rotate(180deg); }
+.lv-tasks { padding: 4px 8px 14px 8px; }
+.lv-task { display: grid; grid-template-columns: 34px minmax(0, 1fr) 44px auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px dashed color-mix(in srgb, var(--line) 80%, transparent); }
+.lv-tid { font-size: 12px; font-weight: 650; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lv-tname { display: grid; gap: 2px; min-width: 0; } .lv-tname b { font-size: 13.5px; font-weight: 600; color: var(--text); } .lv-tname small { font-size: 12px; color: var(--text-3); }
+.lv-tpct { text-align: right; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.lv-task-actions { display: flex; align-items: center; gap: 12px; padding-top: 12px; font-size: 12.5px; color: var(--text-3); }
+
+/* The rail: where you stand */
+.lv-score { display: grid; justify-items: center; text-align: center; gap: 6px; }
+.lv-score h3 { margin-top: 4px !important; font-size: 17px !important; }
+.lv-score > p { margin: 0 !important; max-width: 34ch; color: var(--text-2) !important; }
+.lv-gates { list-style: none; width: 100%; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); display: grid; gap: 9px; text-align: left; }
+.lv-gates li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13px; line-height: 1.4; color: var(--text-2); }
+.lv-gates i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line); color: #0b0b0c; }
+.lv-gates li.is-met { color: var(--text); } .lv-gates li.is-met i { background: var(--ok); box-shadow: none; }
+.lv-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 6px 0 4px; }
+.lv-stats div { padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.lv-stats b { display: block; font-size: 19px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.lv-stats span { font-size: 12px; color: var(--text-3); }
+.lv-progress figure { margin: 14px 0 0; }
+.lv-progress figcaption { margin-bottom: 6px; font-size: 12px; color: var(--text-3); }
+.lv-trend svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lv-pass { stroke: var(--ok); stroke-width: 1; stroke-dasharray: 3 4; opacity: .7; }
+.lv-passlabel { fill: var(--ok); font-size: 10px; font-weight: 600; }
+.lv-line { fill: none; stroke: var(--amber); stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+.lv-pt { fill: var(--panel); stroke: var(--amber); stroke-width: 1.75; } .lv-now { fill: var(--amber); }
+.lv-empty { margin: 10px 0; font-size: 13px; color: var(--text-3); }
+.lv-heat { display: grid; grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; }
+.lv-heat i { border-radius: 3px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.lv-heat i[data-l="1"] { background: color-mix(in srgb, var(--amber) 30%, transparent); }
+.lv-heat i[data-l="2"] { background: color-mix(in srgb, var(--amber) 52%, transparent); }
+.lv-heat i[data-l="3"] { background: color-mix(in srgb, var(--amber) 76%, transparent); }
+.lv-heat i[data-l="4"] { background: var(--amber); }
+.lv-tip { margin: 12px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.lv-facts dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 13.5px; }
+.lv-facts dt { color: var(--text-3); } .lv-facts dd { margin: 0; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.lv-source { margin: 14px 0 0 !important; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px !important; line-height: 1.55; color: var(--text-3) !important; }
+.lv-source a, .lv-source button { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+/* Practice rail */
+.lv-drill, .lv-mocks { display: grid; gap: 10px; }
+.lv-drill p, .lv-mocks p { margin: 0 !important; }
+.lv-drill select { height: 40px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 14px; }
+.lv-drill .xp-go { justify-content: center; }
+.lv-mocks ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.lv-mocks li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline; font-size: 13px; color: var(--text-2); }
+.lv-mocks b { font-size: 15px; font-variant-numeric: tabular-nums; } .lv-mocks b.is-pass { color: var(--ok); } .lv-mocks b.is-fail { color: var(--bad); }
+
+/* A practice set or mock: a focused reading column */
+.lv .xs { max-width: 840px; margin-inline: auto; }
+.lv .xm { max-width: 1080px; margin-inline: auto; }
+
+/* Learn's own pages: quieter sub-navigation */
+.lv .lf-journey-nav { gap: 4px; margin-bottom: 14px; }
+.lv .lf-journey-nav button { height: 34px; padding: 0 14px; border: 0; border-radius: 10px; background: none; color: var(--text-2); font-size: 14px; font-weight: 600; }
+.lv .lf-journey-nav button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+.lv .lf-journey-nav button.is-on { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); border: 0; }
+
+/* Ask Shua sits at the end of Career, in the page — never floating over it */
+.lv-ask { margin-top: 24px; }
+.lv-ask .lc-ask { position: static; }
+
+/* Fit and calm: nothing pushes a column wider than it is; labels in sentence case, not shouting */
+.lv-rail > *, .lv-main > * { min-width: 0; }
+.lv-drill select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.lv .xq-options { max-width: none; }
+.lv .xp-kicker { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--text-3); }
+.lv .xt > .xp-card { padding: 20px 24px; }

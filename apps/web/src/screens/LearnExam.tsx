@@ -71,11 +71,14 @@ function Gauge({ score, passing, scale, confident, empty }: { score: number; pas
   </div>;
 }
 
-/** Plan: will you pass, and exactly what to do today. */
+/**
+ * Plan: one screen, two columns. The work — today's session, then the exam domain by domain — on the left; where you
+ * stand — your score against the pass mark, the three gates, your progress, the exam's facts — in a rail on the right.
+ */
 export function ExamPlan({ view, onStart, onResearch }: { view: ExamView; onStart: (s: Start) => void; onResearch: () => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const bp = view.blueprint;
-  if (!bp) return <section className="xp-card xp-wait">
+  if (!bp) return <section className="lv-card lv-wait">
     <Sparkles size={18} /><div><h3>{view.failed ? "Shua couldn't read the exam guide" : `Shua is reading the official ${view.cert.code || view.cert.name} exam guide`}</h3>
       <p>{view.failed ? "It'll try again shortly, or ask now." : "Domains, weights, the format and the pass mark, from the provider itself. This takes a minute or two; the plan builds itself when it's done."}</p>
       {view.failed && <button type="button" className="xp-go" onClick={onResearch}>Try again</button>}</div>
@@ -83,117 +86,104 @@ export function ExamPlan({ view, onStart, onResearch }: { view: ExamView; onStar
   const m = view.mastery!, v = view.verdict!, plan = view.plan!, p = view.predicted!;
   const exam = view.cert.examDate ? new Date(view.cert.examDate).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }) : null;
   const total = plan.today.reduce((s, b) => s + b.minutes, 0);
-  return <div className="xp">
-    <section className={`xp-hero is-${v.level}`}>
-      <div className="xp-hero-text">
-        <span className="xp-kicker">{bp.code} · {bp.name}</span>
-        <h2>{v.title}</h2>
-        <p>{v.why}</p>
-        <div className="xp-facts">
-          {exam && <span><Clock size={13} /> Exam {exam}{plan.daysLeft !== null && plan.daysLeft >= 0 ? ` · ${plan.daysLeft} day${plan.daysLeft === 1 ? "" : "s"}` : ""}</span>}
-          <span><ListChecks size={13} /> {bp.questions} questions · {bp.minutes} min · pass {bp.passing}</span>
-          <span><Layers size={13} /> {m.answered} answered</span>
-        </div>
-      </div>
-      <Gauge score={p.score} passing={bp.passing} scale={bp.scale} confident={p.confident} empty={!m.answered} />
-    </section>
-
-    <section className="xp-card">
-      <header className="xp-head"><div><span className="xp-kicker">Today · {plan.phaseTitle}</span><h3>{total} minutes, in this order</h3></div>
-        {plan.today[0] && <button type="button" className="xp-go" onClick={() => onStart(startOf(plan.today[0]!))}><Play size={14} /> Start</button>}</header>
-      <ol className="xp-blocks">{plan.today.map((b, i) => <li key={i}>
-        <span className={`xp-block-icon is-${b.kind}`}>{b.kind === "review" ? <RotateCcw size={15} /> : b.kind === "learn" ? <BookOpen size={15} /> : b.kind === "mock" ? <Timer size={15} /> : <Target size={15} />}</span>
-        <div><b>{b.title}</b><span>{b.detail}</span></div>
-        <em>{b.minutes} min</em>
-        <button type="button" className="xp-quiet" onClick={() => onStart(startOf(b))} aria-label={`Start: ${b.title}`}><ArrowRight size={15} /></button>
-      </li>)}</ol>
-    </section>
-
-    {view.progress && <ProgressCard progress={view.progress} bp={bp} />}
-
-    <section className="xp-card">
-      <header className="xp-head"><div><span className="xp-kicker">The exam, domain by domain</span><h3>Weight, and where you stand</h3></div>
-        <span className="xp-legend"><i /> 70% target</span></header>
-      <ul className="xp-domains">{bp.domains.map((d) => {
-        const dm = m.domains[d.id], acc = dm?.answered ? dm.accuracy : 0, isOpen = open === d.id;
-        return <li key={d.id} className={`is-${dm?.status ?? "new"}${isOpen ? " is-open" : ""}`}>
-          <button type="button" className="xp-domain" onClick={() => setOpen(isOpen ? null : d.id)} aria-expanded={isOpen}>
-            <span className="xp-weight">{d.weight}%</span>
-            <span className="xp-dname">{d.name}<small>{dm?.answered ? `${dm.correct} of ${dm.answered} right` : "Not practised yet"}{view.bank?.writing[d.id] ? " · Shua is writing questions" : ""}</small></span>
-            <span className="xp-bar" aria-label={dm?.answered ? `${pct(acc)} accurate` : "Not started"}><i style={{ width: dm?.answered ? pct(acc) : 0 }} /><b /></span>
-            <span className="xp-status">{dm?.answered ? pct(acc) : "—"}<small>{STATUS[dm?.status ?? "new"]}</small></span>
-            <ChevronDown size={15} className="xp-caret" />
+  return <div className="lv-plan">
+    <div className="lv-main">
+      <section className="lv-card lv-today">
+        <header>
+          <div><h2>Today's session</h2><p>{total} minutes · {plan.phaseTitle}</p></div>
+          {plan.today[0] && <button type="button" className="xp-go lv-start" onClick={() => onStart(startOf(plan.today[0]!))}><Play size={15} /> Start</button>}
+        </header>
+        <ol className="lv-steps">{plan.today.map((b, i) => <li key={i}>
+          <button type="button" onClick={() => onStart(startOf(b))} aria-label={`Start: ${b.title}`}>
+            <span className={`lv-step-icon is-${b.kind}`}>{b.kind === "review" ? <RotateCcw size={15} /> : b.kind === "learn" ? <BookOpen size={15} /> : b.kind === "mock" ? <Timer size={15} /> : <Target size={15} />}</span>
+            <span className="lv-step-body"><b>{b.title}</b><small>{b.detail}</small></span>
+            <span className="lv-step-time">{b.minutes} min</span>
+            <ArrowRight size={15} className="lv-step-go" />
           </button>
-          {isOpen && <div className="xp-tasks">
-            {d.tasks.map((t) => { const tm = m.tasks[t.id]; return <div key={t.id} className="xp-task">
-              <span className="xp-tid">{t.id}</span>
-              <div><b>{t.title}</b>{t.skills.length > 0 && <span className="xp-skills">{t.skills.join(" · ")}</span>}</div>
-              <span className="xp-tstat">{tm?.answered ? pct(tm.accuracy) : "—"}</span>
-              <button type="button" className="xp-quiet" onClick={() => onStart({ kind: "learn", domain: d.id, task: t.id })}><BookOpen size={13} /> Learn</button>
-            </div>; })}
-            <div className="xp-task-actions">
-              <button type="button" className="xp-go" onClick={() => onStart({ kind: "practice", mode: "drill", domain: d.id })}><Target size={14} /> Drill {d.name}</button>
-              <span>{view.bank?.perDomain[d.id] ?? 0} questions in the bank</span>
-            </div>
-          </div>}
-        </li>;
-      })}</ul>
-    </section>
-
-    <div className="xp-split">
-      <section className="xp-card">
-        <header className="xp-head"><div><span className="xp-kicker">Pass on the first try</span><h3>Ready when all three are true</h3></div></header>
-        <ul className="xp-gates">{v.gates.map((g) => <li key={g.label} className={g.met ? "is-met" : ""}><i>{g.met ? <Check size={12} /> : null}</i>{g.label}</li>)}</ul>
+        </li>)}</ol>
       </section>
-      <section className="xp-card">
-        <header className="xp-head"><div><span className="xp-kicker">The road to exam day</span><h3>{plan.milestones.filter((x) => x.done).length} of {plan.milestones.length} done</h3></div></header>
-        <ol className="xp-road">{plan.milestones.map((x) => <li key={x.title} className={x.done ? "is-done" : ""}><i />{x.title}{x.when && <small>{x.when}</small>}</li>)}</ol>
+
+      <section className="lv-card">
+        <header className="lv-h"><div><h3>The exam, domain by domain</h3><p>Weighted as the real exam weighs them. Open one for its tasks.</p></div><span className="lv-legend"><i /> 70% target</span></header>
+        <ul className="lv-domains">{bp.domains.map((d) => {
+          const dm = m.domains[d.id], acc = dm?.answered ? dm.accuracy : 0, isOpen = open === d.id;
+          return <li key={d.id} className={`is-${dm?.status ?? "new"}${isOpen ? " is-open" : ""}`}>
+            <button type="button" className="lv-domain" onClick={() => setOpen(isOpen ? null : d.id)} aria-expanded={isOpen}>
+              <span className="lv-dname"><b>{d.name}</b><small>{d.weight}% of the exam · {dm?.answered ? `${dm.correct} of ${dm.answered} right` : "not practised yet"}</small></span>
+              <span className="lv-bar" aria-label={dm?.answered ? `${pct(acc)} accurate` : "Not started"}><i style={{ width: dm?.answered ? pct(acc) : 0 }} /><b /></span>
+              <span className="lv-pct">{dm?.answered ? pct(acc) : "—"}</span>
+              <ChevronDown size={15} className="lv-caret" />
+            </button>
+            {isOpen && <div className="lv-tasks">
+              {d.tasks.map((t) => { const tm = m.tasks[t.id]; return <div key={t.id} className="lv-task">
+                <span className="lv-tid">{t.id}</span>
+                <span className="lv-tname"><b>{t.title}</b>{t.skills.length > 0 && <small>{t.skills.join(" · ")}</small>}</span>
+                <span className="lv-tpct">{tm?.answered ? pct(tm.accuracy) : "—"}</span>
+                <button type="button" className="xp-quiet is-wide" onClick={() => onStart({ kind: "learn", domain: d.id, task: t.id })}><BookOpen size={13} /> Learn</button>
+              </div>; })}
+              <div className="lv-task-actions">
+                <button type="button" className="xp-go" onClick={() => onStart({ kind: "practice", mode: "drill", domain: d.id })}><Target size={14} /> Drill {d.name}</button>
+                <span>{view.bank?.perDomain[d.id] ?? 0} questions in the bank{view.bank?.writing[d.id] ? " · Shua is writing more" : ""}</span>
+              </div>
+            </div>}
+          </li>;
+        })}</ul>
       </section>
     </div>
 
-    <p className="xp-source">
-      {bp.source === "builtin" ? `Blueprint from the official ${bp.provider} exam guide (built in)` : `Researched from the official guide${bp.at ? ` · ${new Date(bp.at).toLocaleDateString()}` : ""}`}
-      {bp.url && <> · <a href={bp.url} target="_blank" rel="noreferrer">exam page <ExternalLink size={11} /></a></>}
-      {view.researching ? " · Shua is checking the latest guide…" : <> · <button type="button" onClick={onResearch}>Check for a newer guide</button></>}
-      {view.bank && ` · ${view.bank.total} practice questions`}
-    </p>
+    <aside className="lv-rail" aria-label="Where you stand">
+      <section className={`lv-card lv-score is-${v.level}`}>
+        <Gauge score={p.score} passing={bp.passing} scale={bp.scale} confident={p.confident} empty={!m.answered} />
+        <h3>{v.title}</h3>
+        <p>{v.why}</p>
+        <ul className="lv-gates" aria-label="Ready to sit it when all three are true">{v.gates.map((g) => <li key={g.label} className={g.met ? "is-met" : ""}><i>{g.met ? <Check size={11} /> : null}</i>{g.label}</li>)}</ul>
+      </section>
+      {view.progress && <ProgressRail progress={view.progress} bp={bp} />}
+      <section className="lv-card lv-facts">
+        <dl>
+          {exam && <><dt>Exam</dt><dd>{exam}{plan.daysLeft !== null && plan.daysLeft >= 0 ? ` · ${plan.daysLeft} days` : ""}</dd></>}
+          <dt>Format</dt><dd>{bp.questions} questions · {bp.minutes} min</dd>
+          <dt>Pass mark</dt><dd>{bp.passing} of {bp.scale[1]}</dd>
+          <dt>Practice bank</dt><dd>{view.bank?.total ?? 0} questions</dd>
+          <dt>Your answers</dt><dd>{m.answered}</dd>
+        </dl>
+        <p className="lv-source">{bp.source === "builtin" ? `From the official ${bp.provider} exam guide.` : `Researched from the official guide${bp.at ? `, ${new Date(bp.at).toLocaleDateString()}` : ""}.`}
+          {bp.url && <> <a href={bp.url} target="_blank" rel="noreferrer">Exam page <ExternalLink size={11} /></a></>}
+          {view.researching ? " Shua is checking for a newer guide…" : <> <button type="button" onClick={onResearch}>Check for a newer guide</button></>}</p>
+      </section>
+    </aside>
   </div>;
 }
 
-/** How you're actually doing: streak, this week, the predicted score over 8 weeks, every day you practised, and calibration. */
-function ProgressCard({ progress: p, bp }: { progress: Progress; bp: Blueprint }) {
+/** How you're actually doing, compact for the rail: streak, this week, the predicted score's trend, every day you practised, calibration. */
+function ProgressRail({ progress: p, bp }: { progress: Progress; bp: Blueprint }) {
   const scores = p.trend.map((t) => t.score).filter((x): x is number => x !== null);
-  const lo = Math.min(bp.passing - 150, ...scores.map((x) => x - 40)), hi = Math.max(bp.passing + 100, ...scores.map((x) => x + 40));
-  const W = 560, H = 128, x = (i: number) => 14 + (i * (W - 28)) / (p.trend.length - 1), y = (v: number) => 8 + (H - 22) * (1 - (v - lo) / (hi - lo));
+  const lo = Math.min(bp.passing - 150, ...scores.map((x) => x - 40)), hi = Math.max(bp.passing + 60, ...scores.map((x) => x + 40));
+  const W = 300, H = 96, x = (i: number) => 8 + (i * (W - 16)) / (p.trend.length - 1), y = (v: number) => 14 + (H - 24) * (1 - (v - lo) / (hi - lo));
   const pts = p.trend.map((t, i) => (t.score === null ? null : [x(i), y(t.score)] as const)).filter((v): v is readonly [number, number] => !!v);
   const level = (n: number) => (n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4);
-  const c = p.calibration, tip = c.sure !== null && c.sure < 0.8 ? `When you're sure, you're right ${pct(c.sure)} of the time — read every option before you commit.`
-    : c.unsure !== null && c.unsure >= 0.7 ? `Your guesses are right ${pct(c.unsure)} of the time — you know more than you think.` : c.sure !== null ? `When you're sure, you're right ${pct(c.sure)} of the time. Well calibrated.` : "Mark Sure or Guessing before you check: a guess that lands counts half, so your score stays honest.";
-  return <section className="xp-card xprog">
-    <header className="xp-head"><div><span className="xp-kicker">Your progress</span><h3>{p.streak ? `${p.streak}-day streak` : "Start a streak today"}</h3></div></header>
-    <div className="xpg-stats">
-      <div><b>{p.week.answered}</b><span>questions this week</span></div>
-      <div><b>{p.week.answered ? pct(p.week.correct / p.week.answered) : "—"}</b><span>right this week</span></div>
-      <div><b>{p.week.minutes}</b><span>minutes practising</span></div>
-      <div><b>{c.sure !== null ? pct(c.sure) : "—"}</b><span>right when you're sure</span></div>
+  const c = p.calibration, tip = c.sure !== null && c.sure < 0.8 ? `When you're sure, you're right ${pct(c.sure)} of the time. Read every option before you commit.`
+    : c.unsure !== null && c.unsure >= 0.7 ? `Your guesses are right ${pct(c.unsure)} of the time: you know more than you think.` : c.sure !== null ? `When you're sure, you're right ${pct(c.sure)} of the time. Well calibrated.` : "Mark Sure or Guessing before you check: a guess that lands counts half, so your score stays honest.";
+  return <section className="lv-card lv-progress">
+    <header className="lv-h"><h3>Progress</h3><span className="lv-chip">{p.streak ? `${p.streak}-day streak` : "No streak yet"}</span></header>
+    <div className="lv-stats">
+      <div><b>{p.week.answered}</b><span>this week</span></div>
+      <div><b>{p.week.answered ? pct(p.week.correct / p.week.answered) : "—"}</b><span>right</span></div>
+      <div><b>{p.week.minutes}</b><span>minutes</span></div>
     </div>
-    <div className="xpg-grid">
-      <figure className="xpg-trend">
-        <figcaption>Predicted score, last 8 weeks</figcaption>
-        {pts.length ? <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Predicted score ${scores.join(", ")}; pass ${bp.passing}`}>
-          <line x1="0" x2={W} y1={y(bp.passing)} y2={y(bp.passing)} className="xpg-pass" /><text x={W - 4} y={y(bp.passing) - 4} textAnchor="end" className="xpg-passlabel">pass {bp.passing}</text>
-          {pts.length > 1 && <polyline points={pts.map((v) => v.join(",")).join(" ")} className="xpg-line" />}
-          {pts.map(([px, py], i) => <circle key={i} cx={px} cy={py} r={i === pts.length - 1 ? 4.5 : 3} className={i === pts.length - 1 ? "xpg-now" : "xpg-pt"} />)}
-          <text x={pts.at(-1)![0]} y={pts.at(-1)![1] - 9} textAnchor="middle" className="xpg-nowlabel">{scores.at(-1)}</text>
-        </svg> : <p className="xpg-empty">Your first answers start the line.</p>}
-      </figure>
-      <figure className="xpg-days">
-        <figcaption>Every day you practised</figcaption>
-        <div className="xpg-heat">{p.days.map((d) => <i key={d.day} data-l={level(d.answered)} title={`${d.day}: ${d.answered ? `${d.answered} answered, ${d.correct} right` : "no practice"}`} />)}</div>
-        <div className="xpg-legend"><span>8 weeks ago</span><span>today</span></div>
-      </figure>
-    </div>
-    <p className="xpg-tip">{tip}</p>
+    <figure className="lv-trend">
+      <figcaption>Predicted score · 8 weeks</figcaption>
+      {pts.length ? <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Predicted score ${scores.join(", ")}; pass ${bp.passing}`}>
+        <line x1="0" x2={W} y1={y(bp.passing)} y2={y(bp.passing)} className="lv-pass" /><text x={W} y={y(bp.passing) - 4} textAnchor="end" className="lv-passlabel">pass {bp.passing}</text>
+        {pts.length > 1 && <polyline points={pts.map((v) => v.join(",")).join(" ")} className="lv-line" />}
+        {pts.map(([px, py], i) => <circle key={i} cx={px} cy={py} r={i === pts.length - 1 ? 4 : 2.5} className={i === pts.length - 1 ? "lv-now" : "lv-pt"} />)}
+      </svg> : <p className="lv-empty">Your first answers start the line.</p>}
+    </figure>
+    <figure className="lv-days">
+      <figcaption>Days you practised · 8 weeks</figcaption>
+      <div className="lv-heat">{p.days.map((d) => <i key={d.day} data-l={level(d.answered)} title={`${d.day}: ${d.answered ? `${d.answered} answered, ${d.correct} right` : "no practice"}`} />)}</div>
+    </figure>
+    <p className="lv-tip">{tip}</p>
   </section>;
 }
 
@@ -407,18 +397,30 @@ export function ExamPractice({ view, onStart }: { view: ExamView; onStart: (s: S
     { id: "mock", icon: Timer, title: "Mock exam", why: `${bp.questions} questions, ${bp.minutes} minutes, answers at the end — the real thing.`, meta: `${bp.minutes} min`, go: () => onStart({ kind: "mock" }) },
     { id: "cards", icon: Layers, title: "Flashcards", why: "Spaced review of what you've learned and every question you missed.", meta: "a few minutes", go: () => onStart({ kind: "review" }) },
   ];
-  return <div className="xr">
-    <div className="xr-grid">{modes.map((x) => <button key={x.id} type="button" className={`xr-mode${x.hot ? " is-hot" : ""}`} onClick={x.go}>
-      <x.icon size={18} /><b>{x.title}</b><span>{x.why}</span><em>{x.meta}</em></button>)}</div>
-    <section className="xp-card xr-drill">
-      <div><span className="xp-kicker">Domain drill</span><h3>Practise one part of the exam</h3></div>
-      <select value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Domain">{bp.domains.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.weight}%</option>)}</select>
-      <button type="button" className="xp-go" onClick={() => onStart({ kind: "practice", mode: "drill", domain, n: 10 })}><Target size={14} /> Drill it</button>
+  const done = (view.mocks ?? []).filter((x) => x.finished).slice(-5).reverse();
+  return <div className="lv-practice">
+    <section className="lv-card lv-modes" aria-label="Ways to practise">
+      <header className="lv-h"><div><h3>Practise</h3><p>Exam-style questions, explained answer by answer. Pick what you need now.</p></div></header>
+      <ul>{modes.map((x) => <li key={x.id}><button type="button" className={x.hot ? "is-hot" : ""} onClick={x.go}>
+        <span className="lv-mode-icon"><x.icon size={17} /></span>
+        <span className="lv-mode-body"><b>{x.title}{x.hot && <em>Recommended</em>}</b><small>{x.why}</small></span>
+        <span className="lv-mode-meta">{x.meta}</span>
+        <ArrowRight size={15} className="lv-step-go" />
+      </button></li>)}</ul>
     </section>
-    {(view.mocks?.length ?? 0) > 0 && <section className="xp-card">
-      <header className="xp-head"><div><span className="xp-kicker">Your mock exams</span></div></header>
-      <ul className="xr-mocks">{view.mocks!.filter((x) => x.finished).slice(-5).reverse().map((x) => <li key={x.id}><span>{new Date(x.finished!).toLocaleDateString()}</span><b className={(x.score ?? 0) >= bp.passing ? "is-pass" : "is-fail"}>{x.score}</b><span>{x.correct}/{x.total} right</span></li>)}</ul>
-    </section>}
+    <aside className="lv-rail">
+      <section className="lv-card lv-drill">
+        <h3>Drill one domain</h3>
+        <p>Ten questions from one part of the exam.</p>
+        <select value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Domain">{bp.domains.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.weight}%</option>)}</select>
+        <button type="button" className="xp-go" onClick={() => onStart({ kind: "practice", mode: "drill", domain, n: 10 })}><Target size={14} /> Drill it</button>
+      </section>
+      <section className="lv-card lv-mocks">
+        <h3>Mock exams</h3>
+        {done.length ? <ul>{done.map((x) => <li key={x.id}><span>{new Date(x.finished!).toLocaleDateString([], { month: "short", day: "numeric" })}</span><b className={(x.score ?? 0) >= bp.passing ? "is-pass" : "is-fail"}>{x.score}</b><small>{x.correct}/{x.total} right</small></li>)}</ul>
+          : <p>None yet. Two at 80% or better is one of your three gates to sit the exam.</p>}
+      </section>
+    </aside>
   </div>;
 }
 

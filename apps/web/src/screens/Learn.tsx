@@ -20,9 +20,9 @@ import { Teaching } from "./Teaching";
 import { CertsView, JobsView, LearnAsk, PathView, type Cert, type Job } from "./LearnCareer";
 import { ExamPlan, ExamPractice, ExamSession, ExamTasks, MockExam, lessonAsk, useExam, type PracticeMode, type Start } from "./LearnExam";
 import "./learn.css";
-import { ControlHeader, Seg } from "../components/ControlRoom";
 import "./learn-today.css";
 import "./learn-flow.css";
+import "./learn-v2.css";
 
 type Mode = "plan" | "practice" | "learn" | "career" | "explain";
 type Part = "goal" | "path" | "certs" | "jobs" | "kit";
@@ -89,16 +89,21 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
   };
 
   const goal = state?.profile.goal.trim() ?? "", role = goalRole(goal);
-  const path = [...(state?.roadmaps ?? [])].filter((r) => r.milestones.length).sort((a, b) => b.created - a.created)[0];
-  const next = path?.milestones.find((m) => !m.done);
-  const title = mode === "plan" ? (bp ? `Pass ${bp.code} on the first try` : active ? `Pass ${active.code || active.name}` : "Learn") : mode === "practice" ? "Practice" : mode === "learn" ? "Learn" : mode === "career" ? (role ? `Your journey to ${role}` : "Your journey") : "Learn anything";
-  const status = mode === "plan" && view?.plan && view.predicted ? [view.plan.daysLeft !== null && view.plan.daysLeft >= 0 ? `${view.plan.daysLeft} days to the exam` : null, view.mastery?.answered ? `predicted ${view.predicted.score}` : "no answers yet", insights?.due ? `${insights.due} cards due` : null].filter(Boolean).join(" · ")
-    : insights ? (insights.due ? `${insights.due} cards due` : "All caught up") : "Reading where you stand…";
+  const examLine = bp && view?.plan ? [view.plan.daysLeft !== null && view.plan.daysLeft >= 0 ? `${view.plan.daysLeft} days to ${bp.code}` : bp.code,
+    view.mastery?.answered && view.predicted ? `${view.predicted.score} → ${bp.passing}` : null].filter(Boolean).join(" · ") : null;
 
-  return <div className="pane-scroll learn lf lf-calm"><div className="pane-body pane-body-wide">
-    <ControlHeader title={title} status={status} tone={!insights ? "idle" : view?.verdict?.level === "ready" ? "ok" : "live"}>
-      <Seg label="Learn" value={mode === "explain" ? from : mode} onChange={(id) => { setMode(id); setSession(null); }} options={MODES} />
-    </ControlHeader>
+  return <div className="pane-scroll learn lf lv"><div className="pane-body pane-body-wide">
+    <header className="lv-top">
+      <h1 className="lv-sr">Learn</h1>
+      <nav className="lv-tabs" role="tablist" aria-label="Learn">{MODES.map(([id, label]) => {
+        const on = (mode === "explain" ? from : mode) === id;
+        return <button key={id} type="button" role="tab" aria-selected={on} className={on ? "is-on" : ""} onClick={() => { setMode(id); setSession(null); }}>{label}</button>;
+      })}</nav>
+      <div className="lv-status">
+        {examLine && <span className={`lv-pill${view?.verdict?.level === "ready" ? " is-ready" : ""}`} title="Days to the exam · predicted score → pass mark">{examLine}</span>}
+        {insights?.due ? <span className="lv-pill is-quiet">{insights.due} cards due</span> : null}
+      </div>
+    </header>
     {error && <p className="lx-error" role="alert">{error}</p>}
     {exam.error && <p className="lx-error" role="alert">{exam.error}</p>}
 
@@ -106,14 +111,7 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
       {certs.map((c) => <button key={c.id} type="button" role="tab" aria-selected={c.id === active?.id} className={c.id === active?.id ? "is-on" : ""} onClick={() => pickCert(c.id)}><Award size={13} /> {c.code || c.name}</button>)}
     </div>}
 
-    {mode === "plan" && <div className="lx-plan">
-      {!active ? <AddCert onAdded={() => void load()} /> : view ? <ExamPlan view={view} onStart={start} onResearch={() => void api(`/api/exam/${active.id}/research`, { body: {} }).then(exam.reload)} /> : <section className="xp-card"><p className="lx-muted">Reading where you stand…</p></section>}
-      {(path || goal) && <section className="xp-card lx-path">
-        <div><span className="xp-kicker">Your career path</span><h3>{role ? `Becoming ${article(role)} ${role}` : "Your goal"}</h3>
-          <p>{path ? `${path.milestones.filter((m) => m.done).length} of ${path.milestones.length} milestones${next ? ` · next: ${next.title}` : " · all done"}` : "No roadmap yet: Shua can build one from your goal."}</p></div>
-        <button type="button" className="xp-quiet is-wide" onClick={() => { setPart("path"); setMode("career"); }}>Open the roadmap</button>
-      </section>}
-    </div>}
+    {mode === "plan" && (!active ? <AddCert onAdded={() => void load()} /> : view ? <ExamPlan view={view} onStart={start} onResearch={() => void api(`/api/exam/${active.id}/research`, { body: {} }).then(exam.reload)} /> : <section className="lv-card"><p className="lx-muted">Reading where you stand…</p></section>)}
 
     {mode === "practice" && (!active ? <AddCert onAdded={() => void load()} />
       : session?.kind === "practice" && bp ? <ExamSession key={session.key} certId={active.id} blueprint={bp} start={session} onExit={() => { setSession(null); void exam.reload(); }} onAgain={() => setSession({ ...session, key: Date.now() })} />
@@ -147,7 +145,7 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
       <button type="button" className="lf-back" onClick={() => setMode(from)}><ArrowLeft size={14} />Back</button>
       <Teaching bare initialQuestion={asking} autoAsk={!!asking} key={asking || "teach"} />
     </div>}
-    {mode !== "explain" && state && <LearnAsk state={state as never} onChange={() => void load()} />}
+    {mode === "career" && state && <div className="lv-ask"><LearnAsk state={state as never} onChange={() => void load()} /></div>}
   </div></div>;
 }
 
