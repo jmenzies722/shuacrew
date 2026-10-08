@@ -9,6 +9,7 @@ import { Coach } from "../components/Coach";
 import "../components/setting-controls.css";
 import "./settings.css";
 import "./learning.css";
+import "./learn-anything.css";
 import { LearningProjects } from "../components/LearningProjects";
 
 interface Track { id: string; name: string; level: number; focus: boolean }
@@ -23,7 +24,7 @@ export type Tab = "overview" | "coach" | "today" | "learn" | "roadmap" | "career
 const TABS: Array<[Tab, string]> = [["overview", "My path"], ["learn", "Courses"], ["today", "Practice"], ["review", "Review"]];
 /** The Library inside Learn: one row, each thing once. Practice lives with the flashcards it drills; the roadmap and
  * your goal live in Journey. */
-const LIBRARY: Array<[Tab, string]> = [["learn", "Courses"], ["review", "Flashcards"], ["coach", "Tutor"], ["work", "From your work"], ["career", "Career kit"], ["projects", "Projects"]];
+const LIBRARY: Array<[Tab, string]> = [["learn", "Courses"], ["review", "Flashcards"], ["coach", "Tutor"], ["career", "Career kit"], ["projects", "Projects"]];
 const inLibrary = (t: Tab): Tab => (t === "today" ? "review" : LIBRARY.some(([id]) => id === t) ? t : "learn");
 interface Session { id: string; title: string; at: number; studied: boolean }
 
@@ -38,7 +39,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
  * `embedded`: the Library inside Learn — no page header or overview (Learn's Today replaces them), one row of tabs.
  * `only`: just one part, no tabs (Journey shows Goal & skills this way).
  */
-export function Learning({ embedded = false, initialTab, only, onJourney }: { embedded?: boolean; initialTab?: Tab; only?: Tab; onJourney?: () => void } = {}) {
+export function Learning({ embedded = false, initialTab, only, onJourney, suggest }: { embedded?: boolean; initialTab?: Tab; only?: Tab; onJourney?: () => void; suggest?: Array<{ topic: string; why: string }> } = {}) {
   const navigate = useNavigate();
   const place = (t: Tab | undefined): Tab => only ?? (embedded ? inLibrary(t ?? "learn") : t ?? "overview");
   const [tab, setTab] = useState<Tab>(place(initialTab));
@@ -121,7 +122,7 @@ export function Learning({ embedded = false, initialTab, only, onJourney }: { em
     {tab === "review" && !embedded && <div className="lx-top lx-top-single"><ReviewDeck cards={s.cards} trackName={name} onGrade={(id, grade) => act(`r:${id}`, () => api(`/api/learning/cards/${id}/review`, { body: { grade } }))} /></div>}
     {tab === "review" && <CardLibrary cards={s.cards} tracks={tracks} onAdd={(c) => act("add", () => api("/api/learning/cards", { body: c }))} onRemove={(id) => act(`d:${id}`, () => api(`/api/learning/cards/${id}`, { method: "DELETE" }))} />}
     {tab === "projects" && <LearningProjects onPlan={onJourney ?? (() => void navigate({ to: "/learn" }))} />}
-    {tab === "learn" && <LearnAnything courses={s.courses} busy={busy} act={act} onOpen={openLesson} />}
+    {tab === "learn" && <LearnAnything courses={s.courses} roadmaps={s.roadmaps} goal={s.profile.goal} suggest={suggest} busy={busy} act={act} onOpen={openLesson} />}
     {tab === "roadmap" && <RoadmapTab roadmaps={s.roadmaps} goal={s.profile.goal} busy={busy} act={act} onSetGoal={() => go("profile")} />}
     {tab === "career" && <CareerKit docs={s.docs} goal={s.profile.goal} busy={busy} act={act} />}
     {tab === "work" && <section className="lx-panel">
@@ -156,33 +157,79 @@ export function Learning({ embedded = false, initialTab, only, onJourney }: { em
 type Act = (key: string, fn: () => Promise<unknown>) => Promise<void>;
 const TOPICS = ["Kubernetes for app developers", "RAG & retrieval evals", "Building MCP servers", "Terraform & infrastructure as code", "Distributed systems fundamentals", "Observability with OpenTelemetry", "Rust for TypeScript devs", "CI/CD with GitHub Actions"];
 
-function LearnAnything({ courses, busy, act, onOpen }: { courses: Course[]; busy: string; act: Act; onOpen: (course:Course,index:number,run:string)=>void }) {
-  const [topic, setTopic] = useState(""), [level, setLevel] = useState(2);
+/** Topics worth a course for where you're headed (suggestions only: nothing starts until you pick one). */
+function goalTopics(goal: string): string[] {
+  const g = goal.toLowerCase(), ai = /\b(ai|ml|llm|agent|machine learning)/.test(g), ops = /(devops|platform|sre|cloud|infra|reliability)/.test(g);
+  return [...(ai ? ["LLM evals & reliability", "RAG & retrieval evals", "Building MCP servers", "Serving models on Kubernetes", "Prompt & context engineering"] : []),
+    ...(ops || ai ? ["Kubernetes for app developers", "Terraform & infrastructure as code", "Observability with OpenTelemetry", "CI/CD with GitHub Actions"] : []),
+    ...(!ai && !ops ? TOPICS : [])];
+}
+const LEVELS = ["New", "Basics", "Working", "Strong", "Expert"];
+const clean = (t: string) => t.replace(/^\d+\.\s*/, "");
+
+/**
+ * Learn anything: pick up where you left off, start a course on what matters for you (each suggestion says why), and
+ * your courses as compact cards — the next lesson up front, every lesson one tap away.
+ */
+function LearnAnything({ courses, roadmaps, goal, suggest = [], busy, act, onOpen }: { courses: Course[]; roadmaps: Roadmap[]; goal: string; suggest?: Array<{ topic: string; why: string }>; busy: string; act: Act; onOpen: (course: Course, index: number, run: string) => void }) {
+  const [topic, setTopic] = useState(""), [level, setLevel] = useState(2), [expanded, setExpanded] = useState<string | null>(null);
   const navigate = useNavigate();
   const start = (t: string) => act("course", () => api("/api/learning/courses", { body: { topic: t, level } }).then(() => setTopic("")));
-  const open = (c: Course, i: number) => act(`l:${c.id}:${i}`, async () => { const r = await api<{ run: string }>(`/api/learning/courses/${c.id}/lessons/${i}`, { body: {} }); onOpen(c,i,r.run); });
-  return <>
-    <section className="lx-panel lx-ask">
-      <h2><BookOpenCheck size={14} /> What do you want to learn?</h2>
+  const open = (c: Course, i: number) => act(`l:${c.id}:${i}`, async () => { const r = await api<{ run: string }>(`/api/learning/courses/${c.id}/lessons/${i}`, { body: {} }); onOpen(c, i, r.run); });
+  const mine = courses.slice().sort((x, y) => y.created - x.created);
+  const current = mine.find((c) => c.lessons.some((l) => !l.done)), next = current ? current.lessons.findIndex((l) => !l.done) : -1;
+  const road = roadmaps.filter((r) => r.milestones.length).sort((x, y) => y.created - x.created)[0], now = road?.milestones.find((m) => !m.done);
+  const role = goal.split(/[,.;]| dedicating | with /i)[0]!.replace(/^(become|becoming|be)\s+(an?\s+)?/i, "").trim();
+  const have = new Set(courses.map((c) => c.topic.toLowerCase()));
+  const ideas = [...suggest, ...(now ? now.skills.slice(0, 2).map((k) => ({ topic: k, why: `Next on your roadmap · ${clean(now.title)}` })) : []),
+    ...goalTopics(goal).map((t) => ({ topic: t, why: role ? `For ${role}` : "Popular with engineers" }))]
+    .filter((x, i, all) => !have.has(x.topic.toLowerCase()) && all.findIndex((y) => y.topic.toLowerCase() === x.topic.toLowerCase()) === i).slice(0, 4);
+  return <div className="la">
+    {current && next >= 0 && <section className="la-continue">
+      <div>
+        <span className="la-kicker">Continue · {current.title || current.topic}</span>
+        <h3>Lesson {next + 1} of {current.lessons.length}: {current.lessons[next]!.title}</h3>
+        {current.lessons[next]!.summary && <p>{current.lessons[next]!.summary}</p>}
+        <div className="la-bar" aria-hidden><i style={{ width: `${(current.lessons.filter((l) => l.done).length / current.lessons.length) * 100}%` }} /></div>
+      </div>
+      <button type="button" className="lx-go" disabled={!!busy} onClick={() => void open(current, next)}>{busy === `l:${current.id}:${next}` ? "Writing…" : current.lessons[next]!.run ? "Continue" : "Start lesson"} <ArrowRight size={14} /></button>
+    </section>}
+
+    <section className="la-new">
+      <span className="la-kicker">Learn anything</span>
+      <h3>What do you want to get good at?</h3>
+      <p className="la-sub">Shua designs a course at your level: 5–8 lessons that build on each other, each with a worked example, a hands-on exercise, a quiz you click and flashcards.</p>
       <form onSubmit={(e) => { e.preventDefault(); if (topic.trim()) void start(topic.trim()); }}>
-        <input className="lx-big-input" placeholder="Anything in software, platform, DevOps or AI engineering…" value={topic} onChange={(e) => setTopic(e.target.value)} aria-label="Topic" />
-        <span className="lx-level-pick" role="radiogroup" aria-label="Your level">{["New", "Basics", "Working", "Strong", "Expert"].map((l, i) => <button key={l} type="button" role="radio" aria-checked={level === i + 1} className={level === i + 1 ? "is-on" : ""} onClick={() => setLevel(i + 1)}>{l}</button>)}</span>
+        <input placeholder="e.g. Kubernetes networking, LLM evals, Go concurrency…" value={topic} onChange={(e) => setTopic(e.target.value)} aria-label="Topic" />
+        <select value={level} onChange={(e) => setLevel(Number(e.target.value))} aria-label="Your level">{LEVELS.map((l, i) => <option key={l} value={i + 1}>{l}</option>)}</select>
         <button className="lx-go" disabled={!topic.trim() || !!busy}>{busy === "course" ? "Designing…" : "Build my course"}</button>
       </form>
-      <div className="lx-suggest"><span>Or try:</span>{TOPICS.map((t) => <button key={t} type="button" disabled={!!busy} onClick={() => void start(t)}><Plus size={11} />{t}</button>)}</div>
+      {ideas.length > 0 && <div className="la-ideas">{ideas.map((i) => <button key={i.topic} type="button" className="la-idea" disabled={!!busy} onClick={() => void start(i.topic)}>
+        <b>{i.topic}</b><span>{i.why}</span><Plus size={14} /></button>)}</div>}
     </section>
-    <div className="lx-courses">{courses.slice().reverse().map((c) => { const done = c.lessons.filter((l) => l.done).length; return <section key={c.id} className="lx-course">
-      <header><div><strong>{c.title || c.topic}</strong><small>{["New", "Basics", "Working", "Strong", "Expert"][c.level - 1]} · {c.lessons.length ? `${done}/${c.lessons.length} lessons` : "designing the course…"}</small></div>
-        <button type="button" className="lx-icon" aria-label="Remove course" onClick={() => void act(`x:${c.id}`, () => api(`/api/learning/courses/${c.id}`, { method: "DELETE" }))}><Trash2 size={13} /></button></header>
-      <div className="lx-progress"><i style={{ width: `${c.lessons.length ? (done / c.lessons.length) * 100 : 0}%` }} /></div>
-      {c.lessons.length ? <ol className="lx-lessons">{c.lessons.map((l, i) => <li key={i} className={l.done ? "is-done" : ""}>
-        <button type="button" className="lx-check" aria-label={l.done ? "Mark not done" : "Mark done"} aria-pressed={l.done} onClick={() => void act(`c:${c.id}:${i}`, () => api(`/api/learning/courses/${c.id}/lessons/${i}/done`, { body: { done: !l.done } }))}>{l.done && <Check size={11} />}</button>
-        <div><strong>{i + 1}. {l.title}</strong><small>{l.summary}</small></div>
-        <button type="button" className="lx-chip" disabled={!!busy} onClick={() => void open(c, i)}>{l.run ? "Open" : busy === `l:${c.id}:${i}` ? "Writing…" : "Start"}</button>
-      </li>)}</ol> : c.plan && <Link className="lx-chip" to="/sessions/$id" params={{ id: c.plan }}>Watch it being designed</Link>}
-    </section>; })}</div>
-    {!courses.length && <p className="lx-muted lx-center">Your courses appear here. Each lesson is written when you open it, with an exercise and review cards.</p>}
-  </>;
+
+    {mine.length > 0 && <section className="la-courses">
+      <h3 className="la-h">Your courses</h3>
+      {mine.map((c) => {
+        const done = c.lessons.filter((l) => l.done).length, i = c.lessons.findIndex((l) => !l.done), isOpen = expanded === c.id;
+        return <article key={c.id} className="la-course">
+          <header>
+            <div><strong>{c.title || c.topic}</strong><small>{LEVELS[c.level - 1]} · {c.lessons.length ? (done === c.lessons.length ? "finished" : `${done} of ${c.lessons.length} lessons`) : "Shua is designing it…"}</small></div>
+            {c.lessons.length > 0 && i >= 0 && <button type="button" className="lx-chip" disabled={!!busy} onClick={() => void open(c, i)}>{c.lessons[i]!.run ? "Continue" : "Start"} lesson {i + 1}</button>}
+            {c.lessons.length > 0 && <button type="button" className="la-toggle" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : c.id)}>{isOpen ? "Hide lessons" : "All lessons"}</button>}
+            <button type="button" className="lx-icon" aria-label="Remove course" onClick={() => void act(`x:${c.id}`, () => api(`/api/learning/courses/${c.id}`, { method: "DELETE" }))}><Trash2 size={13} /></button>
+          </header>
+          {c.lessons.length > 0 && <div className="la-bar" aria-hidden><i style={{ width: `${(done / c.lessons.length) * 100}%` }} /></div>}
+          {!c.lessons.length && c.plan && <button type="button" className="la-toggle" onClick={() => void navigate({ to: "/sessions/$id", params: { id: c.plan! } })}>Watch it being designed</button>}
+          {isOpen && <ol className="la-lessons">{c.lessons.map((l, k) => <li key={k} className={l.done ? "is-done" : k === i ? "is-next" : ""}>
+            <button type="button" className="lx-check" aria-label={l.done ? "Mark not done" : "Mark done"} aria-pressed={l.done} onClick={() => void act(`c:${c.id}:${k}`, () => api(`/api/learning/courses/${c.id}/lessons/${k}/done`, { body: { done: !l.done } }))}>{l.done && <Check size={11} />}</button>
+            <div><strong>{k + 1}. {l.title}</strong><small>{l.summary}</small></div>
+            <button type="button" className="la-toggle" disabled={!!busy} onClick={() => void open(c, k)}>{busy === `l:${c.id}:${k}` ? "Writing…" : l.done ? "Review" : l.run ? "Open" : "Start"}</button>
+          </li>)}</ol>}
+        </article>;
+      })}
+    </section>}
+  </div>;
 }
 
 function RoadmapTab({ roadmaps, goal, busy, act, onSetGoal }: { roadmaps: Roadmap[]; goal: string; busy: string; act: Act; onSetGoal: () => void }) {

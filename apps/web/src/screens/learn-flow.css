@@ -53,3 +53,6 @@
 /* The page fills the window, so Tell Shua rests at the bottom even when a tab is short (sticky once it scrolls). */
 .learn.lf > .pane-body { min-height: 100%; display: flex; flex-direction: column; }
 .learn.lf .lc-ask { margin-top: auto; padding-top: 16px; }
+
+/* Learn stays calm: no light sweeping under the title and tabs. */
+.lf-calm .cr-trace::after { display: none; }

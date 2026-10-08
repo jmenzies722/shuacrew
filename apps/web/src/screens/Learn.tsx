@@ -26,7 +26,7 @@ import "./learn-flow.css";
 
 type Mode = "plan" | "practice" | "learn" | "career" | "explain";
 type Part = "goal" | "path" | "certs" | "jobs" | "kit";
-type LearnPart = "tasks" | "learn" | "coach" | "work" | "projects";
+type LearnPart = "tasks" | "learn" | "coach" | "projects";
 const MODES: ReadonlyArray<readonly [Mode, string]> = [["plan", "Plan"], ["practice", "Practice"], ["learn", "Learn"], ["career", "Career"]];
 const CAREER: ReadonlyArray<readonly [Part, string]> = [["path", "Roadmap"], ["certs", "Certifications"], ["jobs", "Job search"], ["goal", "Goal & skills"], ["kit", "Career kit"]];
 const LAST = "shuacrew.learn.tab", CERT = "shuacrew.learn.cert", PART = "shuacrew.learn.career";
@@ -74,6 +74,10 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
   const exam = useExam(active?.id);
   const view = exam.view, bp = view?.blueprint ?? null;
 
+  // Your weakest exam domains, worth a course of their own.
+  const weakSpots = bp && view?.mastery?.answered ? [...bp.domains].filter((d) => (view.mastery!.domains[d.id]?.answered ?? 0) > 0 && (view.mastery!.domains[d.id]?.accuracy ?? 1) < 0.7)
+    .sort((a, b) => (view.mastery!.domains[a.id]!.accuracy) - (view.mastery!.domains[b.id]!.accuracy)).slice(0, 2)
+    .map((d) => ({ topic: `${d.name} on AWS (${bp.code})`, why: `Your weakest ${bp.code} area · ${Math.round(view.mastery!.domains[d.id]!.accuracy * 100)}%` })) : [];
   const teach = (question: string) => { setFrom(mode === "explain" ? from : mode); setAsking(question); setMode("explain"); };
   const start = (s: Start) => {
     if (s.kind === "learn") {
@@ -91,7 +95,7 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
   const status = mode === "plan" && view?.plan && view.predicted ? [view.plan.daysLeft !== null && view.plan.daysLeft >= 0 ? `${view.plan.daysLeft} days to the exam` : null, view.mastery?.answered ? `predicted ${view.predicted.score}` : "no answers yet", insights?.due ? `${insights.due} cards due` : null].filter(Boolean).join(" · ")
     : insights ? (insights.due ? `${insights.due} cards due` : "All caught up") : "Reading where you stand…";
 
-  return <div className="pane-scroll learn lf"><div className="pane-body pane-body-wide">
+  return <div className="pane-scroll learn lf lf-calm"><div className="pane-body pane-body-wide">
     <ControlHeader title={title} status={status} tone={!insights ? "idle" : view?.verdict?.level === "ready" ? "ok" : "live"}>
       <Seg label="Learn" value={mode === "explain" ? from : mode} onChange={(id) => { setMode(id); setSession(null); }} options={MODES} />
     </ControlHeader>
@@ -119,11 +123,11 @@ export function Learn({ initial = "plan" }: { initial?: Mode | Part | "today" | 
 
     {mode === "learn" && <div className="lx-learn">
       <nav className="lf-journey-nav" aria-label="Learn">
-        {([["tasks", bp ? `${bp.code}, task by task` : "Your exam"], ["learn", "Learn anything"], ["coach", "Tutor"], ["work", "From your work"], ["projects", "Projects"]] as const).map(([id, label]) =>
+        {([["tasks", bp ? `${bp.code}, task by task` : "Your exam"], ["learn", "Learn anything"], ["coach", "Tutor"], ["projects", "Projects"]] as const).map(([id, label]) =>
           <button key={id} type="button" className={learnPart === id ? "is-on" : ""} onClick={() => setLearnPart(id)}>{label}</button>)}
       </nav>
       {learnPart === "tasks" ? (view && bp ? <ExamTasks view={view} onTeach={(t, d) => teach(lessonAsk(bp, d, t))} /> : <AddCert onAdded={() => void load()} />)
-        : <Learning key={learnPart} embedded only={learnPart} onJourney={() => { setPart("path"); setMode("career"); }} />}
+        : <Learning key={learnPart} embedded only={learnPart} suggest={weakSpots} onJourney={() => { setPart("path"); setMode("career"); }} />}
     </div>}
 
     {mode === "career" && state && <div className="lf-journey">
