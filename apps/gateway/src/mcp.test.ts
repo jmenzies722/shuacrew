@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,7 +27,7 @@ describe("mcp config", () => {
     const server = mcp.add({ name: "files", command: "true" });
     expect(server.auth).toBe("none");
     expect(mcp.forClaude().files).toEqual({ command: "true", args: [] });
-    expect(mcp.forCodex().files).toEqual({ command: "true", args: [] });
+    expect(mcp.forCodex().shua_files).toEqual({ command: "true", args: [] });
     expect(mcp.forAcp()).toEqual([{ name: "files", command: "true", args: [] }]);
     mcp.remove(server.id);
     expect(mcp.list()).toEqual([]);
@@ -94,6 +94,44 @@ it("gives Codex companion only opted-in MCP tools and revokes them immediately",
   const server = mcp.add({ name: "Music tools", command: "true" });
   expect(mcp.forCodex("spark")).toEqual({});
   mcp.setSpark(server.id, true);
-  expect(mcp.forCodex("spark")).toEqual({ Music_tools: { command: "true", args: [] } });
+  expect(mcp.forCodex("spark")).toEqual({ shua_Music_tools: { command: "true", args: [] } });
   mcp.setSpark(server.id, false); expect(mcp.forCodex("spark")).toEqual({});
+});
+
+describe("GitHub with the GitHub CLI's login", () => {
+  const url = "https://api.githubcopilot.com/mcp/";
+  const setup = (login: () => string | undefined) => {
+    const store = new EventStore(":memory:");
+    const secrets = path.join(mkdtempSync(path.join(os.tmpdir(), "shua-mcp-")), "auth.json");
+    cleanups.push(() => store.close());
+    return { store, secrets, mcp: new Mcp(store, secrets, () => undefined, login) };
+  };
+
+  it("uses gh's login live, and never stores or logs it", () => {
+    let login: string | undefined = "gho_example_not_real";
+    const { store, secrets, mcp } = setup(() => login);
+    const server = mcp.add({ name: "github", url, auth: "gh" });
+    expect(server).toMatchObject({ auth: "gh", signedIn: true });
+    expect(mcp.forClaude().github).toEqual({ type: "http", url, headers: { Authorization: "Bearer gho_example_not_real" } });
+    // Named shua_github for Codex: a "github" in your own ~/.codex/config.toml must never merge with it.
+    expect(mcp.forCodex().shua_github).toEqual({ url, http_headers: { Authorization: "Bearer gho_example_not_real" } });
+    expect(mcp.forCodex().github).toBeUndefined();
+    expect(existsSync(secrets)).toBe(false);
+    expect(JSON.stringify([...store.read(0)])).not.toContain("gho_example_not_real");
+    // Logged out of gh: no header, and it says so.
+    login = undefined;
+    expect(mcp.list()[0]!.signedIn).toBe(false);
+    expect(mcp.forClaude().github).toEqual({ type: "http", url });
+  });
+
+  it("points sign-in at `gh auth login` instead of an OAuth flow", async () => {
+    const { mcp } = setup(() => undefined);
+    const server = mcp.add({ name: "github", url, auth: "gh" });
+    await expect(mcp.signIn(server.id)).rejects.toThrow(/gh auth login/);
+  });
+
+  it("only a hosted server can use it", () => {
+    const { mcp } = setup(() => "x");
+    expect(mcp.add({ name: "local", command: "true", auth: "gh" }).auth).toBe("none");
+  });
 });

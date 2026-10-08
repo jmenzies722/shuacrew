@@ -102,12 +102,13 @@ export interface Featured {
   url?: string;
   command?: string;
   args?: string[];
-  auth: "none" | "oauth";
+  auth: "none" | "oauth" | "gh";
   /** A folder the server works in, asked for when you add it. */
   asksForFolder?: boolean;
 }
 
 export const FEATURED: Featured[] = [
+  { id: "github", name: "github", title: "GitHub", category: "Build", blurb: "Repos, pull requests, issues and Actions runs. Uses your GitHub CLI login (gh): nothing new to sign in to, no token stored.", url: "https://api.githubcopilot.com/mcp/", auth: "gh" },
   { id: "playwright", name: "playwright", title: "Playwright", category: "Build", blurb: "Drive a real browser: click, type, screenshot, test your app end to end.", command: "npx", args: ["-y", "@playwright/mcp@latest"], auth: "none" },
   { id: "chrome-devtools", name: "chrome-devtools", title: "Chrome DevTools", category: "Build", blurb: "Inspect pages, network, console and performance in Chrome.", command: "npx", args: ["-y", "chrome-devtools-mcp@latest"], auth: "none" },
   { id: "context7", name: "context7", title: "Context7", category: "Build", blurb: "Up-to-date docs and examples for any library, so code matches the current API.", url: "https://mcp.context7.com/mcp", auth: "none" },

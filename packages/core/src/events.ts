@@ -205,7 +205,8 @@ export const bodies = {
     command: z.string().optional(),
     args: z.array(z.string()).default([]),
     url: z.string().optional(),
-    auth: z.enum(["none", "oauth"]).default("none"),
+    // "gh": GitHub's hosted server, signed in with the GitHub CLI's own login (read live, never stored).
+    auth: z.enum(["none", "oauth", "gh"]).default("none"),
   }),
   "mcp.removed": z.object({ id: z.string() }),
   // Whether Spark (the desktop buddy's quick voice turns) may use this server's tools, without asking.

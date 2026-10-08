@@ -169,7 +169,8 @@ export class CodexTranslator {
           case "fileChange":
             return [{ type: "tool-call", id: item.id, tool: "fileChange", input: { changes: (item.changes ?? []).map((c: Json) => ({ path: c.path })) } }];
           case "mcpToolCall":
-            return [{ type: "tool-call", id: item.id, tool: `mcp__${item.server}__${item.tool}`, input: item.arguments ?? {} }];
+            // ShuaCrew names its servers `shua_<name>` inside Codex (gateway mcp.ts): show and judge them by their own name.
+            return [{ type: "tool-call", id: item.id, tool: `mcp__${String(item.server).replace(/^shua_/, "")}__${item.tool}`, input: item.arguments ?? {} }];
           case "webSearch":
             return [{ type: "tool-call", id: item.id, tool: "WebSearch", input: { query: item.query } }];
           case "collabAgentToolCall":

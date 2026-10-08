@@ -1366,7 +1366,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       }
     });
     app.get("/api/mcp/tools", async () => mcp.known());
-    app.post<{ Body: { name?: string; command?: string; args?: string[]; url?: string; auth?: "none" | "oauth" } }>("/api/mcp", async (request, reply) => {
+    app.post<{ Body: { name?: string; command?: string; args?: string[]; url?: string; auth?: "none" | "oauth" | "gh" } }>("/api/mcp", async (request, reply) => {
       try {
         return mcp.add({ ...request.body, name: request.body?.name ?? "" });
       } catch (error) {

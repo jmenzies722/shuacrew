@@ -17,7 +17,7 @@ it("brands every featured server that has a reviewed asset, and only via exact i
     for (const f of [asset!.light.file, asset!.dark.file]) expect(fs.existsSync(new URL(`../../web/public/brands/${f}`, import.meta.url)), f).toBe(true);
   }
   const branded = FEATURED.filter(f => resolveMcpBrand({ name: f.name, url: f.url, packageId: mcpPackage(f.command, f.args ?? []) }).assetId).map(f => f.id);
-  expect(branded.sort()).toEqual(["atlassian", "chrome-devtools", "cloudflare", "figma", "linear", "neon", "notion", "paypal", "posthog", "sentry", "stripe", "supabase", "vercel"]);
+  expect(branded.sort()).toEqual(["atlassian", "chrome-devtools", "cloudflare", "figma", "github", "linear", "neon", "notion", "paypal", "posthog", "sentry", "stripe", "supabase", "vercel"]);
   expect(resolveMcpBrand({ name: "stripe", url: "https://mcp.stripe.com.attacker.dev" })).toEqual({ assetId: null, publisher: "unknown" });
   expect(resolveMcpBrand({ name: "chrome-devtools", packageId: "chrome-devtools-mcp-evil" })).toEqual({ assetId: null, publisher: "unknown" });
 });

@@ -16,7 +16,7 @@ interface Server {
   command?: string;
   args: string[];
   url?: string;
-  auth: "none" | "oauth";
+  auth: "none" | "oauth" | "gh";
   signedIn: boolean;
   spark?: boolean;
   brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" };
@@ -43,7 +43,7 @@ interface Featured {
   blurb: string;
   url?: string;
   command?: string;
-  auth: "none" | "oauth";
+  auth: "none" | "oauth" | "gh";
   asksForFolder?: boolean;
   added: string | null;
   brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" };
@@ -56,7 +56,7 @@ interface RegistryCard {
   command?: string;
   args: string[];
   url?: string;
-  auth: "none" | "oauth";
+  auth: "none" | "oauth" | "gh";
 }
 interface SkillInfo {
   name: string;
@@ -132,6 +132,7 @@ function Tools({ onSummary }: { onSummary: (s: Summary) => void }) {
       }
       const server = await api<Server>(`/api/mcp/featured/${f.id}`, { body: { folder } });
       if (f.auth === "oauth" && !server.signedIn) await api(`/api/mcp/${server.id}/signin`, { body: {} });
+      if (f.auth === "gh" && !server.signedIn) setError("Added. It uses your GitHub CLI login: run `gh auth login` in Terminal, then press Check.");
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -195,8 +196,8 @@ function FeaturedCard({ item, onAdd }: { item: Featured; onAdd: () => Promise<vo
       </div>
       <footer>
         <span className="tk-tag">
-          {item.auth === "oauth" ? <KeyRound size={11} /> : item.url ? <Cloud size={11} /> : <Terminal size={11} />}
-          {item.auth === "oauth" ? "Sign in" : item.url ? "Hosted" : "Runs on this Mac"}
+          {item.auth === "oauth" || item.auth === "gh" ? <KeyRound size={11} /> : item.url ? <Cloud size={11} /> : <Terminal size={11} />}
+          {item.auth === "oauth" ? "Sign in" : item.auth === "gh" ? "Your gh login" : item.url ? "Hosted" : "Runs on this Mac"}
         </span>
         {item.added ? <span className="tk-added"><Check size={13} /> Added</span>
           : <button type="button" className="cr-btn" disabled={busy} onClick={() => (setBusy(true), void onAdd().finally(() => setBusy(false)))}>
@@ -241,7 +242,7 @@ function ServerRow({ server, initial, onChange }: { server: Server; initial?: Co
   const state: { text: string; tone: Tone } = testing ? { text: "Connecting…", tone: "live" } : needsSignIn ? { text: "Needs sign-in", tone: "wait" }
     : conn?.ok ? { text: `${conn.tools.length} tool${conn.tools.length === 1 ? "" : "s"}`, tone: "ok" } : conn ? { text: "Can't connect", tone: "bad" } : { text: "Not checked", tone: "idle" };
   const trust = server.brand?.publisher === "official" ? "Official endpoint" : server.brand?.publisher === "community" ? "Community connector" : "Unverified publisher";
-  const access = server.auth === "none" ? "no sign-in" : server.signedIn ? "signed in" : "not signed in";
+  const access = server.auth === "none" ? "no sign-in" : server.auth === "gh" ? (server.signedIn ? "GitHub CLI login" : "gh not signed in — run gh auth login") : server.signedIn ? "signed in" : "not signed in";
   return (
     <article className={`tk-conn is-${state.tone}${open ? " is-open" : ""}`}>
       <header>
