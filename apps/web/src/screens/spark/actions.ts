@@ -120,28 +120,6 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
     return { ok: true, message: b.headline };
   })().catch((e: Error) => ({ ok: false, message: `Couldn't read ShuaCrew: ${e.message}` }));
   if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
-  if (a.type === "learn" && a.course !== undefined) return (async () => {
-    const courseId = a.course!;
-    const learning = await api<{courses:Array<{id:string;lessons:Array<{run?:string;title:string}>}>}>("/api/learning");
-    const lesson = learning.courses.find(c=>c.id===courseId)?.lessons[a.lesson ?? -1];
-    if (!lesson || !Number.isInteger(a.lesson) || !/^[A-Za-z0-9_-]+$/.test(courseId)) return {ok:false,message:"That lesson is no longer available. Refresh the learning context."};
-    if (!active()) return {ok:false,message:"Canceled before execution"};
-    const run = lesson.run ?? (await api<{run:string}>(`/api/learning/courses/${encodeURIComponent(courseId)}/lessons/${a.lesson}`,{body:{}})).run;
-    if (!active()) return {ok:false,message:"Lesson prepared; navigation canceled"};
-    localStorage.setItem("shuacrew.activeLesson",JSON.stringify({course:a.course,index:a.lesson,run}));
-    window.dispatchEvent(new Event("shuacrew:lesson"));
-    if (window.shuacrew && location.pathname !== "/buddy") window.shuacrew.navigate("/learn");
-    else post({type:"buddyOpen",path:"/learn"});
-    return {ok:true,message:`Selected ${lesson.title}; requested opening Learning`};
-  })().catch((e:Error)=>({ok:false,message:e.message}));
-  // Learn from anywhere: the changes land in the gateway like the organizer's; Learn (another window) refreshes at once.
-  if (a.type === "learn" && a.ops) return api<{ did: string[] }>("/api/learning/ops", { body: { ops: a.ops } }).then((r) => {
-    try { localStorage.setItem("shuacrew.learning.changed", String(Date.now())); } catch { /* the Learn page reloads when opened */ }
-    window.dispatchEvent(new Event("shuacrew:learning"));
-    return r.did.length ? { ok: true, message: `Learn: ${r.did.join(" · ")}` } : { ok: false, message: "Nothing in Learn changed (it needs a cert name, a company, or a goal)." };
-  }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "learn") return (a.drill ? api("/api/learning/drill", { body: {} }) : api("/api/learning/courses", { body: { topic: a.topic } }))
-    .then(() => { post({ type: "buddyOpen", path: "/learn" }); return { ok: true, message: a.drill ? "Quiz ready in Learning" : `Course on ${a.topic} is being planned` }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {
     if (a.validate) await api("/api/plays", { body: { playbook: "validate-idea", inputs: { idea: a.pitch || a.name }, venture: v.id } });
     post({ type: "buddyOpen", path: `/ventures/${v.id}` });
@@ -205,7 +183,6 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
     window.addEventListener("shuacrew:did", on as EventListener);
     post({ type: "buddyDo", id, action: a });
   });
-  if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: "Requested navigation" }); }
   if (a.type === "ui") return (async () => {
     const started = performance.now(), r = await pressInShuaCrew(a.press, 2500, a.text);

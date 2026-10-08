@@ -22,7 +22,7 @@ import "./hub-nav.css";
 const PAGE_ICON: Record<string, typeof House> = {
   "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": Layers3, "/studio": Clapperboard,
   "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
-  "/library": Library, "/memory": Brain, "/learn": GraduationCap, "/teach": Presentation, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
+  "/library": Library, "/memory": Brain, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
 };
 const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, automations: CalendarClock, library: Library, system: Cpu } as const;
 const LAST = "shuacrew.hubs.last";

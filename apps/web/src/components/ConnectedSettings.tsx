@@ -45,6 +45,6 @@ export function ConnectedSettings({ go }: { go: (section: string) => void }) {
       { id: "play", icon: Sparkles, name: "Shua presence", description: prefs.desktopPlacement === "notch" ? "At home in your MacBook notch." : "On your desktop. Ready when you are." },
       { id: "voice", icon: AudioLines, name: "A familiar voice", description: "Local speech, at your pace." },
     ].map(item => <button type="button" key={item.id} onClick={() => go(item.id)}><item.icon size={19} /><strong>{item.name}</strong><span>{item.description}</span><ChevronRight size={15} /></button>)}</div>
-    <section className="connected-loop"><div><span className="connected-eyebrow">MAKE IT COMPOUND</span><h3>Good work should carry forward.</h3><p>Choose today's priority. Build with your crew. Keep what you learn.</p></div><div><Link to="/activity">Plan today <ArrowUpRight size={14} /></Link><Link to="/learn">Keep learning <ArrowUpRight size={14} /></Link></div></section>
+    <section className="connected-loop"><div><span className="connected-eyebrow">MAKE IT COMPOUND</span><h3>Good work should carry forward.</h3><p>Choose today's priority. Build with your crew. Keep what you learn.</p></div><div><Link to="/activity">Plan today <ArrowUpRight size={14} /></Link></div></section>
   </div>;
 }

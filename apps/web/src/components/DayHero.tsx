@@ -12,7 +12,7 @@ import { describe } from "../lib/weather";
 import { SpeechQueue } from "../lib/buddy-voice";
 import { savePower } from "../lib/power";
 import { useCompanion } from "../lib/companion";
-import { WEATHER_ICONS, useLearningNow, useWeatherNow } from "./TopBarWidgets";
+import { WEATHER_ICONS, useWeatherNow } from "./TopBarWidgets";
 
 
 /**
@@ -23,7 +23,7 @@ export function DayHero() {
   const crew = useLive((s) => s.crew);
   const navigate = useNavigate();
   const prefs = useCompanion();
-  const w = useWeatherNow(), learn = useLearningNow();
+  const w = useWeatherNow();
   const cal = useDayCalendar(), meetings = cal.state?.authorized ? upcoming(cal.state.events) : [];
   const [finished, setFinished] = useState<string[]>([]);
   const [speaking, setSpeaking] = useState(false), [starting, setStarting] = useState(false);
@@ -46,7 +46,7 @@ export function DayHero() {
   const approvals = Object.values(crew.approvals).sort((a, b) => a.seq - b.seq);
   const ventures = Object.values(crew.ventures ?? {});
   const venture = ventures.find((v) => v.stage !== "earning" && v.stage !== "stopped");
-  const due = learn.value?.due ?? 0, goal = learn.value?.profile?.goal?.trim();
+  const due = 0, goal: string | undefined = undefined;
   const brief = useMemo(() => morningBrief({ now, goal, finished, waiting: approvals.length, due, ventures: ventures.map((v) => ({ name: v.name, stage: v.stage })), running: running.length, meetings: meetings.map((m) => ({ title: m.title, time: hhmm(m.start) })) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [finished, approvals.length, due, goal, running.length, ventures.length, venture?.stage, meetings.length, meetings[0]?.start]);
@@ -77,21 +77,17 @@ export function DayHero() {
   // Streaks and achievements from real activity.
   const doneRuns = runs.filter((r) => (r.status === "done" || r.status === "merged") && !r.labels?.includes("buddy"));
   const shippedDays = new Set(doneRuns.map((r) => localDay(new Date(r.updatedAt))));
-  const learnDays = new Set((learn.value?.days ?? []).filter((d) => d.reviews > 0).map((d) => d.day));
-  const reviewed = (learn.value?.days ?? []).reduce((n, d) => n + d.reviews, 0);
-  const badges = achievements({ shippedDays, shipped: doneRuns.length, learnDays, reviewed, ventures: ventures.length, earning: ventures.filter((v) => v.stage === "earning").length, members: Object.keys(crew.members).length }, now);
+  const badges = achievements({ shippedDays, shipped: doneRuns.length, learnDays: new Set<string>(), reviewed: 0, ventures: ventures.length, earning: ventures.filter((v) => v.stage === "earning").length, members: Object.keys(crew.members).length }, now);
   const earned = badges.filter((b) => b.earned), nextUp = badges.filter((b) => !b.earned).slice(0, 2);
-  const learnStreak = streak(learnDays, now), shipStreak = streak(shippedDays, now);
+  const shipStreak = streak(shippedDays, now);
 
   const headline = approvals.length ? `${approvals.length} decision${approvals.length === 1 ? " needs" : "s need"} you.`
     : running.length ? `The crew is on ${running.length} thing${running.length === 1 ? "" : "s"}.`
-    : due ? `${due} card${due === 1 ? "" : "s"} to review today.`
     : "A clear day. Make something.";
   startRef.current = () => void startDay();
   const plan: Array<{ icon: typeof Play; label: string; value: string; go: () => void; tone: "wait" | "live" | "ok" | "idle" }> = [
     { icon: CheckCircle2, label: "Needs you", value: approvals.length ? `${approvals.length} decision${approvals.length === 1 ? "" : "s"}` : "Nothing waiting", tone: approvals.length ? "wait" : "ok", go: () => void navigate({ to: "/board" }) },
     { icon: Loader2, label: "In progress", value: running.length ? `${running.length} session${running.length === 1 ? "" : "s"} working` : "Crew is idle", tone: running.length ? "live" : "idle", go: () => void navigate({ to: "/board" }) },
-    { icon: GraduationCap, label: "Learning", value: due ? `${due} card${due === 1 ? "" : "s"} due` : goal ? "All caught up" : "Set a career goal", tone: due ? "wait" : "ok", go: () => void navigate({ to: "/learn" }) },
     { icon: Briefcase, label: "Venture", value: venture ? `${venture.name} · ${venture.stage}` : ventures.length ? "All earning" : "No ventures yet", tone: venture ? "live" : "idle", go: () => void navigate({ to: "/ventures" }) },
   ];
 
@@ -124,7 +120,6 @@ export function DayHero() {
     </button>)}</div>
     <div className="day-hero-foot">
       <div className="day-streaks" aria-label="Streaks and achievements">
-        {learnStreak > 0 && <span className="day-streak is-on"><Flame size={13} /> {learnStreak}-day learning streak</span>}
         {shipStreak > 0 && <span className="day-streak is-on"><Flame size={13} /> {shipStreak}-day shipping streak</span>}
         {earned.length > 0 && <span className="day-badge is-earned" title={earned.map((b) => `${b.name}: ${b.how}`).join("\n")}><Award size={12} /><span className="day-badge-names">{earned.map((b) => b.name).join(" · ")}</span></span>}
         {nextUp[0] && <span className="day-badge" title={nextUp[0].how}><Lock size={11} /> Next: {nextUp[0].name}{nextUp[0].progress ? ` · ${nextUp[0].progress}` : ""}</span>}

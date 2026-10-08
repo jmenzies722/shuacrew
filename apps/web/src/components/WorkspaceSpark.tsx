@@ -20,7 +20,6 @@ export const contexts: Record<string, [string, string, string]> = {
   "/library": ["Library", "Connect the ideas", "Help me connect what I have made and learned into something useful for my current project. Ask which artifacts to use."],
   "/memory": ["Memory", "Keep the lesson", "Help me turn a recent experience into a concise reusable lesson. Ask me what happened and what I would change."],
   "/teach": ["Learn", "Explore an idea", "Help me choose a focused question for the shared visual teaching canvas."],
-  "/learn": ["Learn", "Learn by building", "Help me choose a small project that teaches the next skill I need and builds on my previous work."],
   "/integrations": ["Tools & skills", "Choose the right tools", "Help me choose tools and skills for my workflow. Explain what each needs access to and how I can verify it works."],
   "/policy": ["Policy & audit", "Explain my guardrails", "Help me understand the app's agent permissions and approval workflow. Use actual configured policy when available and distinguish it from suggestions."],
   "/observability": ["Insights", "Read the signals", "Help me interpret recorded activity, failures, and latency. Keep missing data explicit and identify one actionable improvement."],

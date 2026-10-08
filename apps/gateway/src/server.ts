@@ -29,8 +29,6 @@ import { screenMemoryRoutes } from "./screen-memory.js";
 import { systemRoutes } from "./system-routes.js";
 import { settingsRoutes } from "./settings-routes.js";
 import { createCrewMember } from "./crew-create.js";
-import { learningRoutes } from "./learning-routes.js";
-import type { Learning } from "./learning.js";
 import type { GatewaySettings } from "./settings.js";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -91,7 +89,6 @@ import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 export interface ServerOptions {
   /** Test seam for Spark for Chrome's answers (defaults to the claude CLI). */
   webAsk?: import("./terminal-ai.js").Ask;
-  learning?: Learning;
   settings?: GatewaySettings;
   builtinProtected?: string[];
   store: EventStore;
@@ -200,7 +197,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     reply.header("Referrer-Policy", "no-referrer");
     return payload;
   });
-  personalSetupRoutes(app, path.dirname(options.store.path), goal => { if(!options.learning)throw Error("Learning profile service is unavailable; setup remains incomplete."); options.learning.setProfile({goal}); });
+  personalSetupRoutes(app, path.dirname(options.store.path), () => {}); // the goal stays in personal setup (Learn, which also kept it, is gone)
   setupCheckRoutes(app, { home:path.dirname(options.store.path), runtimes:options.runtimes, supervisor:options.supervisor, store:options.store });
   speechRoutes(app, options.speech);
   roomRoutes(app, options.rooms);
@@ -261,7 +258,6 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     return { available: local?.installed ? await local.installed() : [] };
   });
   systemRoutes(app);
-  if (options.learning) learningRoutes(app, { learning: options.learning, store: options.store, supervisor: options.supervisor });
   sessionSummaryRoutes(app, {store,supervisor,runtimes:options.runtimes,home:path.dirname(store.path)});
   workflowTeachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes });
   teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
@@ -598,7 +594,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     if (!/^[\w-]{1,80}$/.test(id)) return reply.code(400).send({ error: "no such session" });
     if (run && ["running", "planning", "queued", "awaiting_approval", "paused"].includes(run.status)) return reply.code(409).send({ error: "Stop the session before deleting it." });
     if (!run && !store.forRun(id).length) return reply.code(404).send({ error: "no such session" });
-    const gone = forgetRun(id, { store, home: path.dirname(store.path), learning: options.learning, library: options.library });
+    const gone = forgetRun(id, { store, home: path.dirname(store.path), library: options.library });
     return { ok: true, ...gone, files: gone.files.length };
   });
 

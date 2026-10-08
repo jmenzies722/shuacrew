@@ -21,10 +21,10 @@ it("reopens a hub where you left it", () => {
   expect(hubEntry(build, { build: "/library" })).toBe("/ventures"); // not this hub's
 });
 
-it("has six primary destinations and preserves every deep link", () => {
-  expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Home", "Projects", "Crew", "Learn", "Automations", "Library"]);
+it("has five primary destinations (Learn is gone) and preserves every deep link", () => {
+  expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Home", "Projects", "Crew", "Automations", "Library"]);
   expect(locate("/floor")?.hub.id).toBe("crew");
-  expect(locate("/teach")?.hub.id).toBe("know");
+  expect(locate("/learn")).toBeNull();
   expect(locate("/plays/saved")?.hub.id).toBe("automations");
   expect(locate("/library")?.hub.id).toBe("library");
 });

@@ -54,14 +54,11 @@ function source<T>(fetcher: () => Promise<T>, everyMs: number) {
   return { use: () => useSyncExternalStore(subscribe, () => snap, () => snap), refresh };
 }
 interface SystemInfo { cpu: number; load: number[]; cores: number; memory: { used: number; total: number }; disk: { free: number; total: number } | null; battery: { pct: number; charging: boolean; source: string; remaining: string | null } | null; uptime: number; host: string }
-interface LearningInfo { due: number; days: Array<{ day: string; reviews: number }>; profile?: { goal?: string } }
 let forceWeather = false;
 const weather = source<Weather>(() => { const f = forceWeather; forceWeather = false; return loadWeather(f); }, 15 * 60_000);
 const system = source<SystemInfo>(() => api<SystemInfo>("/api/system"), 10_000);
-const learning = source<LearningInfo>(() => api<LearningInfo>("/api/learning"), 5 * 60_000);
 /** The same live feeds the widgets use, for the Today view. */
 export const useWeatherNow = () => weather.use();
-export const useLearningNow = () => learning.use();
 function useNow(everyMs: number) { const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), everyMs); return () => clearInterval(t); }, [everyMs]); return now; }
 
 function useCrew() {
@@ -100,7 +97,6 @@ function CrewChipBody() { const crew = useCrew(); return <><Bot size={14} classN
 function ClockChipBody() { const prefs = useWidgets(), now = useNow(15_000); return <><Clock size={13} /><span className="tabular-nums">{new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>{prefs.zones[0] && <span className="tb-dim tabular-nums">{new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: prefs.zones[0] })}</span>}</>; }
 function SpendChipBody() { const { today } = useCrew(); return <><Wallet size={13} /><span className="tabular-nums">{today.costUsd != null ? `$${today.costUsd.toFixed(2)}` : compact.format(today.tokens)}</span></>; }
 function SystemChipBody() { const sys = system.use(); return <><Cpu size={13} /><span className="tabular-nums">{sys.value ? `${sys.value.cpu}%` : "…"}</span>{sys.value?.battery && <span className="tb-dim tabular-nums">{sys.value.battery.pct}%</span>}</>; }
-function LearningChipBody() { const learn = learning.use(); return <><GraduationCap size={14} /><span className="tabular-nums">{learn.value ? learn.value.due : "…"}</span></>; }
 function CountdownChipBody() { const c = useWidgets().countdown; return c ? <><CalendarClock size={13} /><span className="tabular-nums">{Math.max(0, daysUntil(c.date))}d</span><span className="tb-dim wg-trunc">{c.label}</span></> : <CalendarClock size={14} />; }
 function Chip({ id }: { id: WidgetId }) {
   switch (id) {
@@ -111,7 +107,6 @@ function Chip({ id }: { id: WidgetId }) {
     case "clock": return <ClockChipBody />;
     case "spend": return <SpendChipBody />;
     case "system": return <SystemChipBody />;
-    case "learning": return <LearningChipBody />;
     case "note": return <StickyNote size={14} />;
     case "countdown": return <CountdownChipBody />;
   }
@@ -127,7 +122,6 @@ export function WidgetTile({ id, ctx, close }: { id: WidgetId; ctx: WidgetCtx; c
     case "clock": return <ClockTile />;
     case "spend": return <SpendTile ctx={ctx} />;
     case "system": return <SystemTile />;
-    case "learning": return <LearningTile ctx={ctx} />;
     case "note": return <NoteTile ctx={ctx} />;
     case "countdown": return <CountdownTile />;
   }
@@ -226,18 +220,6 @@ function SystemTile() {
     <Bar label="Memory" value={pct(s.memory.used, s.memory.total)} detail={`${bytes(s.memory.used)} of ${bytes(s.memory.total)}`} />
     {s.disk && <Bar label="Disk" value={pct(s.disk.total - s.disk.free, s.disk.total)} detail={`${bytes(s.disk.free)} free`} />}
     {b && <p className="wg-battery"><BatteryIcon size={16} data-low={b.pct < 20 && !b.charging || undefined} /><b className="tabular-nums">{b.pct}%</b><span className="tb-dim">{b.charging ? "charging" : b.source === "ac" ? "plugged in" : b.remaining && b.remaining !== "0:00" ? `${b.remaining} left` : "on battery"}</span></p>}
-  </div>;
-}
-
-function LearningTile({ ctx }: { ctx: WidgetCtx }) {
-  const { value: l, error } = learning.use();
-  if (!l) return <p className="tb-dim">{error || "Loading…"}</p>;
-  const days = streak(l.days);
-  return <div className="wg-learning">
-    <header className="wg-head"><strong>Learning</strong><span>{l.profile?.goal || "Set a goal in Learning"}</span></header>
-    <div className="wg-stats"><div><b className="tabular-nums">{l.due}</b><small>cards due</small></div><div><b className="tabular-nums">{days}</b><small>day streak</small></div></div>
-    <ol className="wg-days">{l.days.map((d) => <li key={d.day} title={`${d.day}: ${d.reviews} reviews`} data-level={Math.min(3, Math.ceil(d.reviews / 5))} />)}</ol>
-    <button type="button" className="tb-btn wg-more" onClick={() => ctx.go("/learn")}>{l.due ? "Review now" : "Open Learning"}</button>
   </div>;
 }
 

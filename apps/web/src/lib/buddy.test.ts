@@ -556,18 +556,3 @@ describe("bringing something up on the iPhone", () => {
   });
 });
 
-describe("Shua keeps Learn organized from anywhere", () => {
-  it("parses learn ops, keeps only known fields, and says what it will change", async () => {
-    const { parseActions, describeAction, learnOps, asksAboutLearn } = await import("./buddy");
-    const reply = 'Tracking it.\n```do [{"type":"learn","ops":[{"op":"cert","name":"AWS Solutions Architect – Associate","code":"SAA-C03","status":"booked","examDate":"2026-11-02","evil":"x"},{"op":"job","company":"Anthropic","stage":"applied","nextAt":"2026-10-14"},{"op":"drop_table"}]}]```';
-    const [a] = parseActions(reply);
-    expect(a).toEqual({ type: "learn", ops: [{ op: "cert", name: "AWS Solutions Architect – Associate", code: "SAA-C03", status: "booked", examDate: "2026-11-02" }, { op: "job", company: "Anthropic", stage: "applied", nextAt: "2026-10-14" }] });
-    expect(describeAction(a!)).toBe("Track SAA-C03 (exam 2026-11-02) · Anthropic: applied");
-    expect(learnOps([{ op: "goal" }, { op: "goal", goal: "  AI Platform Engineer " }])).toEqual([{ op: "goal", goal: "AI Platform Engineer" }]);
-    expect(parseActions('```do [{"type":"learn","ops":[{"op":"nope"}]}]```')).toEqual([]);
-    // The old forms still work.
-    expect(parseActions('```do [{"type":"learn","topic":"Kubernetes"}]```')).toEqual([{ type: "learn", topic: "Kubernetes" }]);
-    for (const q of ["when is my AWS exam", "I applied to Anthropic today", "add a flashcard", "what's on my roadmap"]) expect(asksAboutLearn(q), q).toBe(true);
-    for (const q of ["pause music", "what time is it", "open Safari"]) expect(asksAboutLearn(q), q).toBe(false);
-  });
-});

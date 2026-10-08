@@ -1,6 +1,5 @@
 import { companionName } from "../lib/companion";
 import { answerPhone, PHONE_ASK, yourWords } from "../lib/shua-remote";
-import { briefReminders, learnNudges, type LearnReminder } from "../lib/learn-reminders";
 import { actionSequence } from "../lib/action-sequence";
 import { NotchTeachingBar } from "../components/NotchTeachingBar";
 import { NotchEqualizer } from "../components/NotchEqualizer";
@@ -73,7 +72,7 @@ import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
 import { crewAsks, crewDetail, crewFinished, lastAskedApproval, noteAsked, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark, loadWeather, describe } from "../lib/weather";
-import { asksAboutLearn, actionsOnly, aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { actionsOnly, aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
@@ -119,11 +118,11 @@ import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
 import { classicCaptureWanted } from "../lib/live-preferences";
 import { voiceTrace } from "../lib/voice-trace";
 import { prose } from "../lib/plain";
-import { notchFocus, pausedLine, useLearningFocus } from "../lib/notch-focus";
+import { notchFocus, pausedLine } from "../lib/notch-focus";
 import { NotchActivity } from "../components/NotchActivity";
 
 /** The idle island's small label: what kind of thing the line is, readable at a glance. */
-const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", learn: "Get better", hold: "On hold" };
+const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", hold: "On hold" };
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -245,8 +244,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const [memory, setMemory] = useState<{ facts: string[]; goal: string }>({ facts: [], goal: "" });
   const loadMemory = () => Promise.all([
     api<{ lessons?: Array<{ text: string; retired?: string | null }> }>("/api/memory").then((m) => (m.lessons ?? []).filter((l) => !l.retired).map((l) => l.text)).catch(() => [] as string[]),
-    api<{ profile?: { goal?: string } }>("/api/learning").then((l) => l.profile?.goal?.trim() ?? "").catch(() => ""),
-  ]).then(([facts, goal]) => setMemory({ facts, goal }));
+  ]).then(([facts]) => setMemory({ facts, goal: "" }));
   useEffect(() => { void loadMemory(); const on = () => void loadMemory(); window.addEventListener("shuacrew:memory", on); return () => window.removeEventListener("shuacrew:memory", on); }, []);
   useEffect(() => {
     if (!embedded) return;
@@ -659,7 +657,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     try {
       localStorage.setItem("shuacrew.pinned-lesson", JSON.stringify(visual));
       window.dispatchEvent(new Event("shuacrew:pinned-lesson"));
-      post({ type: "buddyOpen", path: "/teach" });
+      setOpen(true); setTab("teach");
     } catch { setError("Could not save this lesson. Keep it open and try again."); }
   };
   const actionChain = useRef<Promise<void>>(Promise.resolve());
@@ -886,11 +884,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const mins = Math.round((next.start - now.getTime()) / 60_000);
       return next.start <= now.getTime() ? `You're in ${next.title} until ${time(next.end)}.` : `Next up: ${next.title} at ${time(next.start)}, ${mins < 90 ? `in ${mins} minutes` : `in about ${Math.round(mins / 60)} hours`}.`;
     }
-    if (what === "cards") {
-      const l = await api<{ due: number }>("/api/learning").catch(() => null);
-      if (!l) return "I couldn't reach your cards just now.";
-      return l.due ? `${l.due} card${l.due === 1 ? "" : "s"} due, about ${Math.max(1, Math.round(l.due * 0.4))} minutes. Say "quiz me" to start.` : "No cards due. You're caught up.";
-    }
     const runs = Object.values(live.runs).filter((r) => isTopLevelWork(r, live.runs));
     if (what === "crew") {
       const busy = runs.filter((r) => ["running", "planning", "queued"].includes(r.status));
@@ -943,21 +936,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     if (!inMeeting(agenda.current, Date.now()) && !timer) { lastSound.current = Date.now(); news.add(text, () => mine()); }
   };
   const announceRef = useRef(announce); announceRef.current = announce;
-  // Learn's heads-ups in the notch: exam countdowns and job follow-ups, once a day each (lib/learn-reminders), through
-  // the same path as calendar ones — the island hint, the voice, and remembered so they're never said twice.
-  useEffect(() => {
-    if (embedded || !prefs.proactive || !native()) return;
-    const SAID = "shuacrew.spark.said";
-    const check = () => void api<{ reminders: LearnReminder[] }>("/api/learning/reminders").then(({ reminders }) => {
-      let said: string[] = []; try { said = JSON.parse(localStorage.getItem(SAID) ?? "[]"); } catch { /* fresh */ }
-      const due = learnNudges(reminders, new Set(said), new Date());
-      if (!due.length || !mine()) return;
-      try { localStorage.setItem(SAID, JSON.stringify([...said, ...due.map((d) => d.key)].slice(-200))); } catch { /* ignore */ }
-      announceRef.current(due.map((d) => d.text).join(" "), "reminder");
-    }, () => {});
-    const first = setTimeout(check, 20_000), every = setInterval(check, 10 * 60_000);
-    return () => { clearTimeout(first); clearInterval(every); };
-  }, [embedded, prefs.proactive]);
   // Timers and alarms ring here (the desktop Spark, once): a chime, the line out loud, a Mac notification, the notch.
   const timers = useTimers();
   useEffect(() => {
@@ -993,14 +971,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const live = useLive.getState().crew, since = Date.now() - Math.max(awayMs, 8 * 3_600_000);
       const finished = Object.values(live.runs).filter((r) => (r.status === "done" || r.status === "merged") && r.updatedAt > since && isTopLevelWork(r, live.runs))
         .map((r) => `${(r.member && live.members[r.member]?.name) || "the crew"} finished ${r.title}`);
-      const [w, learn, reminders] = await Promise.all([
-        Promise.race([loadWeather().catch(() => null), new Promise<null>((ok) => setTimeout(() => ok(null), 1500))]),
-        api<{ due: number; profile?: { goal?: string } }>("/api/learning").catch(() => null),
-        api<{ reminders: LearnReminder[] }>("/api/learning/reminders").then((r) => r.reminders, () => [] as LearnReminder[]),
-      ]);
+      const w = await Promise.race([loadWeather().catch(() => null), new Promise<null>((ok) => setTimeout(() => ok(null), 1500))]);
       const desc = w ? describe(w.code, w.day) : null;
       const text = morningBriefLine({ now: Date.now(), agenda: agenda.current, finished, approvals: Object.keys(live.approvals).length,
-        due: learn?.due ?? 0, goal: learn?.profile?.goal?.trim() || undefined, learn: briefReminders(reminders),
+        due: 0,
         weather: w && desc ? { temp: w.temp, label: desc.label, hi: w.hi, lo: w.lo, rainSoon: w.hours.slice(0, 6).some((h) => h.rain >= 50) } : null });
       return text;
     };
@@ -1123,14 +1097,13 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const playEvening = async () => {
     setEvening(false); try { localStorage.setItem("shuacrew.evening", localDay(new Date())); } catch { /* ignore */ }
     speech.current.unlock(); setOpen(true); setTab("chat");
-    const learn = await api<{ days?: Array<{ day: string; reviews: number }> }>("/api/learning").catch(() => ({ days: [] as Array<{ day: string; reviews: number }> }));
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
     const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("buddy"));
     const today = work.filter((r) => r.updatedAt >= midnight.getTime());
     const text = eveningRecap({
       finished: today.filter((r) => r.status === "done" || r.status === "merged").sort((a, b) => b.updatedAt - a.updatedAt).map((r) => r.title),
       failed: today.filter((r) => r.status === "failed").length,
-      reviewed: learn.days?.find((d) => d.day === localDay(new Date()) || d.day === new Date().toISOString().slice(0, 10))?.reviews ?? 0,
+      reviewed: 0,
       tomorrow: work.filter((r) => r.status === "queued").map((r) => r.title),
       waiting: Object.keys(crew.approvals).length,
     });
@@ -1142,14 +1115,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const playMorning = async () => {
     setMorning(false); try { localStorage.setItem("shuacrew.morning", localDay(new Date())); } catch { /* ignore */ }
     speech.current.unlock(); setOpen(true); setTab("chat");
-    const [brief$, learn, reminders] = await Promise.all([
-      api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing").catch(() => ({ sections: [] as Array<{ title: string; items: Array<{ text: string }> }> })),
-      api<{ due?: number; profile?: { goal?: string } }>("/api/learning").catch(() => ({ due: 0, profile: {} as { goal?: string } })),
-      api<{ reminders: LearnReminder[] }>("/api/learning/reminders").then((r) => r.reminders, () => [] as LearnReminder[]),
-    ]);
+    const brief$ = await api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing").catch(() => ({ sections: [] as Array<{ title: string; items: Array<{ text: string }> }> }));
     const finished = (brief$.sections ?? []).find((x) => /finish/i.test(x.title))?.items.map((x) => x.text) ?? [];
     const runsNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs));
-    const text = morningBrief({ now: new Date(), goal: learn.profile?.goal?.trim(), learn: briefReminders(reminders), finished, waiting: Object.keys(crew.approvals).length, due: learn.due ?? 0,
+    const text = morningBrief({ now: new Date(), finished, waiting: Object.keys(crew.approvals).length, due: 0,
       ventures: Object.values(crew.ventures).map((v) => ({ name: v.name, stage: v.stage })), running: runsNow.filter((r) => ["running", "planning"].includes(r.status)).length });
     setBrief({ q: "Morning briefing", a: text }); speech.current.say(text);
   };
@@ -1528,9 +1497,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const page = await (seesShuaCrew ? listShuaCrew() : inAppPage);
       const inAppNote = inApp ? `THIS ASK IS INSIDE SHUACREW. Never use act, point or the Dock for ShuaCrew's window, and never touch other apps' windows to reach it. Open pages with go, press controls with ui and type into fields with ui + text, by their exact names.${page ? `\n${shuacrewPageText(page)}` : ""}`
         : seesShuaCrew ? `SHUACREW'S OWN WINDOW IS ON TOP OF THEIR SCREEN (that's what the screenshot shows). Work in it with go and ui by exact names (ui + text types into a field) — never act or point at it, and don't reach for an app behind it unless they name that app (then open_app it first).${page ? `\n${shuacrewPageText(page)}` : ""}` : "";
-      // Learning or career: Learn's few lines ride along, so Shua answers and keeps it organized from anywhere.
-      const learnNow = asksAboutLearn(yourWords(q).text) ? await api<{ text: string }>("/api/learning/brief").then((r) => `LEARN RIGHT NOW (their learning & career space; change it with a learn ops action):\n${r.text}`, () => "") : "";
-      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, learnNow, yourWords(q).phone && PHONE_ASK, (camWanted || /iphone-camera\.jpg/.test(q)) && CAMERA_NOTE, building(q) && BUILD_NOTE].filter(Boolean).join("\n\n");
+      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, yourWords(q).phone && PHONE_ASK, (camWanted || /iphone-camera\.jpg/.test(q)) && CAMERA_NOTE, building(q) && BUILD_NOTE].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
       const screenLines = screen ? [screen.text.length ? screenText(screen.text, 2500, screen) : "", elementsText(screen.context, 120, screen)].filter(Boolean).join("\n") : "";
@@ -1769,13 +1736,12 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Up late?" : hour < 12 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
   const workingNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
-  const learningFocus = useLearningFocus();
   // Live activity: the crew's own work (not Shua's chat), newest first, shown under the notch while it runs.
   const liveRuns = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("buddy") && ["running", "planning", "awaiting_approval"].includes(r.status))
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const justFinished = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && r.status === "done" && Date.now() - r.updatedAt < 2 * 3600_000 && !r.labels?.includes("buddy"))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  const idleFocus = notchFocus({ approvals, working: workingNow, justFinished: justFinished ? { id: justFinished.id, title: justFinished.title } : null, ...learningFocus, hour });
+  const idleFocus = notchFocus({ approvals, working: workingNow, justFinished: justFinished ? { id: justFinished.id, title: justFinished.title } : null, hour });
   const now$ = [
     approvals ? { key: "ok", tone: "wait", text: `${approvals} waiting for your OK`, ask: "What needs my OK right now?" } : null,
     activeMissions.length ? { key: "missions", tone: "live", text: `${activeMissions.length} mission${activeMissions.length === 1 ? "" : "s"} in progress`, ask: "How are my missions going?" } : null,
@@ -2231,7 +2197,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
               : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em>
               : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em>
               : idleFocus.tone === "done" ? <em className="is-done" aria-label={idleFocus.text}><Check size={11} strokeWidth={3} /></em>
-              : idleFocus.tone === "learn" ? <em className="is-learn" aria-label={`${idleFocus.text} · ${idleFocus.sub ?? ""}`} title={idleFocus.sub}><b aria-hidden />{learningFocus.due}</em>
               : <i className="shua-island-dot" aria-label="Ready" />}
             {islandOpen && <button type="button" className="shua-island-expand" onClick={openChat} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>

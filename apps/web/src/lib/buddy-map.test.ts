@@ -35,7 +35,3 @@ it("keeps Spark's local prompt compact and identical from call to call (so it ca
   expect(ask).toMatch(/Saturday/);
 });
 
-it("accepts an existing course lesson and rejects invalid lesson indexes", () => {
-  expect(parseActions('```do [{"type":"learn","course":"c1","lesson":0}]```')).toEqual([{type:"learn",course:"c1",lesson:0}]);
-  expect(parseActions('```do [{"type":"learn","course":"c1","lesson":-1}]```')).toEqual([]);
-});

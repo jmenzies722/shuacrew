@@ -36,7 +36,6 @@ import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
 import { nativeBridgeSource } from "./mobile/native-config.js";
 import { GatewaySettings } from "./settings.js";
-import { Learning } from "./learning.js";
 
 export const VERSION = "0.1.0";
 
@@ -191,7 +190,6 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     speech: new SpeechService({ home: path.join(home, "speech") }),
     settings,
     builtinProtected,
-    learning: new Learning(path.join(home, "learning.json")),
   });
   live = state;
   // Spark on the iPhone: a second, Tailscale-only door that opens once a phone is paired.

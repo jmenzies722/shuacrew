@@ -1,12 +1,11 @@
 /** The app's map: six sections and secondary tools, each a small set of tabs. Every screen lives in exactly one hub. */
 export interface HubTab { to: string; label: string; also?: string[] }
-export interface Hub { id: "home" | "crew" | "build" | "know" | "automations" | "library" | "system"; label: string; hint: string; tabs: HubTab[] }
+export interface Hub { id: "home" | "crew" | "build" | "automations" | "library" | "system"; label: string; hint: string; tabs: HubTab[] }
 
 export const HUBS: Hub[] = [
   { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions"] }, { to: "/activity", label: "Today" }] },
   { id: "build", label: "Projects", hint: "From idea to shipped", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }] },
   { id: "crew", label: "Crew", hint: "Your studio, live", tabs: [{ to: "/floor", label: "Studio floor" }, { to: "/crew", label: "Agents" }, { to: "/rooms", label: "Rooms" }] },
-  { id: "know", label: "Learn", hint: "Get measurably better, with Shua", tabs: [{ to: "/learn", label: "Learn", also: ["/teach"] }] },
   { id: "automations", label: "Automations", hint: "Teach once, reuse carefully", tabs: [{ to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/schedules", label: "Schedules" }] },
   { id: "library", label: "Library", hint: "Everything worth keeping", tabs: [{ to: "/library", label: "Artifacts & knowledge" }, { to: "/memory", label: "Memory" }] },
   { id: "system", label: "All tools", hint: "Connections and controls", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/developer", "/insights"] }, { to: "/usage", label: "Usage" }, { to: "/terminal", label: "Terminal" }] },

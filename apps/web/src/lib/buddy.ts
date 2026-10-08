@@ -47,7 +47,6 @@ export type Action =
   | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth" | "night_shift" | "browser_js" | "bluetooth_device" | "empty_trash"; on?: boolean; level?: number; device?: string }
   | { type: "shortcut"; name: string }
   | { type: "settings"; changes: SparkChanges }
-  | { type: "learn"; topic?: string; drill?: boolean; course?: string; lesson?: number; ops?: LearnOp[] }
   | { type: "venture"; name: string; pitch?: string; validate?: boolean }
   | { type: "playbook"; playbook: string; idea?: string; venture?: string }
   | { type: "remember"; text: string }
@@ -57,7 +56,6 @@ export type Action =
   | { type: "go"; path: string }
   /** Press a button, tab or link in ShuaCrew's own window by its visible name (never one that deletes, approves or sends). */
   | { type: "ui"; press: string; text?: string }
-  | { type: "card"; front: string; back: string }
   | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
   | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
   | { type: "open_settings"; pane: string }
@@ -73,8 +71,6 @@ export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; ab
   { path: "/floor", name: "Studio floor", hub: "Crew", about: "the crew live in a 3D room you can turn (camera buttons Studio / Above / Close): agents at their desks, walking to you when they need you; each agent's current step, heartbeat and today's numbers, and a box to hand any agent work" },
   { path: "/crew", name: "Agents", hub: "Crew", about: "the AI crew members (role, model, voice, memory, lessons); create, edit or hand work to one" },
   { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
-  { path: "/learn", name: "Learn", hub: "Learn", about: "get measurably better: Today (cards due, the next step, the user's roadmap toward their goal), Explain (visual lessons and diagrams), Library (courses, cards, career kit)" },
-  { path: "/teach", name: "Explain", hub: "Learn", about: "visual teaching: source-grounded diagrams, an editable canvas and on-screen annotations; use this for visual lessons" },
   { path: "/playbooks", name: "Playbooks", hub: "Automations", about: "repeatable multi-phase work the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
   { path: "/schedules", name: "Schedules", hub: "Automations", about: "work that runs on its own: schedules, webhooks and heartbeats" },
   { path: "/library", name: "Library", hub: "Library", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
@@ -340,26 +336,6 @@ export function mediaKeys(body: string): Array<{ type: "media"; command: string 
   return out.length ? out : null;
 }
 
-/** A change to their Learn space, as the organizer writes it: goal, cert, job or milestone (upserts only, never a delete). */
-export type LearnOp = { op: "goal" | "cert" | "job" | "milestone" } & Record<string, string | number | boolean>;
-const LEARN_FIELDS: Record<LearnOp["op"], string[]> = {
-  goal: ["goal"], cert: ["name", "code", "provider", "status", "examDate", "notes"], job: ["company", "role", "stage", "next", "nextAt", "url", "location", "salary", "notes"], milestone: ["title", "roadmap", "index", "done"],
-};
-/** Only known ops and fields, short values: what Spark writes is untrusted until here. At most 8. */
-export function learnOps(v: unknown[]): LearnOp[] {
-  const out: LearnOp[] = [];
-  for (const o of v.slice(0, 8)) {
-    const r = (o && typeof o === "object" ? o : {}) as Record<string, unknown>, op = r.op as LearnOp["op"];
-    if (!(op in LEARN_FIELDS)) continue;
-    const clean: Record<string, string | number | boolean> = { op };
-    for (const k of LEARN_FIELDS[op]) { const x = r[k]; if (typeof x === "string" && x.trim()) clean[k] = x.trim().slice(0, 500); else if (typeof x === "number" || typeof x === "boolean") clean[k] = x; }
-    if (Object.keys(clean).length > 1) out.push(clean as LearnOp);
-  }
-  return out;
-}
-export const learnOpLabel = (o: LearnOp) => o.op === "goal" ? "Set your goal" : o.op === "cert" ? `${o.status === "passed" ? "Mark" : "Track"} ${o.code ?? o.name}${o.examDate ? ` (exam ${o.examDate})` : ""}` : o.op === "job" ? `${o.company}${o.stage ? `: ${o.stage}` : ""}` : `${o.done === false ? "Reopen" : "Finish"} “${o.title ?? "milestone"}”`;
-/** Asks about learning or career: Spark gets Learn's few lines, so it can answer and change it from anywhere. */
-export const asksAboutLearn = (q: string) => /\b(learn(ing)?|stud(y|ying)|cert(s|ification)?s?|exams?|jobs?|interview(s|ing)?|appl(y|ied|ication)|roadmap|career|flash ?cards?|course|lessons?|resume|recruiter|offer|goal)\b/i.test(q);
 
 const ACT_KINDS = new Set(["press", "click", "type", "key", "scroll", "done"]);
 /** The screen steps inside a do block, as act objects, and the do-actions around them; null when there are none. */
@@ -527,12 +503,10 @@ function toAction(v: unknown): Action | null {
     }
     case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
     case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
-    case "learn": { if (Array.isArray(o.ops)) { const ops = learnOps(o.ops); return ops.length ? { type: "learn", ops } : null; } if (o.course !== undefined) { const course = str(o.course, 80); return course && /^[A-Za-z0-9_-]+$/.test(course) && Number.isInteger(o.lesson) && Number(o.lesson) >= 0 && Number(o.lesson) < 20 ? {type:"learn",course,lesson:Number(o.lesson)} : null; } const topic = str(o.topic, 120); return topic || o.drill === true ? { type: "learn", ...(topic ? { topic } : {}), ...(o.drill === true ? { drill: true } : {}) } : null; }
     case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
     case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
     case "brief": { const since = ["today", "hour", "morning"].includes(o.since as string) ? (o.since as "today" | "hour" | "morning") : undefined; return { type: "brief", ...(since ? { since } : {}) }; }
-    case "card": { const front = str(o.front, 240), back = str(o.back, 800); return front && back ? { type: "card", front, back } : null; }
     // Long names happen (a session's whole title); text types into the field of that name instead of pressing it.
     case "ui": { const press = str(o.press ?? o.label, 120); const text = typeof o.text === "string" ? o.text.slice(0, 2000) : undefined; return press ? { type: "ui", press, ...(text !== undefined ? { text } : {}) } : null; }
     case "go": { const path = str(o.path, 80); return path && SHUACREW_PAGES.some((p) => p.path === path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}#`)) ? { type: "go", path } : null; }
@@ -573,12 +547,10 @@ export function describeAction(a: Action): string {
     case "system": return { dark_mode: "Dark mode", sleep_display: "Sleep display", volume: `Volume to ${a.level}%`, volume_up: "Volume up", volume_down: "Volume down", mute: a.on === false ? "Unmute" : "Mute", lock: "Lock your Mac", screenshot: "Take a screenshot", wifi: `Wi-Fi ${a.on === false ? "off" : "on"}`, bluetooth: `Bluetooth ${a.on === false ? "off" : "on"}`, night_shift: a.on === undefined ? "Toggle Night Shift" : `Night Shift ${a.on ? "on" : "off"}`, browser_js: "Let Shua work inside web pages (Allow JavaScript from Apple Events)", bluetooth_device: `${a.on === false ? "Disconnect" : "Connect"} ${a.device ?? "the device"}`, empty_trash: "Empty the Trash" }[a.what];
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
-    case "learn": return a.ops ? a.ops.map(learnOpLabel).join(" · ") : a.course ? `Open lesson ${(a.lesson ?? 0) + 1}` : a.drill ? "Quiz drill" : `Course: ${a.topic}`;
     case "venture": return `Venture: ${a.name}`;
     case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
     case "brief": return "Caught up on everything";
-    case "card": return "Added a quiz card";
     case "ui": return a.text !== undefined ? `Type “${a.text.slice(0, 40)}” into “${a.press}” in ShuaCrew` : `Press “${a.press}” in ShuaCrew`;
     case "go": return `Open ${SHUACREW_PAGES.find((p) => a.path === p.path || a.path.startsWith(p.path + "/"))?.name ?? a.path}`;
     case "radio": return a.cmd === "play" ? `Radio: ${a.station ?? "on"}` : `Radio: ${a.cmd}`;
@@ -804,9 +776,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     'Actions: open_app {name: the app\'s usual name, e.g. "Visual Studio Code", "Notes", "Terminal"} · open_url {url: https://…, app?: "Google Chrome"} — the way to open ANY website (one step, no screen needed; app picks the browser they named, else their default; use a search URL like https://www.google.com/search?q=… to look something up) · open_path {path: "~/Developer/projects/…"} (a file or folder; opens it) · focus {minutes: 5|10|15|25|45|50|60|90} · note {text} (adds to their scratch note) · crew {ask} (hands a bigger job — coding, research, anything with many steps — to their ShuaCrew agents as a full session).',
     'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist) | open_query (open an artist, album or search without playing), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
     [
-      "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, learning, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
-      'Learn anything: ```do [{"type":"learn","topic":"Kubernetes"}]``` · quiz what is due: ```do [{"type":"learn","drill":true}]```',
-      'Their Learn space (goal, certifications and exam dates, job search, roadmap) is yours to keep organized from anywhere: ```do [{"type":"learn","ops":[{"op":"cert","name":"AWS Solutions Architect – Associate","code":"SAA-C03","status":"planned|studying|booked|passed","examDate":"YYYY-MM-DD"},{"op":"job","company":"…","role":"…","stage":"saved|applied|interviewing|offer|closed","next":"…","nextAt":"YYYY-MM-DD","url":"https://…"},{"op":"goal","goal":"…"},{"op":"milestone","title":"words from its title","done":true}]}]``` — same cert code or company updates it; only what they told you (never invent dates, companies or URLs); there is no delete.',
+      "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
       'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
       'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Building software, writing code in a repo, or a long written report they asked the crew to produce: ```do [{"type":"crew","ask":"…a clear, complete brief…","title":"Short task-specific title"}]```. Always supply a concise 3–7 word title describing the goal, not the first sentence of the prompt or the crew member name. If the user explicitly names or quotes a session title, preserve that title exactly and retain their naming instruction in the brief. Ordinary quoted task content is not a title instruction. Questions, facts, news, prices, comparisons, recommendations and "look it up": search yourself right now (WebSearch/WebFetch) and answer — never hand those to the crew. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
@@ -820,7 +790,6 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
       'Their Notion (pages, notes, docs, databases): hand it to the crew, which has their Notion connection once they add it in Tools & Skills: ```do [{"type":"crew","ask":"In my Notion, …"}]```. If they have not connected Notion, say so and offer to open Tools & Skills (go /integrations).',
       'Run a terminal command on their Mac (checked by their ShuaCrew policy; risky ones ask them first; you get the output back): ```do [{"type":"run","command":"df -h ~"}]``` — for quick facts, files, git status, system info, opening things with `open`, anything scriptable (osascript too). One command per block; no sudo.',
       'Music: the user listens on Apple Music only (no radio, no lofi stations); "put something on", "play some music" → media in Music: play, pause, next, play_query {query}, open_query {query} (show an artist/album without playing), playlist {query} (their own playlist by name), shuffle {on}, repeat {mode: off|one|all}, love (favourite this song), add_to_library, seek {seconds}. To know the song in detail or their playlists: mac {op: music_now | music_playlists}. Take what they mean, not the words: "another song", "something else", "play something", "something like this", "recommend me something" → play_similar (by: "vibe" when they want a different artist); a mood ("something chill", "upbeat music", "focus music") → play_similar {mood: "chill"} (their library, by genre) — never play_query a mood or a whole sentence — it picks from THEIR library on the Mac; NEVER name a song from memory for these (it usually isn\'t theirs and won\'t play). "Skip"/"next" → next. "Another song by <Artist>" / "play <Artist>" → play_query {query: "<Artist>"} (a different one of theirs each time). Only when they name a specific song: play_query "Title by Artist" (finds that exact song, even misheard). Say what is now playing from the result, never what you guessed. Never click a play button. Other controls: press by name from ITS CONTROLS; that is exact.',
-      'Quiz card (after explaining something worth keeping, or when they ask to remember a concept): ```do [{"type":"card","front":"a question","back":"the answer"}]``` — it goes into their spaced-repetition Learning.',
       '"What\'s going on?", "catch me up", "summarize", "status", "what did the crew do", "anything need me?" → ```do [{"type":"brief"}]``` (since: "hour" for the last hour, "morning" for since 6am) — you get back exactly what is working (and on what step), what waits on them and why, what finished and how it went, what failed, usage and what runs next. Lead with what needs them, then the most important change, in a few short sentences; offer the next move (approve, open, stop, hand off). Never answer these from memory.',
       '"Remember…", "note that…", "always/never…" → ```do [{"type":"remember","text":"The user deploys on Fridays."}]``` — NEVER say you will remember without this block; you have no memory otherwise.',
       "For anything about their past work or documents, hand it to the crew (crew {ask}); they have the library. After acting, say in one line what is happening and what comes next.",
@@ -870,11 +839,11 @@ export function guideFollowUp(label: string, screen: { width: number; height: nu
  */
 export function localSystem(p: Persona): string {
   return [
-    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures, learning and radio. The MODEL line in each message says what you're running on.`,
+    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures and radio. The MODEL line in each message says what you're running on.`,
     `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Start with the answer itself, never filler like "On it", "Sure" or "Got it". Be accurate; if you don't know, say so.`,
     "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
     '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below}',
-    "- media {command: play|pause|next|previous|play_query|play_similar, query?, app?: Music|Spotify} ('another song'/'something like this' = play_similar: from their library) · remember {text} · card {front, back} (a quiz card) · run {command} (a terminal command; risky ones ask first)",
+    "- media {command: play|pause|next|previous|play_query|play_similar, query?, app?: Music|Spotify} ('another song'/'something like this' = play_similar: from their library) · remember {text} · run {command} (a terminal command; risky ones ask first)",
     "ShuaCrew pages (what each is for — answer questions about the app from this, never guess):",
     ...SHUACREW_PAGES.map((x) => `- ${x.name} ${x.path}: ${x.about}`),
     p.goal ? `Their career goal: ${p.goal}.` : "",

@@ -6,7 +6,6 @@ import { PaneHeader, PaneLayout } from "../components/Pane";
 import { suggestToSpark, toggleSparkPanel } from "../lib/spark-panel";
 import { useLive } from "../lib/live";
 import { api } from "../lib/api";
-import { useLearningNow } from "../components/TopBarWidgets";
 import { useCompanion } from "../lib/companion";
 import "./guide.css";
 
@@ -34,8 +33,6 @@ const HUBS: HubSection[] = [
     { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
   ] },
   { id: "know", hub: "Hub 4 · ⌘4", title: "Learn: get measurably better, with Shua", features: [
-    { title: "Learn from your own work", where: "Learn › Today", to: "/learn", body: "Lessons drawn from your real sessions, a daily drill and spaced-repetition review. It also includes a career coach: roadmaps, resume review and interview prep." },
-    { title: "Visual teaching", where: "Learn › Explain", to: "/teach", body: "Give it a screenshot, PDF, image or code and it turns it into an editable diagram lesson. Guided practice watches the screen you're practicing on and tells you whether you got it right, with hints. It only watches after you press Start." },
   ] },
   { id: "automations", hub: "Hub 5 · ⌘5", title: "Automations: teach once, reuse carefully", features: [
     { title: "Multi-phase work", where: "Automations › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
@@ -64,7 +61,7 @@ const TOC: Array<{ group: string; items: Array<[id: string, label: string]> }> =
 
 /** One live line per hub, from what's on this Mac right now. */
 function useHubLive(): Record<string, string> {
-  const crew = useLive((s) => s.crew), learn = useLearningNow().value;
+  const crew = useLive((s) => s.crew);
   // Playbooks live in the gateway's library, not the event projection.
   const [books, setBooks] = useState<number | null>(null);
   useEffect(() => { void api<unknown[]>("/api/playbooks").then((b) => setBooks(Array.isArray(b) ? b.length : null)).catch(() => setBooks(null)); }, []);
@@ -76,7 +73,7 @@ function useHubLive(): Record<string, string> {
     home: `${plural(runs.filter((r) => r.createdAt >= today.getTime()).length, "session")} today`,
     build: plural(Object.keys(crew.ventures ?? {}).length, "project"),
     crew: `${plural(Object.keys(crew.members).length, "agent")}${working ? ` · ${working} working` : ""}`,
-    know: learn ? `${plural(learn.due ?? 0, "card")} due` : "",
+    know: "",
     automations: books === null ? "" : plural(books, "playbook"),
     library: plural(Object.keys(crew.artifacts ?? {}).length + Object.keys(crew.knowledge ?? {}).length, "item"),
     system: `${plural(Object.keys(crew.approvals).length, "approval")} waiting`,
@@ -132,17 +129,16 @@ function Cards({ features }: { features: Feature[] }) {
 function SetupLive() {
   const members = useLive((s) => Object.keys(s.crew.members).length), runs = useLive((s) => s.crew.runs);
   const done = Object.values(runs).filter((r) => r.status === "done" || r.status === "merged").length;
-  const [state, setState] = useState<{ engines: string[]; goal: string; tools: number; schedules: number; backup: number | null } | null>(null);
+  const [state, setState] = useState<{ engines: string[]; tools: number; schedules: number; backup: number | null } | null>(null);
   useEffect(() => {
     const soft = <T,>(p: Promise<T>) => p.catch(() => null);
-    void Promise.all([soft(api<Array<{ label: string; status: { installed: boolean; signedIn: boolean | null } }>>("/api/runtimes")), soft(api<{ profile?: { goal?: string } }>("/api/learning")),
+    void Promise.all([soft(api<Array<{ label: string; status: { installed: boolean; signedIn: boolean | null } }>>("/api/runtimes")),
       soft(api<unknown[]>("/api/mcp")), soft(api<unknown[]>("/api/schedules")), soft(api<{ last: { at: number } | null }>("/api/backups"))])
-      .then(([rt, learn, mcp, sch, bk]) => setState({ engines: (rt ?? []).filter((r) => r.status.installed && r.status.signedIn === true).map((r) => r.label.replace(/\s*\(.*\)$/, "")),
-        goal: learn?.profile?.goal ?? "", tools: Array.isArray(mcp) ? mcp.length : 0, schedules: Array.isArray(sch) ? sch.length : 0, backup: bk?.last?.at ?? null }));
+      .then(([rt, mcp, sch, bk]) => setState({ engines: (rt ?? []).filter((r) => r.status.installed && r.status.signedIn === true).map((r) => r.label.replace(/\s*\(.*\)$/, "")),
+        tools: Array.isArray(mcp) ? mcp.length : 0, schedules: Array.isArray(sch) ? sch.length : 0, backup: bk?.last?.at ?? null }));
   }, []);
   const steps = !state ? [] : [
     { ok: state.engines.length > 0, title: "Connect your engines", detail: state.engines.length ? `${state.engines.join(" and ")} connected` : "No engine signed in yet", to: "/settings", hash: "runtimes" },
-    { ok: !!state.goal, title: "Tell it your goal", detail: state.goal ? `Working toward ${state.goal}` : "Your goal shapes Learn and every chat", to: "/learn" },
     { ok: members > 0, title: "Meet your crew", detail: members ? `${members} agent${members === 1 ? "" : "s"} ready` : "Add the starter crew in one click", to: "/crew" },
     { ok: done > 0, title: "Get a first win", detail: done ? `${done} session${done === 1 ? "" : "s"} finished` : "Hand the crew one small real task", to: "/" },
     { ok: state.tools > 0, title: "Connect a tool", detail: state.tools ? `${state.tools} connection${state.tools === 1 ? "" : "s"}` : "Notion, GitHub, Stripe and more", to: "/integrations" },
@@ -187,7 +183,6 @@ export function Guide() {
         <Section id="start" hub="First run" title="Getting started" intro="The first time you open ShuaCrew, a short welcome tour walks you through these steps. Each one takes about a minute.">
           <ol className="guide-steps">
             <li><b>Meet your assistant</b><span>Name your companion (Shua by default), pick one of five characters and choose a voice. You can change all of it later.</span></li>
-            <li><b>Tell it your goal</b><span>A career goal or a project you're working toward. Your companion keeps it in mind in every conversation.</span></li>
             <li><b>Connect your engines</b><span>ShuaCrew finds the Claude Code and Codex logins already on your Mac. There are no API keys to paste and no new accounts to create.</span></li>
             <li><b>Grant what you want to use</b><span>Microphone, screen, accessibility and calendar are each optional. The tour explains what each one unlocks before macOS asks you.</span></li>
             <li><b>Get a first win</b><span>Give the crew a small real task and watch it go from request to finished result.</span></li>

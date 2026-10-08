@@ -2,7 +2,6 @@ import Fastify from 'fastify';
 import {expect,it} from 'vitest';
 import {mkdtempSync,readFileSync,readdirSync,statSync,writeFileSync} from 'node:fs';
 import os from 'node:os';import path from 'node:path';
-import {Learning} from './learning.js';
 import {personalSetupRoutes} from './personal-setup-routes.js';
 const home=()=>mkdtempSync(path.join(os.tmpdir(),'shua-setup-routes-'));
 it('rejects stale completion before changing learning and preserves failed completion',async()=>{
@@ -25,6 +24,6 @@ it('archives browser content privately, accepts large history, and rejects stale
 });
 
 it('can complete a setup with its full supported goal length',async()=>{
- const dir=home(),app=Fastify(),learning=new Learning(path.join(dir,'learning.json'));personalSetupRoutes(app,dir,goal=>{learning.setProfile({goal});});
- try{const goal='g'.repeat(500);const r=await app.inject({method:'POST',url:'/api/personal-setup',payload:{expectedRevision:0,patch:{goal,complete:true}}});expect(r.statusCode).toBe(200);expect(learning.get().profile.goal).toBe(goal);}finally{await app.close();}
+ const dir=home(),app=Fastify();let saved='';personalSetupRoutes(app,dir,goal=>{saved=goal;});
+ try{const goal='g'.repeat(500);const r=await app.inject({method:'POST',url:'/api/personal-setup',payload:{expectedRevision:0,patch:{goal,complete:true}}});expect(r.statusCode).toBe(200);expect(saved).toBe(goal);expect((await app.inject('/api/personal-setup')).json()).toMatchObject({goal});}finally{await app.close();}
 });
