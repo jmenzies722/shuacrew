@@ -1087,8 +1087,8 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     const call = normalise(b.tool ?? "Bash", b.input ?? {});
     // The same engine, context and layers a real run uses (your protected folders and branches, your "always allow"s),
     // decided as a Supervised session; Autopilot's answer rides along so the page can show both.
-    const { supervised: decision, autopilot } = supervisor.explain(call.tool, b.input ?? {}, b.workspace);
-    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision), autopilot, kind: call.kind, paths: call.paths };
+    const { supervised: decision, autopilot, autonomous, mode } = supervisor.explain(call.tool, b.input ?? {}, b.workspace);
+    return { ...decision, assistantMustAsk: decision.verdict !== "deny" && assistantMustAsk(decision), autopilot, autonomous, mode, kind: call.kind, paths: call.paths };
   });
 
   app.get("/api/audit/verify", async () => store.verify());

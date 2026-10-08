@@ -17,6 +17,7 @@ import path from "node:path";
 import {
   agentEnv,
   allowAll,
+  autonomousRules,
   decide,
   defaultContext,
   defaultRules,
@@ -921,10 +922,14 @@ export class Supervisor {
     });
     return {
       ctx,
-      layers: () => [
-        { name: "global", rules: [...defaultRules(), ...this.standingRules()] },
-        { name: "run", rules: this.approveAll.has(run) ? [allowAll()] : [] },
-      ],
+      // Autonomous (the default): end to end, malicious refused, only the irreversible asks — and not even that on
+      // Autopilot. Supervised: anything not known to be safe asks.
+      layers: () => settings?.autonomy === "autonomous"
+        ? [{ name: "global", rules: autonomousRules(this.standingRules(), { confirm: !this.approveAll.has(run) }) }]
+        : [
+          { name: "global", rules: [...defaultRules(), ...this.standingRules()] },
+          { name: "run", rules: this.approveAll.has(run) ? [allowAll()] : [] },
+        ],
     };
   }
 
@@ -988,12 +993,13 @@ export class Supervisor {
    * "Why would this be allowed?": the exact engine, context and layers a real run uses (your protected folders and
    * branches, every "always allow" you've given), decided twice: as a Supervised session and as an Autopilot one.
    */
-  explain(tool: string, input: unknown, workspace?: string): { supervised: Decision; autopilot: Decision } {
+  explain(tool: string, input: unknown, workspace?: string): { supervised: Decision; autopilot: Decision; autonomous: Decision; mode: "autonomous" | "supervised" } {
     const roots = this.options.roots ?? ["~/Developer"];
     const where = workspace?.trim() || roots[0]!;
     const policy = this.policyFor("explain", where), call = normalise(tool, input);
-    const global = policy.layers()[0]!;
-    return { supervised: decide(call, policy.ctx, [global]), autopilot: decide(call, policy.ctx, [global, { name: "run", rules: [allowAll()] }]) };
+    const global = { name: "global" as const, rules: [...defaultRules(), ...this.standingRules()] };
+    return { supervised: decide(call, policy.ctx, [global]), autopilot: decide(call, policy.ctx, [global, { name: "run", rules: [allowAll()] }]),
+      autonomous: decide(call, policy.ctx, [{ name: "global", rules: autonomousRules(this.standingRules()) }]), mode: this.options.settings?.().autonomy ?? "supervised" };
   }
 
   /** The guardrails a run works within right now, in plain lists (for Policy & Audit). */

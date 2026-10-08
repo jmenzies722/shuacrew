@@ -372,6 +372,85 @@ function isCdInto(segment: string, ctx: PolicyContext): boolean {
   return within(target, ctx.workspace) || ctx.roots.some((root) => within(target, resolvePath(root)));
 }
 
+// ── autonomous ──────────────────────────────────────────────────────────────────────────────
+
+/** Shapes that are malicious whatever the reason: refused even when everything else goes through. */
+export const MALICIOUS: Array<{ id: string; description: string; pattern: RegExp }> = [
+  { id: "deny.reverse-shell", description: "opens a shell to another machine", pattern: /(\/dev\/(tcp|udp)\/|\bn(c|cat)\b[^|;&]*\s-[a-z]*e\b|\bsocat\b.*\bexec:|\bbash\s+-i\b[^;|]*>&)/i },
+  { id: "deny.decode-exec", description: "decodes or downloads code and runs it unseen", pattern: /(\bbase64\s+(-d|-D|--decode)\b.*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b|\b(curl|wget)\b[^|]*\|\s*(python3?|perl|ruby|node)\b|\beval\s+"?\$\((curl|wget)\b)/ },
+  { id: "deny.security-off", description: "turns off macOS security", pattern: /\b(csrutil\s+disable|spctl\s+--(master|global)-disable|fdesetup\s+disable|pfctl\s+-d\b|security\s+authorizationdb\s+write)/ },
+  { id: "deny.admin-escalation", description: "asks macOS for administrator rights", pattern: /with\s+administrator\s+privileges/i },
+  { id: "deny.miner", description: "runs a cryptocurrency miner", pattern: /\b(xmrig|minerd|cpuminer|nicehash|ethminer)\b/i },
+  { id: "deny.log-wipe", description: "erases system logs", pattern: /(\blog\s+erase\b|\brm\b[^;|&]*\s\/(private\/)?var\/log\b)/ },
+  { id: "deny.mass-kill", description: "kills every process or the window server", pattern: /(\bkill\s+-(9|KILL)\s+-1\b|\bkillall\s+(-\w+\s+)*(WindowServer|loginwindow|launchd)\b)/ },
+];
+
+/** Things that throw away work with no backup. */
+const LOSE_WORK = /^git\s+(reset\s+--hard|clean\s+-[a-z]*f[a-z]*|branch\s+-D|stash\s+(drop|clear))\b/;
+/** Public and permanent, or deleting what lives outside this Mac. */
+const PUBLISH = /^((npm|pnpm|yarn|bun)\s+publish|cargo\s+publish|uv\s+publish|twine\s+upload|gh\s+(repo\s+delete|release\s+delete)|glab\s+repo\s+delete)\b/;
+const CLOUD_DELETE = /^((aws|gcloud|az)\s.*\b(delete|terminate|remove|destroy|purge|deregister)[a-z-]*\b|aws\s+s3\s+(rm|rb)\b|gsutil\s+(rm|rb)\b)/;
+/** Starts itself again later: shell startup files, launch agents, cron. */
+const PERSIST_PATH = /(^|\/)(\.zshrc|\.zprofile|\.zshenv|\.bashrc|\.bash_profile|\.profile|Library\/Launch(Agents|Daemons)\/)/;
+const POWER = /^(shutdown|reboot|halt)\b|osascript\b.*\b(shut down|restart|log out)\b/i;
+
+/** The paths a deleting or moving command acts on (its arguments that aren't flags); null when it isn't one. */
+function targets(segment: string): string[] | null {
+  const bare = bareCommand(segment);
+  const found = /^find\s+(\S+).*\s-delete\b/.exec(bare);
+  if (found) return [found[1]!];
+  const m = /^(rm|rmdir|unlink|mv|trash)\b(.*)$/.exec(bare);
+  if (!m) return null;
+  return m[2]!.trim().split(/\s+/).filter((w) => w && !w.startsWith("-")).map((w) => w.replace(/^["']|["']$/g, ""));
+}
+
+/** Inside the run's own folder (not the folder itself): what a run may delete or move freely. */
+function insideWorkspace(p: string, ctx: PolicyContext): boolean {
+  const resolved = resolvePath(p.replace(/[*?[].*$/, "x"), ctx.workspace), home = resolvePath(ctx.workspace);
+  return resolved !== home && within(resolved, home);
+}
+
+/** What still stops for you in autonomous mode: it can't be undone, or it reaches past this Mac. */
+function confirmRules(): Rule[] {
+  const any = (call: ToolCall, re: RegExp) => call.kind === "shell" && segments(shell(call)).some((s) => re.test(bareCommand(s)));
+  return [
+    {
+      id: "confirm.delete-outside", description: "deletes or moves something outside this session's folder", verdict: "ask", risk: "high",
+      matches: (call, ctx) => call.kind === "shell" && segments(shell(call)).some((s) => { const t = targets(s); return t !== null && (t.length === 0 || t.some((p) => !insideWorkspace(p, ctx))); }),
+    },
+    { id: "confirm.lose-work", description: "throws away uncommitted work or a branch", verdict: "ask", risk: "high", matches: (call) => any(call, LOSE_WORK) },
+    { id: "confirm.publish", description: "publishes publicly, or deletes a repository or release", verdict: "ask", risk: "high", matches: (call) => any(call, PUBLISH) },
+    { id: "confirm.cloud-delete", description: "deletes cloud resources", verdict: "ask", risk: "critical", matches: (call) => any(call, CLOUD_DELETE) },
+    {
+      id: "confirm.persistence", description: "makes something start by itself (shell startup, launch agents, cron)", verdict: "ask", risk: "high",
+      matches: (call) => (call.kind === "write" && call.paths.some((p) => PERSIST_PATH.test(p))) ||
+        (call.kind === "shell" && segments(shell(call)).some((s) => {
+          const bare = bareCommand(s);
+          return /^crontab\s+(?!-l\b)/.test(bare) || /^launchctl\s+(load|bootstrap|enable)\b/.test(bare) || (PERSIST_PATH.test(s) && (redirectsToFile(s) || /^(cp|mv|ln|sed\s+-i|install)\b/.test(bare)));
+        })),
+    },
+    { id: "confirm.power", description: "shuts down, restarts or logs out", verdict: "ask", risk: "high", matches: (call) => any(call, POWER) },
+  ];
+}
+
+/**
+ * Autonomous: Shua and the crew work end to end without stopping. Every deny stays absolute, and the malicious shapes
+ * above join them; only what can't be undone or reaches past this Mac — deleting outside the session's folder, losing
+ * uncommitted work, publishing, deleting cloud resources, terraform apply, production clusters, startup items, power —
+ * still asks. Your "always allow" answers come before those asks. Everything else goes through.
+ */
+export function autonomousRules(standing: Rule[] = [], opts: { confirm?: boolean } = {}): Rule[] {
+  const base = defaultRules(), stillAsk = new Set(["platform.terraform-apply", "platform.kubectl-prod"]);
+  return [
+    ...base.filter((r) => r.verdict === "deny"),
+    ...MALICIOUS.map(({ id, description, pattern }): Rule => ({ id, description, verdict: "deny", risk: "critical", matches: (call) => anySegment(call, pattern) || pattern.test(shell(call)) })),
+    ...standing,
+    // A session on Autopilot doesn't stop even for these; nothing malicious ever goes through.
+    ...(opts.confirm === false ? [] : [...base.filter((r) => stillAsk.has(r.id)), ...confirmRules()]),
+    { id: "auto.allow", description: "autonomous: nothing malicious, nothing irreversible, so it goes through", verdict: "allow", risk: "low", matches: () => true },
+  ];
+}
+
 /** "Approve everything" for one run: an allow-all at the run layer. Global denies still win. */
 export function allowAll(): Rule {
   return { id: "run.approve-all", description: "this run was started with approve-all", verdict: "allow", risk: "low", matches: () => true };

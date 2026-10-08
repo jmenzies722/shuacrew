@@ -18,6 +18,11 @@ export const GatewaySettingsSchema = z.object({
     /** Keyed by absolute repo path. */
     projects: z.record(z.string().min(1).max(4096), z.string().max(8000)).default({}),
   }).default({ global: "", projects: {} }),
+  /**
+   * "autonomous": Shua and the crew work end to end — malicious commands are refused and only what can't be undone or
+   * reaches past this Mac asks. "supervised": anything not known to be safe asks first.
+   */
+  autonomy: z.enum(["autonomous", "supervised"]).default("autonomous"),
   /** Added to the built-in protected folders; agents can never read or change these. */
   protectedPaths: z.array(z.string().min(1).max(4096).refine(p => p.startsWith("/") || p.startsWith("~/"), "Use an absolute path or ~/…")).max(50).default([]),
   git: z.object({
