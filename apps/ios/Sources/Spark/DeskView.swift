@@ -70,6 +70,11 @@ struct DeskView: View {
         .onDisappear {
             if eyes.recording == nil { UIApplication.shared.isIdleTimerDisabled = false }
             eyes.releasePreview(me)
+            link.reportDesk(false)
+        }
+        .task {
+            // On the desk: the Mac speaks while you're here. Said again each minute, so a phone that died doesn't hold it.
+            while !Task.isCancelled { link.reportDesk(true); try? await Task.sleep(for: .seconds(60)) }
         }
     }
 

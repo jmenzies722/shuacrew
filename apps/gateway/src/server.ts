@@ -40,6 +40,7 @@ import { registerBrief } from "./brief.js";
 import { registerShuaJournal } from "./shua-journal.js";
 import { registerShuaLook } from "./shua-look.js";
 import { registerShuaRemote } from "./shua-remote.js";
+import { registerPresence } from "./presence.js";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -968,6 +969,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   if (options.store.path !== ":memory:") { registerShuaJournal(app, path.dirname(options.store.path)); registerShuaLook(app, path.dirname(options.store.path)); }
   // Shua from your iPhone: asks relayed to the Mac's own Shua in the notch.
   registerShuaRemote(app, undefined, store);
+  registerPresence(app); // at the desk or out: which device speaks
   if (options.ventures) ideaRoutes(app, options.ventures, auto?.scheduler);
   if (auto) standupRoutes(app, auto.scheduler);
   if (auto) routineRoutes(app, auto.scheduler);

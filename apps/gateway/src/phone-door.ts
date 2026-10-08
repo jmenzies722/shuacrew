@@ -92,6 +92,9 @@ const PHONE_ROUTES: Array<[method: string, pattern: RegExp]> = [
   // Ask the Mac's own Shua, and follow that ask (the notch's listening and taking stay on the Mac).
   ["POST", /^\/api\/shua\/remote$/],
   ["GET", /^\/api\/shua\/remote\/ra_[0-9a-f]{12}$/],
+  // Where you are, so one device speaks: the phone asks before it talks, and says when it's on the desk.
+  ["GET", /^\/api\/presence$/],
+  ["POST", /^\/api\/presence\/phone$/],
 ];
 
 export function phoneAllowed(method: string, path: string): boolean {

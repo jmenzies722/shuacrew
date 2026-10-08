@@ -361,11 +361,32 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
         speak(Self.speakable(final))
     }
 
-    /// Shua's reply, aloud, in the same voice as on the Mac: ShuaCrew's voice engine through the phone door, clip by
-    /// clip as they're made. The iPhone's own voice only if the engine can't be reached.
+    /// Shua's reply, aloud — on one device. At your desk the Mac says it (this phone shows it); out, this phone says it,
+    /// in the same voice as on the Mac: ShuaCrew's voice engine through the phone door, clip by clip as they're made.
+    /// The iPhone's own voice only if the engine can't be reached.
     func speak(_ text: String) {
+        guard ShuaVoice.shared.enabled, !text.isEmpty else { return }
+        Task { [weak self] in
+            guard let self, await self.whereYouAre() != "desk" else { return }
+            self.sayAloud(text)
+        }
+    }
+
+    /// Where you are, as the Mac sees it: "desk" (the Mac speaks) or "out" (this phone speaks). Unknown counts as out.
+    func whereYouAre() async -> String {
+        guard pairing != nil, let data = try? await request("GET", "/phone/api/presence"),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "out" }
+        return j["where"] as? String ?? "out"
+    }
+
+    /// Desk view tells the Mac this phone is on the desk (and that it's left, when Desk view closes).
+    func reportDesk(_ desk: Bool) {
+        guard pairing != nil else { return }
+        Task { _ = try? await self.request("POST", "/phone/api/presence/phone", body: ["desk": desk]) }
+    }
+
+    private func sayAloud(_ text: String) {
         let voice = ShuaVoice.shared
-        guard voice.enabled, !text.isEmpty else { return }
         guard let id = look?.voiceId, pairing != nil else { voice.say(text); return }
         let speed = min(1.2, max(0.8, look?.voiceSpeed ?? 1)), g = voice.begin()
         Task { [weak self] in

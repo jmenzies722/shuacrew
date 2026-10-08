@@ -195,6 +195,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const [brief, setBriefState] = useState<{ q: string; a: string } | null>(null);
   // The iPhone ask the notch is on: done here instantly (no conversation turn), its answer goes straight back to the phone.
   const phoneAsk = useRef<{ id: string; q: string; at: number } | null>(null);
+  /** The latest ask from your iPhone came while you were out (the Mac idle, the phone not on the desk). */
+  const phoneOut = useRef(false);
   const answerPhoneAsk = (q: string, a: string, ok: boolean) => {
     const p = phoneAsk.current;
     if (!p || Date.now() - p.at > 60_000 || yourWords(q.trim()).text !== yourWords(p.q).text) return;
@@ -538,7 +540,14 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       prepareCall: () => { setNotchTucked(false); setOpen(false); setMini(prefsRef.current.desktopPlacement !== "notch"); setNook(false); setArmed(true); },
       ask: (text: string) => { speech.current.unlock(); setOpen(true); setTab("chat"); setArmed(true); if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
       // Self-test: ask the way a voice turn does — the chat stays closed, so the notch shows the reply.
-      notchAsk: (text: string, phone?: string) => { speech.current.unlock(); setArmed(true); if (phone) phoneAsk.current = { id: phone, q: text.trim().slice(0, 4000), at: Date.now() }; if (text.trim()) void askRef.current(text.trim().slice(0, 4000)); },
+      notchAsk: (text: string, phone?: string) => {
+        speech.current.unlock(); setArmed(true); if (phone) phoneAsk.current = { id: phone, q: text.trim().slice(0, 4000), at: Date.now() };
+        if (!text.trim()) return;
+        const go = () => void askRef.current(text.trim().slice(0, 4000));
+        // From your iPhone, one device speaks: at your desk the Mac does; out, the phone does and the notch shows it quietly.
+        if (!phone) return go();
+        void fetch("/api/presence").then((r) => r.json() as Promise<{ where?: string }>).then((p) => { phoneOut.current = p.where === "out"; }).catch(() => { phoneOut.current = false; }).finally(go);
+      },
       nook: (inside: boolean) => nookHover.current(inside),
       holdKey: (phase: string) => holdKeyRef.current(phase),
       // "Brief me" and self-tests: the morning brief, now.
@@ -1290,6 +1299,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   chooseAreaRef.current = chooseArea;
   const ask = async (text = getCompanionDraft(), opt: { look?: boolean; origin?: "user" | "live"; signal?: AbortSignal; area?: Shot } = {}) => {
     const owningTurn = opt.origin === "live" ? liveTurn.current : null;
+    const awayAsk = yourWords(text).phone && phoneOut.current; // asked from your iPhone while you're out: the phone speaks
+    if (awayAsk) speech.current.silenced = true;
     const setError = (message: string) => {
       if (message && (window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: false, message: `ASK ERROR ${message}` });
       if (owningTurn && liveTurn.current === owningTurn && !opt.signal?.aborted && message) { owningTurn.error = message; queueMicrotask(notifyLiveTurn); }
@@ -1392,7 +1403,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     pointerRequest.current?.abort(); setPointerFeedback(null); post({ type: "buddyGuideStop" });
     cropOnly.current = !!area;
     cropNarration.current = !!area;
-    allowWork.current = true; quietTurn.current = opt.origin === "live"; speech.current.silenced = false;
+    allowWork.current = true; quietTurn.current = opt.origin === "live"; speech.current.silenced = awayAsk;
     actionRequest.current = { id: crypto.randomUUID(), started: performance.now() };
     const request = actionRequest.current;
     if (!/^\[(guide|act|check|zoom)\]/.test(q)) { focus.current.task = q; saveFocus(focus.current); }
