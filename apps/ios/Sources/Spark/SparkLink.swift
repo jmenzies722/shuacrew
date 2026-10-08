@@ -281,25 +281,28 @@ struct CrewApproval: Identifiable, Hashable, Sendable {
     }
 
     /// Ask the Mac's own Shua. It does it there (open apps, music, the crew, a brief…) and its reply streams back here.
-    func ask(_ raw: String) async {
+    /// `photo`: what the camera sees right now (Show Shua), sent with the ask so Shua looks at it.
+    func ask(_ raw: String, photo: Data? = nil) async {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !asking else { return }
+        guard !text.isEmpty || photo != nil, !asking else { return }
         asking = true
         defer { asking = false }
-        chat.append(ShuaLine(role: .you, text: text))
+        chat.append(ShuaLine(role: .you, text: photo == nil ? text : text.isEmpty ? "Showed Shua the camera" : "\(text) (with a photo)"))
         chat.append(ShuaLine(role: .shua, text: "", pending: true))
         if chat.count > 40 { chat.removeFirst(chat.count - 40) }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // "Open YouTube", "go to espn.com": an iPhone app or a site, asked here, opens here, at once. ("…on my Mac" goes to the Mac.)
-        if let here = PhoneHands.intent(text) {
+        if photo == nil, let here = PhoneHands.intent(text) {
             if await PhoneHands.open(here.urls) { let said = "Opening \(here.name) here."; reply(said); speak(said); return }
         }
         do {
             let head = try await refresh() // only what happens after this moment is part of the answer
             // The notch may be reconnecting for a moment (a restart on the Mac): try once more before saying it isn't open.
             let posted: Data
-            do { posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text]) }
-            catch let e as LinkError where e.code == 409 { try await Task.sleep(for: .seconds(3)); posted = try await request("POST", "/phone/api/shua/remote", body: ["text": text]) }
+            var body: [String: Any] = text.isEmpty ? [:] : ["text": text]
+            if let photo { body["image"] = photo.base64EncodedString() }
+            do { posted = try await request("POST", "/phone/api/shua/remote", body: body) }
+            catch let e as LinkError where e.code == 409 { try await Task.sleep(for: .seconds(3)); posted = try await request("POST", "/phone/api/shua/remote", body: body) }
             guard let id = (try? JSONSerialization.jsonObject(with: posted) as? [String: Any])?["id"] as? String else { throw URLError(.cannotParseResponse) }
             var run: String?
             for _ in 0..<40 where run == nil {

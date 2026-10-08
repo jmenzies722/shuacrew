@@ -7,6 +7,7 @@
  */
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import type { Upload, Uploads } from "./uploads.js";
 
 export interface RemoteAsk { id: string; text: string; at: number; status: "sent" | "taken" | "answered"; run?: string; /** Found in the record: final. */ seen?: boolean;
   /** Done on the Mac without a model turn (pause, next, volume, open…): what Shua said, for the phone to show. */ answer?: string; ok?: boolean }
@@ -57,19 +58,39 @@ export class ShuaRemote {
   get(id: string) { return this.asks.get(id); }
 }
 
+const size = (bytes: number) => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
+/** Files ride along in the ask the way the chat attaches them (web lib/attachments.ts): one line each, under a mark. */
+export function attachmentBlock(files: Upload[]): string {
+  return files.length ? `\n\nAttached files:\n${files.map((f) => `- ${f.agentPath ?? f.path} (${f.type}, ${size(f.size)}) · ${f.id}`).join("\n")}` : "";
+}
+/** What a photo from the phone's camera says on its own. */
+export const SHOWN = "Look at what I'm showing you through my iPhone camera and help me with it.";
+/** A photo from the phone: a JPEG, base64, small enough for the phone door (≤ 900 KB). */
+export function cameraPhoto(v: unknown): Buffer | null {
+  if (typeof v !== "string" || v.length > 1_200_000) return null;
+  const bytes = Buffer.from(v, "base64");
+  return bytes.length > 64 && bytes.length <= 900_000 && bytes[0] === 0xff && bytes[1] === 0xd8 ? bytes : null;
+}
+
 /** A phone ask: plain text, trimmed, never empty, never a novel. */
 export function remoteText(v: unknown): string | null {
   const t = typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
   return t ? t.slice(0, 2000) : null;
 }
 
-export function registerShuaRemote(app: FastifyInstance, remote = new ShuaRemote(), store?: { subscribe(fn: (e: { kind: string; run?: string | null; body: unknown }) => void): () => void }) {
+export function registerShuaRemote(app: FastifyInstance, remote = new ShuaRemote(), store?: { subscribe(fn: (e: { kind: string; run?: string | null; body: unknown }) => void): () => void }, uploads?: Pick<Uploads, "save" | "process">) {
   store?.subscribe((e) => remote.observe(e));
   // From the phone (through the phone door's allowlist).
+  // A photo can come with it (Show Shua, from the phone's camera): saved like any upload, attached to the ask.
   app.post("/api/shua/remote", async (request, reply) => {
-    const text = remoteText((request.body as { text?: unknown } | undefined)?.text);
+    const body = request.body as { text?: unknown; image?: unknown } | undefined;
+    const photo = body?.image === undefined ? null : cameraPhoto(body.image);
+    if (body?.image !== undefined && (!photo || !uploads)) return reply.code(400).send({ error: "That photo didn't come through. Try again." });
+    const text = remoteText(body?.text) ?? (photo ? SHOWN : null);
     if (!text) return reply.code(400).send({ error: "Say what you'd like Shua to do." });
-    const ask = remote.send(text);
+    if (!remote.listening) return reply.code(409).send({ error: "Shua isn't open on your Mac right now. Open ShuaCrew there and try again." });
+    const files = photo && uploads ? [await uploads.process(uploads.save("iphone-camera.jpg", photo))] : [];
+    const ask = remote.send(text + attachmentBlock(files));
     return ask ? { id: ask.id } : reply.code(409).send({ error: "Shua isn't open on your Mac right now. Open ShuaCrew there and try again." });
   });
   app.get<{ Params: { id: string } }>("/api/shua/remote/:id", async (request, reply) => remote.get(request.params.id) ?? reply.code(404).send({ error: "That ask has expired." }));

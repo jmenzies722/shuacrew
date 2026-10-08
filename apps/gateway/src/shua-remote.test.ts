@@ -1,7 +1,7 @@
 import Fastify from "fastify";
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { phoneAllowed } from "./phone-door.js";
-import { registerShuaRemote, remoteText, ShuaRemote } from "./shua-remote.js";
+import { registerShuaRemote, remoteText, ShuaRemote, SHOWN, cameraPhoto } from "./shua-remote.js";
 
 it("hands an ask to the Mac's Shua only when it's listening, and tracks who took it", () => {
   const remote = new ShuaRemote(() => 5);
@@ -71,4 +71,32 @@ it("an ask the notch did itself carries its answer to the phone; a conversation 
   remote.observe({ kind: "turn.started", run: "r_1", body: { text: "From my iPhone: What's the score" } });
   expect(remote.answer(other.id, "Mic error", false)).toBe(false); // a turn has it: the phone follows that
   expect(remote.answer("ra_unknown", "x", true)).toBe(false);
+});
+
+describe("Show Shua: a photo from the phone's camera", () => {
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7)]);
+  const fakeUploads = () => {
+    const saved: Array<{ name: string; bytes: number }> = [];
+    return { saved, save: (name: string, bytes: Buffer) => { saved.push({ name, bytes: bytes.length }); return { id: "u_0123456789ab", name, path: `/tmp/${name}`, size: bytes.length, type: "image/jpeg" }; }, process: async (u: never) => u };
+  };
+
+  it("arrives attached to the ask, in the chat's own attachment format", async () => {
+    const app = Fastify(), remote = new ShuaRemote(), up = fakeUploads();
+    registerShuaRemote(app, remote, undefined, up);
+    const heard: string[] = []; remote.subscribe((a) => heard.push(a.text));
+    const r = await app.inject({ method: "POST", url: "/api/shua/remote", payload: { image: jpeg.toString("base64") } });
+    expect(r.statusCode).toBe(200);
+    expect(heard[0]).toBe(`${SHOWN}\n\nAttached files:\n- /tmp/iphone-camera.jpg (image/jpeg, 204 B) · u_0123456789ab`);
+    await app.inject({ method: "POST", url: "/api/shua/remote", payload: { text: "Is this servo wired right?", image: jpeg.toString("base64") } });
+    expect(heard[1]!.startsWith("Is this servo wired right?\n\nAttached files:")).toBe(true);
+  });
+
+  it("refuses what isn't a photo, and saves nothing while the Mac isn't listening", async () => {
+    const app = Fastify(), remote = new ShuaRemote(), up = fakeUploads();
+    registerShuaRemote(app, remote, undefined, up);
+    expect((await app.inject({ method: "POST", url: "/api/shua/remote", payload: { image: Buffer.from("not a jpeg at all, just text").toString("base64") } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/api/shua/remote", payload: { image: jpeg.toString("base64") } })).statusCode).toBe(409);
+    expect(up.saved).toHaveLength(0);
+    expect(cameraPhoto(12)).toBeNull();
+  });
 });

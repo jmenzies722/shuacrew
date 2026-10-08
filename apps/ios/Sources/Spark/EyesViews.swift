@@ -103,6 +103,8 @@ struct ShuaCam: View {
     @State private var waves = 0
     @State private var scripting = false
     @State private var guide = false
+    /// Holding Shua to ask about what the camera sees.
+    @State private var holding = false
     /// This camera screen's claim on the live picture.
     @State private var me = "cam-" + UUID().uuidString
     @AppStorage("shua.script") private var script = ""
@@ -146,14 +148,26 @@ struct ShuaCam: View {
                     .buttonStyle(.plain).accessibilityLabel("Script")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Shutter(mode: eyes.mode, rolling: rolling, counting: eyes.countdown != nil) { eyes.shutter() }
+                    // Show Shua: tap and it looks at what the camera sees; hold, ask ("is this wired right?"), let go.
                     ShuaCharacter(mood: mood, tilt: eyes.gaze ?? .zero, lively: 0.4, waves: waves)
                         .frame(width: 42, height: 42)
                         .frame(width: 50, height: 50)
-                        .background(.white.opacity(0.1), in: Circle())
-                        .overlay(Circle().strokeBorder(accent.opacity(eyes.present ? 0.8 : 0.25), lineWidth: 1.5))
+                        .background(.white.opacity(holding ? 0.25 : 0.1), in: Circle())
+                        .overlay(Circle().strokeBorder(accent.opacity(holding || link.asking ? 1 : eyes.present ? 0.8 : 0.25), lineWidth: holding ? 2.5 : 1.5))
                         .clipShape(Circle())
+                        .scaleEffect(holding ? 1.12 : 1)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: holding)
+                        .contentShape(Circle())
+                        .onTapGesture { Task { await show("") } }
+                        .onLongPressGesture(minimumDuration: 0.35, perform: { holding = true; Task { await listen.start() } }, onPressingChanged: { down in
+                            guard !down, holding else { return }
+                            holding = false
+                            Task { let asked = await listen.stop(); await show(asked) }
+                        })
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                        .accessibilityLabel("Shua")
+                        .accessibilityLabel("Show Shua")
+                        .accessibilityHint("Shua looks at what the camera sees. Hold to ask about it.")
+                        .accessibilityAddTraits(.isButton)
                 }
             }
             .padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 8)
@@ -312,8 +326,16 @@ struct ShuaCam: View {
         guard s.width > 0 else { return "" }
         return s.width > s.height ? "· 16:9" : "· 9:16"
     }
+    /// Show Shua what the camera sees, with what you asked (or just "look").
+    private func show(_ asked: String) async {
+        guard !link.asking, let photo = await eyes.look() else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        await link.ask(asked, photo: photo)
+    }
+
     private var hint: String {
         if rolling { return "Raise both hands to stop" }
+        if eyes.mode == .photo { return "Tap Shua to show it this · hold to ask about it" }
         switch eyes.mode {
         case .video: return "Raise both hands to start · ✌️ photo · 👋 say hi"
         case .timelapse: return "Raise both hands to start · a frame every \(Int(eyes.every)) s, played at 30"

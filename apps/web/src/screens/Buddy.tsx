@@ -56,7 +56,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ComposerActions } from "../components/ComposerActions";
 import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompanionDraftRevision, restoreCompanionDraft, setCompanionDraft, useCompanionDraft } from "../lib/companion-draft";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, ArrowUpRight, Smartphone, Cpu, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Camera, Smartphone, Cpu, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, decideApproval, followUp } from "../lib/api";
 import { useLive } from "../lib/live";
@@ -65,7 +65,8 @@ import { optionalContext } from "../lib/optional-context";
 import { isTopLevelWork } from "../lib/crew";
 import { conversation } from "../lib/conversation";
 import { addMission, missionTask, nextMove, readMissions, summary as gist, writeMissions, type Mission } from "../lib/missions";
-import { upload, withAttachments } from "../lib/attachments";
+import { splitAttachments, upload, withAttachments } from "../lib/attachments";
+import { BUILD_NOTE, CAMERA_NOTE, building, cameraProblem, cameraShot, needsCamera } from "../lib/camera";
 import { bigAsk } from "../lib/big-ask";
 import { earcon, soundStyle, warmSounds, type Earcon } from "../lib/earcons";
 import { useLinger } from "../lib/linger";
@@ -153,8 +154,10 @@ const SparkRow = memo(function SparkRow({ m, did, color, wide, setWide, reduceMo
 
 /** What you said, as you said it: asks from your iPhone carry a small phone mark instead of the note Shua reads. */
 function YourWords({ text }: { text: string }) {
-  const w = yourWords(text);
-  return w.phone ? <><Smartphone size={11} className="buddy-from-phone" aria-label="From your iPhone" />{w.text}</> : <>{text}</>;
+  const w = yourWords(text), { body, files } = splitAttachments(w.text);
+  // A photo you showed Shua reads as a small camera mark, not a file path.
+  const shown = files.some((f) => /camera\.jpg/.test(f.path)) ? <Camera size={11} className="buddy-from-phone" aria-label="With a photo from your camera" /> : null;
+  return w.phone ? <><Smartphone size={11} className="buddy-from-phone" aria-label="From your iPhone" />{shown}{body}</> : <>{shown}{files.length ? body : text}</>;
 }
 
 /** The conversation's text box: the only part of the notch that re-renders as you type (grows with your text up to 150 px). */
@@ -1460,7 +1463,9 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     }
     // Inside ShuaCrew itself: its own page and control names instead of a screenshot of whatever is behind it.
     const inApp = !area && aboutShuaCrewWindow(q), inAppPage = inApp ? listShuaCrew() : Promise.resolve(null);
-    const look = inApp ? false : opt.origin === "live" ? screenAllowed(readSee(), liveScreen.current) && (needsScreen(q) || !!opt.look) : !!area || see || liveOn || !!opt.look;
+    // Shown something in the real world (a part, your wiring, a robot): the Mac's camera, not a screenshot.
+    const camWanted = !inApp && !yourWords(q).phone && needsCamera(q);
+    const look = inApp || camWanted ? false : opt.origin === "live" ? screenAllowed(readSee(), liveScreen.current) && (needsScreen(q) || !!opt.look) : !!area || see || liveOn || !!opt.look;
     if (opt.origin !== "live") draftRevision = acceptCompanionDraft(text);
     setBusy(look && !liveOn ? "Reading your screen…" : isDesign(q) ? "Designing…" : "Thinking…");
     // Where a turn's time goes before the model starts (logged during self-tests: SHUACREW_SPARK_SELFTEST=ask:…).
@@ -1475,6 +1480,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       // your Mac's context (it used to wait for them — ~0.9 s — then run on its own). Measured with the marks above.
       const shooting = look ? (area ? Promise.resolve(area) : capture()).then(async (shot) => { mark("screenshot"); const files = await Promise.all(shotFiles(shot).map(upload)); mark("upload"); return { shot, files }; }) : null;
       shooting?.catch(() => {}); // a failed look is reported where it's used
+      const camShooting = camWanted ? cameraShot().then(upload) : null;
+      camShooting?.catch(() => {});
       const radioAnswer = radioNow(); // asked once, used for the context and the status line
       const musicContext = playingContext(() => radioAnswer);
       const relevantMusic = /\b(music|song|track|album|artist|playlist|playing|listening|spotify|radio)\b/i.test(q);
@@ -1491,6 +1498,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       // Only capable providers receive images. Local can use explicitly labeled screen text.
       const localNow = !selected.acceptsImages;
       if (look && shooting && (!localNow || needsScreen(q) || opt.look || area)) { const { shot, files } = await shooting; if (stale()) return; if (!localNow) atts = files; if (area && localNow) throw new Error("Choose an image-capable model to analyze the selected area."); if (area) setSelectedArea(null); mark("look"); if (stale()) return; screen = { width: shot.width, height: shot.height, text: shot.text, context: shot.context }; }
+      if (camShooting) { try { atts = [...atts, await camShooting]; mark("camera"); } catch (e) { throw new Error(cameraProblem(e)); } if (stale()) return; }
       if (pasting) atts = [...atts, await pasting]; // the whole pasted text, as a file Shua reads
       const names = Object.fromEntries(Object.entries(crew.members).map(([id, m]) => [id, m.name]));
       const detail = crewDetail(crew.runs, crew.approvals, names, crew.plays);
@@ -1517,7 +1525,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const page = await inAppPage, inAppNote = inApp ? `THIS ASK IS INSIDE SHUACREW. Your screen view can't show ShuaCrew's window, so never use act, point or the Dock for it, and never touch other apps' windows to reach it. Open pages with go and press controls with ui by their exact names.${page ? `\n${shuacrewPageText(page)}` : ""}` : "";
       // Learning or career: Learn's few lines ride along, so Shua answers and keeps it organized from anywhere.
       const learnNow = asksAboutLearn(yourWords(q).text) ? await api<{ text: string }>("/api/learning/brief").then((r) => `LEARN RIGHT NOW (their learning & career space; change it with a learn ops action):\n${r.text}`, () => "") : "";
-      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, learnNow, yourWords(q).phone && PHONE_ASK].filter(Boolean).join("\n\n");
+      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, learnNow, yourWords(q).phone && PHONE_ASK, (camWanted || /iphone-camera\.jpg/.test(q)) && CAMERA_NOTE, building(q) && BUILD_NOTE].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
       const screenLines = screen ? [screen.text.length ? screenText(screen.text, 2500, screen) : "", elementsText(screen.context, 120, screen)].filter(Boolean).join("\n") : "";

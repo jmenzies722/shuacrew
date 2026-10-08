@@ -1388,10 +1388,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
 
     // MARK: web view
 
-    /// Hold-to-talk uses the mic on our own page only (macOS still asks you once).
+    /// Hold-to-talk uses the mic, and "look at this" takes one camera picture, on our own page only (macOS still asks
+    /// you once for each). Any other page gets neither.
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
         let ours = origin.host == gateway.base.host && origin.port == (gateway.base.port ?? 80)
-        decisionHandler(ours && type == .microphone ? .grant : .deny)
+        decisionHandler(ours && [.microphone, .camera, .cameraAndMicrophone].contains(type) ? .grant : .deny)
     }
 
     /// Links in answers open in your browser; the panel never navigates away from Spark.

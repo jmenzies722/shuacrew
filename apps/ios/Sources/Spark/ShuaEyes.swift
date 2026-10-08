@@ -472,6 +472,17 @@ enum EyesMode: String, CaseIterable, Identifiable, Sendable {
         } catch { problem = "Shua couldn't save to Photos. Allow it in Settings → ShuaCrew → Photos." }
     }
 
+    /// What the camera sees right now, for Shua to look at: at most 1280 px and small enough for the phone door.
+    func look() async -> Data? {
+        guard on, let jpeg = await feed.snapshot(), let image = UIImage(data: jpeg) else { return nil }
+        let scale = min(1, 1280 / max(image.size.width, image.size.height))
+        let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let small = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        for quality in [0.72, 0.55, 0.4] { if let data = small.jpegData(compressionQuality: quality), data.count <= 850_000 { return data } }
+        return nil
+    }
+
     /// A photo, right now, into Photos.
     func snap() async {
         guard on, let jpeg = await feed.snapshot() else { return }
