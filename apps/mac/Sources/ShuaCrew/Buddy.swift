@@ -1271,10 +1271,11 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let stage = { (k: String) in stages.append("\(k)=\(Int((CACurrentMediaTime() - c0) * 1000))") }
         defer { if ProcessInfo.processInfo.environment["SHUACREW_SPARK_SELFTEST"] != nil { Self.appendSelfTest("CAPTURE " + stages.joined(separator: " ") + "\n") } }
         do {
-            guard let app = ScreenElements.observedApplication else {
-                respond(["error": "No target app is selected. Open the app you want Shua to control."]); return
-            }
-            guard !SparkHands.offLimits.contains(app.bundleIdentifier ?? ""), !(app.bundleIdentifier ?? "").lowercased().contains("kiro") else {
+            // Never refuse to look just because no other app is in front ("No target app is selected" — with Chrome
+            // right there, or ShuaCrew's own window on top). The window stack says what you're looking at.
+            let aim = SparkHands.aim()
+            if case .app(let pid, _) = aim, let app = NSRunningApplication(processIdentifier: pid),
+               SparkHands.offLimits.contains(app.bundleIdentifier ?? "") || (app.bundleIdentifier ?? "").lowercased().contains("kiro") {
                 respond(["error": "This app is protected from screen observation. Switch to the app you want Shua to control."]); return
             }
             await settledIdentity()
@@ -1307,6 +1308,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             // 2800px reads every line a full 5K frame does, in ~0.2s instead of ~60s (measured on this Mac).
             async let text = ScreenText.read(ScreenText.scaled(full, longest: 2800) ?? full, timeout: 5)
             var context = ScreenElements.read(on: screen)
+            // ShuaCrew's own window is what's on top: say so, so Shua presses its controls by name (go / ui) instead of
+            // mixing this screenshot with another app's controls.
+            if aim == .shuacrew {
+                let title = NSApp.windows.first { $0.isVisible && !($0 is NSPanel) && $0.styleMask.contains(.titled) }?.title ?? ""
+                context = ["app": "ShuaCrew", "window": title, "elements": [], "shuacrewWindow": true]
+            }
             stage("elements")
             // Where your pointer is and what's under it ("what's this?"), and what you just circled with it.
             let f = screen.frame, m = NSEvent.mouseLocation
@@ -1575,6 +1582,30 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                     Self.appendSelfTest("SPARK SELFTEST pen t=\(t) saved=\(ok)\n")
                 }
                 self.pointer.hide(); self.noteState(.idle)
+            }
+            return
+        }
+        if spec == "target:probe" { // who Shua aims at (now, and as if the notch had taken focus), and ShuaCrew's own page
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(4))
+                let log = { (line: String) in Self.appendSelfTest("TARGET " + line + "\n") }
+                let name = { (t: ScreenTarget) -> String in
+                    switch t {
+                    case .app(let pid, let why): return "\(NSRunningApplication(processIdentifier: pid)?.localizedName ?? "pid \(pid)") (\(why))"
+                    case .shuacrew: return "ShuaCrew's own window"
+                    case .none: return "nothing"
+                    }
+                }
+                log("front=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "-") aim=\(name(SparkHands.aim()))")
+                SparkHands.assumeShuaCrewInFront = true
+                let aim = SparkHands.aim()
+                let screen = NSScreen.main ?? NSScreen.screens[0]
+                let ctx = aim == .shuacrew ? [:] : ScreenElements.read(on: screen)
+                log("as-if-notch aim=\(name(aim)) reads=\(ctx["app"] as? String ?? "-") controls=\((ctx["elements"] as? [Any])?.count ?? 0)")
+                SparkHands.assumeShuaCrewInFront = false
+                let listed = try? await self.web.callAsyncJavaScript("return await new Promise(r => { const c = new BroadcastChannel('shuacrew-ui'), id = 'probe' + Math.random(); const t = setTimeout(() => { c.close(); r('no main window answered') }, 2000); c.onmessage = e => { if (e.data?.type === 'listed' && e.data.id === id) { clearTimeout(t); c.close(); r(JSON.stringify({ path: e.data.page.path, controls: e.data.page.controls.length, fields: e.data.page.fields })) } }; c.postMessage({ type: 'list', id }) })", arguments: [:], in: nil, contentWorld: .page)
+                log("shuacrew page " + ((listed as? String) ?? "?"))
             }
             return
         }

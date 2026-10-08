@@ -89,10 +89,9 @@ enum ScreenElements {
     /// Every control you could be told to click, positions as fractions of `screen` (from the top-left): the front
     /// window first, then that app's menu bar, the Dock and the menu-bar icons (Wi-Fi, battery, Control Center…), which
     /// live in other processes. Icons without a text name still count, named from their help text or role.
-    static var observedApplication: NSRunningApplication? {
-        let front = NSWorkspace.shared.frontmostApplication
-        return front?.bundleIdentifier == Bundle.main.bundleIdentifier ? SparkHands.target : front
-    }
+    /// The app whose controls a look reads: the window you can see on top (SparkHands.aim). Nil when that's
+    /// ShuaCrew's own window (read through its page instead) or only the desktop.
+    static var observedApplication: NSRunningApplication? { SparkHands.target }
     static func identity() -> (pid: Int32, window: String) {
         guard let app = observedApplication else { return (-1, "") }
         let root = AXUIElementCreateApplication(app.processIdentifier)

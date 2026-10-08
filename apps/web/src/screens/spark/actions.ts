@@ -208,9 +208,9 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
   if (a.type === "card") return api("/api/learning/cards", { body: { front: a.front, back: a.back } }).then(() => ({ ok: true, message: "Added to your Learning quiz" }), (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "go") { post({ type: "buddyOpen", path: a.path }); return Promise.resolve({ ok: true, message: "Requested navigation" }); }
   if (a.type === "ui") return (async () => {
-    const started = performance.now(), r = await pressInShuaCrew(a.press);
+    const started = performance.now(), r = await pressInShuaCrew(a.press, 2500, a.text);
     // In-app presses count toward Shua's measured accuracy too.
-    void api("/api/shua/journal", { body: { kind: "ui", how: "name", label: a.press, ok: r.ok, message: r.message, app: "ShuaCrew", ms: performance.now() - started } }).catch(() => {});
+    void api("/api/shua/journal", { body: { kind: a.text !== undefined ? "ui-type" : "ui", how: "name", label: a.press, ok: r.ok, message: r.message, app: "ShuaCrew", ms: performance.now() - started } }).catch(() => {});
     return r;
   })();
   if (a.type === "radio") return radioCommand({ cmd: a.cmd, station: a.station }).then((r) => (r.ok ? { ok: true, message: describeAction(a) } : { ok: false, message: r.error }));

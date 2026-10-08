@@ -56,7 +56,7 @@ export type Action =
   | { type: "run"; command: string }
   | { type: "go"; path: string }
   /** Press a button, tab or link in ShuaCrew's own window by its visible name (never one that deletes, approves or sends). */
-  | { type: "ui"; press: string }
+  | { type: "ui"; press: string; text?: string }
   | { type: "card"; front: string; back: string }
   | { type: "radio"; cmd: "play" | "pause" | "resume" | "next" | "previous" | "stop"; station?: string }
   | { type: "mail"; op: "unread" | "search" | "read" | "draft"; query?: string; id?: number; to?: string; subject?: string; body?: string; limit?: number }
@@ -97,7 +97,7 @@ export function shuacrewNow(input: { members: Array<{ name: string; role?: strin
     input.members.length ? `Crew members: ${input.members.map((m) => (m.role ? `${m.name} (${m.role})` : m.name)).join(", ")}.` : "No crew members yet.",
     input.ventures.length ? `Ventures: ${input.ventures.slice(0, 12).join(", ")}.` : "",
     `Radio: ${input.radio.on ? `playing ${input.radio.on}` : "off"}${input.radio.stations.length ? `; stations: ${input.radio.stations.slice(0, 10).join(", ")}` : ""}.`,
-    'Take them to a page: ```do [{"type":"go","path":"/floor"}]``` (the Studio floor; /studio is the music page). INSIDE SHUACREW ITSELF never use screen clicks or the Dock — your screen view always shows the app behind ShuaCrew, so you can\'t see its window. Open the page with go, then press its buttons, tabs and links by their visible names with ui, in one do block: ```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"},{"type":"ui","press":"Studio"}]```. ui never presses anything that deletes, approves, merges or sends — use the crew actions or ask them. Music is Apple Music only (the user retired the lofi radio): use media, never radio.',
+    'Take them to a page: ```do [{"type":"go","path":"/floor"}]``` (the Studio floor; /studio is the music page). INSIDE SHUACREW ITSELF never use screen clicks, point or the Dock — a look reads other apps\' controls, not ShuaCrew\'s (when ShuaCrew\'s own window is on top the look says IN FRONT: ShuaCrew). Open the page with go, then press its buttons, tabs and links by their visible names with ui, and type into its fields with ui + text, in one do block: ```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"},{"type":"ui","press":"Studio"}]``` · ```do [{"type":"go","path":"/integrations"},{"type":"ui","press":"Find a tool","text":"stripe"}]```. ui never presses anything that deletes, approves, merges or sends — use the crew actions or ask them. Music is Apple Music only (the user retired the lofi radio): use media, never radio.',
   ].filter(Boolean).join("\n");
 }
 
@@ -533,7 +533,8 @@ function toAction(v: unknown): Action | null {
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
     case "brief": { const since = ["today", "hour", "morning"].includes(o.since as string) ? (o.since as "today" | "hour" | "morning") : undefined; return { type: "brief", ...(since ? { since } : {}) }; }
     case "card": { const front = str(o.front, 240), back = str(o.back, 800); return front && back ? { type: "card", front, back } : null; }
-    case "ui": { const press = str(o.press ?? o.label, 60); return press ? { type: "ui", press } : null; }
+    // Long names happen (a session's whole title); text types into the field of that name instead of pressing it.
+    case "ui": { const press = str(o.press ?? o.label, 120); const text = typeof o.text === "string" ? o.text.slice(0, 2000) : undefined; return press ? { type: "ui", press, ...(text !== undefined ? { text } : {}) } : null; }
     case "go": { const path = str(o.path, 80); return path && SHUACREW_PAGES.some((p) => p.path === path || path.startsWith(`${p.path}/`) || path.startsWith(`${p.path}#`)) ? { type: "go", path } : null; }
     case "radio": { const cmds = ["play", "pause", "resume", "next", "previous", "stop"] as const; const cmd = cmds.find((c) => c === o.cmd); const station = str(o.station, 80); return cmd ? { type: "radio", cmd, ...(station ? { station } : {}) } : null; }
     case "run": { const command = str(o.command, 2000); return command && !/[\u0000-\u0008]/.test(command) ? { type: "run", command } : null; }
@@ -578,7 +579,7 @@ export function describeAction(a: Action): string {
     case "remember": return "Taught the crew";
     case "brief": return "Caught up on everything";
     case "card": return "Added a quiz card";
-    case "ui": return `Press “${a.press}” in ShuaCrew`;
+    case "ui": return a.text !== undefined ? `Type “${a.text.slice(0, 40)}” into “${a.press}” in ShuaCrew` : `Press “${a.press}” in ShuaCrew`;
     case "go": return `Open ${SHUACREW_PAGES.find((p) => a.path === p.path || a.path.startsWith(p.path + "/"))?.name ?? a.path}`;
     case "radio": return a.cmd === "play" ? `Radio: ${a.station ?? "on"}` : `Radio: ${a.cmd}`;
     case "run": return `Run ${a.command.length > 48 ? `${a.command.slice(0, 48)}…` : a.command}`;
