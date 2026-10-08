@@ -32,7 +32,10 @@ const LEAN_SYSTEM = "You are a fast, friendly desktop assistant. Answer directly
  * which also means every tool present loads up front, so nothing of your own Claude setup comes along: your claude.ai
  * connectors (Vercel, Gmail…) once answered "what's today's date?" with a Vercel docs search, stalled and died.
  */
-const LEAN_ENV = { ENABLE_TOOL_SEARCH: "false", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
+// Tool search "auto": Shua's connectors load up front while they're small (no ToolSearch round trip, as with "false"),
+// and are fetched on demand once their definitions pass 10% of the context — with GitHub, Vercel and co. switched on
+// (~140 tools) "false" sent every definition with every fallback turn.
+const LEAN_ENV = { ENABLE_TOOL_SEARCH: "auto", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
 const LEAN_ISOLATION = { settingSources: [], strictMcpConfig: true, mcpServers: {} };
 /**
  * Screenshots and photos listed under "Attached files:" go in as image blocks, after the text (instructions before

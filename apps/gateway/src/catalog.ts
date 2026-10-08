@@ -122,10 +122,19 @@ export const FEATURED: Featured[] = [
   { id: "stripe", name: "stripe", title: "Stripe", category: "Business", blurb: "Customers, products, prices and payment links. Agents ask before anything that charges.", url: "https://mcp.stripe.com", auth: "oauth" },
   { id: "paypal", name: "paypal", title: "PayPal", category: "Business", blurb: "Invoices, orders and transactions.", url: "https://mcp.paypal.com/mcp", auth: "oauth" },
   { id: "canva", name: "canva", title: "Canva", category: "Business", blurb: "Create and edit designs: social posts, decks, brand assets.", url: "https://mcp.canva.com/mcp", auth: "oauth" },
-  { id: "figma", name: "figma", title: "Figma", category: "Build", blurb: "Read designs, components and variables to build UI that matches.", url: "https://mcp.figma.com/mcp", auth: "oauth" },
+  // Figma's hosted server only lets allow-listed apps register for sign-in ("couldn't register", 2026-10-07): not offered until it does.
   { id: "linear", name: "linear", title: "Linear", category: "Work", blurb: "Issues, projects and cycles.", url: "https://mcp.linear.app/mcp", auth: "oauth" },
   { id: "notion", name: "notion", title: "Notion", category: "Work", blurb: "Search, read and write your Notion pages and databases.", url: "https://mcp.notion.com/mcp", auth: "oauth" },
   { id: "atlassian", name: "atlassian", title: "Jira & Confluence", category: "Work", blurb: "Jira issues and Confluence pages.", url: "https://mcp.atlassian.com/v1/sse", auth: "oauth" },
   { id: "memory", name: "memory", title: "Knowledge graph", category: "Research", blurb: "A persistent graph of people, companies and facts the agents build up.", command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"], auth: "none" },
   { id: "sequential-thinking", name: "thinking", title: "Sequential thinking", category: "Research", blurb: "Step-by-step reasoning for hard, multi-part problems.", command: "npx", args: ["-y", "@modelcontextprotocol/server-sequential-thinking"], auth: "none" },
+  // Checked 2026-10-07 through ShuaCrew's own client: each connects with no sign-in in under a second, 2–5 tools.
+  { id: "aws-knowledge", name: "aws-knowledge", title: "AWS Knowledge", category: "Research", blurb: "Current AWS docs, regional availability and guidance — for building on AWS and for cert prep.", url: "https://knowledge-mcp.global.api.aws", auth: "none" },
+  { id: "deepwiki", name: "deepwiki", title: "DeepWiki", category: "Research", blurb: "Ask anything about any public GitHub repo: how it works, where things live, how to use it.", url: "https://mcp.deepwiki.com/mcp", auth: "none" },
+  { id: "exa", name: "exa", title: "Exa", category: "Research", blurb: "Web search built for AI: fresh results and clean page text, for research and fact-finding.", url: "https://mcp.exa.ai/mcp", auth: "none" },
+  { id: "huggingface", name: "huggingface", title: "Hugging Face", category: "Research", blurb: "Search models, datasets and Spaces, and read their cards.", url: "https://huggingface.co/mcp", auth: "none" },
+  { id: "microsoft-learn", name: "microsoft-learn", title: "Microsoft Learn", category: "Research", blurb: "Microsoft and Azure docs and code samples, straight from Microsoft Learn.", url: "https://learn.microsoft.com/api/mcp", auth: "none" },
+  // Sign-in checked (OAuth with self-registration); their tools appear once you've signed in.
+  { id: "granola", name: "granola", title: "Granola", category: "Work", blurb: "Your meeting notes and transcripts: what was said, decided and promised.", url: "https://mcp.granola.ai/mcp", auth: "oauth" },
+  { id: "zapier", name: "zapier", title: "Zapier", category: "Work", blurb: "Actions in 8,000+ apps (Gmail, Sheets, Slack…) through your Zapier account; you choose which in Zapier.", url: "https://mcp.zapier.com/api/mcp/mcp", auth: "oauth" },
 ];
