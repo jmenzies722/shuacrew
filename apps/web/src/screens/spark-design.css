@@ -7,7 +7,7 @@
 
 /* ── Obsidian tokens: inside the notch the palette is always the island's ─────────────────────────────────────── */
 .spk-pop.is-notched .buddy-card.spk {
-  --text: #f5f3f8; --text-2: rgba(245, 243, 248, .68); --text-3: rgba(245, 243, 248, .44);
+  --text: #f5f3f8; --text-2: rgba(245, 243, 248, .68); --text-3: rgba(245, 243, 248, .56); /* AA on the panel (was .44) */
   --raised: rgba(255, 255, 255, .07); --sunken: rgba(255, 255, 255, .045); --panel: #0b0b0e;
   --line: rgba(255, 255, 255, .075); --line-strong: rgba(255, 255, 255, .12); --composer-fill: rgba(255, 255, 255, .055); --composer-solid: #0b0b0e;
 }
@@ -35,7 +35,7 @@
 
 .buddy.is-docked .shua-island .shua-island-shape {
   box-shadow: 0 18px 42px -22px #000b, inset 0 -1px 0 #ffffff18;
-  transition: width .36s cubic-bezier(.22, 1, .36, 1), height .36s cubic-bezier(.22, 1, .36, 1), border-radius .36s, box-shadow .24s;
+  transition: width .36s var(--ease-out), height .36s var(--ease-out), border-radius .36s, box-shadow .24s;
 }
 .buddy.is-docked .shua-island.is-open .shua-island-shape { --r: 24px; }
 .buddy.is-docked .shua-island .shua-island-shape::after { display: none; }
@@ -48,7 +48,8 @@
 .buddy.is-docked .shua-island .spark-nook-ask input { font-size: 14px; color: #f2f2f4; background: transparent; box-shadow: none; }
 .buddy.is-docked .shua-island .spark-nook-ask input:focus-visible { outline: none; }
 .buddy.is-docked .shua-island .spark-nook-ask input::placeholder { color: #929298; }
-.buddy.is-docked .shua-island .spark-nook-ask button { background: #e9e9ed; color: #17171a; width: 32px; height: 32px; }
+/* Send is round like every other control on the island. */
+.buddy.is-docked .shua-island .spark-nook-ask button { background: #e9e9ed; color: #17171a; width: 32px; height: 32px; border-radius: 50%; }
 .buddy.is-docked .shua-island .spark-nook-ask button:disabled { background: #303034; color: #929298; opacity: .6; }
 .buddy.is-docked .shua-island .spark-nook-voice,
 .buddy.is-docked .shua-island .spark-nook-toggle { border: 1px solid #ffffff18; border-radius: 12px; background: #ffffff08; color: #dfdfe6; box-shadow: none; }
@@ -97,7 +98,7 @@
 /* `backwards`, not `both`: a transform animation that keeps filling turns its element into a containing block and a
    stacking context, so the header trapped the options menu (model picker included) at 22 px, under the messages. The
    header itself only fades, so it never boxes the menu in even while arriving. */
-.spk-pop.is-notched > .buddy-card.spk > * { animation: ob-arrive .34s cubic-bezier(.2, .8, .2, 1) .1s backwards; }
+.spk-pop.is-notched > .buddy-card.spk > * { animation: ob-arrive .34s var(--ease-out) .1s backwards; }
 .spk-pop.is-notched > .buddy-card.spk > .spk-head { animation-name: ob-fade; }
 @keyframes ob-arrive { from { opacity: 0; transform: translateY(-6px); } }
 @keyframes ob-fade { from { opacity: 0; } }
@@ -179,7 +180,7 @@
   display: inline-flex; align-items: center; gap: 8px; width: auto; height: 32px; padding: 0 14px; border-radius: 999px;
   font-size: 12.5px; color: var(--text-2); text-align: left;
   background: var(--raised); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, .04);
-  transition: transform .18s cubic-bezier(.2, .8, .2, 1), color .15s, background .15s, box-shadow .15s;
+  transition: transform .18s var(--ease-out), color .15s, background .15s, box-shadow .15s;
 }
 .buddy-card.spk :is(.spk-quick button, .spk-starters > button):hover {
   transform: translateY(-1px); color: var(--text);
@@ -271,7 +272,7 @@
 }
 .buddy.is-docked .shua-island:is(.is-open,.is-live) .shua-island-shape::after { opacity: 1; }
 .buddy.is-docked .shua-island .shua-island-body {
-  transition: opacity .16s ease, transform .28s cubic-bezier(.22,1,.36,1);
+  transition: opacity .16s ease, transform .28s var(--ease-out);
   transform: translateY(-4px);
 }
 .buddy.is-docked .shua-island.is-open .shua-island-body { transform: none; transition-delay: .025s; }
@@ -284,7 +285,7 @@
   border-color: #c4d7f080; box-shadow: inset 0 1px 0 #ffffff12, 0 0 0 3px #bed4ff0a;
 }
 .buddy.is-docked .shua-island :is(.spark-nook-voice,.spark-nook-toggle,.shua-island-expand,.spark-nook-ask button) {
-  transition: transform .22s cubic-bezier(.22,1,.36,1), background .16s, border-color .16s, box-shadow .16s;
+  transition: transform .22s var(--ease-out), background .16s, border-color .16s, box-shadow .16s;
 }
 .buddy.is-docked .shua-island :is(.spark-nook-voice,.spark-nook-toggle,.shua-island-expand):hover {
   background: #ffffff12; border-color: #ffffff32; box-shadow: inset 0 1px 0 #ffffff0a;

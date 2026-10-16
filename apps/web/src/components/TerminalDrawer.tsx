@@ -47,6 +47,7 @@ import { api, followUp, launchRun } from "../lib/api";
 import { conversation } from "../lib/conversation";
 import { repoName } from "../lib/crew";
 import { useLive } from "../lib/live";
+import { SPRING_TUCK } from "../lib/spring-easing";
 
 interface Where {
   cwd: string;
@@ -400,7 +401,7 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
         </div>
         <AnimatePresence initial={false}>
           {side && target && target !== AGENT && (
-            <motion.aside className="term-side" initial={{ width: 0, opacity: 0 }} animate={{ width: 300, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
+            <motion.aside className="term-side" initial={{ width: 0, opacity: 0 }} animate={{ width: 300, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={SPRING_TUCK}>
               <div className="flex h-full min-w-[300px] flex-col">
                 <div className="term-side-tabs" role="tablist" aria-label="Side panel">
                   <button role="tab" aria-selected={panel === "history"} className={panel === "history" ? "is-on" : ""} onClick={() => setPanel("history")}>
@@ -442,7 +443,7 @@ export default function TerminalDrawer({ scope, onClose, full }: { scope: { run?
               <span className="mono">{last.exit === 0 ? took(last) : `exit ${last.exit} · ${took(last)}`}</span>
             </span>
           ) : null}
-          <span className="mono opacity-60">{fontSize}px</span>
+          <span className="mono text-fg-3">{fontSize}px</span>
         </div>
       )}
 

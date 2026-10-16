@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Copy, Pause, Play, Radio, X } from "lucide-r
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cinemaCuts, runRecap, skipToFight } from "../lib/studio";
+import { SPRING } from "../lib/spring-easing";
 
 const SPEEDS = [1, 4, 12];
 
@@ -94,7 +95,7 @@ export function ReplayBar({ events, at, onChange, onClose, title = "" }: { event
   const pct = seqs.length > 1 ? (index / (seqs.length - 1)) * 100 : 100;
   const live = at === null;
   return (
-    <motion.div className="replay" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 420, damping: 36 }} role="region" aria-label="Replay">
+    <motion.div className="replay" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} role="region" aria-label="Replay">
       <div className="flex items-center gap-1.5">
         <button className="replay-btn" onClick={() => (setPlaying(false), go(index - 1))} aria-label="Step back" title="Step back (←)">
           <ChevronLeft size={15} />

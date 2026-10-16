@@ -16,6 +16,7 @@ import { selectRooms } from "../lib/room-view";
 import { CrewStudio3D } from "../components/CrewStudio3D";
 import { isTopLevelWork } from "../lib/crew";
 import { PaneHeader } from "../components/Pane";
+import { SPRING } from "../lib/spring-easing";
 
 /**
  * The crew floor: every agent at work, live. Pods show what each is doing this second, the last
@@ -146,7 +147,7 @@ export function CrewFloor() {
             <div className="pods-grid">
               <AnimatePresence initial={false}>
                 {onFloor.map((run) => (
-                  <motion.div key={run.id} layout initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ type: "spring", stiffness: 380, damping: 32 }}>
+                  <motion.div key={run.id} layout initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={SPRING}>
                     <Pod run={run} events={byRun[run.id] ?? []} kids={children[run.id] ?? []} approvals={Object.values(approvals).filter((a) => a.run === run.id)} now={now} />
                   </motion.div>
                 ))}

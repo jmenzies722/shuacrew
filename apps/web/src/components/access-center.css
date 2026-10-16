@@ -23,7 +23,7 @@
 .access-cta {
   flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 18px;
   font-size: 13px; font-weight: 600; color: var(--on-accent, #fff); background: var(--amber);
-  box-shadow: 0 6px 22px -8px var(--amber); transition: transform .25s cubic-bezier(.34, 1.45, .55, 1);
+  box-shadow: 0 6px 22px -8px var(--amber); transition: transform .25s var(--spring);
 }
 .access-cta:hover { transform: translateY(-1px); }
 .access-cta span { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 11px; background: rgba(0, 0, 0, .18); }

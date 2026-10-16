@@ -37,10 +37,7 @@
   --primary-bg: var(--text);
   --primary-fg: var(--ink);
 
-  /* Motion. */
-  --spring: cubic-bezier(.32, 1.4, .5, 1);
-  --ease-out: cubic-bezier(.16, 1, .3, 1);
-  --t-fast: 120ms; --t-med: 220ms; --t-slow: 420ms;
+  /* Motion: --spring, --ease-out and the --t-* durations are the app-wide ones (design-tokens.css, the notch's spring). */
   --scene-distance: 8px; --scene-duration: 360ms; --interaction-lift: -2px; --motion-ease: var(--ease-out);
 }
 :root[data-design="onyx"][data-theme="light"] {
@@ -53,7 +50,7 @@
 
 :root[data-design="onyx"] body { font-size: 13px; letter-spacing: -.003em; background: var(--sunken); }
 :root[data-design="onyx"] ::selection { background: color-mix(in srgb, var(--amber) 30%, transparent); }
-:root[data-design="onyx"] :focus-visible { outline: 2px solid color-mix(in srgb, var(--amber) 80%, transparent); outline-offset: 2px; }
+:root[data-design="onyx"] :focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 2px; }
 :root[data-design="onyx"] ::-webkit-scrollbar { width: 10px; height: 10px; }
 :root[data-design="onyx"] ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent) padding-box; }
 :root[data-design="onyx"] ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text) 22%, transparent) padding-box; }
@@ -431,7 +428,7 @@
 :root[data-motion="reduced"] .composer-box.is-working { animation: none; }
 
 /* Switching sessions: the conversation settles in instead of snapping. */
-:root[data-design="onyx"] .thread-enter { animation: thread-in .32s cubic-bezier(.22, 1, .36, 1) both; }
+:root[data-design="onyx"] .thread-enter { animation: thread-in .32s var(--ease-out) both; }
 @keyframes thread-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .thread-enter { animation: none; } }
 

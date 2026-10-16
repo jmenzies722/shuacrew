@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useLive } from "../lib/live";
 import { NAV } from "./Shell";
 import { navKey, useNavKeys } from "../lib/keys";
+import { SPRING } from "../lib/spring-easing";
 
 const KEYS: Array<[string, string[]]> = [
   ["Command palette — everything", ["⌘", "K"]],
@@ -52,7 +53,7 @@ export function KeymapOverlay() {
             initial={{ scale: 0.97, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.97, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+            transition={SPRING}
             className="grid w-[640px] max-w-[94vw] grid-cols-2 gap-x-8 gap-y-2 rounded-[var(--radius-l)] border border-line-strong p-6 backdrop-blur-xl"
             style={{ background: "var(--glass)" }}
           >

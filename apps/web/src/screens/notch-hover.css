@@ -18,13 +18,13 @@
 
 /* ── The clip follows the island's spring, both ways ──────────────────────────────────────────────────────────── */
 .buddy.is-docked .shua-island.is-open .shua-island-shape {
-  transition: width var(--isl-open-ms, .5s) var(--isl-open-ease, cubic-bezier(.22, 1, .36, 1)),
-    height var(--isl-open-ms, .5s) var(--isl-open-ease, cubic-bezier(.22, 1, .36, 1)),
+  transition: width var(--isl-open-ms, .5s) var(--isl-open-ease, var(--ease-out)),
+    height var(--isl-open-ms, .5s) var(--isl-open-ease, var(--ease-out)),
     border-radius var(--isl-open-ms, .5s) var(--isl-open-ease, ease);
 }
 .buddy.is-docked .shua-island.is-closing .shua-island-shape {
-  transition: width var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, cubic-bezier(.22, 1, .36, 1)),
-    height var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, cubic-bezier(.22, 1, .36, 1)),
+  transition: width var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, var(--ease-out)),
+    height var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, var(--ease-out)),
     border-radius var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, ease);
 }
 /* No swell under the pointer once it's opening: the hover-scale used to fight the open spring for a few frames. */
@@ -42,7 +42,7 @@
 }
 /* The ears glide out to the island's edges (and back) with the shape: a transform, so no layout. Hover opens and
    tucks on the native island's springs; captions widen on the shape's own curve (spark-design.css, .36s). */
-.buddy.is-docked .shua-island .shua-island-ear { transition: transform .36s cubic-bezier(.22, 1, .36, 1); }
+.buddy.is-docked .shua-island .shua-island-ear { transition: transform .36s var(--ease-out); }
 .buddy.is-docked .shua-island.is-open .shua-island-ear { transition: transform var(--isl-open-ms, .5s) var(--isl-open-ease, ease); }
 .buddy.is-docked .shua-island.is-closing .shua-island-ear { transition: transform var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, ease); }
 .buddy.is-docked .shua-island .shua-island-ear.is-face { transform: translateX(calc(-1 * var(--ear-shift, 0px))); }

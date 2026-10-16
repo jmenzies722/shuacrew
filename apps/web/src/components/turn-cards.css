@@ -6,7 +6,7 @@
 .plan-card header strong { color: var(--text); font-weight: 600; }
 .plan-count { font-variant-numeric: tabular-nums; color: var(--text-3); }
 .plan-bar { flex: 1; max-width: 160px; height: 4px; margin-left: auto; border-radius: 2px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
-.plan-bar b { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width .6s cubic-bezier(.22, 1, .36, 1); }
+.plan-bar b { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width .6s var(--ease-out); }
 .plan-card.is-live .plan-bar b { background: linear-gradient(90deg, var(--ok), var(--amber)); }
 .plan-note { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-3); }
 .plan-card ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -20,7 +20,7 @@
 .plan-card li { animation: plan-in .3s ease-out both; }
 @keyframes plan-in { from { opacity: .4; transform: translateY(2px); } }
 
-.receipt { margin: 2px 0 6px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--raised) 40%, transparent); animation: receipt-in .35s cubic-bezier(.22, 1, .36, 1) both; }
+.receipt { margin: 2px 0 6px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--raised) 40%, transparent); animation: receipt-in .35s var(--ease-out) both; }
 @keyframes receipt-in { from { opacity: 0; transform: translateY(4px); } }
 .receipt.is-ok { border-color: color-mix(in srgb, var(--ok) 28%, var(--line)); }
 .receipt.is-wait { border-color: color-mix(in srgb, var(--wait) 34%, var(--line)); }

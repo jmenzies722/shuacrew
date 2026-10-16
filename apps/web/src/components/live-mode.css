@@ -26,7 +26,7 @@
 .live-island { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 4px 2px 6px; color: #f1eef5; }
 .live-island-text { flex: 1; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.live-panel { margin: 8px 10px; padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--raised, rgba(255, 255, 255, .03)); animation: live-in .35s cubic-bezier(.2, .9, .3, 1.1); }
+.live-panel { margin: 8px 10px; padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--raised, rgba(255, 255, 255, .03)); animation: live-in .35s var(--spring); }
 .live-panel header { display: flex; align-items: center; gap: 11px; }
 .live-panel header > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .live-panel header strong { font-size: 13px; color: var(--text); }

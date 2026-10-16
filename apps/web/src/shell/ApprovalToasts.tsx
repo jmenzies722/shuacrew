@@ -6,6 +6,7 @@ import { decideApproval } from "../lib/api";
 import { useLive } from "../lib/live";
 import { policyLine } from "../lib/crew";
 import { describe } from "./CommandPalette";
+import { SPRING } from "../lib/spring-easing";
 
 const RISK_COLOR: Record<string, string> = { low: "var(--text-3)", medium: "var(--wait)", high: "var(--amber)", critical: "var(--bad)" };
 
@@ -72,7 +73,7 @@ export function ApprovalToasts() {
               initial={{ opacity: 0, y: 24, scale: 0.96 }}
               animate={behind ? { opacity: depth > 2 ? 0 : 1 - depth * 0.3, y: -depth * 10, scale: 1 - depth * 0.05 } : { opacity: 1, x: 0, y: 0, scale: 1 }}
               exit={{ opacity: 0, x: 24, transition: { duration: 0.14 } }}
-              transition={{ type: "spring", stiffness: 520, damping: 38 }}
+              transition={SPRING}
               className={`approval-toast pointer-events-auto rounded-[var(--radius-l)] border border-line-strong p-3 backdrop-blur-xl ${behind ? "is-behind" : ""}`}
               style={{ background: "var(--glass)", boxShadow: "0 16px 48px rgba(0,0,0,.4)", zIndex: shown.length - depth, transformOrigin: "50% 100%" }}
               role="alertdialog"

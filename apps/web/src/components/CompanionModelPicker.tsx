@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useCompanion, saveCompanion } from "../lib/companion";
 import { selectIntelligence } from "../lib/intelligence";
 import "./model-pick.css";
+import { SPRING } from "../lib/spring-easing";
 export const modelPreference = (choice: string) => {
   const i = choice.indexOf(":");
   // "fastest": no pin, so the gateway picks whichever connected model is answering fastest right now (it measures).
@@ -93,7 +94,7 @@ export function CompanionModelPicker({ teaching = false }: { teaching?: boolean 
           <button key={o.value || "auto"} type="button" role="radio" aria-checked={on} tabIndex={on ? 0 : -1} data-value={o.value}
             disabled={o.disabled} className={`model-pick-row is-${o.state}${on ? " is-on" : ""}`} onClick={() => choose(o.value)} title={o.sub}>
             {on && <motion.i className="model-pick-glow" layoutId={teaching ? "model-pick-teach" : "model-pick"} aria-hidden
-              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 38, mass: 0.7 }} />}
+              transition={reduceMotion ? { duration: 0 } : SPRING} />}
             <span className="model-pick-mark" aria-hidden>{o.value === "" ? <Sparkles size={13} /> : o.value === "fastest" ? <Gauge size={13} /> : <i />}</span>
             <span className="model-pick-text"><b>{o.title}</b><small>{o.sub}</small></span>
             {on && <Check className="model-pick-check" size={14} strokeWidth={2.6} aria-hidden />}

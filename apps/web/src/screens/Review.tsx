@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
+import { SPRING } from "../lib/spring-easing";
 
 const MergeView = lazy(() => import("../components/MergeView"));
 
@@ -146,7 +147,7 @@ export function Review() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
-              transition={{ type: "spring", stiffness: 500, damping: 40 }}
+              transition={SPRING}
               className="absolute bottom-4 left-1/2 w-[520px] max-w-[90%] -translate-x-1/2 rounded-[var(--radius-l)] border border-line-strong p-3 backdrop-blur-xl"
               style={{ background: "var(--glass)", boxShadow: "0 18px 50px rgba(0,0,0,.4)" }}
             >

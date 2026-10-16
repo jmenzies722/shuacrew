@@ -10,6 +10,7 @@ import { cancelRun, decideApproval, followUp, launchRun } from "../lib/api";
 import { conversation, type Item } from "../lib/conversation";
 import { useLive } from "../lib/live";
 import { describe } from "../shell/CommandPalette";
+import { SPRING } from "../lib/spring-easing";
 
 const TerminalReplay = lazy(() => import("../components/Terminal"));
 
@@ -96,7 +97,7 @@ export function RunDetail() {
 function RunHeader({ run }: { run: RunView }) {
   const live = ["running", "planning", "awaiting_approval", "queued", "paused"].includes(run.status);
   return (
-    <motion.header layoutId={`run-${run.id}`} className="flex items-start gap-3 border-b border-line bg-panel px-6 py-4" transition={{ type: "spring", stiffness: 500, damping: 40 }}>
+    <motion.header layoutId={`run-${run.id}`} className="flex items-start gap-3 border-b border-line bg-panel px-6 py-4" transition={SPRING}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[11.5px] text-fg-3">
           <Link to="/sessions/$id" params={{ id: run.id }} className="hover:text-fg-2">Session</Link>

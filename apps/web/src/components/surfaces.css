@@ -3,7 +3,7 @@
   background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 100%, transparent), color-mix(in srgb, var(--panel) 72%, var(--ink)));
   border: 0; border-radius: 18px;
   box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent), 0 10px 30px -18px rgba(0,0,0,.55);
-  transition: transform .22s cubic-bezier(.2,.9,.3,1.2), box-shadow .22s ease;
+  transition: transform .22s var(--spring), box-shadow .22s ease;
 }
 :is(.pb-card, .tl-card, .art-card, .phase-card, .surface.is-interactive):hover {
   transform: translateY(-2px);

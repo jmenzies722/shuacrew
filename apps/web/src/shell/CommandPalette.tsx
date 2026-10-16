@@ -11,6 +11,7 @@ import { Glyph } from "../lib/glyphs";
 import { savePower, usePower } from "../lib/power";
 import { getWorkspace, saveWorkspace } from "../lib/workspace-prefs";
 import { isTopLevelWork } from "../lib/crew";
+import { SPRING } from "../lib/spring-easing";
 
 /**
  * ⌘K does everything: launch, jump anywhere, answer approvals, switch theme. Fuzzy, instant,
@@ -67,7 +68,7 @@ export function CommandPalette() {
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+            transition={SPRING}
             className="cmd-sheet w-[640px] max-w-[92vw] overflow-hidden rounded-[var(--radius-l)] border border-line-strong backdrop-blur-xl"
             style={{ background: "var(--glass)", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}
           >

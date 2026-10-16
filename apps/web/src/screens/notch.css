@@ -5,8 +5,8 @@
  * Everything is transform/opacity/box-shadow, pauses when ShuaCrew is in the background, and stops with Reduce motion.
  */
 .buddy {
-  --n-spring: cubic-bezier(.34, 1.45, .55, 1);     /* overshoot, then settle */
-  --n-settle: cubic-bezier(.22, 1, .36, 1);
+  --n-spring: var(--spring);     /* overshoot, then settle */
+  --n-settle: var(--ease-out);
   --n-glow: color-mix(in srgb, var(--amber) 55%, transparent);
   --n-ink: #000;
   --n-raised: #0f0f11;
@@ -193,7 +193,7 @@
 .isl-hero.is-tone-needs .isl-kicker i { animation: isl-k-pulse 1.6s ease-in-out infinite; }
 .isl-hero.is-tone-needs .isl-kicker i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: isl-k-ring 1.6s ease-out infinite; }
 .isl-hero.is-tone-live .isl-kicker i { background: none; border: 1.5px solid color-mix(in srgb, var(--k) 30%, transparent); border-top-color: var(--k); animation: isl-k-spin .9s linear infinite; }
-.isl-hero.is-tone-done .isl-kicker i { background: none; width: 9px; height: 5px; border-radius: 0; border-left: 2px solid var(--k); border-bottom: 2px solid var(--k); transform: rotate(-45deg) translate(1px, -1px); animation: isl-k-pop .5s cubic-bezier(.2,1.6,.4,1) both; }
+.isl-hero.is-tone-done .isl-kicker i { background: none; width: 9px; height: 5px; border-radius: 0; border-left: 2px solid var(--k); border-bottom: 2px solid var(--k); transform: rotate(-45deg) translate(1px, -1px); animation: isl-k-pop .5s var(--spring) both; }
 .isl-hero.is-tone-learn .isl-kicker i { border-radius: 2px; transform: rotate(45deg); animation: isl-k-breathe 2.8s ease-in-out infinite; }
 .isl-hero[class*="is-tone-"]:not(.is-tone-calm) .isl-hero-text { font-size: 16px; font-weight: 600; }
 @keyframes isl-k-pulse { 50% { transform: scale(.8); } }

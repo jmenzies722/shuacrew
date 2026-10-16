@@ -39,3 +39,12 @@ export function springCurve(duration: number, bounce: number, points = 48): Spri
 /** The notch's two motions. The Mac app uses the same numbers (Buddy.swift, NotchIsland.openSpring / tuckSpring). */
 export const ISLAND_OPEN = { duration: 0.42, bounce: 0.16 } as const;
 export const ISLAND_TUCK = { duration: 0.34, bounce: 0 } as const;
+
+/** The same spring as `motion`'s physics (mass 1, SwiftUI's mapping above), for the page's own animated pieces. */
+export function springPhysics({ duration, bounce }: { duration: number; bounce: number }) {
+  const stiffness = ((2 * Math.PI) / duration) ** 2;
+  return { type: "spring" as const, mass: 1, stiffness: +stiffness.toFixed(1), damping: +(2 * (1 - bounce) * Math.sqrt(stiffness)).toFixed(2) };
+}
+/** Everything that springs in the app moves like the notch: arriving with SPRING, leaving with SPRING_TUCK. */
+export const SPRING = springPhysics(ISLAND_OPEN);
+export const SPRING_TUCK = springPhysics(ISLAND_TUCK);

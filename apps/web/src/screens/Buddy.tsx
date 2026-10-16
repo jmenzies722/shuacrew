@@ -122,7 +122,8 @@ import { prose } from "../lib/plain";
 import { notchFocus, pausedLine } from "../lib/notch-focus";
 import { NotchActivity } from "../components/NotchActivity";
 import { artTint, readMusicBands, useMusicMeter } from "../lib/music-meter";
-import { ISLAND_OPEN, ISLAND_TUCK, springCurve } from "../lib/spring-easing";
+import { WorkingFor } from "../components/WorkingFor";
+import { ISLAND_OPEN, ISLAND_TUCK, springCurve, SPRING } from "../lib/spring-easing";
 
 /** The idle island's small label: what kind of thing the line is, readable at a glance. */
 const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", hold: "On hold" };
@@ -173,7 +174,7 @@ const SparkRow = memo(function SparkRow({ m, did, color, wide, setWide, reduceMo
     {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
     {p && <button type="button" className="buddy-point" onClick={() => showAgain(p.label ?? "")}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : <YourWords text={m.text} />;
   // Yours lifts out of the composer (origin bottom-right, shua-live.css); Shua's settles in from just below.
-  return <motion.div initial={reduceMotion ? false : m.who === "you" ? { opacity: 0, y: 18, scale: 0.94 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: m.who === "you" ? 520 : 380, damping: m.who === "you" ? 32 : 30 }}
+  return <motion.div initial={reduceMotion ? false : m.who === "you" ? { opacity: 0, y: 18, scale: 0.94 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING}
     className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
     <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
   </motion.div>;
@@ -2146,7 +2147,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       {tab === "chat" && (phase === "hearing" || phase === "transcribing" || phase === "error") && <p className="spk-mic-status" role="status">{phase === "hearing" ? "Listening…" : phase === "transcribing" ? "Turning your voice into text…" : "Microphone unavailable. You can keep typing."}</p>}
       {tab === "teach" ? <Teaching compact /> : tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={embedded ? { go: (path) => { window.shuacrew?.navigate(path); } } : ctx} /></div> : <>
         <div className={`buddy-thread spk-thread${call.active ? " is-voice-thread-hidden" : ""}`} aria-hidden={call.active} ref={thread} onScroll={(e) => { const el = e.currentTarget; followBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (followBottom.current) setBehind(false); }}>
-          {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
+          {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
             <div className="spk-hello-avatar"><SparkCharacter preferences={prefs} mood="happy" size={64} crop="portrait" /></div>
             <h2>{greeting} I'm {companionName(prefs)}.</h2>
             <div className="spk-now" aria-label="Right now">{now$.length
@@ -2173,7 +2174,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           {(phase === "hearing" || phase === "transcribing") && <motion.div className="spk-row is-you" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
             <div className="buddy-msg is-you is-hearing">{heard || (phase === "hearing" ? "Listening…" : "…")}<i className="spk-live-caret" /></div>
           </motion.div>}
-          {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={26} crop="portrait" /></span><p className="buddy-typing spk-typing"><span /><span /><span /> {busy || "thinking"}</p></motion.div>}
+          {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={26} crop="portrait" /></span><p className="buddy-typing spk-typing" role="status"><span /><span /><span /> <WorkingFor label={busy || "Thinking…"} /></p></motion.div>}
           {(quick.length > 0 || (convo && !working && !busy && lastQuestion)) && <details className="spk-followups">
             <summary>Continue conversation <ChevronRight size={12} /></summary>
           {lastSpark && !working && !busy && <Recommendations ask={yourWords([...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? "").text} />}
@@ -2225,7 +2226,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       // (transform only, top-centre), and what's inside arrives a beat later (spark-design.css). Elsewhere it rises in.
       initial={reduceMotion || notched ? false /* notched: a CSS keyframe pours it open on the compositor (spark-design.css) */ : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, scale: 1, scaleX: 1, scaleY: 1 }}
       exit={reduceMotion ? { opacity: 0 } : notched ? { opacity: 0, scaleX: 0.82, scaleY: 0.4, y: -4, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } } : { opacity: 0 }}
-      transition={reduceMotion ? { duration: 0 } : notched ? { type: "spring", stiffness: 380, damping: 32, mass: 0.9 } : { type: "spring", stiffness: 420, damping: 34 }}>
+      transition={reduceMotion ? { duration: 0 } : SPRING}>
       {notched && <div className="shua-chat-cap" aria-hidden="true"><span /><span className="shua-island-cam" /><span /></div>}
       {card}</motion.div>}</AnimatePresence>
     {!open && mini && <MiniCard name={companionName(prefs)} prefs={prefs} mood={mood}

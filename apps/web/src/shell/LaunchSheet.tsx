@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, launchRun, launchTask } from "../lib/api";
 import { useLive } from "../lib/live";
+import { SPRING } from "../lib/spring-easing";
 
 interface RuntimeInfo {
   id: string;
@@ -101,7 +102,7 @@ export function LaunchSheet() {
             initial={{ opacity: 0, y: 14, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.985 }}
-            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+            transition={SPRING}
             className="w-[680px] max-w-[94vw] rounded-[var(--radius-l)] border border-line-strong p-4 backdrop-blur-xl"
             style={{ background: "var(--glass)", boxShadow: "0 30px 90px rgba(0,0,0,.5)" }}
           >

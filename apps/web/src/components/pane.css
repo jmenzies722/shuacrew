@@ -14,9 +14,9 @@
 .pane-source:focus-visible, .pane-actions :focus-visible { outline:2px solid var(--amber); outline-offset:4px; }
 .pane-source-unavailable { color:var(--text-3); }
 @media (max-width:700px) { .pane-header { flex-direction:column; gap:16px; } .pane-actions { flex-shrink:1; } .pane-state { padding:18px; } }
-.pane-eyebrow { display:inline-flex; align-items:center; gap:6px; color:var(--amber); font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; }
+.pane-eyebrow { display:inline-flex; align-items:center; gap:6px; color:var(--accent-text, var(--amber)); font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; }
 .pane-scroll { height:100%; overflow-y:auto; }
-.pane-body { max-width:1440px; margin:0 auto; padding:26px 32px 56px; animation:pane-in .28s cubic-bezier(.2,.8,.2,1) both; }
+.pane-body { max-width:1440px; margin:0 auto; padding:26px 32px 56px; animation:pane-in .28s var(--ease-out) both; }
 @keyframes pane-in { from { opacity:0; transform:translateY(6px); } }
 @media (prefers-reduced-motion:reduce) { .pane-body { animation:none; } }
 .pane-body-wide { max-width:1440px; }
@@ -26,7 +26,7 @@
 /* Every page header in the Control Room language: the same title size as the Tools hub, a status line when the page has
    something live to say, and the sweep of light (cr-trace) instead of a plain rule underneath. */
 .workspace-frame .pane-header.cr-head { border-bottom: 0; padding-bottom: 18px; margin-bottom: 22px; }
-:root .pane-header.cr-head h1, :root[data-design] .pane-header.cr-head h1 { font-size: 30px !important; line-height: 1.08; letter-spacing: -.028em; margin-bottom: 8px; }
+:root .pane-header.cr-head h1, :root[data-design] .pane-header.cr-head h1 { font-size: var(--title-lg) !important; font-weight: var(--title-weight); line-height: 1.08; letter-spacing: -.028em; margin-bottom: 8px; }
 .pane-header.cr-head .cr-status { margin-top: 2px; }
 .pane-header.cr-head .pane-desc { margin: 6px 0 0; }
 .pane-header.cr-head .pane-desc.is-quiet { font-size: 12.5px; }
