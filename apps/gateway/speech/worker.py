@@ -14,6 +14,8 @@ VOICES = {voice["id"]: voice for voice in MANIFEST["voices"]}
 for old, new in MANIFEST.get("aliases", {}).items():
     VOICES.setdefault(old, VOICES[new])
 
+SENTENCES = r"(?<=[.!?])\s+|\n+"
+
 def validate_request(raw):
     if not isinstance(raw, dict):
         raise ValueError("Invalid request")
@@ -69,12 +71,19 @@ def main(home):
                 if raw.get("warmup") is True:
                     if engine == "pocket" and voice["speaker"] not in states:
                         states[voice["speaker"]] = model.get_state_for_audio_prompt(voice["speaker"])
+                    if engine == "kokoro":
+                        # Loading the weights isn't enough: Kokoro builds its text-to-phoneme pipeline and reads the
+                        # voice on the first sentence (measured ~7.7 s). Speak one word into nothing so that's done too.
+                        path = str(home / "models" / MANIFEST["models"]["kokoro"]["directory"] / "voices" / f'{voice["speaker"]}.safetensors')
+                        for _ in model.generate("Ready.", voice=path, speed=1, lang_code="b" if voice["accent"] == "en-GB" else "a", split_pattern=SENTENCES):
+                            pass
                     send({"id": request_id, "type": "done"})
                     continue
                 if engine == "kokoro":
                     path = str(home / "models" / MANIFEST["models"]["kokoro"]["directory"] / "voices" / f'{voice["speaker"]}.safetensors')
                     lang = "b" if voice["accent"] == "en-GB" else "a"
-                    chunks = ((np.asarray(result.audio).reshape(-1), getattr(result, "sample_rate", 24000)) for result in model.generate(request["text"], voice=path, speed=request["speed"], lang_code=lang))
+                    # One clip per sentence: a long reply starts sounding after its first sentence, not after all of it.
+                    chunks = ((np.asarray(result.audio).reshape(-1), getattr(result, "sample_rate", 24000)) for result in model.generate(request["text"], voice=path, speed=request["speed"], lang_code=lang, split_pattern=SENTENCES))
                 elif engine == "qwen":
                     chunks = ((np.asarray(result.audio), result.sample_rate) for result in model.generate_custom_voice(text=request["text"], speaker=voice["speaker"], language="English", instruct="Speak naturally in a warm, calm conversational tone.", stream=True, streaming_interval=.32))
                 else:

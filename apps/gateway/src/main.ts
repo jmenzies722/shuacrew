@@ -36,6 +36,8 @@ import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
 import { nativeBridgeSource } from "./mobile/native-config.js";
 import { GatewaySettings } from "./settings.js";
+import { tidyCodexThreads } from "./codex-privacy.js";
+import { agentEnv } from "@shuacrew/core";
 
 export const VERSION = "0.1.0";
 
@@ -123,6 +125,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   // Live calls reach Spark's Mac actions through this gateway's tool server, with a token per call.
   const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => { if (shouldArchiveLiveCall(settings.get().flags)) library.save({ title, content, summary, filename: "live-call.md", by: "agent" }); }, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
     firstName: macFirstName, // Live greets you by your name, from this Mac's account
+    model: () => (runtimes.get("codex") as CodexRuntime | undefined)?.defaultModel,
     mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }, 5_000); // spark_do confirms deletes itself; a call's Codex is warmed 5 s after boot
   tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;
@@ -142,7 +145,13 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     memory,
     crew,
     mcpServers: withLibrary,
-    sparkMcpServers: (runtime) => runtime === "codex" ? mcp.forCodex("spark") : runtime === "claude" ? mcp.forClaude("spark") : undefined,
+    // Shua's quick turns: the connections you chose for it, plus ShuaCrew's own tools (what's happening, the library).
+    sparkMcpServers: (runtime, run) => {
+      const auth = `Bearer ${tools.tokenFor(run)}`;
+      if (runtime === "codex") return { ...mcp.forCodex("spark"), [TOOL_SERVER]: { url: self, http_headers: { Authorization: auth } } };
+      if (runtime === "claude") return { ...mcp.forClaude("spark"), [TOOL_SERVER]: { type: "http" as const, url: self, headers: { Authorization: auth } } };
+      return undefined;
+    },
     toolHint: LIBRARY_HINT,
     plugins: (runtime) => (runtime === "claude" ? skills.plugins() : undefined),
     ventureBrief: (id) => ventures.brief(id),
@@ -152,6 +161,10 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   tools.rooms = rooms;
   tools.crew = crew;
   tools.runtimeIds = () => [...runtimes.keys()].filter((id) => id !== "mock" && id !== "local");
+  tools.brains = () => [...runtimes.keys()].filter((id) => id !== "mock").map((id) => {
+    const used = supervisor.usage(id);
+    return { id, usedPercent: used?.usedPercent, resetsAt: used?.resetsAt, limitedUntil: supervisor.limitedUntil(id), nearlyOut: supervisor.nearlyOut(id) };
+  });
   const plays = new Plays(store, supervisor);
   ventures.startPlay = (input) => plays.start(input);
   const autonomy = {
@@ -162,6 +175,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   };
   const here = path.dirname(fileURLToPath(import.meta.url));
   const { SpeechService } = await import("./speech.js");
+  const speech = new SpeechService({ home: path.join(home, "speech") });
   const { app, hub, state, briefing } = await createServer({
     live: liveVoice,
     store,
@@ -187,11 +201,15 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     skills,
     terminals,
     uploads: new Uploads(path.join(home, "uploads")),
-    speech: new SpeechService({ home: path.join(home, "speech") }),
+    speech,
     settings,
     builtinProtected,
   });
   live = state;
+  // Shua's voice is loaded before its reply needs it: the moment you send Shua something (the model thinks for a few
+  // seconds meanwhile), and once after boot. A cold load used to add ~7 s before the first word.
+  store.subscribe((event) => { if (event.kind === "turn.started" && event.run && state().runs[event.run]?.labels.includes("buddy")) speech.prewarm(); });
+  setTimeout(() => speech.prewarm(), 20_000).unref();
   // Spark on the iPhone: a second, Tailscale-only door that opens once a phone is paired.
   const phone = new PhoneDoor({ app, hub, home, port: Number(process.env.SHUACREW_PHONE_PORT ?? 7430), token: process.env.SHUACREW_TOKEN,
     host: process.env.SHUACREW_PHONE_HOST ? () => process.env.SHUACREW_PHONE_HOST : undefined });
@@ -217,6 +235,8 @@ export async function boot(options: { port?: number; host?: string } = {}) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const gateway = await boot();
   console.log(`ShuaCrew gateway on http://${gateway.host}:${gateway.port} · log ${gateway.store.path}` + (gateway.resumed.length ? ` · resumed ${gateway.resumed.length} run(s)` : ""));
+  // ShuaCrew's older Codex threads out of the Codex app's own list (the runtime archives each new one after its turn).
+  setTimeout(() => void tidyCodexThreads({ env: agentEnv(process.env, "subscription") }).then((n) => { if (n) console.log(`${new Date().toISOString()} codex tidy archived=${n}`); }), 90_000).unref();
   let stopping = false;
   const stop = async () => {
     // tsx relays launchd's SIGTERM to its child, so it can arrive twice; a second pass would close closed databases

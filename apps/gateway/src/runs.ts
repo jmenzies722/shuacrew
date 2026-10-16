@@ -102,7 +102,7 @@ export interface SupervisorOptions {
   /** Installed MCP servers, already shaped for that runtime. */
   mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
   /** The MCP servers you've let Spark use, for its quick turns (Claude only). */
-  sparkMcpServers?: (runtime: string) => Record<string, unknown> | undefined;
+  sparkMcpServers?: (runtime: string, run: string) => Record<string, unknown> | undefined;
   /** Told to every fresh conversation (what ShuaCrew's own tools are for). */
   toolHint?: string;
   /** Claude Code plugins for a runtime (ShuaCrew's installed skills). */
@@ -122,6 +122,30 @@ export class Supervisor {
   private assistantDown = new Map<string, number>();
   readonly worktrees = new Worktrees();
   private runtimeSnapshots = new Map<string, { status: RuntimeStatus; models?: string[] }>();
+  /** The latest usage reading per agent, as the provider reported it (memory only: a restart reads it again). */
+  private quota = new Map<string, { usedPercent: number; resetsAt?: number; at: number }>();
+  /** How much of its usage window an agent has spent, when it last said (for the page and the briefing). */
+  usage(runtime: string): { usedPercent: number; resetsAt?: number; at: number } | undefined { return this.quota.get(runtime); }
+  /** A provider's own usage reading (Codex reports it during turns, and when asked). */
+  usageReading(runtime: string, reading: { usedPercent: number; resetsAt?: number }): void {
+    if (!Number.isFinite(reading.usedPercent)) return;
+    this.quota.set(runtime, { usedPercent: reading.usedPercent, ...(reading.resetsAt ? { resetsAt: reading.resetsAt } : {}), at: Date.now() });
+  }
+  /**
+   * About to run out: at NEARLY_OUT % of its window or more, by a reading that's still current (not stale, and the
+   * window hasn't reset since). Such an agent is passed over while another is free, so work moves before it's cut off.
+   */
+  nearlyOut(runtime: string): boolean {
+    const q = this.quota.get(runtime);
+    if (!q || q.usedPercent < NEARLY_OUT) return false;
+    if (q.resetsAt && q.resetsAt <= Date.now()) return false;
+    return Date.now() - q.at < QUOTA_FRESH_MS;
+  }
+  /** An agent that can take work now and isn't about to run out. */
+  private roomy(id: string): boolean { return this.runtimes.has(id) && this.limitedUntil(id) <= Date.now() && !this.allModelsLimited(id) && !this.nearlyOut(id); }
+  private nearlyOutWhy(runtime: string, other: string): string {
+    return `${runtime} is at ${Math.round(this.quota.get(runtime)?.usedPercent ?? NEARLY_OUT)}% of its usage window — ${other} is covering`;
+  }
   updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
   intelligence(request: IntelligenceRequest) {
     // Spark's Auto follows its brain order (Codex, then Claude), so the page and launch() never disagree on who answers.
@@ -132,7 +156,7 @@ export class Supervisor {
     return selectIntelligence(request, [...this.runtimes.values()].map(runtime => {
       const snapshot = this.runtimeSnapshots.get(runtime.id);
       return { ...runtime, models: snapshot?.models ? runtime.models.filter(m => snapshot.models!.includes(m.id)) : runtime.models,
-        status: snapshot?.status ?? { installed: true, signedIn: null, detail: "Not checked", overridingKeys: [] }, limits: this.activeLimits(runtime.id) };
+        status: snapshot?.status ?? { installed: true, signedIn: null, detail: "Not checked", overridingKeys: [] }, limits: this.activeLimits(runtime.id), nearlyOut: this.nearlyOut(runtime.id) };
     }), this.options.settings?.() ?? { router: [], failoverOrder: [] }, Date.now(), this.options.latency && ((r, m) => this.options.latency!.estimate(r, m)));
   }
 
@@ -332,7 +356,7 @@ export class Supervisor {
       // Quiet hours: automation waits in the queue and starts when they end (nothing is dropped).
       const quiet = this.options.settings?.().quietHours;
       if (quiet && run.labels.some((l) => l === "schedule" || l === "webhook" || l === "heartbeat") && inQuietHours(quiet)) continue;
-      const agent = run.labels.includes("buddy") ? this.keepAssistantUp(run.id, this.currentRuntime(run.id, run.runtime)) : this.currentRuntime(run.id, run.runtime);
+      const agent = run.labels.includes("buddy") ? this.keepAssistantUp(run.id, this.currentRuntime(run.id, run.runtime)) : this.moveOffNearlyOut(run.id, this.currentRuntime(run.id, run.runtime), run.labels);
       if (this.limitedUntil(agent) > Date.now() || this.allModelsLimited(agent)) continue;
       const cap = this.options.concurrency?.[run.runtime] ?? (run.runtime === "mock" ? 8 : 2);
       const busy = runs.filter((r) => r.runtime === run.runtime && this.active.has(r.id)).length;
@@ -365,7 +389,7 @@ export class Supervisor {
       model,
       effort,
       disableNativeAgents: lean || spec.labels.includes("crew-room"),
-      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id) : this.options.mcpServers?.(runtime.id, runId),
+      mcpServers: lean ? this.options.sparkMcpServers?.(runtime.id, runId) : this.options.mcpServers?.(runtime.id, runId),
     };
   }
 
@@ -583,6 +607,9 @@ export class Supervisor {
             this.rec("checkpoint.created", { turn, commit, note: event.note ?? "" }, { run: runId });
             break;
           }
+          case "quota":
+            this.usageReading(runtime.id, event);
+            break;
           case "limited":
             this.limited(runId, runtime.id, event.until, event.message, event.model ?? model, event.credits);
             ended = true;
@@ -855,17 +882,33 @@ export class Supervisor {
     return this.runtimes.has(id) &&this.limitedUntil(id) <= Date.now() && !this.allModelsLimited(id) && (this.assistantDown.get(id) ?? 0) <= Date.now();
   }
 
-  /** The brain a new Spark conversation starts on; when both are down, the one you'd wait for. */
+  /** The brain a new Spark conversation starts on: one with room first (Codex near the end of its usage window hands
+   *  over to Claude before it's cut off), then any that answers; when both are down, the one you'd wait for. */
   private assistantRuntime(): string | undefined {
-    return ASSISTANT_BRAINS.find((id) => this.assistantUsable(id)) ?? ASSISTANT_BRAINS.find((id) => this.runtimes.has(id));
+    return ASSISTANT_BRAINS.find((id) => this.assistantUsable(id) && !this.nearlyOut(id)) ?? ASSISTANT_BRAINS.find((id) => this.assistantUsable(id)) ?? ASSISTANT_BRAINS.find((id) => this.runtimes.has(id));
+  }
+
+  /**
+   * A queued turn of a work session never starts on an agent that's about to run out while another has room: it moves
+   * now, with a recap, rather than dying mid-task when the window closes. Rooms keep their provider; so does a run
+   * when failover is off or nothing else is free.
+   */
+  private moveOffNearlyOut(run: string, current: string, labels: string[]): string {
+    if (!this.options.failover || labels.includes("crew-room") || !this.nearlyOut(current)) return current;
+    const other = failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local"), current).find((r) => this.roomy(r));
+    if (!other) return current;
+    this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason: this.nearlyOutWhy(current, other) }, { run });
+    return other;
   }
 
   /** A queued Spark turn never waits on a down brain while the other is free. A working brain keeps the conversation (no recap churn). */
   private keepAssistantUp(run: string, current: string): string {
-    if (!ASSISTANT_BRAINS.includes(current) || this.assistantUsable(current)) return current;
-    const other = ASSISTANT_BRAINS.find((id) => id !== current && this.assistantUsable(id));
+    if (!ASSISTANT_BRAINS.includes(current)) return current;
+    if (this.assistantUsable(current) && !this.nearlyOut(current)) return current;
+    const other = ASSISTANT_BRAINS.find((id) => id !== current && this.assistantUsable(id) && (!this.nearlyOut(id) || !this.assistantUsable(current)));
     if (!other) return current;
-    this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason: `${current} isn't answering — ${other} is covering` }, { run });
+    const reason = this.assistantUsable(current) ? this.nearlyOutWhy(current, other) : `${current} isn't answering — ${other} is covering`;
+    this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason }, { run });
     return other;
   }
 
@@ -1248,6 +1291,10 @@ export class Supervisor {
 
 /** Spark's brains, in order: Codex first, Claude as the backup when Codex isn't working. */
 const ASSISTANT_BRAINS = ["codex", "claude"];
+/** An agent at this share of its usage window or more is "about to run out": new turns go to one with room. */
+export const NEARLY_OUT = 90;
+/** A usage reading older than this says nothing about now (readings refresh during turns and every few minutes). */
+const QUOTA_FRESH_MS = 2 * 60 * 60_000;
 /** How long a brain that just broke is skipped before Spark tries it again. */
 const ASSISTANT_COOLDOWN_MS = 5 * 60_000;
 

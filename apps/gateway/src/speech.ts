@@ -27,6 +27,13 @@ export function validateSpeechRequest(input: unknown, manifest = speechManifest)
 }
 export type SpeechChunk = { id: string; generation: number; type: "audio"; data: string } | { id: string; generation: number; type: "done" };
 
+/**
+ * How long the voice model stays loaded after it last spoke, whatever the page asked for. Kokoro is small (82M
+ * parameters, a few hundred MB), and reloading it is what made Shua slow to start talking after a quiet spell —
+ * measured in the gateway log: first sound 6.2–8.9 s cold against 1.2–1.7 s warm.
+ */
+export const KEEP_LOADED_MINUTES = 60;
+
 /** One local process, one inference at a time. A cancelled inference kills the worker,
  * so even an uncooperative engine cannot send audio into the next request. */
 export class SpeechService {
@@ -45,12 +52,24 @@ export class SpeechService {
     const setup = this.installer.status();
     return { state: setup.state === "installing" ? "installing" : ready ? "ready" : setup.state, voices: speechManifest.voices, audition: true, step: setup.step, error: ready ? undefined : setup.error ?? "Download local speech models to get started. Allow approximately 3–4 GB of downloads and 8 GiB free disk space." };
   }
+  /** A worker that dies while idle (a crash, the OS reclaiming memory) is forgotten at once, so the next reply starts a
+   *  fresh one instead of writing into a dead process and waiting out the timeout (measured: a 90 s hang). */
+  private spawnWorker(root: string): ChildProcessWithoutNullStreams {
+    const child = spawn(this.options.command ?? path.join(root, "venv/bin/python"), this.options.args ?? [path.join(directory, "worker.py"), root], { stdio: "pipe", env: { ...process.env, ...(existsSync(path.join(root, "models/hub")) ? { HF_HUB_CACHE: path.join(root, "models/hub") } : {}), HF_HUB_OFFLINE: "1", TOKENIZERS_PARALLELISM: "false", PYTHONUNBUFFERED: "1" } });
+    child.once("exit", () => { if (this.child === child) this.child = undefined; });
+    return child;
+  }
   private kill() {
     clearTimeout(this.idle);
     this.child?.kill("SIGKILL");
     this.child = undefined;
   }
   close() { this.closed = true; this.installer.cancel(); this.kill(); for (const wake of this.waiting.splice(0)) wake(); }
+  /** Load the voice model ahead of a reply (you just asked Shua something) unless it's loaded or busy. Never throws. */
+  prewarm(voiceId = speechManifest.voices[0]!.id): void {
+    if (this.closed || this.child || this.active || this.status().state !== "ready") return;
+    void this.warm(voiceId, new AbortController().signal, this.warmMinutes).catch(() => undefined);
+  }
   async warm(voiceId: string, signal: AbortSignal, warmMinutes = 5) {
     if (![2, 5, 10].includes(warmMinutes)) throw new Error("Choose a warm retention of 2, 5 or 10 minutes.");
     this.warmMinutes = warmMinutes;
@@ -80,7 +99,8 @@ export class SpeechService {
       if (this.closed) throw new Error("Speech service is closed.");
       clearTimeout(this.idle);
       const root = this.root();
-      const child = this.child ??= spawn(this.options.command ?? path.join(root, "venv/bin/python"), this.options.args ?? [path.join(directory, "worker.py"), root], { stdio: "pipe", env: { ...process.env, ...(existsSync(path.join(root, "models/hub")) ? { HF_HUB_CACHE: path.join(root, "models/hub") } : {}), HF_HUB_OFFLINE: "1", TOKENIZERS_PARALLELISM: "false", PYTHONUNBUFFERED: "1" } });
+      if (this.child && (this.child.exitCode !== null || this.child.signalCode !== null)) this.child = undefined;
+      const child = this.child ??= this.spawnWorker(root);
       // Never forward raw model diagnostics or user text into the gateway log.
       child.stderr.resume();
       const queue: SpeechChunk[] = [];
@@ -139,7 +159,7 @@ export class SpeechService {
       this.ids.delete(request.id);
       if (acquired) {
         const next = this.waiting.shift();
-        if (next) next(); else { this.active = false; this.idle = setTimeout(() => this.kill(), this.warmMinutes * 60_000); this.idle.unref(); }
+        if (next) next(); else { this.active = false; this.idle = setTimeout(() => this.kill(), Math.max(this.warmMinutes, KEEP_LOADED_MINUTES) * 60_000); this.idle.unref(); }
       }
     }
   }

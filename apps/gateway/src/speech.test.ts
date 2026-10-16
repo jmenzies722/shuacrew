@@ -52,6 +52,18 @@ it("recovers after crash, malformed protocol and timeout without accepting stale
     }
   } finally { service.close(); }
 });
+it("replaces a worker that died while idle instead of waiting out the timeout", async () => {
+  const service = new SpeechService({ home: "/tmp", timeoutMs: 20_000, command: process.execPath, args: [fileURLToPath(new URL("./fixtures/speech-worker.mjs", import.meta.url))] });
+  const consume = async (text: string) => { const types = []; for await (const c of service.synthesize({ id: `${text}-${Math.random()}`.replace(/[^\w-]/g, ""), generation: 1, voiceId: "aiden", text, speed: 1 }, new AbortController().signal)) types.push(c.type); return types; };
+  try {
+    expect(await consume("Hello")).toEqual(["audio", "done"]);
+    const idle = (service as unknown as { child: import("node:child_process").ChildProcess }).child;
+    await new Promise((resolve) => { idle.once("exit", resolve); idle.kill("SIGKILL"); });
+    const started = Date.now();
+    expect(await consume("Hello again")).toEqual(["audio", "done"]);
+    expect(Date.now() - started).toBeLessThan(5000);
+  } finally { service.close(); }
+});
 it("limits synthesis input and rejects unknown voice IDs", () => {
   const input = { id: "preview", generation: 1, voiceId: "aiden", text: "Hello", speed: 1 };
   expect(validateSpeechRequest(input, validateManifest(manifest)).text).toBe("Hello");

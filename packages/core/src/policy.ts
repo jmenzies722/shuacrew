@@ -323,10 +323,10 @@ export function defaultRules(): Rule[] {
     },
     {
       id: "allow.library",
-      description: "ShuaCrew's own library tools (save and search artifacts and knowledge)",
+      description: "ShuaCrew's own tools (the library, the crew, and what's going on)",
       verdict: "allow",
       risk: "low",
-      matches: (call) => /^mcp__shuacrew__(save_artifact|search_library|read_library|list_artifacts|list_crew|crew_delegate|crew_message|crew_status)$/.test(call.tool),
+      matches: (call) => /^mcp__shuacrew__(save_artifact|search_library|read_library|list_artifacts|list_crew|whats_happening|crew_delegate|crew_message|crew_status)$/.test(call.tool),
     },
     {
       id: "allow.read",

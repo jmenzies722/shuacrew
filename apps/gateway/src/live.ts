@@ -12,7 +12,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import os from "node:os";
 import path from "node:path";
 import { agentEnv, decide, defaultContext, defaultRules, normalise } from "@shuacrew/core";
-import { RpcPeer, findBinary } from "@shuacrew/runtimes";
+import { RpcPeer, findBinary, quotaFrom } from "@shuacrew/runtimes";
 import { assistantMustAsk } from "./assistant-policy.js";
 import { TOOL_SERVER } from "./toolserver.js";
 
@@ -132,6 +132,8 @@ export interface LiveOptions {
   binary?: string;
   /** The user's first name for the voice, if known. */
   firstName?: () => string | undefined;
+  /** A model the ChatGPT plan has, for the call's text turns (Codex's config default may be one it doesn't). */
+  model?: () => string | undefined;
 }
 
 /** One live call per socket; a new call replaces the old one. */
@@ -168,7 +170,8 @@ async function openCodexSession(options: LiveOptions, dir: string, vocab: string
     // Low reasoning effort: a call is a conversation, and the voice is waiting on every turn. A fresh thread per call:
     // a resumed one had grown to 115k input tokens and took 28 s to answer "what's on my calendar". Continuity comes
     // from the recent lines given to the voice instead.
-    const thread = { cwd: dir, approvalPolicy: "on-request", developerInstructions: liveBackendInstructions(protectedPaths, vocab), config: { model_reasoning_effort: "low", web_search: "live", ...(mcp ? { mcp_servers: mcp } : {}) } };
+    const model = options.model?.();
+    const thread = { cwd: dir, approvalPolicy: "on-request", ...(model ? { model } : {}), developerInstructions: liveBackendInstructions(protectedPaths, vocab), config: { model_reasoning_effort: "low", web_search: "live", ...(mcp ? { mcp_servers: mcp } : {}) } };
     const threadId = String((await peer.request("thread/start", thread)).thread?.id);
     return { child, peer, threadId, run, route, key: sessionKey(vocab, protectedPaths), at: Date.now() };
   } catch (error) { child.kill("SIGTERM"); throw error; }
@@ -179,6 +182,14 @@ async function openCodexSession(options: LiveOptions, dir: string, vocab: string
  * spawning Codex and starting its thread (measured 0.4–0.5 s of every call). Replaced every 20 minutes.
  */
 const STANDBY_MAX_AGE = 20 * 60_000;
+/** A Live session let go: its thread out of the Codex app's list (calls are ShuaCrew's, not Codex's), then the process. */
+function retire(session: { child: ChildProcess; peer?: RpcPeer; threadId?: string } | undefined, before?: Promise<unknown>): void {
+  if (!session) return;
+  const { child, peer, threadId } = session;
+  if (!peer || !threadId || child.exitCode !== null) return void child.kill("SIGTERM");
+  const archived = (before ?? Promise.resolve()).catch(() => undefined).then(() => peer.request("thread/archive", { threadId })).catch(() => undefined);
+  void Promise.race([archived, new Promise((r) => setTimeout(r, 1500).unref())]).finally(() => child.kill("SIGTERM"));
+}
 export class Standby {
   private ready?: CodexSession;
   private pending?: Promise<void>;
@@ -195,7 +206,7 @@ export class Standby {
   take(key: string): CodexSession | undefined {
     const s = this.ready; this.ready = undefined;
     if (!s) return undefined;
-    if (s.key !== key || s.child.exitCode !== null || s.child.signalCode !== null || Date.now() - s.at > STANDBY_MAX_AGE) { s.child.kill("SIGTERM"); return undefined; }
+    if (s.key !== key || s.child.exitCode !== null || s.child.signalCode !== null || Date.now() - s.at > STANDBY_MAX_AGE) { retire(s); return undefined; }
     return s;
   }
   /** Open the next session (after a call, and once at boot). */
@@ -206,17 +217,17 @@ export class Standby {
     if (this.ready || this.pending) return;
     const route: CodexRoute = {};
     this.pending = openCodexSession(this.options, this.dir, vocab, this.options.protectedPaths(), route).then((session) => {
-      if (this.stopped) { session.child.kill("SIGTERM"); return; }
+      if (this.stopped) { retire(session); return; }
       route.exited = () => { if (this.ready === session) this.ready = undefined; };
       this.ready = session;
     }, () => undefined).finally(() => { this.pending = undefined; });
   }
   whenReady() { return this.pending ?? Promise.resolve(); }
-  private drop() { this.ready?.child.kill("SIGTERM"); this.ready = undefined; }
+  private drop() { retire(this.ready); this.ready = undefined; }
   stop() { this.stopped = true; clearInterval(this.timer); this.drop(); }
 }
 
-export interface LiveReadiness { usable: boolean; usedPercent?: number; resetsAt?: number }
+export interface LiveReadiness { usable: boolean; usedPercent?: number; resetsAt?: number; quota?: { usedPercent: number; resetsAt?: number } }
 
 /** Whether the ChatGPT plan can take a call right now, from Codex's `account/rateLimits/read`. Unreadable = usable. */
 export function liveReadyFrom(result: Json): LiveReadiness {
@@ -226,7 +237,8 @@ export function liveReadyFrom(result: Json): LiveReadiness {
   const resetsAt = resets.length ? Math.min(...resets) * (Math.min(...resets) < 1e12 ? 1000 : 1) : undefined;
   const credits = limits.credits?.hasCredits === true || limits.credits?.unlimited === true;
   const blocked = limits.spendControlReached === true || (!credits && (result?.ordinaryUsageAllowed === false || !!limits.rateLimitReachedType));
-  return { usable: !blocked, ...(usedPercent !== undefined ? { usedPercent } : {}), ...(resetsAt !== undefined ? { resetsAt } : {}) };
+  const quota = quotaFrom(limits); // the busier of the two windows: what decides whether Codex is about to run out
+  return { usable: !blocked, ...(usedPercent !== undefined ? { usedPercent } : {}), ...(resetsAt !== undefined ? { resetsAt } : {}), ...(quota ? { quota } : {}) };
 }
 
 export class LiveVoice {
@@ -472,10 +484,10 @@ class LiveCall {
     for (const resolve of this.relays.values()) resolve("The call ended before it finished.");
     this.relays.clear();
     this.approvals.clear();
-    if (this.threadId) void this.peer?.request("thread/realtime/stop", { threadId: this.threadId }).catch(() => undefined);
+    const stopped = this.threadId ? this.peer?.request("thread/realtime/stop", { threadId: this.threadId }) : undefined;
+    stopped?.catch(() => undefined);
     this.keep();
-    const child = this.child;
-    setTimeout(() => child?.kill("SIGTERM"), 800).unref();
+    if (this.child) retire({ child: this.child, peer: this.peer, threadId: this.threadId }, stopped);
     try { this.socket.close(); } catch { /* already closed */ }
     void reason;
   }

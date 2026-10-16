@@ -11,6 +11,7 @@ import type { RoomCoordinator } from "./rooms.js";
 import { ROOM_TOOLS, callRoomTool } from "./room-tools.js";
 import { createCrewMember } from "./crew-create.js";
 import type { Crew } from "./crew.js";
+import { macNow, sessionNow, shuacrewNow, type BrainNow, type Focus } from "./awareness.js";
 
 export const TOOL_SERVER = "shuacrew";
 
@@ -19,11 +20,20 @@ export const LIBRARY_HINT = [
   "ShuaCrew library tools (the `shuacrew` MCP server):",
   "- search_library / read_library: the user's own documents and everything the crew made before. Check it before researching from scratch or asking the user something they may have written down.",
   "- list_crew / add_crew_member: see the user's crew, and add a new member when they ask for one (it needs their approval; new members can't be delegated to until the user opts them in).",
+  "- whats_happening: what's going on right now — sessions and approvals, how much usage Codex and Claude have left, and this Mac (app in front, open apps, battery, idle). Call it instead of guessing whenever the user asks how things are going.",
   "- save_artifact: save each real deliverable (a report, spec, plan, landing page, copy, dataset) as an artifact with a clear title, so it lands in the user's Library. To revise one, pass its id to save a new version rather than a duplicate.",
 ].join("\n");
 
 const CREW_TOOLS = new Set(["list_crew", "add_crew_member"]);
+/** Shua's quick turns get the tools that read (and its own saves); changing the crew stays with work sessions. */
+const SPARK_TOOLS = new Set(["whats_happening", "search_library", "read_library", "list_artifacts", "list_crew", "save_artifact"]);
 const TOOLS = [
+  {
+    name: "whats_happening",
+    description: "What's going on right now: ShuaCrew's sessions (running, queued, waiting on an approval, finished today), how much of their usage window Codex and Claude have used, and this Mac (the app in front, what's open, battery, idle time, disk). Pass `session` (an id like r_ab12cd34) for one session in detail. Use it whenever the user asks what's happening, how something is going, or whether a brain has usage left — never guess.",
+    inputSchema: { type: "object", properties: { focus: { type: "string", enum: ["all", "sessions", "brains", "mac"], description: "default all" }, session: { type: "string", description: "one session's id, for its details" } }, additionalProperties: false },
+    annotations: { readOnlyHint: true, title: "What's happening" },
+  },
   {
     name: "list_crew",
     description: "List the user's crew members: id, name, role, agent, and whether they can take delegated work.",
@@ -95,6 +105,8 @@ export class ToolServer {
     /** For list_crew / add_crew_member, and the agents a new member may use. */
     public crew?: Crew,
     public runtimeIds: () => string[] = () => [],
+    /** Each brain's usage and limits, for whats_happening. */
+    public brains: () => BrainNow[] = () => [],
   ) {}
 
   /** One stable token per run for this gateway's life. */
@@ -139,6 +151,7 @@ export class ToolServer {
       case "tools/list":
         if (run.startsWith("live:") && this.live) return ok({ tools: this.live.tools });
         // Crew tools only when a crew is attached; room tools only inside a room.
+        if (this.state().runs[run]?.labels.includes("buddy")) return ok({ tools: TOOLS.filter((t) => SPARK_TOOLS.has(t.name) && (this.crew || !CREW_TOOLS.has(t.name))) });
         return ok({ tools: [...TOOLS.filter((t) => this.crew || !CREW_TOOLS.has(t.name)), ...(this.rooms?.roomFor(run) ? ROOM_TOOLS : [])] });
       case "tools/call": {
         const name = String(m.params?.name ?? "");
@@ -148,8 +161,9 @@ export class ToolServer {
           try { return ok({ content: [{ type: "text", text: await this.live.call(run, name, args) }] }); }
           catch (error) { return ok({ content: [{ type: "text", text: (error as Error).message }], isError: true }); }
         }
+        if (this.state().runs[run]?.labels.includes("buddy") && !SPARK_TOOLS.has(name)) return ok({ content: [{ type: "text", text: `${name} isn't available in a quick conversation.` }], isError: true });
         try {
-          return ok({ content: [{ type: "text", text: this.call(name, args, run) }] });
+          return ok({ content: [{ type: "text", text: await this.call(name, args, run) }] });
         } catch (error) {
           return ok({ content: [{ type: "text", text: (error as Error).message }], isError: true });
         }
@@ -159,13 +173,21 @@ export class ToolServer {
     }
   }
 
-  private call(name: string, args: Record<string, unknown>, run: string): string {
+  private async call(name: string, args: Record<string, unknown>, run: string): Promise<string> {
     if (name.startsWith("crew_")) {
       if (!this.rooms) throw new Error("Crew rooms unavailable");
       return callRoomTool(this.rooms, name, args, run);
     }
     const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : undefined);
     switch (name) {
+      case "whats_happening": {
+        const focus: Focus = ["sessions", "brains", "mac"].includes(String(args.focus)) ? (args.focus as Focus) : "all";
+        const session = str("session")?.trim();
+        if (session) return sessionNow(this.state(), session);
+        const parts = [shuacrewNow(this.state(), this.brains(), focus)].filter((p) => p.trim());
+        if (focus === "all" || focus === "mac") parts.push(await macNow());
+        return parts.join("\n\n");
+      }
       case "list_crew": {
         if (!this.crew) throw new Error("Crew unavailable");
         return JSON.stringify(this.crew.list().map((m) => ({ id: m.id, name: m.name, role: m.role, runtime: m.runtime ?? "auto", delegatable: m.delegatable })));

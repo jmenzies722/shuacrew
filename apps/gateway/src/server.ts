@@ -133,10 +133,14 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
    */
   const healCodex = async () => {
     if (!options.live) return { usable: true };
-    const ready = await options.live.readiness() as { usable?: boolean; usedPercent?: number };
+    const ready = await options.live.readiness() as { usable?: boolean; usedPercent?: number; quota?: { usedPercent: number; resetsAt?: number } };
     if (ready.usable && typeof ready.usedPercent === "number" && ready.usedPercent < 100) supervisor.usageAvailable("codex");
+    // How close Codex is to running out: at 90%+ new turns go to Claude before Codex cuts them off.
+    if (ready.quota) supervisor.usageReading("codex", ready.quota);
     return ready;
   };
+  // Kept current between turns too (a reading is ~1 s of a background Codex process every 5 minutes).
+  if (options.live) setInterval(() => void healCodex().catch(() => undefined), 5 * 60_000).unref?.();
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK.has(host) && !options.token) {
     throw new Error(`refusing to listen on ${host} without a token — set SHUACREW_TOKEN`);
