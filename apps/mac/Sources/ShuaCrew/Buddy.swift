@@ -64,6 +64,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
     private let grip = BuddyGrip()
     private let fnFeedback = NSView()
     private let notchSurface = NSView()
+    /// The black island while you hover (and while it tucks back): one outline, shoulders and all, sprung by Core
+    /// Animation on the display's clock — the page clips its contents with the same spring (notch-hover.css).
+    private let islandLayer = CAShapeLayer()
+    /// The live music bars' source (Music / Spotify only), and the app the page asked to measure.
+    private let musicMeter = MusicMeter()
+    private var musicWanted: String?
+    /// The bars at rest, drawn natively over the page's (see MusicBarsView); the page draws them only while it moves.
+    private let musicBars = MusicBarsView()
+    private var barsNative = false
+    /// Self-test only (notch:music-sim): drive the bars with generated levels instead of tapping a real app.
+    private var musicSimulated = false
+    private var simulatedMedia: [String: Any]?
     private let pointer = PointerOverlay()
     /// Live mode: a real screen stream while you choose, so every question sees what's there right now.
     private let live = LiveScreen()
@@ -126,18 +138,19 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         let root = NSView()
         panel.contentView = root
         notchSurface.wantsLayer = true
-        notchSurface.layer?.backgroundColor = NSColor.black.cgColor
-        notchSurface.layer?.cornerRadius = 28
-        notchSurface.layer?.cornerCurve = .continuous
-        notchSurface.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        // Depth under the open island (the page's own shadow goes away once this backdrop takes over).
-        notchSurface.layer?.shadowColor = NSColor.black.cgColor
-        notchSurface.layer?.shadowOpacity = 0.6
-        notchSurface.layer?.shadowRadius = 26
-        notchSurface.layer?.shadowOffset = CGSize(width: 0, height: -14)
+        notchSurface.autoresizingMask = [.width, .height]
+        islandLayer.fillColor = NSColor.black.cgColor
+        // Depth under the open island (the page's own shadow goes away while this one is drawn).
+        islandLayer.shadowColor = NSColor.black.cgColor
+        islandLayer.shadowOpacity = 0
+        islandLayer.shadowRadius = 26
+        islandLayer.shadowOffset = CGSize(width: 0, height: -14)
+        notchSurface.layer?.addSublayer(islandLayer)
         notchSurface.isHidden = true
         root.addSubview(notchSurface)
         for view in [web, grip] as [NSView] { view.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(view) }
+        musicBars.autoresizingMask = [.width, .height]
+        root.addSubview(musicBars) // above the page: it draws exactly over the page's own (hidden) bars
         NSLayoutConstraint.activate([
             web.leadingAnchor.constraint(equalTo: root.leadingAnchor), web.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             web.topAnchor.constraint(equalTo: root.topAnchor), web.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -175,14 +188,41 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(cameBack), name: .init("com.apple.screenIsUnlocked"), object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(wentAway), name: NSWorkspace.screensDidSleepNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(cameBack), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        // Play, pause and a new song reach the notch the moment they happen: Music and Spotify announce them.
+        for name in ["com.apple.Music.playerInfo", "com.spotify.client.PlaybackStateChanged"] {
+            DistributedNotificationCenter.default().addObserver(self, selector: #selector(playerChanged), name: .init(name), object: nil, suspensionBehavior: .deliverImmediately)
+        }
+        // The bars, every display frame while a song plays: five numbers into the page's own frame loop (no React).
+        musicMeter.onLevels = { [weak self] bands, dt in self?.deliverMusic(bands, dt: dt) }
+        musicMeter.onState = { [weak self] state in self?.send("shuacrew:musicMeter", ["state": state.rawValue]) }
+    }
+
+    /// One frame of music levels: to the native bars while they own the resting notch (no page work at all), else to
+    /// the page, which is drawing them itself (hovered, captioned).
+    private func deliverMusic(_ bands: [Float], dt: Float) {
+        if barsNative && !musicBars.isHidden { musicBars.show(bands, dt: dt); return }
+        let list = bands.map { String(Int(($0 * 1000).rounded())) }.joined(separator: ",")
+        web.evaluateJavaScript("window.__musicLevels&&window.__musicLevels([\(list)].map(v=>v/1000))")
+    }
+
+    @objc private func playerChanged() {
+        SparkHands.musicQueue.async {
+            nonisolated(unsafe) let now = SparkHands.nowPlaying() ?? ["title": ""]
+            Task { @MainActor [weak self] in self?.send("shuacrew:media", now) }
+        }
     }
 
     private var awaySince: Date?
-    @objc private func wentAway() { if workflowRuntime.busy { workflowRuntime.stop("Stopped while the Mac is locked or asleep.") }; if awaySince == nil { awaySince = Date() } }
+    @objc private func wentAway() {
+        if workflowRuntime.busy { workflowRuntime.stop("Stopped while the Mac is locked or asleep.") }
+        if awaySince == nil { awaySince = Date() }
+        musicMeter.stop() // nobody's looking at the notch
+    }
     /// Once per return: waking the displays and unlocking are the same homecoming.
     @objc private func cameBack() {
         guard let since = awaySince else { return }
         awaySince = nil
+        if let app = musicWanted { musicMeter.start(app: app) }
         send("shuacrew:welcome", ["awayMs": (Date().timeIntervalSince(since) * 1000).rounded()])
     }
 
@@ -557,57 +597,103 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
         web.evaluateJavaScript("window.buddy && window.buddy.toggle()")
     }
 
-    /// Grow or shrink around the bottom-right corner, so Spark stays put and the empty, clear area never blocks your clicks.
-    /// AppKit owns the continuous rounded backdrop; WebKit contains the existing chat.
-    /// The size of the page's pill when it started opening (measured by the page), so the backdrop grows out of it.
+    /// The size of the page's pill when it started opening (measured by the page), so the island grows out of it…
     private var surfaceFrom: CGSize?
+    /// …and the exact shape the page draws at rest, which it tucks back into before handing back to the page.
+    private var tuckTarget: (w: CGFloat, h: CGFloat, r: CGFloat)?
+    private var tuckingTo: CGRect?
+    private var tuckGeneration = 0
+    private static let openRadius: CGFloat = 28
+
+    /// Hovering: spring the island open to the page's measured size. Not hovering: tuck it back to the rest shape.
     private func updateNotchSurface() {
-        guard docked, isNook, !isOpen, let housing = notchHousing, let root = panel.contentView else { hideNotchSurface(); return }
-        let width = min(root.bounds.width, housing.width + 2 * islandFlare)
-        let height = min(root.bounds.height, housing.height + islandDrop)
-        let frame = CGRect(x: (root.bounds.width - width) / 2, y: root.bounds.height - height, width: width, height: height)
-        var start: (bounds: CGRect, position: CGPoint)?
+        guard docked, !isOpen, let housing = notchHousing, let root = panel.contentView else { hideNotchSurface(); return }
+        guard isNook else {
+            if let to = tuckTarget, !notchSurface.isHidden { tuckIsland(to: to) } else { hideNotchSurface() }
+            return
+        }
+        let target = (w: min(root.bounds.width - 2 * NotchIsland.shoulder, housing.width + 2 * islandFlare), h: min(root.bounds.height, housing.height + islandDrop), r: Self.openRadius)
+        tuckGeneration += 1; tuckingTo = nil
         if notchSurface.isHidden {
-            // It used to appear at full size in one frame (a pop). Now it starts as the pill you were looking at.
+            // It starts as the pill you were looking at (it used to appear at full size in one frame: a pop).
             let from = surfaceFrom ?? CGSize(width: housing.width + 92, height: housing.height)
-            notchSurface.layer?.removeAllAnimations()
-            notchSurface.frame = CGRect(x: (root.bounds.width - from.width) / 2, y: root.bounds.height - from.height, width: from.width, height: from.height)
-            // Read back as model values: the presentation layer still holds the size it last showed (fully open).
-            if let layer = notchSurface.layer { start = (layer.bounds, layer.position) }
+            islandLayer.removeAllAnimations()
+            setIsland(w: from.width, h: from.height, r: 12)
+            islandLayer.shadowOpacity = 0
             notchSurface.isHidden = false
             // Only now may the page clear its own black shape; clearing it earlier left a frame with no island at all.
             web.evaluateJavaScript("document.documentElement.dataset.nativeNotchShown = 'true'")
         }
         surfaceFrom = nil
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { notchSurface.frame = frame } else { springSurface(to: frame, from: start) }
+        springIsland(to: target, spring: NotchIsland.openSpring, shadow: 0.6)
     }
-    /// Grow or settle on Core Animation's clock: smooth at the display's refresh rate even while the page is busy
-    /// rendering what just opened. Position and size share one spring, so the top edge stays flush with the screen.
-    private func springSurface(to frame: CGRect, from start: (bounds: CGRect, position: CGPoint)? = nil) {
-        guard let layer = notchSurface.layer else { notchSurface.frame = frame; return }
-        let now = layer.presentation() ?? layer
-        let fromBounds = start?.bounds ?? now.bounds, fromPosition = start?.position ?? now.position
-        notchSurface.frame = frame
-        guard fromBounds.size != layer.bounds.size || fromPosition != layer.position else { return }
-        for (key, from, to) in [("bounds", NSValue(rect: fromBounds), NSValue(rect: layer.bounds)), ("position", NSValue(point: fromPosition), NSValue(point: layer.position))] {
-            let spring = CASpringAnimation(perceptualDuration: 0.46, bounce: 0.2)
-            spring.keyPath = key
-            spring.fromValue = from
-            spring.toValue = to
-            spring.duration = spring.settlingDuration
-            layer.add(spring, forKey: "island." + key)
+
+    /// Back to rest on the tuck spring (no bounce), then hand the shape back to the page — which by then draws exactly
+    /// this shape, so the swap can't be seen.
+    private func tuckIsland(to target: (w: CGFloat, h: CGFloat, r: CGFloat)) {
+        let key = CGRect(x: 0, y: target.r, width: target.w, height: target.h)
+        if tuckingTo == key { return } // already on its way there (place() runs for many reasons)
+        tuckingTo = key
+        tuckGeneration += 1
+        let generation = tuckGeneration
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, generation == self.tuckGeneration else { return }
+                self.hideNotchSurface()
+            }
         }
+        springIsland(to: target, spring: NotchIsland.tuckSpring, shadow: 0)
+        CATransaction.commit()
     }
+
+    private func setIsland(w: CGFloat, h: CGFloat, r: CGFloat) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        islandLayer.frame = notchSurface.bounds
+        let path = NotchIsland.outline(width: w, height: h, radius: r, in: notchSurface.bounds.size)
+        islandLayer.path = path; islandLayer.shadowPath = path
+        CATransaction.commit()
+    }
+
+    /// One spring for the outline and its shadow, from wherever it is on screen right now (mid-flight included), at
+    /// up to 120 Hz on ProMotion. Core Animation runs it in the render server: smooth even while the page is busy.
+    private func springIsland(to target: (w: CGFloat, h: CGFloat, r: CGFloat), spring: (duration: Double, bounce: Double), shadow: Float) {
+        let shown = islandLayer.presentation()
+        let fromPath = shown?.path ?? islandLayer.path, fromShadow = shown?.shadowPath ?? islandLayer.shadowPath
+        let fromOpacity = shown?.shadowOpacity ?? islandLayer.shadowOpacity
+        let path = NotchIsland.outline(width: target.w, height: target.h, radius: target.r, in: notchSurface.bounds.size)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        islandLayer.frame = notchSurface.bounds
+        islandLayer.path = path; islandLayer.shadowPath = path; islandLayer.shadowOpacity = shadow
+        CATransaction.commit()
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { islandLayer.removeAllAnimations(); return }
+        let rate = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+        for (key, from) in [("path", fromPath), ("shadowPath", fromShadow)] {
+            let animation = CASpringAnimation(perceptualDuration: spring.duration, bounce: spring.bounce)
+            animation.keyPath = key
+            animation.fromValue = from
+            animation.toValue = path
+            animation.duration = animation.settlingDuration
+            animation.preferredFrameRateRange = rate
+            islandLayer.add(animation, forKey: "island." + key)
+        }
+        let fade = CABasicAnimation(keyPath: "shadowOpacity")
+        fade.fromValue = fromOpacity; fade.toValue = shadow; fade.duration = spring.duration
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        islandLayer.add(fade, forKey: "island.shadowOpacity")
+    }
+
     private func hideNotchSurface() {
+        tuckGeneration += 1; tuckingTo = nil
         guard !notchSurface.isHidden else { return }
-        notchSurface.layer?.removeAllAnimations()
+        islandLayer.removeAllAnimations()
         notchSurface.isHidden = true
         web.evaluateJavaScript("delete document.documentElement.dataset.nativeNotchShown")
     }
 
     private func place(size: NSSize) {
         requestedSize = size
-        if !(docked && isNook && !isOpen) { hideNotchSurface() }
+        if !docked || isOpen { hideNotchSurface(); barsNative = false; musicBars.isHidden = true }
         guard let primary = NSScreen.main ?? NSScreen.screens.first else { return }
         let corner = savedCorner() ?? defaultCorner()
         let screen = docked
@@ -627,6 +713,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             panel.ignoresMouseEvents = !(isNook || pointerInNook)
             let canvas = NotchIsland.canvas(housing: housing, screen: screen.frame)
             if panel.frame != canvas { panel.setFrame(canvas, display: true, animate: false) }
+            if let root = panel.contentView, notchSurface.frame != root.bounds { notchSurface.frame = root.bounds }
             updateNotchSurface()
             web.evaluateJavaScript("window.buddy && window.buddy.notch && window.buddy.notch({ w: \(Int(housing.width)), h: \(Int(housing.height)), real: \(screen.safeAreaInsets.top > 10) })")
             return
@@ -729,6 +816,15 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             isMini = !open && (body["mini"] as? Bool ?? false)
             isNook = docked && !open && (body["nook"] as? Bool ?? false)
             if let from = body["from"] as? [String: Double], let w = from["w"], let h = from["h"], w > 0, h > 0 { surfaceFrom = CGSize(width: w, height: h) }
+            // The open size, measured before the page painted it (so the spring never changes its mind mid-flight)…
+            if let island = body["island"] as? [String: Double] {
+                if let f = island["flare"], f.isFinite { islandFlare = min(NotchIsland.maxFlare, max(0, CGFloat(f))) }
+                if let d = island["drop"], d.isFinite { islandDrop = min(NotchIsland.maxDrop, max(0, CGFloat(d))) }
+            }
+            // …and the rest shape to tuck back into.
+            if let to = body["to"] as? [String: Double], let w = to["w"], let h = to["h"], w > 0, h > 0, w.isFinite, h.isFinite {
+                tuckTarget = (CGFloat(w), CGFloat(h), CGFloat(min(40, max(0, to["r"] ?? 12))))
+            }
             // Record open/closed BEFORE re-checking the hover watch: checking first saw the chat as still open when it
             // closed, stopped watching, and nothing restarted it, so hovering the notch did nothing after a click.
             isOpen = open
@@ -1054,6 +1150,25 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             if let d = body["drop"] as? Double, d.isFinite { islandDrop = min(NotchIsland.maxDrop, max(0, CGFloat(d))) }
             updateNotchSurface()
             web.evaluateJavaScript("document.documentElement.dataset.nativeNotchSurface = 'true'")
+        case "buddyMusicBars":
+            // The page's resting bars: where they sit and their colour, or "take them back" (it's about to move).
+            guard sender === web else { return }
+            if body["show"] as? Bool == true, docked, !isOpen, let specs = body["bars"] as? [[String: Double]], !specs.isEmpty,
+               let height = body["h"] as? Double, let centerY = body["cy"] as? Double {
+                musicBars.frame = panel.contentView?.bounds ?? musicBars.frame
+                musicBars.place(bars: specs.map { (CGFloat($0["x"] ?? 0), CGFloat($0["w"] ?? 3)) }, height: CGFloat(height), centerY: CGFloat(centerY), rgb: (body["rgb"] as? [Double] ?? []).map { CGFloat($0) })
+                barsNative = true; musicBars.isHidden = false
+            } else { barsNative = false; musicBars.isHidden = true; musicBars.reset() }
+        case "buddyMusicMeter":
+            // The page wants the song's live levels (it's playing and the notch shows it) — or no longer does.
+            guard sender === web, !musicSimulated else { return }
+            if body["on"] as? Bool == true, let app = body["app"] as? String {
+                musicWanted = app
+                if awaySince == nil { musicMeter.start(app: app) }
+            } else { musicWanted = nil; musicMeter.stop() }
+            send("shuacrew:musicMeter", ["state": musicMeter.state.rawValue], to: sender)
+        case "buddyNowPlaying" where simulatedMedia != nil:
+            send("shuacrew:media", simulatedMedia!, to: sender)
         case "buddyNowPlaying":
             // The notch asks what Music or Spotify is playing (only while it shows media).
             SparkHands.musicQueue.async {
@@ -1629,7 +1744,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 var curve: [String] = []
                 let sampler = Task { @MainActor in
                     for _ in 0..<40 {
-                        let b = (self.notchSurface.isHidden ? nil : (self.notchSurface.layer?.presentation() ?? self.notchSurface.layer)?.bounds)
+                        let b = self.notchSurface.isHidden ? nil : ((self.islandLayer.presentation() ?? self.islandLayer).path?.boundingBoxOfPath).map { CGRect(x: 0, y: 0, width: $0.width - 2 * NotchIsland.shoulder, height: $0.height) }
                         curve.append(b.map { "\(Int($0.width))x\(Int($0.height))" } ?? "hidden")
                         try? await Task.sleep(for: .milliseconds(16))
                     }
@@ -1637,7 +1752,18 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 log("nook-open " + (await frames("window.buddy.nook(true)", 900)))
                 _ = await sampler.value
                 log("backdrop " + curve.joined(separator: " "))
+                // And the tuck back (after the page's short leave grace), until the page has the shape again.
+                var tuck: [String] = []
+                let tuckSampler = Task { @MainActor in
+                    for _ in 0..<70 {
+                        let b = self.notchSurface.isHidden ? nil : ((self.islandLayer.presentation() ?? self.islandLayer).path?.boundingBoxOfPath)
+                        tuck.append(b.map { "\(Int($0.width - 2 * NotchIsland.shoulder))x\(Int($0.height))" } ?? "page")
+                        try? await Task.sleep(for: .milliseconds(16))
+                    }
+                }
                 log("nook-close " + (await frames("window.buddy.nook(false)", 900)))
+                _ = await tuckSampler.value
+                log("tuck " + tuck.joined(separator: " "))
                 try? await Task.sleep(for: .milliseconds(500))
                 log("chat-open " + (await frames("window.buddy.toggle()", 1000)))
                 log("chat-close " + (await frames("window.buddy.toggle()", 900)))
@@ -1648,6 +1774,63 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 log("pop packBefore=\(packBefore) packAfter=\(SparkSounds.shared.pack.rawValue) style=\(SparkSounds.shared.style)")
                 let hook = (try? await self.web.evaluateJavaScript("typeof (window.buddy && window.buddy.holdKey)")) as? String ?? "?"
                 log("chord enabled=\(self.chordEnabled) monitors=\(self.chordMonitors.count) trusted=\(SparkHands.trusted) pageHook=\(hook)")
+            }
+            return
+        }
+        if spec == "notch:music-sim" { // the music look without audio: a synthetic song and generated bands (no tap, no prompt)
+            musicSimulated = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(4))
+                // A cover: two-tone gradient, so the tint has a real colour to find.
+                let size = NSSize(width: 64, height: 64), art = NSImage(size: size)
+                art.lockFocus(); NSGradient(starting: NSColor(red: 0.95, green: 0.3, blue: 0.45, alpha: 1), ending: NSColor(red: 0.35, green: 0.1, blue: 0.6, alpha: 1))?.draw(in: NSRect(origin: .zero, size: size), angle: 45); art.unlockFocus()
+                let jpeg = art.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .jpeg, properties: [:]) }?.base64EncodedString() ?? ""
+                let media: [String: Any] = ["app": "Music", "playing": true, "title": "Synthetic test song", "artist": "ShuaCrew self-test", "album": "", "position": 42, "duration": 200, "art": "data:image/jpeg;base64," + jpeg]
+                self.simulatedMedia = media
+                self.send("shuacrew:media", media)
+                self.send("shuacrew:musicMeter", ["state": "live"])
+                let start = CACurrentMediaTime()
+                // SHUACREW_MUSIC_SIM_CYCLE=n: n s of song, n s of silence, repeated (to measure what the bars cost).
+                let cycle = Double(ProcessInfo.processInfo.environment["SHUACREW_MUSIC_SIM_CYCLE"] ?? "") ?? 0
+                let feed = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        let t = CACurrentMediaTime() - start
+                        if cycle > 0, Int(t / cycle) % 2 == 1 { return }
+                        let kick = pow(max(0, sin(t * 2 * .pi * 2)), 6)  // 120 bpm
+                        let bands = [kick, 0.5 + 0.4 * sin(t * 5.1), 0.45 + 0.35 * sin(t * 7.3 + 1), 0.4 + 0.3 * sin(t * 11 + 2), 0.3 + 0.25 * sin(t * 17 + 3)]
+                        self?.deliverMusic(bands.map { Float($0) }, dt: 1.0 / 60)
+                    }
+                }
+                RunLoop.main.add(feed, forMode: .common)
+                Self.appendSelfTest("NOTCH MUSIC simulated song + generated bands (no tap)\n")
+                try? await Task.sleep(for: .seconds(Double(ProcessInfo.processInfo.environment["SHUACREW_MUSIC_SIM_SECONDS"] ?? "9") ?? 9))
+                feed.invalidate()
+                Self.appendSelfTest("NOTCH MUSIC simulated feed ended\n")
+            }
+        }
+        if spec == "notch:music" || spec == "notch:music-sim" { // a song in the notch: meter state, the bands the page reads, rest + hovered captures
+            Task { @MainActor [weak self] in
+                guard let self, let screen = self.panel.screen ?? NSScreen.main else { return }
+                let log = { (line: String) in Self.appendSelfTest("NOTCH MUSIC " + line + "\n") }
+                let shot = { (state: String) async in
+                    let ok = await Self.capture(screen: screen, region: CGRect(x: 0.3, y: 0, width: 0.4, height: 0.25), to: NSHomeDirectory() + "/.shuacrew/selftest-notch-music-\(state).png")
+                    log("shot \(state) saved=\(ok)")
+                }
+                try? await Task.sleep(for: .seconds(6))
+                log("meter=\(self.musicMeter.state.rawValue) wanted=\(self.musicWanted ?? "-")")
+                // What the page's bars read, 12 times over ~1.2 s (they must move with the music, and differ per band).
+                var rows: [String] = []
+                for _ in 0..<12 {
+                    let v = try? await self.web.evaluateJavaScript("(() => { const e = document.querySelector('.shua-island-ear.is-face .notch-equalizer'); return (e ? e.className.replace('notch-equalizer ','') : 'none') + ' ' + Array.from(e ? e.children : []).map(i => (i.style.transform.match(/[\\d.]+/) || ['-'])[0]).join(',') })()")
+                    rows.append((v as? String) ?? "?")
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                log("bars " + rows.joined(separator: " | "))
+                await shot("rest")
+                self.web.evaluateJavaScript("window.buddy && window.buddy.nook(true)", completionHandler: nil); try? await Task.sleep(for: .seconds(1.2)); await shot("open")
+                self.web.evaluateJavaScript("window.buddy && window.buddy.nook(false)", completionHandler: nil); try? await Task.sleep(for: .seconds(1.2)); await shot("tucked")
+                log("done meter=\(self.musicMeter.state.rawValue)")
             }
             return
         }
@@ -1668,7 +1851,7 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
                 js("(() => { const i = document.querySelector('.shua-island-body input'); if (!i) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); })(); window.buddy && window.buddy.nook(false)")
                 js("window.buddy && window.buddy.focus()"); try? await Task.sleep(for: .seconds(1)); await shot("chat")
                 let chatCorners = try? await self.web.evaluateJavaScript("(() => { const e = document.querySelector('.spk-pop.is-notched'); if (!e) return {}; const s = getComputedStyle(e); return { topLeft: s.borderTopLeftRadius, topRight: s.borderTopRightRadius, bottomLeft: s.borderBottomLeftRadius, bottomRight: s.borderBottomRightRadius, clip: s.clipPath }; })()")
-                let report: [String: Any] = ["nook": nookCorners ?? NSNull(), "chat": chatCorners ?? NSNull(), "nativeBottomRadius": self.notchSurface.layer?.cornerRadius ?? 0]
+                let report: [String: Any] = ["nook": nookCorners ?? NSNull(), "chat": chatCorners ?? NSNull(), "nativeBottomRadius": Self.openRadius]
                 if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: URL(fileURLWithPath: "/private/tmp/shua-notch-corners.json")) }
                 js("window.buddy && window.buddy.toggle()")
             }

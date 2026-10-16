@@ -1,0 +1,84 @@
+/*
+ * The notch, hovered: one motion, two engines, no text.
+ *
+ * The Mac app draws the black island while it opens and while it tucks back (Core Animation, on the display's own
+ * clock). The page draws only what's inside, and clips it with the very same spring (--isl-open-* / --isl-tuck-*,
+ * generated from the numbers the Mac app uses), so content and shape move as one. Nothing inside re-lays out while it
+ * moves: the header row and the body have fixed widths, and the header's ears glide out on a transform.
+ * Imported last: it owns these motions over buddy.css, spark-design.css and notch.css.
+ */
+
+/* ── While the native island is drawn, the page draws no black of its own (no double edge, no pop) ─────────────── */
+:root[data-native-notch-shown="true"] .buddy.is-docked .shua-island .shua-island-shape {
+  background: transparent !important; box-shadow: none !important; animation: none !important;
+}
+:root[data-native-notch-shown="true"] .buddy.is-docked .shua-island .shua-island-shape::after,
+:root[data-native-notch-shown="true"] .buddy.is-docked .shua-island::before,
+:root[data-native-notch-shown="true"] .buddy.is-docked .shua-island::after { opacity: 0; }
+
+/* ── The clip follows the island's spring, both ways ──────────────────────────────────────────────────────────── */
+.buddy.is-docked .shua-island.is-open .shua-island-shape {
+  transition: width var(--isl-open-ms, .5s) var(--isl-open-ease, cubic-bezier(.22, 1, .36, 1)),
+    height var(--isl-open-ms, .5s) var(--isl-open-ease, cubic-bezier(.22, 1, .36, 1)),
+    border-radius var(--isl-open-ms, .5s) var(--isl-open-ease, ease);
+}
+.buddy.is-docked .shua-island.is-closing .shua-island-shape {
+  transition: width var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, cubic-bezier(.22, 1, .36, 1)),
+    height var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, cubic-bezier(.22, 1, .36, 1)),
+    border-radius var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, ease);
+}
+/* No swell under the pointer once it's opening: the hover-scale used to fight the open spring for a few frames. */
+.buddy.is-docked .shua-island:is(.is-open, .is-closing) .shua-island-shape:hover { transform: none; }
+
+/* ── Fixed-width rows: the header and the body never re-wrap while the island moves ───────────────────────────── */
+.buddy.is-docked .shua-island .shua-island-ears {
+  width: calc(var(--hw) + 2 * var(--ear, 46px));
+  margin-left: calc(50% - var(--hw) / 2 - var(--ear, 46px));
+}
+.buddy.is-docked .shua-island .shua-island-body {
+  box-sizing: border-box;
+  width: calc(var(--hw) + 2 * var(--open-flare, 130px));
+  margin-left: calc(50% - var(--hw) / 2 - var(--open-flare, 130px));
+}
+/* The ears glide out to the island's edges (and back) with the shape: a transform, so no layout. Hover opens and
+   tucks on the native island's springs; captions widen on the shape's own curve (spark-design.css, .36s). */
+.buddy.is-docked .shua-island .shua-island-ear { transition: transform .36s cubic-bezier(.22, 1, .36, 1); }
+.buddy.is-docked .shua-island.is-open .shua-island-ear { transition: transform var(--isl-open-ms, .5s) var(--isl-open-ease, ease); }
+.buddy.is-docked .shua-island.is-closing .shua-island-ear { transition: transform var(--isl-tuck-ms, .4s) var(--isl-tuck-ease, ease); }
+.buddy.is-docked .shua-island .shua-island-ear.is-face { transform: translateX(calc(-1 * var(--ear-shift, 0px))); }
+.buddy.is-docked .shua-island .shua-island-ear.is-live { transform: translateX(var(--ear-shift, 0px)); }
+
+/* ── What's inside: arrives once the shape has room, leaves before it tucks ───────────────────────────────────── */
+.buddy.is-docked .shua-island .shua-island-body { transition: opacity .12s ease-out, transform .2s ease-out; }
+.buddy.is-docked .shua-island.is-open .shua-island-body { transition: opacity .2s ease-out .07s, transform var(--isl-open-ms, .5s) var(--isl-open-ease, ease) .03s; }
+/* Still drawn while it tucks (it fades with the shape instead of vanishing in one frame). */
+.buddy.is-docked .shua-island.is-closing .shua-island-body { content-visibility: visible; opacity: 0; transform: translateY(-8px) scale(.97); transform-origin: 50% 0; }
+
+/* ── Clean: the hovered island has no words of Shua's — only what's live and the controls ─────────────────────── */
+.buddy.is-docked .shua-island.is-open .shua-island-body { gap: 10px; padding: 6px 14px 14px; }
+
+/* ── Music: the cover in the ear, the bars dancing to the song in its colour ──────────────────────────────────── */
+.shua-island-ear.is-face { gap: 6px; }
+.shua-island-ear .shua-island-art { flex: none; width: 18px; height: 18px; border-radius: 5px; object-fit: cover; }
+.notch-equalizer.is-music > i,
+.notch-equalizer.is-music-ambient > i {
+  background: linear-gradient(0deg, var(--music-tint, var(--amber, #b7a5ff)), color-mix(in srgb, var(--music-tint, var(--amber, #b7a5ff)) 40%, white));
+  transition: background .6s ease;
+}
+.notch-equalizer.is-music { filter: none; }
+/* At rest the Mac app draws these bars natively in exactly this spot (no page frames while a song plays). */
+.notch-equalizer.is-external > i { visibility: hidden; }
+/* No real levels (Audio Recording not allowed): a calm "playing" sway, labelled "Music playing", never fake data. */
+.notch-equalizer.is-music-ambient > i { animation: notch-music-sway 1.6s ease-in-out infinite; transform: scaleY(.3); }
+.notch-equalizer.is-music-ambient > i:nth-child(2) { animation-duration: 1.3s; }
+.notch-equalizer.is-music-ambient > i:nth-child(3) { animation-duration: 1.1s; }
+.notch-equalizer.is-music-ambient > i:nth-child(4) { animation-duration: 1.45s; }
+@keyframes notch-music-sway { 0%, 100% { transform: scaleY(.22); } 50% { transform: scaleY(.62); } }
+:root[data-idle] .buddy .notch-equalizer.is-music-ambient > i { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .buddy.is-docked .shua-island :is(.shua-island-shape, .shua-island-ear, .shua-island-body) { transition-duration: .01s !important; transition-delay: 0s !important; }
+  :root:not([data-motion="full"]) .notch-equalizer.is-music-ambient > i { animation: none; }
+}
+:root[data-motion="reduced"] .buddy.is-docked .shua-island :is(.shua-island-shape, .shua-island-ear, .shua-island-body) { transition-duration: .01s !important; transition-delay: 0s !important; }
+:root[data-motion="reduced"] .notch-equalizer.is-music-ambient > i { animation: none; }

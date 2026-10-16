@@ -21,7 +21,7 @@
 
 /* A persistent instrument, with measured audio and a separate work-light pattern. */
 .notch-equalizer{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:54px;height:36px;flex:none;color:var(--amber,#b7a5ff);filter:drop-shadow(0 0 7px color-mix(in srgb,var(--amber,#b7a5ff) 25%,transparent))}
-.notch-equalizer>i{display:block;width:5px;height:30px;border-radius:6px;background:linear-gradient(0deg,var(--amber,#b7a5ff),color-mix(in srgb,var(--amber,#b7a5ff) 45%,white));transform:scaleY(.14);transform-origin:center}
+.notch-equalizer>i{display:block;width:5px;height:30px;border-radius:6px;will-change:transform;background:linear-gradient(0deg,var(--amber,#b7a5ff),color-mix(in srgb,var(--amber,#b7a5ff) 45%,white));transform:scaleY(.14);transform-origin:center}
 .notch-equalizer.is-compact{width:22px;height:22px;gap:2px;filter:none}
 .notch-equalizer.is-compact>i{width:3px;height:20px}
 .notch-equalizer.is-idle>i{transform:scaleY(.24);opacity:.65}.notch-equalizer.is-idle>i:nth-child(2n){transform:scaleY(.42)}.notch-equalizer.is-idle>i:nth-child(3){transform:scaleY(.6)}
