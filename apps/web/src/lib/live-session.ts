@@ -147,14 +147,16 @@ export function checkLiveReady(): Promise<boolean> {
  * Whether Live can be the voice right now, kept current (checked on mount, then every 30 s). A plan at its limit
  * (Oct 5: Codex until Sunday) must not leave every ask, button and fn press queued into a call that can't connect.
  */
-export function useLiveUsable(): boolean {
+/** `enabled` false (Claude voice mode): no readiness check, since each one starts a Codex process to read its limits. */
+export function useLiveUsable(enabled = true): boolean {
   const [ok, setOk] = useState(liveUsable);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     void checkLiveReady().then((v) => alive && setOk(v));
     const t = setInterval(() => setOk(liveUsable()), 30_000);
     return () => { alive = false; clearInterval(t); };
-  }, []);
+  }, [enabled]);
   return ok;
 }
 /** While Live is down, look again on launch, on focus and every 2 minutes: it comes back the moment Codex does. */

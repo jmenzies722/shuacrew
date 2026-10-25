@@ -21,7 +21,7 @@ export async function resolveIntelligence(request: IntelligenceRequest): Promise
   const fallback = await pick(used);
   if (!fallback.runtime) return { choice: first, request };
   const until = "retryAt" in first && first.retryAt ? ` until ${new Date(first.retryAt).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
-  return { choice: { ...fallback, reason: `${request.preferredRuntime === "codex" ? "Codex" : request.preferredRuntime} is at its usage limit${until} · ${fallback.reason}` }, request: used };
+  return { choice: { ...fallback, reason: `${({ codex: "Codex", claude: "Claude" } as Record<string, string>)[request.preferredRuntime] ?? request.preferredRuntime} is at its usage limit${until} · ${fallback.reason}` }, request: used };
 }
 /** Model and provider identity belong to a conversation. Switch only between turns. */
 /** Past this, Spark starts a fresh session (with a recap): a conversation once grew to 506K tokens (limit 200K) and every turn died. */

@@ -14,8 +14,14 @@ export const VOICE_CAST = [
 ] as const;
 export const DEFAULT_VOICE = "michael";
 const RETIRED: Record<string, string> = { aiden: "michael", ryan: "puck", serena: "heart", vivian: "bella", charles: "george", paul: "daniel" };
+/** The Mac's own Premium/Enhanced voices (listed live by the gateway's /api/speech/status, e.g. "apple-zoe-premium"). */
+export const isAppleVoice = (id: string) => /^apple-[a-z0-9-]{1,34}$/.test(id);
 /** A saved voice id as it is today (retired ids become their successor; unknown ids fall back to the default). */
 export function currentVoice(id: string | undefined): string {
   const v = id ? RETIRED[id] ?? id : DEFAULT_VOICE;
-  return VOICE_CAST.some((x) => x.id === v) ? v : DEFAULT_VOICE;
+  return isAppleVoice(v) || VOICE_CAST.some((x) => x.id === v) ? v : DEFAULT_VOICE;
+}
+/** The voice Shua should switch to once: the first Apple Premium voice installed (the gateway lists them first). */
+export function bestAppleVoice(voices: ReadonlyArray<{ id: string; engine?: string; quality?: string }>): string | undefined {
+  return voices.find((v) => v.engine === "apple" && v.quality === "premium")?.id;
 }

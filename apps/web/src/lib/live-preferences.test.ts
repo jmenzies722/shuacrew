@@ -15,6 +15,7 @@ it("preserves explicit Classic and unrelated saved preferences", () => {
   expect(preferences.voiceEngine).toBe("classic"); expect(preferences.nickname).toBe("Shua");
   expect(preferences.desktopPlacement).toBe("notch"); expect(preferences.control).toBe("off");
 });
-it("normalizes unknown conversation engines to Live", () => {
-  expect(parseCompanion({ voiceEngine: "unknown" }).voiceEngine).toBe("live");
+it("normalizes unknown conversation engines to Classic (Claude + this Mac's voice), and keeps an explicit Codex call", () => {
+  expect(parseCompanion({ voiceEngine: "unknown" }).voiceEngine).toBe("classic");
+  expect(parseCompanion({ voiceEngine: "live" }).voiceEngine).toBe("live");
 });
