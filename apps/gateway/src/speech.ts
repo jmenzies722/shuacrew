@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { SpeechRequest } from "@shuacrew/core/voice";
 import { SpeechInstaller } from "./speech-install.js";
+import type { AppleSpeech } from "./apple-speech.js";
 
 const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../speech");
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
@@ -19,6 +20,8 @@ export const speechManifest = validateManifest(JSON.parse(readFileSync(path.join
 const requestSchema = z.object({ id: z.string().regex(/^[\w-]{1,80}$/), generation: z.number().int().min(0), voiceId: identifier, text: z.string().trim().min(1).max(600), speed: z.number().min(0.8).max(1.2) });
 export function validateSpeechRequest(input: unknown, manifest = speechManifest): SpeechRequest {
   const request = requestSchema.parse(input);
+  // The Mac's own voices are listed live by AppleSpeech, not in the manifest.
+  if (request.voiceId.startsWith("apple-")) return request;
   // Retired voices keep working: they speak as their closest successor (e.g. Aiden → Michael).
   const voiceId = manifest.aliases?.[request.voiceId] ?? request.voiceId;
   if (!manifest.voices.some(v => v.id === voiceId)) throw new Error("Choose one of the available voices.");
@@ -45,12 +48,12 @@ export class SpeechService {
   private closed = false;
   private ids = new Set<string>();
   private waiting: Array<() => void> = [];
-  constructor(private options: { home: string; command?: string; args?: string[]; timeoutMs?: number }) { this.installer = new SpeechInstaller(options.home); }
+  constructor(private options: { home: string; command?: string; args?: string[]; timeoutMs?: number; apple?: AppleSpeech; validate?: (input: unknown) => SpeechRequest }) { this.installer = new SpeechInstaller(options.home); }
   private root() { return existsSync(path.join(this.options.home, "installed/.ready")) ? path.join(this.options.home, "installed") : this.options.home; }
   status() {
     const ready = existsSync(path.join(this.root(), "venv/bin/python")) && existsSync(path.join(this.root(), "models/qwen-custom-4bit/model.safetensors"));
     const setup = this.installer.status();
-    return { state: setup.state === "installing" ? "installing" : ready ? "ready" : setup.state, voices: speechManifest.voices, audition: true, step: setup.step, error: ready ? undefined : setup.error ?? "Download local speech models to get started. Allow approximately 3–4 GB of downloads and 8 GiB free disk space." };
+    return { state: setup.state === "installing" ? "installing" : ready ? "ready" : setup.state, voices: [...speechManifest.voices, ...(this.options.apple?.voices() ?? [])], audition: true, step: setup.step, error: ready ? undefined : setup.error ?? "Download local speech models to get started. Allow approximately 3–4 GB of downloads and 8 GiB free disk space." };
   }
   /** A worker that dies while idle (a crash, the OS reclaiming memory) is forgotten at once, so the next reply starts a
    *  fresh one instead of writing into a dead process and waiting out the timeout (measured: a 90 s hang). */
@@ -64,7 +67,7 @@ export class SpeechService {
     this.child?.kill("SIGKILL");
     this.child = undefined;
   }
-  close() { this.closed = true; this.installer.cancel(); this.kill(); for (const wake of this.waiting.splice(0)) wake(); }
+  close() { this.closed = true; this.installer.cancel(); this.kill(); this.options.apple?.close(); for (const wake of this.waiting.splice(0)) wake(); }
   /** Load the voice model ahead of a reply (you just asked Shua something) unless it's loaded or busy. Never throws. */
   prewarm(voiceId = speechManifest.voices[0]!.id): void {
     if (this.closed || this.child || this.active || this.status().state !== "ready") return;
@@ -79,7 +82,8 @@ export class SpeechService {
     return { ready: true };
   }
   async *synthesize(raw: SpeechRequest, signal: AbortSignal, warmup = false): AsyncGenerator<SpeechChunk> {
-    const request = validateSpeechRequest(raw);
+    const request = (this.options.validate ?? validateSpeechRequest)(raw);
+    if (this.options.apple && request.voiceId.startsWith("apple-")) return yield* this.options.apple.synthesize(request, signal, warmup);
     if (this.closed) throw new Error("Speech service is closed.");
     signal.throwIfAborted();
     if (this.ids.has(request.id)) throw new Error("Speech request is already active.");

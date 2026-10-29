@@ -126,7 +126,8 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const liveVoice = new LiveVoice({ home, saveTranscript: (title, content, summary) => { if (shouldArchiveLiveCall(settings.get().flags)) library.save({ title, content, summary, filename: "live-call.md", by: "agent" }); }, protectedPaths: () => [...builtinProtected, ...settings.get().protectedPaths],
     firstName: macFirstName, // Live greets you by your name, from this Mac's account
     model: () => (runtimes.get("codex") as CodexRuntime | undefined)?.defaultModel,
-    mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }, 5_000); // spark_do confirms deletes itself; a call's Codex is warmed 5 s after boot
+    mcpFor: (run) => ({ [TOOL_SERVER]: { url: self, http_headers: { Authorization: `Bearer ${tools.tokenFor(run)}` }, default_tools_approval_mode: "approve" } }) }); // spark_do confirms deletes itself
+  // No Codex warmed at boot: voice runs on Claude by default. After a Codex call ends, the next one is kept warm.
   tools.live = { tools: LIVE_TOOLS, call: (run, name, args) => liveVoice.tool(run, name, args) };
   let rooms: RoomCoordinator;
   const settings = new GatewaySettings(path.join(home, "settings.json"));
@@ -175,7 +176,11 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   };
   const here = path.dirname(fileURLToPath(import.meta.url));
   const { SpeechService } = await import("./speech.js");
-  const speech = new SpeechService({ home: path.join(home, "speech") });
+  const { AppleSpeech } = await import("./apple-speech.js");
+  // The Mac's own voices, listed (and the worker compiled, first boot only) after boot settles.
+  const appleSpeech = new AppleSpeech({ home: path.join(home, "speech") });
+  setTimeout(() => void appleSpeech.refresh().catch(() => undefined), 5_000).unref();
+  const speech = new SpeechService({ home: path.join(home, "speech"), apple: appleSpeech });
   const { app, hub, state, briefing } = await createServer({
     live: liveVoice,
     store,

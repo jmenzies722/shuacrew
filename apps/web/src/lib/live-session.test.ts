@@ -159,6 +159,8 @@ it("routes typed call prompts through the executor and publishes its real result
 
 
 it("while Codex is at its limit, a press says so at once and opens no call", async () => {
+  // The clock pinned before the reset: with a real clock this limit ran out on its own date and the test began failing.
+  vi.setSystemTime(new Date(2026, 9, 9, 18, 0));
   const resetsAt = new Date(2026, 9, 9, 20, 28).getTime();
   localStorage.setItem("shuacrew.live.down", String(resetsAt));
   vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ usable: false, resetsAt }) })));

@@ -36,7 +36,7 @@ import "../components/chat-composer.css";
 import "./shua-panel.css";
 import { pageContext } from "../components/WorkspaceSpark";
 import { useTeaching, pausePractice } from "../lib/teaching";
-import { CompanionModelPicker, modelPreference } from "../components/CompanionModelPicker";
+import { CompanionModelPicker, brainPreference } from "../components/CompanionModelPicker";
 import { ShuaSlash, type SlashCommand } from "../components/ShuaSlash";
 import { setSparkFull, takeSparkSuggestion, watchSparkSuggestion } from "../lib/spark-panel";
 import { logSense } from "../lib/spark-log";
@@ -75,6 +75,8 @@ import { asksWeather, weatherForSpark, loadWeather, describe } from "../lib/weat
 import { actionsOnly, aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
+import { bestAppleVoice } from "../lib/voices";
+import { setVoiceEverywhere } from "../components/VoiceSettings";
 import { remainingFocusMs, useFocusTimer } from "../lib/focus-timer";
 import { getCompanion, parseCompanion, saveCompanion, useCompanion } from "../lib/companion";
 import { echoOf, HandsFree, wakeOnly, yesOrNo, type Phase } from "../lib/handsfree";
@@ -211,7 +213,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const prefs = useCompanion(), voice = useBuddyVoice(), track = useNowPlaying(), { sounds } = useLook();
   // Live is Shua's voice only while Codex can take a call; when it can't (usage limit), everything runs classic:
   // asks go to Claude, fn uses Mac speech, the wake word listens again. It switches back by itself when Live returns.
-  const liveOk = useLiveUsable();
+  const liveOk = useLiveUsable(prefs.voiceEngine === "live");
   const liveVoice = prefs.voiceEngine === "live" && liveOk;
   const liveVoiceRef = useRef(liveVoice); liveVoiceRef.current = liveVoice;
   // Load Spark's voice as soon as it's on screen, so the first spoken reply starts in a blink instead of after a
@@ -383,7 +385,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const modeSwitchCaptureBlock = useRef(false);
   useEffect(() => { if (previousVoiceEngine.current !== liveVoice) { previousVoiceEngine.current = liveVoice; modeSwitchCaptureBlock.current = true; setVoiceLive(false); if (liveActive()) endLive(); mic.current.stop(); } }, [liveVoice]);
   useEffect(() => connectLiveBridge(), []);
-  useEffect(() => watchLiveReady(), []);
+  useEffect(() => prefs.voiceEngine === "live" ? watchLiveReady() : undefined, [prefs.voiceEngine]);
   const liveTurnListeners = useRef(new Set<() => void>());
   const notifyLiveTurn = () => { for (const listener of liveTurnListeners.current) listener(); };
   useEffect(() => { notifyLiveTurn(); });
@@ -483,11 +485,11 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   useEffect(() => {
     if (!open && !islandMore) return; // the chat, or the notch's More panel, both say which brain answers
     let alive = true;
-    const refresh = () => void selectIntelligence({ ask: "Shua availability", mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: false, tier: "fast" })
+    const refresh = () => void selectIntelligence({ ask: "Shua availability", mode: prefs.brain, ...brainPreference(prefs), localModel: prefs.localModel, purpose: "conversation", images: false, tier: "fast" })
       .then(next => { if (alive) { setChoice(next); setChoiceError(""); } }).catch((e: Error) => { if (alive) setChoiceError(e.message); });
     refresh(); const timer = setInterval(refresh, 30_000); window.addEventListener("focus", refresh);
     return () => { alive = false; clearInterval(timer); window.removeEventListener("focus", refresh); };
-  }, [open, islandMore, prefs.brain, prefs.modelChoice, prefs.localModel, limited]);
+  }, [open, islandMore, prefs.brain, prefs.modelChoice, prefs.voiceEngine, prefs.localModel, limited]);
   const timer = useFocusTimer(), [now, setNow] = useState(Date.now());
   // Focus shows minutes, so a 10 s tick is plenty (a 1 s tick re-rendered all of Spark every second).
   useEffect(() => { if (!timer) return; setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 10_000); return () => clearInterval(t); }, [timer]);
@@ -535,8 +537,15 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   useEffect(() => {
     const on = (e: Event) => setHands((e as CustomEvent<{ trusted: boolean; shortcuts: string[] }>).detail);
     window.addEventListener("shuacrew:hands", on); post({ type: "buddyHands" });
-    void api<{ voices?: Array<{ id: string }> }>("/api/speech/status").then((s) => setVoices((s.voices ?? []).map((v) => v.id))).catch(() => {});
-    return () => window.removeEventListener("shuacrew:hands", on);
+    // Checked again on focus: a Premium voice downloaded while ShuaCrew runs is picked up without a restart.
+    const status = () => void api<{ voices?: Array<{ id: string; engine?: string; quality?: string }> }>("/api/speech/status").then((s) => {
+      setVoices((s.voices ?? []).map((v) => v.id));
+      // Shua speaks with the Mac's own Premium voice the first time one is installed; a voice you pick after that stays.
+      const best = bestAppleVoice(s.voices ?? []);
+      if (best && localStorage.getItem("shuacrew.buddy.voice.apple") !== "1") { localStorage.setItem("shuacrew.buddy.voice.apple", "1"); void setVoiceEverywhere(useLive.getState().crew.members.shua, best); }
+    }).catch(() => {});
+    status(); window.addEventListener("focus", status);
+    return () => { window.removeEventListener("shuacrew:hands", on); window.removeEventListener("focus", status); };
   }, []);
   useEffect(() => { if (convo) for (const c of priorConversations(convo)) void loadRun(c.run); }, [convo, loadRun]);
   // The native panel sizes itself to what's showing, so the clear rest never blocks your clicks.
@@ -1474,7 +1483,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     const t0 = performance.now(), marks: Record<string, number> = {}, mark = (k: string) => { marks[k] = Math.round(performance.now() - t0); if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `STEP ${k} ${marks[k]}ms` }); };
     try {
       let atts: Awaited<ReturnType<typeof upload>>[] = [], screen: { width: number; height: number; text: ScreenLine[]; context?: ScreenContext } | null = null;
-      let intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...modelPreference(prefs.modelChoice), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
+      let intelligence: IntelligenceRequest = { ask: q, mode: prefs.brain, ...brainPreference(prefs), localModel: prefs.localModel, purpose: "conversation", images: look, tier: turnTier(q, { screen: look, design: isDesign(q) }) };
       // Asked about the weather: the real forecast comes along (Open-Meteo, ~0.3 s), so Spark answers at once instead of
       // web-searching and reading a page (17–20 s in the log). Never allowed to hold a turn up for more than 2 s.
       const weather = asksWeather(q) ? Promise.race([weatherForSpark().catch(() => ""), new Promise<string>((ok) => setTimeout(() => ok(""), 2000))]) : Promise.resolve("");

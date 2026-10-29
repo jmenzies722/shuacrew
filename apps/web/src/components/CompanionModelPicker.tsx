@@ -12,6 +12,9 @@ export const modelPreference = (choice: string) => {
   if (choice === "fastest") return { speed: "fastest" as const };
   return i > 0 && choice.slice(0,i) === "codex" ? { preferredRuntime: "codex", preferredModel: choice.slice(i + 1) } : { preferredRuntime: "codex" };
 };
+/** Spark's brain for a turn: Claude in Claude voice mode (Auto still falls back, saying why, if Claude is at its usage
+ * limit), otherwise the Codex model picked here. */
+export const brainPreference = (p: { voiceEngine: string; modelChoice: string }) => p.voiceEngine === "classic" ? { preferredRuntime: "claude" } : modelPreference(p.modelChoice);
 type Provider = {
   id: string;
   label: string;

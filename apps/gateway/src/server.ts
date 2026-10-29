@@ -712,7 +712,9 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
       const b = request.body ?? {};
       try {
         // A retired voice (e.g. "aiden") is still a valid saved choice: it speaks as its successor.
-        if (b.voice && !speechManifest.voices.some(v => v.id === (speechManifest.aliases?.[b.voice!.voiceId] ?? b.voice!.voiceId))) throw new Error("Choose an available neural voice.");
+        // The Mac's own voices count when they're installed (they aren't in the manifest).
+        const known = [...speechManifest.voices, ...(options.speech?.status().voices ?? [])];
+        if (b.voice && !known.some(v => v.id === (speechManifest.aliases?.[b.voice!.voiceId] ?? b.voice!.voiceId))) throw new Error("Choose an available neural voice.");
         return crew.set({
           id: b.id ?? b.name ?? "",
           name: b.name ?? "",

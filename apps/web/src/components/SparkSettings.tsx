@@ -213,8 +213,8 @@ export function SparkSettings({ searching = false }: { searching?: boolean }) {
 
     {(searching || category === "voice") && <section className="settings-card batch-pad">
       <h4 className="spark-h">Personality &amp; voice</h4>
-      <SettingRow name="One Shua, everywhere" detail="Native OpenAI speech through your connected Codex subscription. One voice for Talk and spoken chat replies. Use the notch microphone to start and stop listening. Hold Fn to select an exact screen area; A quick Fn tap toggles Talk; holding Fn selects a box.">
-        {prefs.voiceEngine === "classic" ? <button type="button" className="setting-input" onClick={() => set({ voiceEngine: "live" })}>Use Shua calls</button> : <span className="spark-muted">OpenAI connected voice</span>}
+      <SettingRow name="Voice mode" detail={prefs.voiceEngine === "classic" ? "Claude thinks; this Mac hears you (Apple speech recognition) and speaks with the voice you pick below. Download Apple Premium voices in System Settings → Accessibility → Spoken Content → System voice → Manage Voices." : "A realtime call through your Codex subscription: OpenAI's voice talks, a Codex thread does the work."} modified={prefs.voiceEngine !== "classic"}>
+        <Segmented label="Voice mode" value={prefs.voiceEngine} onChange={(voiceEngine) => set({ voiceEngine })} options={[["classic", "Claude + Apple voice"], ["live", "Codex call"]]} />
       </SettingRow>
       <MicrophoneSettings />
       <SettingRow name="Personality" detail="How it talks to you. Your instructions to the crew are unchanged." modified={prefs.tone !== "cheerful"}>

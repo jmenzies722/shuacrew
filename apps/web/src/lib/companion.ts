@@ -17,7 +17,7 @@ export interface CompanionPreferences {
   control: "off" | "ask" | "auto"; /** 2 once "just do it" became the default (a saved "ask" from before moves to it once). */ autonomy?: 2; conversation: boolean; interrupt: boolean;
   /** How the mic takes a turn: "auto" (open mic, just talk) or "hold" (push-to-talk: hold the talk button or Space). */
   listen: "auto" | "hold";
-  /** Talking to Spark: "live" (a call with Shua: realtime, interrupt any time) or "classic" (one turn at a time). */
+  /** Talking to Spark: "classic" (default: this Mac's ears and voice, Claude as the brain) or "live" (a Codex realtime call). */
   voiceEngine: "live" | "classic";
   /** On the desktop: pinned above every app, or (default) a normal window that comes forward when called, talking or teaching. */
   onTop: boolean;
@@ -91,7 +91,7 @@ export function parseCompanion(value: unknown): CompanionPreferences {
     hotkey: choice("hotkey", Object.keys(SPARK_HOTKEYS) as SparkHotkey[], "ctrl-opt-space"), guide: choice("guide", ["click", "manual"], "click"),
     // Spark just does things now. A saved "ask" from before that default moves to "auto" once; after that your choice holds.
     control: v.autonomy === 2 ? choice("control", ["off", "ask", "auto"], "auto") : v.control === "off" ? "off" : "auto", autonomy: 2, conversation: v.conversation === true, interrupt: v.interrupt !== false,
-    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "notch"), listen: choice("listen", ["auto", "hold"], "auto"), voiceEngine: choice("voiceEngine", ["live", "classic"], "live"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
+    desktopPlacement: choice("desktopPlacement", ["free", "notch"], "notch"), listen: choice("listen", ["auto", "hold"], "auto"), voiceEngine: choice("voiceEngine", ["live", "classic"], "classic"), onTop: v.onTop === true, dj: v.dj === true, language: choice("language", ["en", "auto"], "en"),
     modelChoice: typeof v.modelChoice === "string" && /^[a-z0-9_-]+:[a-zA-Z0-9_.:-]+$/.test(v.modelChoice) && v.modelChoice.startsWith("codex:") ? v.modelChoice.slice(0,160) : "",
     // Spark always uses connected cloud models: the on-Mac models were slow (up to a minute a reply) and held ~16 GB of GPU.
     brain: "auto", localModel: choice("localModel", ["gpt-oss:20b", "llama3.2:3b"], "gpt-oss:20b"),
@@ -123,6 +123,9 @@ function load() {
     // Shua, once: everything goes through one assistant now, and it carries the product's name. The old default
     // "Spark" becomes "Shua"; a name you choose after this stays.
     if (localStorage.getItem("shuacrew.companion.name") !== "shua") { if (p.nickname === "Spark") p.nickname = "Shua"; localStorage.setItem("shuacrew.companion.name", "shua"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
+    // Claude voice, once: talking runs on this Mac's ears and voice with Claude as the brain, not Codex's realtime
+    // call. Choosing Codex calls again in Settings sticks.
+    if (localStorage.getItem("shuacrew.companion.voiceEngine") !== "claude-1") { p.voiceEngine = "classic"; localStorage.setItem("shuacrew.companion.voiceEngine", "claude-1"); localStorage.setItem("shuacrew.companion", JSON.stringify(p)); }
     return p;
   } catch { return parseCompanion(null); }
 }
