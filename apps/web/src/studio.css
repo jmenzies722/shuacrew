@@ -181,7 +181,8 @@
 }
 :root[data-theme][data-palette] .td-sky::before,
 :root[data-theme][data-palette] .td-sky::after,
-:root[data-theme][data-palette] .td-sun { display: none; }
+:root[data-theme][data-palette] .td-sun,
+:root[data-theme][data-palette] .td-arc { display: none; } /* the sun's dashed path went with the sun */
 :root[data-theme][data-palette] .td-sky-top { color: var(--studio-label); letter-spacing: 0; text-transform: none; font-weight: 520; }
 :root[data-theme][data-palette] .td-sky h1 { font-size: 30px; font-weight: 600; letter-spacing: -.022em; color: var(--text); }
 :root[data-theme][data-palette] .td-sky p { color: var(--text-3); font-size: 14px; }
