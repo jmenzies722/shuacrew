@@ -105,13 +105,9 @@ export function HubTabs() {
 }
 
 // ── The sidebar: the whole platform in one column ─────────────────────────────────────────────
-const WIDE = "shuacrew.sidebar";
-// The rail is the sidebar now (the full column stays in code, unused): every screen gets its tabs across the top.
-let wide = false;
-void WIDE;
-const wideListeners = new Set<() => void>();
-export function setSidebarWide(_next: boolean) { wide = false; wideListeners.forEach((l) => l()); }
-export function useSidebarWide() { const [, force] = useState(0); useEffect(() => { const l = () => force((n) => n + 1); wideListeners.add(l); return () => { wideListeners.delete(l); }; }, []); return wide; }
+// The full sidebar is the default (Settings → Layout & navigation, or ⌘\ to fold it to the rail and back).
+export function setSidebarWide(next: boolean) { useLive.getState().setAppearance({ navigation: next ? "sidebar" : "icons" }); }
+export function useSidebarWide() { return useLive((s) => s.appearance.navigation === "sidebar"); }
 
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
 /** How many sessions show before "Show more", and whether the Sessions / Tools sections are folded (remembered). */

@@ -42,7 +42,8 @@ import { AutomationsHost } from "../components/Automations";
 import "../components/settings-command.css";
 import "../components/surfaces.css";
 import "../alive.css"; // the accent gradient and the touches that make it feel lit
-import "../onyx.css"; // last: the Onyx design language (Onyx and Porcelain palettes)
+import "../onyx.css"; // the Onyx design language (Onyx and Porcelain palettes)
+import "../studio.css"; // last: Studio, the premium layer over every palette
 import "../lib/look";
 import { installUiBridge } from "../lib/ui-bridge";
 import { SPRING_TUCK } from "../lib/spring-easing";
@@ -88,6 +89,7 @@ export function Shell() {
   // The main window answers Shua's "press X in ShuaCrew" from the notch (the notch itself never does).
   useEffect(() => (location.pathname.startsWith("/buddy") ? undefined : installUiBridge()), []);
   const { flow } = usePower();
+  const sidebarWide = useSidebarWide();
   const home = useRouterState({ select: s => s.location.pathname === "/" });
   // Home and an open session share one layout: the page strip above it pushed the session panel and thread ~38 pt
   // lower than on Home, so the Sessions title jumped when you opened one.
@@ -101,16 +103,14 @@ export function Shell() {
   return (
     <MotionConfig reducedMotion={motionPreference === "reduced" ? "always" : motionPreference === "full" ? "never" : "user"}>
     <div className="workspace-frame grid h-full grid-cols-[auto_1fr] grid-rows-[48px_1fr] bg-ink" data-frame data-flow={flow ? "on" : undefined}>
-      <div className="living-bg" aria-hidden="true"><i /><i /><i /></div>
       {flow && <button type="button" className="flow-exit" onClick={() => savePower({ flow: false })} title="Leave Flow mode (⌘⇧F)">Flow · ⌘⇧F</button>}
       <TopBar />
       <Sidebar />
       <main className="min-h-0 min-w-0 overflow-hidden flex" id="main">
         <div className="workspace-card min-h-0 min-w-0 flex flex-1 flex-col" data-hub={hub}>
-        <i className="hub-glow" aria-hidden="true" />
         {/* WebKit may suspend animations while the native window is occluded. Core content
             must be visible on its first frame, independent of animation scheduling. */}
-        <HubTabs />
+        {!sidebarWide && <HubTabs />}
         {!flow && !chat && <WorkspaceSpark section={section} />}
         <motion.div key={section} className="workspace-scene min-h-0 flex-1" initial={false} animate={{ opacity: 1, y: 0 }}>
           <Outlet />
@@ -170,6 +170,7 @@ function AfterFirstFrame({ children }: { children: React.ReactNode }) {
 /** Kiro Crew's top bar: where you are, search for anything, and what needs you. */
 function TopBar() {
   const bar = useRef<HTMLElement>(null);
+  const sidebarWide = useSidebarWide();
   const navigate = useNavigate();
   const connection = useLive((s) => s.connection);
   // Narrow selectors: a streamed token must not re-render the top bar.
@@ -184,11 +185,9 @@ function TopBar() {
   return (
     <header ref={bar} className="relative col-span-2 flex items-center gap-3 px-3 [[data-shell=mac]_&]:pl-[84px]" aria-label="Top bar">
       <span className="tb-logo [[data-shell=mac]_&]:hidden" role="img" aria-label="ShuaCrew"><LogoMark size={24} spin={false} /></span>
-      <span className="flex h-7 items-center gap-1.5 rounded-[8px] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] px-2.5 text-[12px] font-medium text-fg-2" data-no-drag>
-        <House size={13} className="text-fg-3" /> Local
-      </span>
       <RepoChip />
-      <div className="tb-center" data-no-drag>
+      {/* With the sidebar open, Search lives there (one way in, the Codex way); the rail keeps it up here. */}
+      {!sidebarWide && <div className="tb-center" data-no-drag>
         <button
           onClick={() => setPalette(true)}
           className="flex h-8 w-full max-w-[460px] items-center gap-2 rounded-[9px] border border-line bg-panel px-3 text-[12.5px] text-fg-3 transition hover:border-line-strong hover:text-fg-2"
@@ -197,7 +196,7 @@ function TopBar() {
           <span className="flex-1 text-left">Search sessions, screens, actions…</span>
           <Kbd>⌘K</Kbd>
         </button>
-      </div>
+      </div>}
       <span className="flex-1" />
       <StatusIsland ctx={{ go: (path) => void navigate({ to: path }) }} running={running} connection={connection}
         limits={limited.map(([key, info]) => {
@@ -293,6 +292,12 @@ function useGlobalKeys() {
         s.setPalette(!s.paletteOpen);
         return;
       }
+      // ⌘\ folds the sidebar to the rail and back.
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.code === "Backslash") {
+        event.preventDefault();
+        s.setAppearance({ navigation: s.appearance.navigation === "sidebar" ? "icons" : "sidebar" });
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
         newSession(navigate);
@@ -344,7 +349,7 @@ function FirstRun() {
   return show ? <Welcome onDone={() => setShow(false)} /> : null;
 }
 
-/** The sidebar is the rail: icons with labels, live badges, ⌘1–⌘5. */
+/** The full sidebar (threads and places, the Codex way), or the slim rail when you fold it (⌘\). */
 function Sidebar() {
-  return <CompactRail />;
+  return useSidebarWide() ? <HubSidebar /> : <CompactRail />;
 }

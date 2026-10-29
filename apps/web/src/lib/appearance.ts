@@ -49,7 +49,8 @@ export interface Appearance {
   density: "comfortable" | "compact";
   reading: "small" | "default" | "large";
   motion: "system" | "reduced" | "full";
-  navigation: "icons" | "labels";
+  /** The full sidebar (threads and places in one column, the Codex way), or the slim rail with icons or labels. */
+  navigation: "sidebar" | "icons" | "labels";
   startPage: "/" | "/floor" | "/activity" | "/ventures" | "/board";
   sendShortcut: "enter" | "modifier-enter" | "button-only";
   spellcheck: "on" | "off";
@@ -57,7 +58,7 @@ export interface Appearance {
 }
 
 const KEY = "shuacrew.appearance";
-export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "onyx", light: "porcelain", accent: "azure", density: "comfortable", reading: "default", motion: "system", navigation: "icons", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
+export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "onyx", light: "porcelain", accent: "azure", density: "comfortable", reading: "default", motion: "system", navigation: "sidebar", startPage: "/", sendShortcut: "enter", spellcheck: "on", turnMap: "show" };
 
 export function normalizeAppearance(value: unknown): Appearance {
   const raw = { ...(value && typeof value === "object" ? value as Record<string, unknown> : {}) };
@@ -68,7 +69,7 @@ export function normalizeAppearance(value: unknown): Appearance {
     light: PALETTES.filter((p) => p.mode === "light").map((p) => p.id),
     accent: ACCENTS.map((a) => a.id), density: ["comfortable", "compact"],
     reading: ["small", "default", "large"], motion: ["system", "reduced", "full"],
-    navigation: ["icons", "labels"], startPage: ["/", "/floor", "/activity", "/ventures", "/board"],
+    navigation: ["sidebar", "icons", "labels"], startPage: ["/", "/floor", "/activity", "/ventures", "/board"],
     sendShortcut: ["enter", "modifier-enter", "button-only"], spellcheck: ["on", "off"], turnMap: ["show", "hide"],
   };
   return Object.fromEntries(Object.entries(choices).map(([key, allowed]) => [key,
@@ -80,6 +81,17 @@ export function normalizeAppearance(value: unknown): Appearance {
  * The Pristine redesign, once: a setup still on the old defaults (Frost Black, Amber) moves to Pristine and Iris.
  * A palette or accent you chose yourself is left exactly as it is.
  */
+/**
+ * The sidebar redesign, once: a setup still on the old default (the icon rail) gets the full sidebar. Labels, a choice
+ * nobody gets by default, stays; and once moved, choosing the rail again sticks.
+ */
+export function migrateToSidebar(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
+  let done = false; try { done = store.getItem("shuacrew.nav") === "sidebar-v1"; } catch { /* ignore */ }
+  if (done) return a;
+  try { store.setItem("shuacrew.nav", "sidebar-v1"); } catch { /* cosmetic: never lose settings over it */ }
+  return saved && a.navigation === "icons" ? { ...a, navigation: "sidebar" } : a;
+}
+
 export function migrateToPristine(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
   let done = false; try { const d = store.getItem("shuacrew.design"); done = d === "pristine" || d === "onyx"; } catch { /* ignore */ }
   if (!saved || done) return a;
@@ -131,7 +143,7 @@ export function loadAppearance(): Appearance {
     const base = normalizeAppearance(saved);
     if (!saved && legacy === "dark") base.palette = "onyx";
     if (!saved && legacy === "light") base.palette = "porcelain";
-    const migrated = migrateOnyxEverywhere(migrateToOnyx(migrateToPristine(base, Boolean(saved)), Boolean(saved)), Boolean(saved));
+    const migrated = migrateToSidebar(migrateOnyxEverywhere(migrateToOnyx(migrateToPristine(base, Boolean(saved)), Boolean(saved)), Boolean(saved)), Boolean(saved));
     // A migration marks itself done, so its result must be kept now: the app reads appearance more than once at
     // startup, and the second read would otherwise see "done" and hand back the old palette.
     if (saved && JSON.stringify(migrated) !== JSON.stringify(base)) saveAppearance(migrated);

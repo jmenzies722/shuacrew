@@ -517,8 +517,6 @@ function NewSession() {
   return (
     <section className="sheet hero-sheet home-workbench flex min-h-0 min-w-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {/* Light behind the ask: three slow blooms in the accent's family. Transform-only; rests when ShuaCrew is idle. */}
-        <div className="hero-aurora" aria-hidden="true"><i /><i /><i /></div>
         <div className="hero-stack">
           <div className="hero-core">
           {/* A conversation first: the greeting, the box, a few ways in. What needs you, recent work and your day sit just below. */}
@@ -526,8 +524,8 @@ function NewSession() {
             <div className="hero-mark">
               <LogoMark size={44} />
             </div>
-            <h1 className="hero-title">{dayGreeting()}. What should the crew build?</h1>
-            <p className="hero-sub">Say what you want. The crew picks Claude or Codex, works in its own branch, and asks before anything risky.</p>
+            <h1 className="hero-title">What should we build{scope ? ` in ${scope.split("/").filter(Boolean).pop()}` : ""}?</h1>
+            <p className="hero-sub">{dayGreeting()}. Claude or Codex takes it in its own branch and asks before anything risky.</p>
             <HeroPulse />
             <Composer seed={seed} hero />
             <div className="hero-ideas stagger">
