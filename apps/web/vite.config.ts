@@ -23,6 +23,8 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 600,
     rolldownOptions: {
+      // Two pages: the classic app (and the notch, /buddy) and Shua, the lean app — which loads none of the classic code.
+      input: { main: "index.html", shua: "shua.html" },
       output: {
         // Keep the first paint small: heavy views load when they are opened.
         codeSplitting: {
