@@ -136,7 +136,7 @@ export function Settings() {
     </div> },
     { id: "layout", section: "workspace", title: "Layout & navigation", terms: "density comfortable compact labels icons rail sidebar start page home screen floor board today ventures", body: <div className="settings-card">
       <Choice name="Density" detail="Spacing in navigation, settings, and workspace cards." field="density" options={[["comfortable", "Comfortable"], ["compact", "Compact"]]} />
-      <Choice name="Navigation" detail="Keep screen names visible, or leave more room for your work." field="navigation" options={[["icons", "Icons"], ["labels", "Icons & labels"]]} />
+      <Choice name="Navigation" detail="The full sidebar with your threads, or a slim rail that leaves more room for your work (⌘\\ switches)." field="navigation" options={[["sidebar", "Sidebar"], ["icons", "Rail"], ["labels", "Rail & labels"]]} />
       <Choice name="Start screen" detail="Where a fresh launch opens. Direct links keep their destination." field="startPage" options={[["/", "Sessions"], ["/floor", "Crew HQ"], ["/activity", "Today"], ["/ventures", "Ventures"], ["/board", "Board"]]} />
     </div> },
     { id: "composer", section: "workspace", title: "Composer & conversation", terms: "send enter command control shortcut spell check spelling minimap map turn navigator queue messages", body: <div className="settings-card">

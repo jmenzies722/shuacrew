@@ -1,0 +1,142 @@
+/*
+ * Studio: ShuaCrew's premium look (2026-10-16). The harness reads like a pro tool — Codex's restraint: one sidebar
+ * of threads and places on the window, one flat work surface, hairline edges, type doing the hierarchy, and the
+ * accent kept for what's live or needs you. No glows, no gradients behind content, no tinted icon tiles.
+ *
+ * Each surface has its own character on purpose (so the app doesn't look the same everywhere):
+ *   window + sidebar  — the quiet frame (flush, no cards)
+ *   work surface      — the page you read and write on (flat, hairline, rounded once)
+ *   composer          — the one raised object (soft shadow, no glow)
+ *   notch             — hardware: true black, white type, colour only for state (screens/notch-studio.css)
+ *
+ * Loaded last (Shell.tsx). Selectors carry :root[data-theme][data-palette] so they win over every earlier layer
+ * (onyx.css, alive.css, craft.css) for any palette; colours still come from the palette's own tokens.
+ */
+
+:root[data-theme][data-palette] {
+  --studio-radius: 12px;
+  --studio-raise: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 1px 2px rgba(0, 0, 0, .28), 0 12px 32px -18px rgba(0, 0, 0, .6);
+  --studio-hover: color-mix(in srgb, var(--text) 5%, transparent);
+  --studio-press: color-mix(in srgb, var(--text) 8%, transparent);
+  --studio-selected: color-mix(in srgb, var(--text) 8%, transparent);
+  --studio-label: color-mix(in srgb, var(--text) 52%, transparent);
+}
+:root[data-theme="light"][data-palette] {
+  --studio-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 32px -18px rgba(0, 0, 0, .18);
+}
+
+/* ── Nothing glows ─────────────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] .living-bg,
+:root[data-theme][data-palette] .hub-glow,
+:root[data-theme][data-palette] .hero-aurora { display: none !important; }
+:root[data-theme][data-palette] .workspace-frame { background: var(--ink); }
+
+/* ── The work surface: flat, hairline, rounded once ───────────────────────────────────────────── */
+:root[data-theme][data-palette] .workspace-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--studio-radius);
+  box-shadow: none;
+  background-image: none;
+}
+:root[data-theme][data-palette] .workspace-card::before,
+:root[data-theme][data-palette] .workspace-card::after { display: none; }
+
+/* ── Sidebar: on the window, quiet rows, labels in sentence case ──────────────────────────────── */
+:root[data-theme][data-palette] .side { background: transparent; }
+:root[data-theme][data-palette] .side-row {
+  height: 30px;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 450;
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-theme][data-palette] .side-row:hover { background: var(--studio-hover); color: var(--text); }
+:root[data-theme][data-palette] .side-row.is-on,
+:root[data-theme][data-palette] .side-row[aria-current="page"] { background: var(--studio-selected); color: var(--text); box-shadow: none; }
+:root[data-theme][data-palette] .side-row.is-open { background: transparent; color: var(--text); }
+:root[data-theme][data-palette] .side-ico { color: var(--text-3); }
+:root[data-theme][data-palette] .side-row:hover .side-ico,
+:root[data-theme][data-palette] .side-row.is-on .side-ico { color: var(--text); }
+/* New session: a row like the rest, the first thing in the column (not a white pill). */
+:root[data-theme][data-palette] .side-new { background: transparent; color: var(--text); font-weight: 520; border: 0; }
+:root[data-theme][data-palette] .side-new:hover { background: var(--studio-hover); }
+:root[data-theme][data-palette] .side-new kbd,
+:root[data-theme][data-palette] .side-spark kbd,
+:root[data-theme][data-palette] .side-search kbd { color: var(--text-3); background: transparent; border: 0; font-size: 11px; }
+:root[data-theme][data-palette] .side-spark { border: 0; background: transparent; }
+:root[data-theme][data-palette] .side-children { margin: 2px 0 6px 0; padding-left: 0; border: 0; }
+:root[data-theme][data-palette] .side-child { padding-left: 37px; height: 28px; font-size: 12.5px; color: var(--text-3); }
+:root[data-theme][data-palette] .side-child:hover { color: var(--text); }
+:root[data-theme][data-palette] .side-child.is-on { color: var(--text); background: var(--studio-selected); }
+:root[data-theme][data-palette] .side-section-label,
+:root[data-theme][data-palette] .side-day h4 {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 520;
+  color: var(--studio-label);
+}
+:root[data-theme][data-palette] .side-day h4 { font-weight: 480; font-size: 11.5px; margin: 10px 0 2px 10px; }
+:root[data-theme][data-palette] .side-run a { height: 30px; border-radius: 8px; color: var(--text-2); font-size: 13px; }
+:root[data-theme][data-palette] .side-run a:hover { background: var(--studio-hover); color: var(--text); }
+:root[data-theme][data-palette] .side-run.is-on a { background: var(--studio-selected); color: var(--text); }
+:root[data-theme][data-palette] .side-run small { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* A dot only when it means something: live work, waiting on you, failed. Finished work is plain. */
+:root[data-theme][data-palette] .side-dot.is-done { visibility: hidden; width: 0; margin-right: 0; }
+:root[data-theme][data-palette] .side-foot { border-top: 1px solid var(--line); }
+
+/* ── Top bar: a title strip, nothing to read twice ────────────────────────────────────────────── */
+:root[data-theme][data-palette] header[aria-label="Top bar"] { background: transparent; border: 0; box-shadow: none; }
+
+/* ── Home: the ask, nothing behind it ─────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] .hero-sheet,
+:root[data-theme][data-palette] .home-workbench { background: transparent; background-image: none; }
+:root[data-theme][data-palette] .hero-mark { display: none; }
+:root[data-theme][data-palette] .hero-title {
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  color: var(--text);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+:root[data-theme][data-palette] .hero-sub { font-size: 14px; color: var(--text-3); max-width: 46ch; }
+:root[data-theme][data-palette] .hero-pulse { background: transparent; border: 0; box-shadow: none; padding: 0; color: var(--text-3); font-size: 12.5px; }
+
+/* The composer: the one raised object on the page. */
+:root[data-theme][data-palette] .composer-box {
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: var(--studio-raise);
+  background-image: none;
+}
+:root[data-theme][data-palette] .composer-box::before,
+:root[data-theme][data-palette] .composer-box::after { display: none; }
+:root[data-theme][data-palette] .composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--text) 22%, transparent);
+  box-shadow: var(--studio-raise), 0 0 0 3px color-mix(in srgb, var(--text) 6%, transparent);
+}
+:root[data-theme][data-palette] .composer-box.is-hero { min-height: 128px; }
+
+/* Ideas: four quiet entries under the box, no tinted icon tiles. */
+:root[data-theme][data-palette] .hero-idea {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: none;
+  background-image: none;
+}
+:root[data-theme][data-palette] .hero-idea:hover { background: var(--studio-hover); border-color: var(--line-strong); }
+:root[data-theme][data-palette] .hero-idea-icon { background: transparent; border: 0; box-shadow: none; color: var(--text-3); }
+:root[data-theme][data-palette] .hero-idea:hover .hero-idea-icon { color: var(--text); }
+:root[data-theme][data-palette] .hero-idea-text small { color: var(--text-3); }
+
+/* Section headings in sentence case, one weight. */
+:root[data-theme][data-palette] .home-section-heading h2 { font-size: 13px; font-weight: 560; letter-spacing: 0; text-transform: none; }
+:root[data-theme][data-palette] .home-recent-row { border-radius: 10px; }
+:root[data-theme][data-palette] .home-recent-row:hover { background: var(--studio-hover); }
