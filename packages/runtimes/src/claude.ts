@@ -502,11 +502,16 @@ export class ClaudeRuntime implements Runtime {
 
   /** The spare, if it's shaped like this conversation (same model, effort, folder, account and tools) and still alive. */
   private async adoptSpare(run: RunSpec, account: string): Promise<WarmSession | undefined> {
-    const spare = this.spare;
-    if (!spare || spare.key !== this.spareKey(run, account)) return undefined;
+    const spare = this.spare, started = Date.now();
+    if (!spare || spare.key !== this.spareKey(run, account)) {
+      shuaLog(`start fresh: ${!spare ? "no spare" : `spare shaped differently (${diffKey(spare.key, this.spareKey(run, account))})`}`);
+      return undefined;
+    }
     this.spare = undefined;
+    const wasOpening = Boolean(spare.opening);
     const session = spare.opening ? await spare.opening : spare.session;
-    if (!session || session.dead) return undefined;
+    if (!session || session.dead) { shuaLog("start fresh: spare had died"); return undefined; }
+    shuaLog(`start on spare${wasOpening ? ` (waited ${Date.now() - started} ms for it to finish opening)` : ""}`);
     clearTimeout(session.idle);
     if (session.origin) run.adopted?.(session.origin); // its tool access now answers for this conversation
     session.origin = undefined;
@@ -618,6 +623,16 @@ interface WarmSession {
   close(): void;
   interrupt(): Promise<void>;
   dead: boolean;
+}
+
+/** One line per new Shua conversation in the gateway log: did it start on the spare, and if not, why. */
+function shuaLog(line: string): void {
+  if (!process.env.VITEST) console.log(`${new Date().toISOString()} shua ${line}`);
+}
+/** Which parts of two spare keys differ (model|effort|folder|account|tools). */
+function diffKey(a: string, b: string): string {
+  const names = ["model", "effort", "folder", "account", "tools"], x = a.split("|"), y = b.split("|");
+  return names.filter((_, i) => x[i] !== y[i]).map((n, i) => `${n}: ${x[names.indexOf(n)] || "-"} → ${y[names.indexOf(n)] || "-"}`).join(", ") || "same";
 }
 
 /** A head start's placeholder context: the first real turn replaces it before any message (and so any tool) runs. */
