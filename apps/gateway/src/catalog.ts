@@ -4,6 +4,8 @@
  * A remote server with no pasted secret is connected by OAuth. Anything that
  * needs an API key in a header is left out — that is not a sign-in.
  */
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const REGISTRY = "https://registry.modelcontextprotocol.io/v0.1/servers";
 const SKILLS = "https://api.github.com/repos/anthropics/skills/contents/skills";
@@ -108,6 +110,9 @@ export interface Featured {
 }
 
 export const FEATURED: Featured[] = [
+  // NetShua, your own browser (github.com/jmenzies722/netshua-chromium): your real, signed-in tabs, read and acted on
+  // through Shua, whose OK rules stay in charge. NetShua must be open with Settings → "Let other AIs use NetShua" on.
+  { id: "netshua", name: "netshua", title: "NetShua", category: "Research", blurb: "Your own browser, signed in: read your tabs, open pages, and hand Shua jobs on the real web. Anything that buys, sends or signs in asks you in NetShua.", command: "node", args: [join(homedir(), "Developer/projects/netshua-chromium/claude-code-host/netshua-mcp.mjs"), "--client", "ShuaCrew"], auth: "none" },
   { id: "playwright", name: "playwright", title: "Playwright", category: "Build", blurb: "Drive a real browser: click, type, screenshot, test your app end to end.", command: "npx", args: ["-y", "@playwright/mcp@latest"], auth: "none" },
   { id: "chrome-devtools", name: "chrome-devtools", title: "Chrome DevTools", category: "Build", blurb: "Inspect pages, network, console and performance in Chrome.", command: "npx", args: ["-y", "chrome-devtools-mcp@latest"], auth: "none" },
   { id: "context7", name: "context7", title: "Context7", category: "Build", blurb: "Up-to-date docs and examples for any library, so code matches the current API.", url: "https://mcp.context7.com/mcp", auth: "none" },
