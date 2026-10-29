@@ -64,6 +64,21 @@ it("replaces a worker that died while idle instead of waiting out the timeout", 
     expect(Date.now() - started).toBeLessThan(5000);
   } finally { service.close(); }
 });
+it("keeps one warm worker's listeners flat across many replies (no listener per reply)", async () => {
+  // Each reply used to add a no-op "error" listener to the long-lived worker and its stdin: past 10 replies Node warned
+  // MaxListenersExceededWarning on [ChildProcess] and [Socket], and the listeners grew with every sentence Shua said.
+  const service = new SpeechService({ home: "/tmp", timeoutMs: 20_000, command: process.execPath, args: [fileURLToPath(new URL("./fixtures/speech-worker.mjs", import.meta.url))] });
+  const consume = async (n: number) => { for await (const _ of service.synthesize({ id: `reply-${n}`, generation: 1, voiceId: "aiden", text: `Reply ${n}`, speed: 1 }, new AbortController().signal)) { /* drain */ } };
+  try {
+    await consume(0);
+    const child = (service as unknown as { child: import("node:child_process").ChildProcessWithoutNullStreams }).child;
+    const before = [child.listenerCount("error"), child.stdin.listenerCount("error")];
+    for (let n = 1; n <= 15; n++) await consume(n);
+    expect((service as unknown as { child: unknown }).child).toBe(child); // the same warm worker throughout
+    expect([child.listenerCount("error"), child.stdin.listenerCount("error")]).toEqual(before);
+    expect(before.every((count) => count >= 1)).toBe(true); // an idle worker still has a guard for late errors
+  } finally { service.close(); }
+});
 it("limits synthesis input and rejects unknown voice IDs", () => {
   const input = { id: "preview", generation: 1, voiceId: "aiden", text: "Hello", speed: 1 };
   expect(validateSpeechRequest(input, validateManifest(manifest)).text).toBe("Hello");

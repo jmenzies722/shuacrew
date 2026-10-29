@@ -225,6 +225,15 @@ export class ClaudeRuntime implements Runtime {
   readonly accounts: ClaudeAccounts;
   /** Spark's conversations stay warm: one live agent process per conversation, fed each new turn. */
   private warm = new Map<string, WarmSession>();
+  /** Head starts still opening (prepare), so a turn that arrives mid-way waits for that one instead of opening a second. */
+  private opening = new Map<string, Promise<unknown>>();
+  /**
+   * One spare warm session for Shua's next new conversation, opened in the background after a reply: Claude Code and
+   * all of Shua's tools already up, so a new conversation starts answering at once however quickly you send (a head
+   * start alone needed seconds of talking first with 11 tool servers). Closes after 15 minutes without Shua.
+   */
+  private spare?: { key: string; session: WarmSession; opening?: Promise<WarmSession | undefined> };
+  private closedForGood = false;
 
   constructor(options: ClaudeOptions = {}) {
     this.authMode = options.authMode ?? "subscription";
@@ -303,6 +312,30 @@ export class ClaudeRuntime implements Runtime {
       if (!handoff) return;
       turn = handoff;
     }
+  }
+
+  /**
+   * A head start for a new Shua conversation (lean only): while you talk or type, its warm session opens — Claude Code
+   * launched and initialised, Shua's tools connected — on the account the turn will pick, so the first reply is as quick
+   * as a follow-up's (Codex had this; Claude didn't, so every new conversation on Claude started cold). Never throws;
+   * unused, it closes after 90 s.
+   */
+  prepare(run: RunSpec, env: NodeJS.ProcessEnv): void {
+    if (!run.lean || this.warm.has(run.id) || this.opening.has(run.id)) return;
+    const opening = (async () => {
+      await this.accounts.refresh();
+      const account = this.accounts.pick(run.model, []);
+      if (!account && this.accounts.accounts.some((a) => a.signedIn)) return; // every account is out: no head start
+      const full = { ...ClaudeAccounts.env(account, env as Record<string, string>), CLAUDE_AGENT_SDK_CLIENT_APP: "shuacrew/0.1.0", ...LEAN_ENV };
+      const w = (await this.adoptSpare(run, account?.dir ?? "")) ?? (await this.openWarm(run, PREPARING, full, account?.dir ?? ""));
+      w.tools = Object.keys(leanMcp(run.mcpServers).mcpServers).sort().join(",");
+      // No refill here: opening the next spare (Claude Code and every tool server) while this reply is being written
+      // competes with it for the CPU (measured: 2.1 s vs 0.6 s to the first word). The turn refills once it's answered.
+      w.idle = setTimeout(() => { w.close(); if (this.warm.get(run.id) === w) this.warm.delete(run.id); }, 90_000);
+      this.warm.set(run.id, w);
+      await w.ready?.catch(() => undefined); // launched and initialised before the first words arrive
+    })().catch(() => undefined).finally(() => this.opening.delete(run.id));
+    this.opening.set(run.id, opening);
   }
 
   /** A pooled account's limits lift early ("Try now"): the next run finds out for real. */
@@ -426,12 +459,13 @@ export class ClaudeRuntime implements Runtime {
    * into it, so there's no process to launch and it starts answering almost at once. Quiet for 10 minutes: it closes.
    */
   private async *startWarm(run: RunSpec, ctx: RunContext, env: Record<string, string | undefined>, account: string): AsyncIterable<RuntimeEvent> {
+    await this.opening.get(run.id); // its head start, if one is still opening
     let w = this.warm.get(run.id);
     // A changed set of Spark's MCP servers needs a fresh session (tools are fixed when one opens).
     const tools = Object.keys(leanMcp(run.mcpServers).mcpServers).sort().join(",");
     if (!w || w.dead || w.model !== run.model || w.account !== account || w.tools !== tools) {
       w?.close();
-      w = await this.openWarm(run, ctx, env, account);
+      w = (!run.resume ? await this.adoptSpare(run, account) : undefined) ?? (await this.openWarm(run, ctx, env, account));
       w.tools = tools;
       this.warm.set(run.id, w);
     }
@@ -457,7 +491,50 @@ export class ClaudeRuntime implements Runtime {
     } finally {
       ctx.signal.removeEventListener("abort", onAbort);
       if (!session.dead) session.idle = setTimeout(() => { session.close(); this.warm.delete(run.id); }, 10 * 60_000);
+      this.refillSpare(run, env, account); // the next new conversation starts on a session that's already up
     }
+  }
+
+  private spareKey(run: RunSpec, account: string): string {
+    return [run.model ?? "", run.effort ?? "", run.cwd, account, Object.keys(leanMcp(run.mcpServers).mcpServers).sort().join(",")].join("|");
+  }
+
+  /** The spare, if it's shaped like this conversation (same model, effort, folder, account and tools) and still alive. */
+  private async adoptSpare(run: RunSpec, account: string): Promise<WarmSession | undefined> {
+    const spare = this.spare;
+    if (!spare || spare.key !== this.spareKey(run, account)) return undefined;
+    this.spare = undefined;
+    const session = spare.opening ? await spare.opening : spare.session;
+    if (!session || session.dead) return undefined;
+    clearTimeout(session.idle);
+    return session;
+  }
+
+  /** Open the next spare in the background (one at a time; a differently shaped one replaces it). Never throws. */
+  private refillSpare(run: RunSpec, env: Record<string, string | undefined>, account: string): void {
+    if (this.closedForGood) return;
+    const key = this.spareKey(run, account);
+    if (this.spare?.key === key && (this.spare.opening || !this.spare.session.dead)) return;
+    if (this.spare && !this.spare.opening) this.spare.session.close();
+    const shape: RunSpec = { ...run, id: "spare", ask: "", resume: undefined };
+    const entry: NonNullable<ClaudeRuntime["spare"]> = { key, session: undefined as unknown as WarmSession };
+    entry.opening = this.openWarm(shape, PREPARING, env, account).then(async (session) => {
+      entry.session = session; entry.opening = undefined;
+      session.idle = setTimeout(() => { session.close(); if (this.spare === entry) this.spare = undefined; }, 15 * 60_000);
+      if (this.spare !== entry) { session.close(); return undefined; } // replaced while it opened
+      await session.ready?.catch(() => undefined);
+      return session;
+    }, () => { if (this.spare === entry) this.spare = undefined; return undefined; });
+    this.spare = entry;
+  }
+
+  /** Stop keeping anything warm (the gateway is shutting down). */
+  dispose(): void {
+    this.closedForGood = true;
+    if (this.spare && !this.spare.opening) this.spare.session.close();
+    this.spare = undefined;
+    for (const w of this.warm.values()) w.close();
+    this.warm.clear();
   }
 
   private async openWarm(run: RunSpec, first: RunContext, env: Record<string, string | undefined>, account: string): Promise<WarmSession> {
@@ -509,6 +586,9 @@ export class ClaudeRuntime implements Runtime {
       } as never,
     });
     session.iterator = (conversation as AsyncIterable<Json>)[Symbol.asyncIterator]();
+    // Asking for the init handshake starts Claude Code now rather than at the first message (what a head start is for).
+    session.ready = (conversation as unknown as { initializationResult?: () => Promise<unknown> }).initializationResult?.();
+    session.ready?.catch(() => undefined);
     return session;
   }
 }
@@ -524,11 +604,20 @@ interface WarmSession {
   model?: string;
   /** The account (config dir) it's signed in as: a turn on another account opens a fresh session. */
   account: string;
+  /** Claude Code launched and initialised (its init handshake answered). */
+  ready?: Promise<unknown>;
   idle?: NodeJS.Timeout;
   close(): void;
   interrupt(): Promise<void>;
   dead: boolean;
 }
+
+/** A head start's placeholder context: the first real turn replaces it before any message (and so any tool) runs. */
+const PREPARING: RunContext = {
+  signal: new AbortController().signal,
+  env: {},
+  approve: async () => ({ allow: false, reason: "this conversation hasn't started yet" }) as never,
+};
 
 export function findBinary(name: string): string | undefined {
   const candidates = [

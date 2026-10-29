@@ -189,6 +189,8 @@ export class Supervisor {
     for (const controller of this.active.values()) controller.abort();
     for (const wait of this.waiting.values()) wait.resolve({ allow: false, reason: "gateway stopping" });
     this.waiting.clear();
+    // Warm agents (Shua's open conversations and its spare) go with the gateway instead of outliving it.
+    for (const runtime of this.runtimes.values()) runtime.dispose?.();
   }
 
   // ── launching ────────────────────────────────────────────────────────────────────────

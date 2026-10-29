@@ -99,6 +99,8 @@ export interface Runtime {
    * so the turn itself begins at once. `run` is the turn as it will be, minus the ask. A no-op when it can't help.
    */
   prepare?(run: RunSpec, env: NodeJS.ProcessEnv): void;
+  /** Close anything kept warm (the gateway is stopping). */
+  dispose?(): void;
 }
 
 /**

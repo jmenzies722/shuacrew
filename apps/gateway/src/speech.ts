@@ -60,6 +60,8 @@ export class SpeechService {
   private spawnWorker(root: string): ChildProcessWithoutNullStreams {
     const child = spawn(this.options.command ?? path.join(root, "venv/bin/python"), this.options.args ?? [path.join(directory, "worker.py"), root], { stdio: "pipe", env: { ...process.env, ...(existsSync(path.join(root, "models/hub")) ? { HF_HUB_CACHE: path.join(root, "models/hub") } : {}), HF_HUB_OFFLINE: "1", TOKENIZERS_PARALLELISM: "false", PYTHONUNBUFFERED: "1" } });
     child.once("exit", () => { if (this.child === child) this.child = undefined; });
+    // A guard for late errors while idle, once per worker (a reply's own listeners come and go with the reply).
+    child.on("error", () => {}); child.stdin.on("error", () => {});
     return child;
   }
   private kill() {
@@ -156,8 +158,6 @@ export class SpeechService {
         signal.removeEventListener("abort", onAbort);
         child.stdout.off("data", onData); child.off("error", onError); child.off("exit", onExit); child.stdin.off("error", onError);
         if (!complete) this.kill();
-        // Keep an error listener on the idle child (a late stdin error is harmless).
-        child.on("error", () => {}); child.stdin.on("error", () => {});
       }
     } finally {
       this.ids.delete(request.id);
