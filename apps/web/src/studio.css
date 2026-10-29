@@ -7,7 +7,7 @@
  *   window + sidebar  — the quiet frame (flush, no cards)
  *   work surface      — the page you read and write on (flat, hairline, rounded once)
  *   composer          — the one raised object (soft shadow, no glow)
- *   notch             — hardware: true black, white type, colour only for state (screens/notch-studio.css)
+ *   notch             — hardware: true black, white type, colour only for state (its own pass: screens/notch*.css)
  *
  * Loaded last (Shell.tsx). Selectors carry :root[data-theme][data-palette] so they win over every earlier layer
  * (onyx.css, alive.css, craft.css) for any palette; colours still come from the palette's own tokens.
@@ -140,3 +140,80 @@
 :root[data-theme][data-palette] .home-section-heading h2 { font-size: 13px; font-weight: 560; letter-spacing: 0; text-transform: none; }
 :root[data-theme][data-palette] .home-recent-row { border-radius: 10px; }
 :root[data-theme][data-palette] .home-recent-row:hover { background: var(--studio-hover); }
+
+/* ── Specificity: Onyx's own rules are `.side .side-new:not(:disabled)` and !important on the composer, so the studio
+   ones match them here or they never land (the new-session pill and the composer's accent ring outlived the first pass).
+   This layer is meant to have the last word; !important is used only where Onyx already uses it. ─────────────────── */
+:root[data-theme][data-palette] .side .side-new:not(:disabled) {
+  background: transparent !important; color: var(--text) !important; border: 0; box-shadow: none !important; font-weight: 520;
+}
+:root[data-theme][data-palette] .side .side-new:not(:disabled):hover { background: var(--studio-hover) !important; box-shadow: none !important; filter: none; }
+
+:root[data-theme][data-palette] :is(.composer-box, .chat-composer) {
+  background: var(--raised) !important;
+  background-image: none !important;
+  border: 1px solid var(--line-strong) !important;
+  box-shadow: var(--studio-raise) !important;
+}
+:root[data-theme][data-palette] :is(.composer-box, .chat-composer):hover { border-color: color-mix(in srgb, var(--text) 18%, transparent) !important; }
+:root[data-theme][data-palette] :is(.composer-box, .chat-composer):focus-within {
+  border-color: color-mix(in srgb, var(--text) 26%, transparent) !important;
+  box-shadow: var(--studio-raise), 0 0 0 3px color-mix(in srgb, var(--text) 6%, transparent) !important;
+}
+/* Typing: Onyx turns the edge into a moving accent ring (a gradient border-box); here it stays the same hairline, a
+   shade brighter. Its rule outranks the plain one above, so the focus state repeats the surface. */
+:root[data-theme][data-palette] :is(.hero-sheet .composer-box, .composer-box, .chat-composer):focus-within {
+  background: var(--raised) !important; background-image: none !important; animation: none !important;
+}
+/* Send: ink on the page's colour, like every other primary action; no accent gradient, no glow. */
+:root[data-theme][data-palette] .composer-box button[type="submit"]:not(:disabled) { background: var(--text) !important; background-image: none !important; color: var(--ink) !important; box-shadow: none !important; }
+
+/* One primary action style everywhere: ink on the page's colour (the onboarding's Save & continue, the composer's send). */
+:root[data-theme][data-palette] :is(.earn-primary, .ph-forge-ask button:not(:disabled)) {
+  background: var(--text); background-image: none; color: var(--ink); box-shadow: none; border: 0;
+}
+:root[data-theme][data-palette] :is(.earn-primary, .ph-forge-ask button:not(:disabled)):hover { filter: none; background: color-mix(in srgb, var(--text) 88%, var(--ink)); }
+
+/* ── Today: a page header, not a sky. Flat, hairline, type-led; no sun, no gradient, the same in light and dark. ── */
+:root[data-theme][data-palette] .td-sky {
+  background: var(--panel); background-image: none; color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--studio-radius); min-height: 0; padding: 26px 28px 24px;
+}
+:root[data-theme][data-palette] .td-sky::before,
+:root[data-theme][data-palette] .td-sky::after,
+:root[data-theme][data-palette] .td-sun { display: none; }
+:root[data-theme][data-palette] .td-sky-top { color: var(--studio-label); letter-spacing: 0; text-transform: none; font-weight: 520; }
+:root[data-theme][data-palette] .td-sky h1 { font-size: 30px; font-weight: 600; letter-spacing: -.022em; color: var(--text); }
+:root[data-theme][data-palette] .td-sky p { color: var(--text-3); font-size: 14px; }
+:root[data-theme][data-palette] .td-actions button {
+  height: 32px; border-radius: 9px; border: 1px solid var(--line-strong); background: transparent; color: var(--text);
+  backdrop-filter: none; font-weight: 520;
+}
+:root[data-theme][data-palette] .td-actions button:hover { background: var(--studio-hover); transform: none; }
+:root[data-theme][data-palette] .td-actions .td-primary { background: var(--text); color: var(--ink); border-color: transparent; }
+:root[data-theme][data-palette] .td-actions .td-primary:hover { background: color-mix(in srgb, var(--text) 88%, var(--ink)); }
+
+/* ── Projects: what you've earned and the project in focus as plain surfaces; money gets colour only once it's real. ── */
+:root[data-theme][data-palette] :is(.earn, .vn-focus, .ph-quest) {
+  background: var(--panel); background-image: none; border: 1px solid var(--line); box-shadow: none; border-radius: var(--studio-radius);
+}
+
+/* ── Library: documents as quiet tiles (the kind of thing, not a colour). ─────────────────────────────────────────── */
+:root[data-theme][data-palette] .sd-cover {
+  background: color-mix(in srgb, var(--text) 5%, var(--panel)); background-image: none; color: var(--text-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+:root[data-theme][data-palette] .sd-sleeve-card:hover .sd-cover { color: var(--text); }
+
+/* ── Icon tiles: neutral. A brand's own logo still shows; a made-up colour per name doesn't. A crew member keeps their
+   colour in the glyph only (it's who they are on the Studio floor), not as a wash behind it. ────────────────────── */
+:root[data-theme][data-palette] .tk-mono:not(.is-skill) { background: transparent; color: var(--text-2); text-shadow: none; }
+:root[data-theme][data-palette] .member-face { background: color-mix(in srgb, var(--text) 6%, var(--panel)); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Idea icons on Home: Home's own rule is `html:root .home-workbench .hero-ideas .hero-idea .hero-idea-icon`, so this one
+   goes a step deeper. Today's "Nothing needs you" is calm, so plain; a card that does need you keeps the accent. */
+:root[data-theme][data-palette] .home-workbench .hero-ideas .hero-idea .hero-idea-icon,
+:root[data-theme][data-palette] .td-card.is-clear i {
+  background: transparent; box-shadow: none; color: var(--text-3);
+}
+:root[data-theme][data-palette] .home-workbench .hero-ideas .hero-idea:hover .hero-idea-icon { color: var(--text); }
