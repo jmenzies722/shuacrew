@@ -7,6 +7,7 @@ import { formatLeft, remaining } from "../../lib/timers";
 import { SparkCharacter } from "../../components/SparkCharacter";
 import type { useCompanion } from "../../lib/companion";
 import type { GuideStep } from "../../lib/buddy";
+import { SPRING } from "../../lib/spring-easing";
 
 /** The fn quick card: just what matters right now, beside your pointer. Idle for a while, it tucks itself away. */
 export function MiniCard({ name, prefs, mood, state, heard, guide, reply, onCheck, onStopGuide, onOpen, onClose }: {
@@ -16,7 +17,7 @@ export function MiniCard({ name, prefs, mood, state, heard, guide, reply, onChec
   const quiet = state === "ready" && !guide;
   useEffect(() => { if (!quiet) return; const t = setTimeout(onClose, 20_000); return () => clearTimeout(t); }, [quiet, reply]);
   const label = { listening: "Listening…", thinking: "Thinking…", speaking: "Speaking", ready: `Use the mic to ask ${name}` }[state];
-  return <motion.div className={`spk-mini-card is-${state}`} role="dialog" aria-label={`${name} quick view`} initial={{ opacity: 0, y: 8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 460, damping: 34 }}>
+  return <motion.div className={`spk-mini-card is-${state}`} role="dialog" aria-label={`${name} quick view`} initial={{ opacity: 0, y: 8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING}>
     <header><span className="spk-mini-face"><SparkCharacter preferences={prefs} mood={mood} size={26} crop="portrait" /></span><b>{name}</b><small>{label}</small>
       <button type="button" aria-label="Close" onClick={onClose}>×</button></header>
     {state === "listening" ? <p className="spk-mini-live">{heard || "…"}</p>

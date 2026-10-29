@@ -1,6 +1,5 @@
 import { companionName } from "../lib/companion";
 import { answerPhone, PHONE_ASK, yourWords } from "../lib/shua-remote";
-import { briefReminders, learnNudges, type LearnReminder } from "../lib/learn-reminders";
 import { actionSequence } from "../lib/action-sequence";
 import { NotchTeachingBar } from "../components/NotchTeachingBar";
 import { NotchEqualizer } from "../components/NotchEqualizer";
@@ -55,7 +54,7 @@ import { selectIntelligence, turnDisposition, type IntelligenceChoice, type Inte
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ComposerActions } from "../components/ComposerActions";
 import { acceptCompanionDraft, clearCompanionDraft, getCompanionDraft, getCompanionDraftRevision, restoreCompanionDraft, setCompanionDraft, useCompanionDraft } from "../lib/companion-draft";
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, ArrowUpRight, Camera, Smartphone, Cpu, Ellipsis, Keyboard, Trash2, Bell, CalendarClock, Sparkles, AlarmClock, Timer, BookOpen, AudioLines, SlidersHorizontal, Check, ChevronRight, Compass, Eye, EyeOff, Hand, LayoutGrid, Maximize2, MessageCircle, Mic, MicOff, Minimize2, MousePointer2, RotateCcw, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { AnyEvent } from "@shuacrew/core/events";
 import { api, cancelRun, decideApproval, followUp } from "../lib/api";
@@ -73,7 +72,7 @@ import { useLinger } from "../lib/linger";
 import { setMicRoute } from "../lib/mic-route";
 import { crewAsks, crewDetail, crewFinished, lastAskedApproval, noteAsked, statuses } from "../lib/crew-voice";
 import { asksWeather, weatherForSpark, loadWeather, describe } from "../lib/weather";
-import { asksAboutLearn, actionsOnly, aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
+import { actionsOnly, aboutScreen, aboutShuaCrewWindow, chainOf, blockScreen, deleteQuestion, followThroughAsk, needsFollowThrough, needsScreen, pointingText, SPARK_RULES, isDestructive, actFollowUp, progressLine, buddyPrompt, claimsWithoutAction, engineLine, parseNext, turnTier, localAsk, localSystem, shuacrewNow, completedBlocks, elementsText, describeAct, describeAction, guideFollowUp, parseActs, parseZoom, type Act, type ScreenContext, isDesign, nextSentences, parseActions, parseDraw, parseGuide, parsePoint, screenText, speakable, splitDiagrams, type GuideStep, type ScreenLine } from "../lib/buddy";
 import { Diagram } from "../components/Diagram";
 import { getBuddyVoice, saveBuddyVoice, SpeechQueue, useBuddyVoice, type CaptionLine } from "../lib/buddy-voice";
 import { bestAppleVoice } from "../lib/voices";
@@ -96,6 +95,7 @@ import "./shua-live.css";
 const CONFIRM_OPS = new Set(["add_reminder", "calendar_add", "complete_reminder", "delete_reminder", "delete_reminders", "complete_reminders", "delete_event", "delete_note", "notes_new", "new_folder"]);
 import "../alive.css"; // the desktop Spark loads without the app shell: same accent gradient and logo tokens
 import "./notch.css"; // last: the notch's motion and light
+import "./notch-hover.css"; // after it: hover open/tuck on the native island's spring, the clean hovered island, music
 import { nativeLiveSpeech } from "../lib/live-speech";
 import { ctx, capture, selectRegion, type Shot, shotFiles, claim, fitShape, KEY, macContext, mine, playingContext, SEE, native, post, readSee, screenFacts, screenSize, seesHiRes, setHiRes, zoomShot } from "./spark/bridge";
 import { ISLAND_FLARE, perform, sparkHooks, type Done } from "./spark/actions";
@@ -121,11 +121,39 @@ import type { LiveTaskRequest, LiveTaskResult } from "../lib/live-task";
 import { classicCaptureWanted } from "../lib/live-preferences";
 import { voiceTrace } from "../lib/voice-trace";
 import { prose } from "../lib/plain";
-import { notchFocus, pausedLine, useLearningFocus } from "../lib/notch-focus";
+import { notchFocus, pausedLine } from "../lib/notch-focus";
 import { NotchActivity } from "../components/NotchActivity";
+import { artTint, readMusicBands, useMusicMeter } from "../lib/music-meter";
+import { WorkingFor } from "../components/WorkingFor";
+import { ISLAND_OPEN, ISLAND_TUCK, springCurve, SPRING } from "../lib/spring-easing";
 
 /** The idle island's small label: what kind of thing the line is, readable at a glance. */
-const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", learn: "Get better", hold: "On hold" };
+const FOCUS_KICKER: Record<string, string> = { needs: "Needs you", live: "Working", done: "Just finished", hold: "On hold" };
+// The notch's hover springs, as CSS easings: the page clips the island's contents with exactly the curve the Mac app
+// gives the black island itself (NotchIsland.openSpring / tuckSpring in Swift).
+const OPEN_CURVE = springCurve(ISLAND_OPEN.duration, ISLAND_OPEN.bounce), TUCK_CURVE = springCurve(ISLAND_TUCK.duration, ISLAND_TUCK.bounce);
+if (typeof document !== "undefined") {
+  const root = document.documentElement.style;
+  root.setProperty("--isl-open-ease", OPEN_CURVE.easing); root.setProperty("--isl-open-ms", `${OPEN_CURVE.ms}ms`);
+  root.setProperty("--isl-tuck-ease", TUCK_CURVE.easing); root.setProperty("--isl-tuck-ms", `${TUCK_CURVE.ms}ms`);
+}
+/** A CSS colour (variables allowed, resolved where `host` sits) as 0–255 sRGB, for the Mac app's native bars. */
+function cssRgb(host: Element, color: string): number[] {
+  const probe = document.createElement("i");
+  probe.style.cssText = `position:absolute;visibility:hidden;color:${color}`;
+  host.appendChild(probe);
+  const value = getComputedStyle(probe).color; probe.remove();
+  const nums = (value.match(/-?[\d.]+/g) ?? []).map(Number);
+  // "rgb(r, g, b)" is 0–255; "color(srgb r g b)" is 0–1.
+  return value.startsWith("color(") ? nums.slice(0, 3).map((v) => Math.round(v * 255)) : nums.slice(0, 3);
+}
+/** The island at rest as the page is about to draw it, read from its own CSS targets (not a mid-transition frame). */
+function islandRestShape(): { w: number; h: number; r: number } | undefined {
+  const island = document.querySelector<HTMLElement>(".shua-island"), shape = island?.querySelector<HTMLElement>(".shua-island-shape");
+  if (!island || !shape) return undefined;
+  const css = getComputedStyle(island), px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
+  return { w: px("--hw") + 2 * px("--flare"), h: px("--hh") + px("--drop"), r: parseFloat(getComputedStyle(shape).getPropertyValue("--r")) || 12 };
+}
 
 /**
  * Spark. On the desktop it's the floating panel; inside the app (`embedded`) it's the side panel — the same
@@ -148,7 +176,7 @@ const SparkRow = memo(function SparkRow({ m, did, color, wide, setWide, reduceMo
     {did && <div className="buddy-did">{did.map((d, j) => <motion.button type="button" key={j} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={d.ok ? "is-ok" : "is-bad"} title={d.message} onClick={() => d.run && post({ type: "buddyOpen", run: d.run })}>{d.ok ? <Check size={11} /> : <X size={11} />} {d.ok ? d.message : `${d.label}: ${d.message}`}</motion.button>)}</div>}
     {p && <button type="button" className="buddy-point" onClick={() => showAgain(p.label ?? "")}><MousePointer2 size={11} /> Show me {p.label ? `“${p.label}”` : ""} again</button>}</> : <YourWords text={m.text} />;
   // Yours lifts out of the composer (origin bottom-right, shua-live.css); Shua's settles in from just below.
-  return <motion.div initial={reduceMotion ? false : m.who === "you" ? { opacity: 0, y: 18, scale: 0.94 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: m.who === "you" ? 520 : 380, damping: m.who === "you" ? 32 : 30 }}
+  return <motion.div initial={reduceMotion ? false : m.who === "you" ? { opacity: 0, y: 18, scale: 0.94 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING}
     className={m.who === "spark" ? "spk-row" : "spk-row is-you"}>
     <div className={`buddy-msg is-${m.who} ${m.live ? "is-live" : ""}`}>{body}</div>
   </motion.div>;
@@ -247,8 +275,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const [memory, setMemory] = useState<{ facts: string[]; goal: string }>({ facts: [], goal: "" });
   const loadMemory = () => Promise.all([
     api<{ lessons?: Array<{ text: string; retired?: string | null }> }>("/api/memory").then((m) => (m.lessons ?? []).filter((l) => !l.retired).map((l) => l.text)).catch(() => [] as string[]),
-    api<{ profile?: { goal?: string } }>("/api/learning").then((l) => l.profile?.goal?.trim() ?? "").catch(() => ""),
-  ]).then(([facts, goal]) => setMemory({ facts, goal }));
+  ]).then(([facts]) => setMemory({ facts, goal: "" }));
   useEffect(() => { void loadMemory(); const on = () => void loadMemory(); window.addEventListener("shuacrew:memory", on); return () => window.removeEventListener("shuacrew:memory", on); }, []);
   useEffect(() => {
     if (!embedded) return;
@@ -341,7 +368,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const [islandTyping, setIslandTyping] = useState(false), [islandMore, setIslandMore] = useState(false);
   // The notch island's geometry (from the Mac app: the camera housing's real size) and the open body's measured height.
   const [notchGeo, setNotchGeo] = useState<{ w: number; h: number; real: boolean }>({ w: 200, h: 32, real: false });
-  const [islandDrop, setIslandDrop] = useState(250), islandBody = useRef<HTMLDivElement>(null);
+  const [islandDrop, setIslandDrop] = useState(250), islandBody = useRef<HTMLDivElement>(null), islandDropRef = useRef(250);
   const [liveDrop, setLiveDrop] = useState(78), liveBody = useRef<HTMLDivElement>(null);
   // What's really playing: the player lives in the main app window, so ask it (via the gateway) rather than this page's copy.
   const [radio, setRadio] = useState<RadioNow>({ playing: false, title: null, station: null });
@@ -525,9 +552,13 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   useEffect(() => {
     if (embedded) return;
     const nooked = nook && !open && prefs.desktopPlacement === "notch";
-    // The island's size right now (its open spring has just begun): the native backdrop grows out of exactly this.
+    // The island's size right now (its open spring has just begun): the native backdrop grows out of exactly this…
     const shape = nooked ? document.querySelector(".shua-island-shape")?.getBoundingClientRect() : undefined;
-    post({ type: "buddyExpand", open, mini: mini && !open, nook: nooked, from: shape && { w: shape.width, h: shape.height }, wide: open && wide, peek: !open && (practicing || !!bubble || !!guide || morning || evening || !!track.id), size: prefs.size, desktopPlacement: prefs.desktopPlacement });
+    // …to exactly its content (measured before this frame was painted, so the spring never has to change its mind)…
+    const island = nooked ? { flare: ISLAND_FLARE, drop: islandDropRef.current } : undefined;
+    // …and tucks back into exactly the shape the page draws at rest, so the hand-back is seamless.
+    const to = !nooked && prefs.desktopPlacement === "notch" ? islandRestShape() : undefined;
+    post({ type: "buddyExpand", open, mini: mini && !open, nook: nooked, from: shape && { w: shape.width, h: shape.height }, island, to, wide: open && wide, peek: !open && (practicing || !!bubble || !!guide || morning || evening || !!track.id), size: prefs.size, desktopPlacement: prefs.desktopPlacement });
   }, [open, mini, nook, bubble, guide, prefs.size, prefs.desktopPlacement, wide, embedded, morning, evening, track.id, practicing]);
   // Focus only when the user opens a writing surface, never on background status updates.
   useEffect(() => {
@@ -668,7 +699,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     try {
       localStorage.setItem("shuacrew.pinned-lesson", JSON.stringify(visual));
       window.dispatchEvent(new Event("shuacrew:pinned-lesson"));
-      post({ type: "buddyOpen", path: "/teach" });
+      setOpen(true); setTab("teach");
     } catch { setError("Could not save this lesson. Keep it open and try again."); }
   };
   const actionChain = useRef<Promise<void>>(Promise.resolve());
@@ -895,11 +926,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const mins = Math.round((next.start - now.getTime()) / 60_000);
       return next.start <= now.getTime() ? `You're in ${next.title} until ${time(next.end)}.` : `Next up: ${next.title} at ${time(next.start)}, ${mins < 90 ? `in ${mins} minutes` : `in about ${Math.round(mins / 60)} hours`}.`;
     }
-    if (what === "cards") {
-      const l = await api<{ due: number }>("/api/learning").catch(() => null);
-      if (!l) return "I couldn't reach your cards just now.";
-      return l.due ? `${l.due} card${l.due === 1 ? "" : "s"} due, about ${Math.max(1, Math.round(l.due * 0.4))} minutes. Say "quiz me" to start.` : "No cards due. You're caught up.";
-    }
     const runs = Object.values(live.runs).filter((r) => isTopLevelWork(r, live.runs));
     if (what === "crew") {
       const busy = runs.filter((r) => ["running", "planning", "queued"].includes(r.status));
@@ -952,21 +978,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     if (!inMeeting(agenda.current, Date.now()) && !timer) { lastSound.current = Date.now(); news.add(text, () => mine()); }
   };
   const announceRef = useRef(announce); announceRef.current = announce;
-  // Learn's heads-ups in the notch: exam countdowns and job follow-ups, once a day each (lib/learn-reminders), through
-  // the same path as calendar ones — the island hint, the voice, and remembered so they're never said twice.
-  useEffect(() => {
-    if (embedded || !prefs.proactive || !native()) return;
-    const SAID = "shuacrew.spark.said";
-    const check = () => void api<{ reminders: LearnReminder[] }>("/api/learning/reminders").then(({ reminders }) => {
-      let said: string[] = []; try { said = JSON.parse(localStorage.getItem(SAID) ?? "[]"); } catch { /* fresh */ }
-      const due = learnNudges(reminders, new Set(said), new Date());
-      if (!due.length || !mine()) return;
-      try { localStorage.setItem(SAID, JSON.stringify([...said, ...due.map((d) => d.key)].slice(-200))); } catch { /* ignore */ }
-      announceRef.current(due.map((d) => d.text).join(" "), "reminder");
-    }, () => {});
-    const first = setTimeout(check, 20_000), every = setInterval(check, 10 * 60_000);
-    return () => { clearTimeout(first); clearInterval(every); };
-  }, [embedded, prefs.proactive]);
   // Timers and alarms ring here (the desktop Spark, once): a chime, the line out loud, a Mac notification, the notch.
   const timers = useTimers();
   useEffect(() => {
@@ -1002,14 +1013,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const live = useLive.getState().crew, since = Date.now() - Math.max(awayMs, 8 * 3_600_000);
       const finished = Object.values(live.runs).filter((r) => (r.status === "done" || r.status === "merged") && r.updatedAt > since && isTopLevelWork(r, live.runs))
         .map((r) => `${(r.member && live.members[r.member]?.name) || "the crew"} finished ${r.title}`);
-      const [w, learn, reminders] = await Promise.all([
-        Promise.race([loadWeather().catch(() => null), new Promise<null>((ok) => setTimeout(() => ok(null), 1500))]),
-        api<{ due: number; profile?: { goal?: string } }>("/api/learning").catch(() => null),
-        api<{ reminders: LearnReminder[] }>("/api/learning/reminders").then((r) => r.reminders, () => [] as LearnReminder[]),
-      ]);
+      const w = await Promise.race([loadWeather().catch(() => null), new Promise<null>((ok) => setTimeout(() => ok(null), 1500))]);
       const desc = w ? describe(w.code, w.day) : null;
       const text = morningBriefLine({ now: Date.now(), agenda: agenda.current, finished, approvals: Object.keys(live.approvals).length,
-        due: learn?.due ?? 0, goal: learn?.profile?.goal?.trim() || undefined, learn: briefReminders(reminders),
+        due: 0,
         weather: w && desc ? { temp: w.temp, label: desc.label, hi: w.hi, lo: w.lo, rainSoon: w.hours.slice(0, 6).some((h) => h.rain >= 50) } : null });
       return text;
     };
@@ -1132,14 +1139,13 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const playEvening = async () => {
     setEvening(false); try { localStorage.setItem("shuacrew.evening", localDay(new Date())); } catch { /* ignore */ }
     speech.current.unlock(); setOpen(true); setTab("chat");
-    const learn = await api<{ days?: Array<{ day: string; reviews: number }> }>("/api/learning").catch(() => ({ days: [] as Array<{ day: string; reviews: number }> }));
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
     const work = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("buddy"));
     const today = work.filter((r) => r.updatedAt >= midnight.getTime());
     const text = eveningRecap({
       finished: today.filter((r) => r.status === "done" || r.status === "merged").sort((a, b) => b.updatedAt - a.updatedAt).map((r) => r.title),
       failed: today.filter((r) => r.status === "failed").length,
-      reviewed: learn.days?.find((d) => d.day === localDay(new Date()) || d.day === new Date().toISOString().slice(0, 10))?.reviews ?? 0,
+      reviewed: 0,
       tomorrow: work.filter((r) => r.status === "queued").map((r) => r.title),
       waiting: Object.keys(crew.approvals).length,
     });
@@ -1151,14 +1157,10 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const playMorning = async () => {
     setMorning(false); try { localStorage.setItem("shuacrew.morning", localDay(new Date())); } catch { /* ignore */ }
     speech.current.unlock(); setOpen(true); setTab("chat");
-    const [brief$, learn, reminders] = await Promise.all([
-      api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing").catch(() => ({ sections: [] as Array<{ title: string; items: Array<{ text: string }> }> })),
-      api<{ due?: number; profile?: { goal?: string } }>("/api/learning").catch(() => ({ due: 0, profile: {} as { goal?: string } })),
-      api<{ reminders: LearnReminder[] }>("/api/learning/reminders").then((r) => r.reminders, () => [] as LearnReminder[]),
-    ]);
+    const brief$ = await api<{ sections?: Array<{ title: string; items: Array<{ text: string }> }> }>("/api/briefing").catch(() => ({ sections: [] as Array<{ title: string; items: Array<{ text: string }> }> }));
     const finished = (brief$.sections ?? []).find((x) => /finish/i.test(x.title))?.items.map((x) => x.text) ?? [];
     const runsNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs));
-    const text = morningBrief({ now: new Date(), goal: learn.profile?.goal?.trim(), learn: briefReminders(reminders), finished, waiting: Object.keys(crew.approvals).length, due: learn.due ?? 0,
+    const text = morningBrief({ now: new Date(), finished, waiting: Object.keys(crew.approvals).length, due: 0,
       ventures: Object.values(crew.ventures).map((v) => ({ name: v.name, stage: v.stage })), running: runsNow.filter((r) => ["running", "planning"].includes(r.status)).length });
     setBrief({ q: "Morning briefing", a: text }); speech.current.say(text);
   };
@@ -1531,10 +1533,13 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       const cursorGuide = screen && !area ? '\nSHOW WITH THE CURSOR: When the user asks "show me", "where is", or "point to" a visible item, emit a point block so the blue cursor companion physically points to it; words alone are insufficient. Use a current accessibility/OCR target ID when available, otherwise verified screenshot coordinates. For a walkthrough, emit a guide block for the next visible step. Showing does not mean clicking. If the item is not visible, explain that and guide to the control that reveals it; never invent its position. Example: ```point {"target":"#12","label":"Settings"}``` — substitute an actual current target. Local/text-only mode may point only to controls with supplied positions.' : '';
       const identity = `CURRENT COMPANION IDENTITY: Your name is ${companionName(prefs)}. Tone: ${prefs.tone}. Answer length: ${prefs.length}.${prefs.personality ? ` User preferences for your personality: ${prefs.personality}` : ""}\nSCREEN STATE: ${screenAllowed(readSee(), liveScreen.current) ? "Screen requests are enabled. Do not ask to turn on the eye." : "Screen requests are off. Do not capture or interact with the screen."} ${screen ? "Fresh screen evidence is attached to this turn." : "No screenshot attached this turn; that is not a macOS permission denial."}\nMAC CONTROL NOW: ${prefs.control === "off" ? "Mouse and keyboard are disabled by the user. Do not emit act blocks." : `Native action bridge is available with ${prefs.control === "ask" ? "approval before each step" : "automatic steps within the requested task"}. Accessibility ${hands.trusted ? "is granted" : "has not been confirmed; report a native denial if returned"}. Emit do blocks to open apps and one act block per observed desktop step; do not describe this as screenshot-only.`}\n${engineLine(brain, selected.model, wantLocal && prefs.brain !== "local")}${rightNow}${cursorGuide}\n${focusContext(focus.current, crew.runs)}`;
       const refreshedRules = convo && convo.rules !== SPARK_RULES ? buddyPrompt("Continue this conversation using these updated instructions.", screen, {name:companionName(prefs),tone:prefs.tone,length:prefs.length,control:prefs.control}, now, appNowBase) : "";
-      const page = await inAppPage, inAppNote = inApp ? `THIS ASK IS INSIDE SHUACREW. Your screen view can't show ShuaCrew's window, so never use act, point or the Dock for it, and never touch other apps' windows to reach it. Open pages with go and press controls with ui by their exact names.${page ? `\n${shuacrewPageText(page)}` : ""}` : "";
-      // Learning or career: Learn's few lines ride along, so Shua answers and keeps it organized from anywhere.
-      const learnNow = asksAboutLearn(yourWords(q).text) ? await api<{ text: string }>("/api/learning/brief").then((r) => `LEARN RIGHT NOW (their learning & career space; change it with a learn ops action):\n${r.text}`, () => "") : "";
-      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, learnNow, yourWords(q).phone && PHONE_ASK, (camWanted || /iphone-camera\.jpg/.test(q)) && CAMERA_NOTE, building(q) && BUILD_NOTE].filter(Boolean).join("\n\n");
+      // The look found ShuaCrew's own window on top (they're working in it, whatever words they used): same rules
+      // as an ask about ShuaCrew — its page's real names, never screen clicks or another app's window behind it.
+      const seesShuaCrew = !inApp && !!(screen?.context as { shuacrewWindow?: boolean } | undefined)?.shuacrewWindow;
+      const page = await (seesShuaCrew ? listShuaCrew() : inAppPage);
+      const inAppNote = inApp ? `THIS ASK IS INSIDE SHUACREW. Never use act, point or the Dock for ShuaCrew's window, and never touch other apps' windows to reach it. Open pages with go, press controls with ui and type into fields with ui + text, by their exact names.${page ? `\n${shuacrewPageText(page)}` : ""}`
+        : seesShuaCrew ? `SHUACREW'S OWN WINDOW IS ON TOP OF THEIR SCREEN (that's what the screenshot shows). Work in it with go and ui by exact names (ui + text types into a field) — never act or point at it, and don't reach for an app behind it unless they name that app (then open_app it first).${page ? `\n${shuacrewPageText(page)}` : ""}` : "";
+      const appNow = [appNowBase, workspace, identity, remembered, earlier, language, refreshedRules, workflowContext(q), inAppNote, yourWords(q).phone && PHONE_ASK, (camWanted || /iphone-camera\.jpg/.test(q)) && CAMERA_NOTE, building(q) && BUILD_NOTE].filter(Boolean).join("\n\n");
       const recap = convo && disposition === "new"
         ? messages.slice(-6).map((m) => `${m.who === "you" ? "User" : "You"}: ${m.text.slice(0, 400)}`).join("\n") : "";
       const screenLines = screen ? [screen.text.length ? screenText(screen.text, 2500, screen) : "", elementsText(screen.context, 120, screen)].filter(Boolean).join("\n") : "";
@@ -1773,13 +1778,12 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Up late?" : hour < 12 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
   const workingNow = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning")).length;
-  const learningFocus = useLearningFocus();
   // Live activity: the crew's own work (not Shua's chat), newest first, shown under the notch while it runs.
   const liveRuns = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && !r.labels?.includes("buddy") && ["running", "planning", "awaiting_approval"].includes(r.status))
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const justFinished = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && r.status === "done" && Date.now() - r.updatedAt < 2 * 3600_000 && !r.labels?.includes("buddy"))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  const idleFocus = notchFocus({ approvals, working: workingNow, justFinished: justFinished ? { id: justFinished.id, title: justFinished.title } : null, ...learningFocus, hour });
+  const idleFocus = notchFocus({ approvals, working: workingNow, justFinished: justFinished ? { id: justFinished.id, title: justFinished.title } : null, hour });
   const now$ = [
     approvals ? { key: "ok", tone: "wait", text: `${approvals} waiting for your OK`, ask: "What needs my OK right now?" } : null,
     activeMissions.length ? { key: "missions", tone: "live", text: `${activeMissions.length} mission${activeMissions.length === 1 ? "" : "s"} in progress`, ask: "How are my missions going?" } : null,
@@ -1836,10 +1840,22 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     const got = (e: Event) => { const d = (e as CustomEvent).detail as NonNullable<typeof media>; const next = d?.title ? d : null;
       setMedia((cur) => (!cur || !next ? next : cur.title === next.title && cur.playing === next.playing && cur.art === next.art && Math.abs(cur.position - next.position) < 3 ? cur : next)); };
     window.addEventListener("shuacrew:media", got);
+    // Play, pause and new songs arrive the instant they happen (the Mac app hears Music's and Spotify's own
+    // notifications); this poll only keeps the scrubber honest and catches anything those miss.
     const ask = () => post({ type: "buddyNowPlaying" }); ask();
-    const t = setInterval(ask, islandOpen || open ? 1500 : 5000);
+    const t = setInterval(ask, islandOpen || open ? 1500 : 15_000);
     return () => { clearInterval(t); window.removeEventListener("shuacrew:media", got); };
   }, [showMedia, islandOpen, open, embedded]);
+  // The song, live in the notch: the bars dance to its real levels, tinted with its cover (like Shua's voice does).
+  const musicPlaying = !!(showMedia && media?.playing);
+  const musicMeter = useMusicMeter(musicPlaying, media?.app);
+  const [musicTint, setMusicTint] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!media?.art) { setMusicTint(null); return; }
+    void artTint(media.art).then((tint) => { if (live) setMusicTint(tint); });
+    return () => { live = false; };
+  }, [media?.art]);
   const mediaCmd = (command: "toggle" | "next" | "previous") => void perform({ type: "media", command, ...(media ? { app: media.app } : {}) }).then(() => setTimeout(() => post({ type: "buddyNowPlaying" }), 350));
   const mediaSeek = (seconds: number) => void perform({ type: "media", command: "seek", seconds: Math.round(seconds), ...(media ? { app: media.app } : {}) }).then(() => setTimeout(() => post({ type: "buddyNowPlaying" }), 400));
   const workingRuns = Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs) && (r.status === "running" || r.status === "planning"));
@@ -1872,8 +1888,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     }, 50);
     return () => clearInterval(t);
   }, [buddyState, call.active]);
-  // Ready for you: fn is down and nothing's been heard yet. Once words come in, the live captions take over.
-  const fnReady = notched && fnHeld && !heard;
   useEffect(() => { if (speaking || streamText) setFnSent(false); }, [speaking, streamText]);
   useEffect(() => { if (!["starting", "hearing", "transcribing"].includes(phase)) holdSettled(); }, [phase]);
   useEffect(() => { if (phase === "error" || error) { setFnHeld(false); setFnSent(false); } }, [phase, error]); // never stuck "listening"
@@ -1988,8 +2002,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
   }, [islandLive]);
   useEffect(() => { if ((window as { __sparkTiming?: boolean }).__sparkTiming) post({ type: "buddySelfTest", ok: true, message: `island ${islandLive ? "live" : "rest"} drop=${islandDropNow} t=${Math.round(performance.now())} speaking=${+speaking} caption=${+!!caption} streaming=${+streamingNow} voice=${+getBuddyVoice().on} captions=${+prefs.notchCaptions} placement=${prefs.desktopPlacement} chat=${+open} nook=${+islandOpen}`, output: "" }); }, [islandLive, islandDropNow, speaking, !!caption, streamingNow, open, islandOpen]);
   // Measure the open body so the island drops exactly as far as its content (nothing cut off), and tell the Mac app
-  // how big it is so the hover area matches what you see.
-  useEffect(() => {
+  // how big it is so the hover area matches what you see. Before paint: the first frame of the open is already right.
+  useLayoutEffect(() => {
     const el = islandBody.current; if (!el || !islandOpen) return;
     let previous = -1;
     const measure = () => {
@@ -2000,7 +2014,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       });
       const height = notchContentHeight(rows, (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0), parseFloat(style.rowGap) || 0, 480);
       if (height === previous) return;
-      previous = height; setIslandDrop(height); post({ type: "buddyIsland", flare: ISLAND_FLARE, drop: height });
+      previous = height; islandDropRef.current = height; setIslandDrop(height); post({ type: "buddyIsland", flare: ISLAND_FLARE, drop: height });
     };
     const ro = new ResizeObserver(measure);
     const observe = () => { ro.disconnect(); ro.observe(el); Array.from(el.children).forEach(child => ro.observe(child)); measure(); };
@@ -2019,22 +2033,41 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     }, () => scrubbing.current || nookFocus.current || !!getCompanionDraft().trim());
   };
   const nextMoves = lastSpark && !working && !busy ? parseNext(messages.at(-1)!.text) : [];
-  // Nothing asked yet: the first three starters (the chat's own, fitting the moment), so the open notch is never an empty box.
-  const nookStarters = !messages.length && !working && !busy ? starters.slice(0, 3) : [];
-  // The island's one line: what it hears, says or does right now; else what needs you, the last reply, or the day.
+  // The tucked-in captions' words: the reply as it streams, then as it's spoken.
   const lastReply = lastSpark ? prose(speakable(messages.at(-1)!.text)) : "";
   const replyText = streamText || (speaking ? lastReply : "");
-  const islandHero: { text: string; sub?: string; live?: boolean; shimmer?: boolean; tone?: string; reply?: boolean } =
-    fnReady ? { text: "Listening… let go to send", live: true, shimmer: true }
-    : (fnHeld || hearingNow) && heard ? { text: heard, live: true }
-    : streamingNow ? { text: visibleStream, live: true, reply: true }
-    : speaking && caption ? { text: caption.text, live: true, reply: true }
-    : processing || working || !!busy ? { text: fnSent && heard ? heard : "Working on it", live: true, shimmer: true }
-    : status === "paused" ? { ...pausedLine(recorded?.statusReason), tone: "hold" }
-    : lastReply ? { text: lastReply, reply: true }
-    : { text: idleFocus.text, sub: idleFocus.sub, tone: idleFocus.tone };
   const callOwnsIsland = call.active && call.mode !== "silent";
-  const islandChip = !fnHeld && !hearingNow && !speaking && !processing && !call.active && !pointerFeedback ? (nextMoves[0] ?? (!messages.length ? idleFocus.ask : undefined) ?? nookStarters[0] ?? null) : null;
+  // How far the island reaches past the camera at rest: a little wider with a song (its cover rides beside the bars).
+  // The ears are laid out at this width always; opening or captioning widens the shape, and the ears glide out to its
+  // edges on a transform (notch-hover.css), so nothing inside re-lays out while the island moves.
+  const earFlare = musicPlaying && media?.art ? 72 : musicPlaying ? 58 : 46;
+  const islandFlare = islandOpen ? ISLAND_FLARE : islandLive ? 180 : earFlare;
+  // Tucking back in: still drawn for one tuck spring, so it fades with the island instead of vanishing.
+  const islandClosing = useLinger(islandOpen, TUCK_CURVE.ms) && !islandOpen;
+  // The left ear's bars: Shua's voice when it talks or listens, otherwise the song that's playing (real levels when
+  // the Mac can measure them, a labelled "playing" sway when it can't), otherwise Shua's state.
+  const shuaEq = buddyState === "speaking" ? "speaking" : assistantPhase === "idle" ? (workflows.phase === "recording" ? "watching" : buddyState) : assistantPhase;
+  const islandEq = shuaEq === "idle" && musicPlaying ? (musicMeter === "denied" || musicMeter === "unavailable" ? "music-ambient" : "music") : shuaEq;
+  // At rest (and settled: no glide in progress), the song's bars are drawn by the Mac app natively, right over these:
+  // the page re-rendering 60×/s for them cost ~14% CPU. Any movement (hover, captions, the chat) hands them back.
+  const islandMoving = useLinger(islandOpen || islandClosing || islandLive || open, 450);
+  const nativeBars = notched && !!native() && islandEq === "music" && !islandMoving;
+  useEffect(() => {
+    if (!notched || !native()) return;
+    if (!nativeBars) { post({ type: "buddyMusicBars", show: false }); return; }
+    const ear = document.querySelector<HTMLElement>(".shua-island-ear.is-face"), eq = ear?.querySelector<HTMLElement>(".notch-equalizer");
+    if (!ear || !eq) return;
+    const send = () => {
+      const bars = Array.from(eq.children) as HTMLElement[];
+      if (!bars.length) return;
+      const row = eq.getBoundingClientRect();
+      post({ type: "buddyMusicBars", show: true, cy: row.top + row.height / 2, h: bars[0]!.offsetHeight, rgb: cssRgb(ear, "var(--music-tint, var(--amber, #b7a5ff))"),
+        bars: bars.map((bar) => { const r = bar.getBoundingClientRect(); return { x: r.left + r.width / 2, w: r.width }; }) });
+    };
+    send();
+    const ro = new ResizeObserver(send); ro.observe(eq); ro.observe(ear);
+    return () => { ro.disconnect(); post({ type: "buddyMusicBars", show: false }); };
+  }, [nativeBars, notched, musicTint, earFlare, notchGeo.w, notchGeo.h]);
   const quick = nextMoves.length ? nextMoves : lastSpark && !working && !busy ? ["Tell me more", "Make it shorter", ...(see ? ["Show me on screen"] : []), ...(prefs.control !== "off" && see ? ["Do it for me"] : [])] : [];
   const close = () => { setNook(false); setMini(false); if (embedded) onClose?.(); else setOpen(false); };
   leaveOpen.current = () => {
@@ -2123,7 +2156,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       {tab === "chat" && (phase === "hearing" || phase === "transcribing" || phase === "error") && <p className="spk-mic-status" role="status">{phase === "hearing" ? "Listening…" : phase === "transcribing" ? "Turning your voice into text…" : "Microphone unavailable. You can keep typing."}</p>}
       {tab === "teach" ? <Teaching compact /> : tab === "widgets" ? <div className="buddy-thread buddy-widgets"><SparkWidgets ctx={embedded ? { go: (path) => { window.shuacrew?.navigate(path); } } : ctx} /></div> : <>
         <div className={`buddy-thread spk-thread${call.active ? " is-voice-thread-hidden" : ""}`} aria-hidden={call.active} ref={thread} onScroll={(e) => { const el = e.currentTarget; followBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (followBottom.current) setBehind(false); }}>
-          {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
+          {!messages.length && !brief && <motion.div className="spk-hello" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
             <div className="spk-hello-avatar"><SparkCharacter preferences={prefs} mood="happy" size={64} crop="portrait" /></div>
             <h2>{greeting} I'm {companionName(prefs)}.</h2>
             <div className="spk-now" aria-label="Right now">{now$.length
@@ -2150,7 +2183,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           {(phase === "hearing" || phase === "transcribing") && <motion.div className="spk-row is-you" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
             <div className="buddy-msg is-you is-hearing">{heard || (phase === "hearing" ? "Listening…" : "…")}<i className="spk-live-caret" /></div>
           </motion.div>}
-          {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={26} crop="portrait" /></span><p className="buddy-typing spk-typing"><span /><span /><span /> {busy || "thinking"}</p></motion.div>}
+          {(busy || (working && messages.at(-1)?.who === "you")) && <motion.div className="spk-row" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}><span className="spk-mini"><SparkCharacter preferences={prefs} mood="thinking" size={26} crop="portrait" /></span><p className="buddy-typing spk-typing" role="status"><span /><span /><span /> <WorkingFor label={busy || "Thinking…"} /></p></motion.div>}
           {(quick.length > 0 || (convo && !working && !busy && lastQuestion)) && <details className="spk-followups">
             <summary>Continue conversation <ChevronRight size={12} /></summary>
           {lastSpark && !working && !busy && <Recommendations ask={yourWords([...messages].reverse().find((m) => m.who === "you")?.text.split("\n\n[screen]")[0] ?? "").text} />}
@@ -2202,7 +2235,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
       // (transform only, top-centre), and what's inside arrives a beat later (spark-design.css). Elsewhere it rises in.
       initial={reduceMotion || notched ? false /* notched: a CSS keyframe pours it open on the compositor (spark-design.css) */ : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, scale: 1, scaleX: 1, scaleY: 1 }}
       exit={reduceMotion ? { opacity: 0 } : notched ? { opacity: 0, scaleX: 0.82, scaleY: 0.4, y: -4, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } } : { opacity: 0 }}
-      transition={reduceMotion ? { duration: 0 } : notched ? { type: "spring", stiffness: 380, damping: 32, mass: 0.9 } : { type: "spring", stiffness: 420, damping: 34 }}>
+      transition={reduceMotion ? { duration: 0 } : SPRING}>
       {notched && <div className="shua-chat-cap" aria-hidden="true"><span /><span className="shua-island-cam" /><span /></div>}
       {card}</motion.div>}</AnimatePresence>
     {!open && mini && <MiniCard name={companionName(prefs)} prefs={prefs} mood={mood}
@@ -2218,14 +2251,14 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
     {!open && !mini && !practicing && !guide && !stuck && bubble && <button type="button" className="buddy-bubble" onClick={() => { post({ type: "buddyOpen", path: bubble.path }); setBubble(null); }}>{bubble.text}<small>Open in ShuaCrew</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && evening && <button type="button" className="buddy-bubble is-morning" onClick={() => void playEvening()}>Your day, wrapped<small>Tap to hear it</small></button>}
     {!open && !mini && !practicing && !guide && !stuck && !bubble && !morning && !evening && track.id && <button type="button" className="buddy-bubble" onClick={() => post({ type: "buddyOpen", path: `/sessions/${track.id}` })}>{track.title}<small>{track.who ? `${track.who} · ${track.label}` : track.label}</small></button>}
-    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${fnHeld ? " is-ready" : ""}${callOwnsIsland ? " is-calling" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandOpen ? ISLAND_FLARE : islandLive ? 180 : media?.playing ? 58 : 46}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px` } as CSSProperties}
+    {prefs.desktopPlacement === "notch" ? <div className={`shua-island ${islandOpen ? "is-open" : islandLive ? "is-live" : "is-rest"}${islandClosing ? " is-closing" : ""}${fnHeld ? " is-ready" : ""}${callOwnsIsland ? " is-calling" : ""}`} style={{ "--hw": `${notchGeo.w}px`, "--hh": `${notchGeo.h}px`, "--flare": `${islandFlare}px`, "--drop": `${islandOpen ? islandDrop : islandDropNow}px`, "--ear": `${earFlare}px`, "--ear-shift": `${islandFlare - earFlare}px`, "--open-flare": `${ISLAND_FLARE}px`, ...(musicTint ? { "--music-tint": musicTint } : {}) } as CSSProperties}
       onMouseEnter={() => nookHover.current(true)} onMouseLeave={() => nookHover.current(false)}>
       <div className="shua-island-shape">
         <NotchAura speaking={buddyState === "speaking"} listening={buddyState === "listening"} processing={processing || working || !!busy || call.state === "connecting" || call.state === "working" || (call.tasks ?? 0) > 0 || workflows.phase === "running"} level={readVoiceLevel} />
         <div className="shua-island-ears">
           <button type="button" className="shua-island-ear is-face" aria-label={`Open ${companionName(prefs)}`} onClick={() => { speech.current.unlock(); openChat(); }}>
-            <NotchEqualizer compact state={buddyState === "speaking" ? "speaking" : assistantPhase === "idle" ? (workflows.phase === "recording" ? "watching" : buddyState) : assistantPhase} readLevel={readVoiceLevel} />
-            {islandOpen && <strong className="shua-island-name">{companionName(prefs)}<small className={`is-${buddyState}`}>{statusLabel}</small></strong>}
+            {musicPlaying && media?.art && <img className="shua-island-art" src={media.art} alt="" />}
+            <NotchEqualizer compact state={islandEq} readLevel={readVoiceLevel} readBands={readMusicBands} external={nativeBars} />
           </button>
           <span className="shua-island-cam" aria-hidden />
           <span className="shua-island-ear is-live">
@@ -2235,9 +2268,7 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
               : nextTimer ? <em className="is-timer" title={nextTimer.label || "Timer"}><TimeLeft t={nextTimer} /></em>
               : timer ? <em className="is-focus">{Math.ceil(remainingFocusMs(timer, now) / 60000)}m</em>
               : idleFocus.tone === "done" ? <em className="is-done" aria-label={idleFocus.text}><Check size={11} strokeWidth={3} /></em>
-              : idleFocus.tone === "learn" ? <em className="is-learn" aria-label={`${idleFocus.text} · ${idleFocus.sub ?? ""}`} title={idleFocus.sub}><b aria-hidden />{learningFocus.due}</em>
               : <i className="shua-island-dot" aria-label="Ready" />}
-            {islandOpen && <button type="button" className="shua-island-expand" onClick={openChat} aria-label="Open chat" title="Open chat"><Maximize2 size={12} /></button>}
           </span>
         </div>
         <div className="shua-island-live" ref={liveBody} aria-hidden={!islandLive} inert={!islandLive}>{callOwnsIsland ? <LiveIsland textOnly /> : keepRow(
@@ -2260,14 +2291,8 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
           : stuck ? <p className="shua-island-hint"><Compass size={12} /> {stuck.kind === "error" ? `Stuck in ${stuck.app}? Hover for help` : "Still searching? Hover for help"}</p>
           : liveRuns[0] && prefs.notchActivities !== false ? <NotchActivity run={liveRuns[0]} more={liveRuns.length - 1} onOpen={() => (embedded ? window.shuacrew?.navigate(`/sessions/${liveRuns[0]!.id}`) : post({ type: "buddyOpen", path: `/sessions/${liveRuns[0]!.id}` }))} /> : null)}</div>
         <div className={`shua-island-body${islandMore || workflowsOpen || accessOpen || missionOpen ? " is-more" : ""}`} ref={islandBody} aria-hidden={!islandOpen} inert={!islandOpen}>
-          {/* One line, not a text box: what Shua is hearing, saying or doing right now — or your day at a glance. */}
-          {/* A reply is shown whole, live with the voice (scroll to re-read); everything else stays one tappable line. */}
-          {!callOwnsIsland && islandHero.reply && <div className={`isl-reply${islandHero.live ? " is-live" : ""}`} aria-label={`${companionName(prefs)}'s reply`}>
-            <SpokenReply text={streamText || lastReply || islandHero.text} line={speaking ? caption : null} streaming={!!streamText} voiceLed={voiceLed} more={speech.current.busy} lines={6} /></div>}
-          {!callOwnsIsland && !islandHero.reply && <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-hero${islandHero.live ? " is-live" : ""}${islandHero.shimmer ? " is-shimmer" : ""}${islandHero.tone ? ` is-tone-${islandHero.tone}` : ""}`} onClick={openChat} title="Open the conversation">
-            {islandHero.tone && islandHero.tone !== "calm" && <span className="isl-kicker"><i />{FOCUS_KICKER[islandHero.tone]}</span>}
-            <span className="isl-hero-text">{islandHero.text}</span>{islandHero.sub && <small>{islandHero.sub}</small>}
-          </button>}
+          {/* Hovered, the island is clean: no reply, no status line, no suggestion — only what's live (the song, a
+              decision, an error) and the controls. Shua's words live in the chat and in the tucked-in captions. */}
           {selectedArea && <SelectedAreaPreview {...selectedArea} onClear={() => setSelectedArea(null)} />}
           {companionApprovals.map(approval => <CompanionApproval key={approval.id} approval={approval} />)}
           {callOwnsIsland && <LiveIsland expanded textOnly />}
@@ -2306,7 +2331,6 @@ export function Buddy({ embedded = false, full = false, onClose, page }: { embed
               <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn" onClick={() => { setIslandTyping(true); post({ type: "buddyNookFocus" }); }} title="Type" aria-label="Type"><Keyboard size={15} /></button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${see || liveOn ? " is-on" : ""}`} aria-pressed={see || liveOn} onClick={() => { if (see || liveOn) void interrupt(); if (liveOn) post({ type: "buddyLive", on: false }); saveSee(!(see || liveOn)); }} title={see || liveOn ? "Stop looking at the screen" : "Look at my screen"} aria-label="Screen"><Eye size={15} /></button>
               <button type="button" tabIndex={islandOpen ? 0 : -1} className={`isl-btn${islandMore ? " is-on" : ""}`} aria-pressed={islandMore} onClick={() => setIslandMore(v => !v)} title="Missions, workflows, access" aria-label="More"><Ellipsis size={15} /></button>
-              {islandChip && <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-chip" onClick={() => void ask(islandChip)} title={islandChip}><Sparkles size={12} /><span>{islandChip}</span></button>}
               <button type="button" tabIndex={islandOpen ? 0 : -1} className="isl-btn is-open" onClick={openChat} title="Open the full conversation" aria-label="Open chat"><ArrowUpRight size={15} /></button>
             </>}
           </div>

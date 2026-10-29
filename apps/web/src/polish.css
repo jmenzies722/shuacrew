@@ -1,5 +1,5 @@
 /* Shared Mac workspace finish. Colors remain owned by the chosen palette. */
-:root { --scene-distance: 5px; --scene-duration: 240ms; --interaction-lift: -1px; --motion-ease: cubic-bezier(.2,.75,.25,1); }
+:root { --scene-distance: 5px; --scene-duration: 240ms; --interaction-lift: -1px; --motion-ease: var(--ease-out); }
 :root[data-motion-style="calm"] { --scene-distance: 0px; --scene-duration: 0ms; --interaction-lift: 0px; }
 :root[data-motion-style="expressive"] { --scene-distance: 12px; --scene-duration: 420ms; --interaction-lift: -3px; }
 .workspace-scene { animation: workspace-arrive var(--scene-duration) var(--motion-ease); }

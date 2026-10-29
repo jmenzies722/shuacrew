@@ -32,7 +32,7 @@
   background: radial-gradient(circle at 50% 50%, var(--ink) 0 5%, transparent 5.5%), linear-gradient(145deg, color-mix(in srgb, var(--amber) 85%, #fff), color-mix(in srgb, var(--amber) 70%, #000)); }
 .radio-label span { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--on-accent, #fff); line-height: 1.2; transform: translateY(-12px); }
 .radio-arm { position: absolute; top: 2%; right: 4%; width: 8px; height: 52%; border-radius: 4px; transform-origin: 50% 6%; transform: rotate(-8deg);
-  background: linear-gradient(180deg, #c9c7cf, #7b7882); box-shadow: 0 4px 10px rgba(0,0,0,.5); transition: transform .6s cubic-bezier(.2,.8,.2,1); }
+  background: linear-gradient(180deg, #c9c7cf, #7b7882); box-shadow: 0 4px 10px rgba(0,0,0,.5); transition: transform .6s var(--ease-out); }
 .radio-arm::before { content: ""; position: absolute; top: -8px; left: 50%; width: 22px; height: 22px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle, #d8d6de 0 30%, #4a4750 32%); }
 .radio-arm.is-down { transform: rotate(18deg); }
 @keyframes radio-spin { to { transform: rotate(360deg); } }

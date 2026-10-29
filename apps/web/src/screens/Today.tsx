@@ -11,7 +11,7 @@ import { savePower } from "../lib/power";
 import { companionName, useCompanion } from "../lib/companion";
 import { describe } from "../lib/weather";
 import { skyAt, todayMoments, type Moment } from "../lib/today";
-import { useLearningNow, useWeatherNow } from "../components/TopBarWidgets";
+import { useWeatherNow } from "../components/TopBarWidgets";
 import { native, post } from "./spark/bridge";
 import "./today-live.css";
 import { Readouts } from "../components/ControlRoom";
@@ -27,7 +27,7 @@ export function Today() {
   const crew = useLive((s) => s.crew);
   const navigate = useNavigate();
   const prefs = useCompanion(), name = companionName(prefs);
-  const weather = useWeatherNow().value, learn = useLearningNow().value;
+  const weather = useWeatherNow().value;
   const cal = useDayCalendar();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [now, setNow] = useState(Date.now);
@@ -41,27 +41,23 @@ export function Today() {
 
   const runs = useMemo(() => Object.values(crew.runs).filter((r) => isTopLevelWork(r, crew.runs)), [crew.runs]);
   const events = cal.state?.authorized ? cal.state.events : [];
-  const due = learn?.due ?? 0;
-  const moments = useMemo(() => todayMoments({ now, runs, events, reminders, due }), [now, runs, events, reminders, due]);
+  const moments = useMemo(() => todayMoments({ now, runs, events, reminders, due: 0 }), [now, runs, events, reminders]);
   const nowIndex = moments.findIndex((m) => m.at > now);
   const approvals = Object.values(crew.approvals);
   const running = runs.filter((r) => ["running", "planning", "queued"].includes(r.status));
   const finishedToday = runs.filter((r) => (r.status === "done" || r.status === "merged") && localDay(new Date(r.updatedAt)) === localDay(new Date(now)) && !r.labels?.includes("buddy"));
   const nextMeeting = events.filter((e) => !e.allDay && e.start > now).sort((a, b) => a.start - b.start)[0];
-  const reviewedToday = learn?.days?.find((d) => d.day === localDay(new Date(now)))?.reviews ?? 0;
   const focusToday = focusMinutes(1, new Date(now))[0]?.minutes ?? 0;
-  const learnStreak = streak(new Set((learn?.days ?? []).filter((d) => d.reviews > 0).map((d) => d.day)), new Date(now));
   const sky = skyAt(now), w = weather ? describe(weather.code, weather.day) : null;
   const startedToday = runs.filter((r) => localDay(new Date(r.createdAt)) === localDay(new Date(now))).length; // every session, Shua chats included, so it matches the tokens beside it
   const tokensToday = crew.today.day === dayKey(now) ? crew.today.tokens : 0;
 
-  const brief = morningBrief({ now: new Date(now), goal: learn?.profile?.goal, finished: finishedToday.map((r) => r.title), waiting: approvals.length, due,
+  const brief = morningBrief({ now: new Date(now), finished: finishedToday.map((r) => r.title), waiting: approvals.length, due: 0,
     ventures: Object.values(crew.ventures ?? {}).map((v) => ({ name: (v as { name: string }).name, stage: (v as { stage: string }).stage })), running: running.length,
     meetings: events.filter((e) => !e.allDay && e.end > now).map((e) => ({ title: e.title, time: hhmm(e.start) })) });
   const headline = approvals.length ? `${approvals.length} decision${approvals.length === 1 ? " needs" : "s need"} you`
     : running.length ? `The crew is on ${running.length} thing${running.length === 1 ? "" : "s"}`
     : nextMeeting && nextMeeting.start - now < 90 * 60_000 ? `${nextMeeting.title} at ${hhmm(nextMeeting.start)}`
-    : due ? `${due} card${due === 1 ? "" : "s"} between you and better`
     : sky.phase === "night" ? "Wind down. Tomorrow's set." : "A clear runway. Make something.";
 
   const startDay = () => {
@@ -77,7 +73,6 @@ export function Today() {
   const cards = [
     approvals.length && { key: "wait", icon: Hand, tone: "wait", title: `${approvals.length} waiting on you`, sub: approvals[0]?.tool ? `First: ${approvals[0].tool}` : "Decisions from the crew", go: () => approvals[0]?.run ? void navigate({ to: "/sessions/$id", params: { id: approvals[0].run } }) : void navigate({ to: "/board" }) },
     running.length && { key: "live", icon: Loader2, tone: "live", title: `${running.length} working now`, sub: running[0]!.title, go: () => void navigate({ to: "/sessions/$id", params: { id: running[0]!.id } }) },
-    due && { key: "learn", icon: GraduationCap, tone: "learn", title: `${due} cards · ~${Math.max(1, Math.round(due * 0.4))} min`, sub: learn?.profile?.goal ? `Toward ${learn.profile.goal}` : "Spaced right before you'd forget", go: () => void navigate({ to: "/learn" }) },
     nextMeeting && { key: "meet", icon: CalendarDays, tone: "meet", title: nextMeeting.title, sub: `${hhmm(nextMeeting.start)} · in ${Math.max(1, Math.round((nextMeeting.start - now) / 60_000))} min`, go: () => undefined },
   ].filter(Boolean) as Array<{ key: string; icon: typeof Play; tone: string; title: string; sub: string; go: () => void }>;
 
@@ -102,7 +97,6 @@ export function Today() {
       { label: "Shipped", value: finishedToday.length, dim: !finishedToday.length, tone: finishedToday.length ? "ok" : undefined, sub: "finished today" },
       { label: "Tokens", value: formatTokens(tokensToday), dim: !tokensToday, sub: "used since midnight" },
       { label: "Focus", value: <>{focusToday}<small>m</small></>, dim: !focusToday, sub: "in Flow today" },
-      { label: "Learning streak", value: <>{learnStreak}<small>{learnStreak === 1 ? "day" : "days"}</small></>, dim: !learnStreak, sub: reviewedToday ? `${reviewedToday} reviewed today` : "review to keep it going" },
     ]} />
 
     <div className="td-body">

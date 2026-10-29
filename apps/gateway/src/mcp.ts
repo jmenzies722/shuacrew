@@ -6,11 +6,14 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import type { AnyEvent } from "@shuacrew/core";
 import type { EventStore } from "./store.js";
 import { listTools, type Connection } from "./mcp-client.js";
 import { mcpPackage, resolveMcpBrand } from "./mcp-brand.js";
+
+/** ShuaCrew's own servers inside Codex (see Mcp.forCodex); runtimes strip it again for display and policy. */
+export const CODEX_PREFIX = "shua_";
 
 export interface McpServer {
   id: string;
@@ -18,7 +21,8 @@ export interface McpServer {
   command?: string;
   args: string[];
   url?: string;
-  auth: "none" | "oauth";
+  /** "gh": signed in with the GitHub CLI's login, asked of `gh` when needed — never copied into ShuaCrew. */
+  auth: "none" | "oauth" | "gh";
   signedIn: boolean;
   /** Spark may use it too (off by default: every server's tools load up front and slow Spark's first word a little). */
   spark?: boolean;
@@ -45,7 +49,13 @@ export class Mcp {
     private store: EventStore,
     private secretsFile: string,
     private openBrowser: (url: string) => void = openUrl,
+    private ghToken: (fresh?: boolean) => string | undefined = githubCliToken,
   ) {}
+
+  /** The bearer for a server right now: its stored sign-in, or for "gh" the GitHub CLI's current login. */
+  private access(server: Omit<McpServer, "signedIn">, tokens = this.tokens()): string | undefined {
+    return server.auth === "gh" ? this.ghToken() : tokens[server.id]?.access;
+  }
 
   private connections = new Map<string, Connection>();
   private timer?: NodeJS.Timeout;
@@ -85,8 +95,10 @@ export class Mcp {
     if (!server) throw new Error("no such server");
     const cached = this.connections.get(id);
     if (cached && !fresh) return cached;
-    let result = await listTools({ command: server.command, args: server.args, url: server.url, token: this.tokens()[id]?.access });
-    if (!result.ok && result.error === "needs sign-in" && (await this.refresh(id).catch(() => false))) {
+    let result = await listTools({ command: server.command, args: server.args, url: server.url, token: this.access(server) });
+    if (!result.ok && result.error === "needs sign-in" && server.auth === "gh" && this.ghToken(true)) {
+      result = await listTools({ url: server.url, token: this.access(server) }); // `gh auth login` again since we last asked
+    } else if (!result.ok && result.error === "needs sign-in" && (await this.refresh(id).catch(() => false))) {
       result = await listTools({ url: server.url, token: this.tokens()[id]?.access });
     }
     this.connections.set(id, result);
@@ -109,7 +121,7 @@ export class Mcp {
 
   list(): McpServer[] {
     const tokens = this.tokens();
-    return [...this.servers().values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(tokens[s.id]?.access), brand: resolveMcpBrand({ name: s.name, url: s.url, packageId: mcpPackage(s.command, s.args) }) }));
+    return [...this.servers().values()].map((s) => ({ ...s, signedIn: s.auth === "none" || Boolean(this.access(s, tokens)), brand: resolveMcpBrand({ name: s.name, url: s.url, packageId: mcpPackage(s.command, s.args) }) }));
   }
 
   /** Let Spark use a server's tools (or stop). */
@@ -127,23 +139,28 @@ export class Mcp {
       if (only === "spark" && !server.spark) continue;
       if (server.command) out[server.name] = { command: server.command, args: server.args };
       else if (server.url) {
-        const access = tokens[server.id]?.access;
+        const access = this.access(server, tokens);
         out[server.name] = { type: "http", url: server.url, ...(access ? { headers: { Authorization: `Bearer ${access}` } } : {}) };
       }
     }
     return out;
   }
 
-  /** Codex config.toml `mcp_servers`: command+args, or url + http_headers. */
+  /**
+   * Codex config.toml `mcp_servers`: command+args, or url + http_headers — each named `shua_<name>` (CODEX_PREFIX).
+   * Codex merges a thread's config into your own ~/.codex/config.toml, where a server of the same name may already
+   * exist (a stdio "github", say): a url merged onto a command is a config error that failed EVERY Codex turn
+   * ("url is not supported for stdio"). The prefix keeps ShuaCrew's servers from ever colliding with yours.
+   */
   forCodex(only: "spark" | "all" = "all"): Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> {
     const tokens = this.tokens();
     const out: Record<string, { command: string; args: string[] } | { url: string; http_headers?: Record<string, string> }> = {};
     for (const server of this.servers().values()) {
       if (only === "spark" && !server.spark) continue;
-      const name = server.name.replace(/[^A-Za-z0-9_-]/g, "_") || "server";
+      const name = CODEX_PREFIX + (server.name.replace(/[^A-Za-z0-9_-]/g, "_") || "server");
       if (server.command) out[name] = { command: server.command, args: server.args };
       else if (server.url) {
-        const access = tokens[server.id]?.access;
+        const access = this.access(server, tokens);
         out[name] = { url: server.url, ...(access ? { http_headers: { Authorization: `Bearer ${access}` } } : {}) };
       }
     }
@@ -157,14 +174,14 @@ export class Mcp {
     for (const server of this.servers().values()) {
       if (server.command) out.push({ name: server.name, command: server.command, args: server.args });
       else if (server.url) {
-        const access = tokens[server.id]?.access;
+        const access = this.access(server, tokens);
         out.push({ name: server.name, type: "http", url: server.url, ...(access ? { headers: [{ name: "Authorization", value: `Bearer ${access}` }] } : {}) });
       }
     }
     return out;
   }
 
-  add(input: { name: string; command?: string; args?: string[]; url?: string; auth?: "none" | "oauth" }): McpServer {
+  add(input: { name: string; command?: string; args?: string[]; url?: string; auth?: "none" | "oauth" | "gh" }): McpServer {
     const name = input.name.trim();
     const command = input.command?.trim();
     const url = input.url?.trim();
@@ -173,7 +190,7 @@ export class Mcp {
     if (!command && !url) throw new Error("give a command or a url");
     if (command && url) throw new Error("a server is a command or a url, not both");
     const id = `m_${randomUUID().slice(0, 8)}`;
-    this.store.append("mcp.set", { id, name, command, args: input.args ?? [], url, auth: url && input.auth === "oauth" ? "oauth" : "none" });
+    this.store.append("mcp.set", { id, name, command, args: input.args ?? [], url, auth: url && (input.auth === "oauth" || input.auth === "gh") ? input.auth : "none" });
     return this.list().find((s) => s.id === id)!;
   }
 
@@ -192,7 +209,7 @@ export class Mcp {
     if (!server) throw new Error("no such server");
     if (server.command) return probeCommand(server.command, server.args);
     const headers: Record<string, string> = {};
-    const access = this.tokens()[id]?.access;
+    const access = this.access(server);
     if (access) headers.Authorization = `Bearer ${access}`;
     try {
       const response = await fetch(server.url!, { headers, signal: AbortSignal.timeout(2500) });
@@ -206,6 +223,7 @@ export class Mcp {
   /** Authorization-code + PKCE against the server's own metadata. Resolves when the browser returns. */
   async signIn(id: string): Promise<void> {
     const server = this.servers().get(id);
+    if (server?.auth === "gh") throw new Error(this.ghToken(true) ? "already signed in with the GitHub CLI" : "signs in with the GitHub CLI: run `gh auth login` in Terminal, then Check");
     if (!server?.url || server.auth !== "oauth") throw new Error("this server doesn't sign in");
     const meta = await discover(server.url);
     const redirect = await listenOnce();
@@ -343,6 +361,26 @@ function probeCommand(command: string, args: string[]): Promise<{ ok: boolean; d
       resolve(code === 0 ? { ok: true, detail: "exited 0" } : { ok: false, detail: `exited ${code}` });
     });
   });
+}
+
+/**
+ * The GitHub CLI's current login, for GitHub's hosted MCP server. Asked of `gh` (which keeps it in the keychain) and
+ * held in memory only — never written to ShuaCrew's files or its log. Remembered for 5 minutes (a miss for 15 s), so
+ * a Shua turn never waits on it; `fresh` asks again (after a 401, or a sign-in check).
+ */
+let ghCache: { token?: string; at: number } | undefined;
+export function githubCliToken(fresh = false, now = Date.now()): string | undefined {
+  if (!fresh && ghCache && now - ghCache.at < (ghCache.token ? 5 * 60_000 : 15_000)) return ghCache.token;
+  let token: string | undefined;
+  // The gateway may run without Homebrew on its PATH (started by the Mac app), so look where gh installs too.
+  for (const gh of ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"]) {
+    try {
+      token = execFileSync(gh, ["auth", "token", "--hostname", "github.com"], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined;
+      break;
+    } catch { /* not here, or not signed in */ }
+  }
+  ghCache = { token, at: now };
+  return token;
 }
 
 function openUrl(url: string): void {

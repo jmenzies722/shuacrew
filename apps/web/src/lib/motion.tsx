@@ -6,6 +6,7 @@ import { Flag, Globe2, Rocket, Trophy, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useLive } from "./live";
+import { SPRING } from "./spring-easing";
 
 export const reduced = () => typeof document !== "undefined" && document.documentElement.dataset.motion === "reduced";
 
@@ -157,7 +158,7 @@ export function Milestones() {
         {shown.map((m) => {
           const Icon = m.kind === "stage" ? (m.title.endsWith("earning") ? Trophy : Flag) : m.kind === "site" ? Globe2 : Rocket;
           return (
-            <motion.div key={m.id} className="milestone" initial={{ opacity: 0, y: -18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={{ type: "spring", stiffness: 380, damping: 30 }}>
+            <motion.div key={m.id} className="milestone" initial={{ opacity: 0, y: -18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={SPRING}>
               <span className="milestone-burst" aria-hidden>
                 {Array.from({ length: 10 }, (_, i) => (
                   <i key={i} style={{ "--a": `${i * 36}deg` } as React.CSSProperties} />

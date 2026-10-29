@@ -4,6 +4,8 @@ import { failoverCandidates, matchRoute, type GatewaySettingsValue } from "./set
 export interface IntelligenceCandidate extends Pick<Runtime, "id" | "label" | "capabilities" | "models"> {
   status: RuntimeStatus;
   limits: Array<{ model?: string; until: number }>;
+  /** At most of its usage window (Supervisor.nearlyOut): chosen only when nothing with room can answer. */
+  nearlyOut?: boolean;
 }
 export type LatencyLookup = (runtime: string, model: string) => { ms: number; samples: number } | undefined;
 /** Until this Mac has measured a model, assume the tier's typical first-word wait. */
@@ -30,7 +32,8 @@ function fastestCapable(request: IntelligenceRequest, allowed: IntelligenceCandi
     }
     if (ranked.length) break; // nothing in the right tiers is free: any free model beats no answer
   }
-  return ranked.sort((a, b) => a.ms - b.ms)[0];
+  // A provider about to run out answers only when nothing with room can.
+  return ranked.sort((a, b) => Number(!!a.candidate.nearlyOut) - Number(!!b.candidate.nearlyOut) || a.ms - b.ms)[0];
 }
 
 /** A selection is permission to try, not proof of remaining subscription quota. */
@@ -50,7 +53,10 @@ export function selectIntelligence(request: IntelligenceRequest, candidates: Int
   const preferred = rule?.runtime || allowed.find(c => c.models.some(m => m.id === rule?.model))?.id;
   const cloud = allowed.filter(c => c.id !== "local").map(c => c.id);
   // Auto is cloud only: the on-Mac fallback answered in up to a minute and couldn't do real work. "local" stays explicit.
-  const order = request.mode === "local" ? ["local"] : [...failoverCandidates([...(preferred ? [preferred] : []), ...settings.failoverOrder, "claude", "codex"], cloud, "")];
+  const ranked = request.mode === "local" ? ["local"] : [...failoverCandidates([...(preferred ? [preferred] : []), ...settings.failoverOrder, "claude", "codex"], cloud, "")];
+  // A provider about to run out goes last, unless your routing rule or the request names it.
+  const pinned = (id: string) => id === preferred || id === request.preferredRuntime;
+  const order = [...ranked.filter(id => pinned(id) || !allowed.find(c => c.id === id)?.nearlyOut), ...ranked.filter(id => !pinned(id) && allowed.find(c => c.id === id)?.nearlyOut)];
   const retries: number[] = [];
   const tiers = ["fast", "balanced", "frontier"];
   for (const id of [...new Set(order)]) {

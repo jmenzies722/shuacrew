@@ -20,6 +20,7 @@ import { Glyph } from "../lib/glyphs";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
 import "../components/studio-desk.css";
+import { SPRING } from "../lib/spring-easing";
 
 type Kind = ArtifactView["kind"];
 interface Hit {
@@ -281,7 +282,7 @@ function Viewer({ target, onClose }: { target: { type: "artifact" | "knowledge";
         initial={{ x: 40, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 40, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 420, damping: 38 }}
+        transition={SPRING}
       >
         <header className="flex items-start gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0 flex-1">

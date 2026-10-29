@@ -8,6 +8,7 @@ import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } fro
 import { motion } from "motion/react";
 import { bandPath, niceMax, smoothPath, squarify, stack } from "../lib/charts";
 import "./control-room.css";
+import { SPRING } from "../lib/spring-easing";
 
 export type Tone = "ok" | "wait" | "bad" | "idle" | "live";
 
@@ -53,7 +54,7 @@ export function Seg<T extends string | number>({ value, options, onChange, label
   return <div className="cr-seg" role="group" aria-label={label}>{options.map(([v, text]) => {
     const on = v === value;
     return <button key={String(v)} type="button" aria-pressed={on} className={on ? "is-on" : ""} onClick={() => onChange(v)}>
-      {on && <motion.span layoutId={`cr-seg-${id}`} className="cr-seg-on" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
+      {on && <motion.span layoutId={`cr-seg-${id}`} className="cr-seg-on" transition={SPRING} />}
       <span>{text}</span>
     </button>;
   })}</div>;

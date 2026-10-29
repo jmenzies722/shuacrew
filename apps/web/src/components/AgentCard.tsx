@@ -7,6 +7,7 @@ import { motion } from "motion/react";
 import { memo } from "react";
 import { pauseClock } from "../lib/crew";
 import { useLive } from "../lib/live";
+import { SPRING } from "../lib/spring-easing";
 
 /** "claude-sonnet-5" → "sonnet-5", "gpt-5.6-terra" stays: the part you'd actually say. */
 const shortModel = (m?: string) => m?.replace(/^claude-/, "").replace(/-\d{8}$/, "");
@@ -23,7 +24,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
   const tokens = run.usage.inputTokens + run.usage.outputTokens;
   const subagents = run.subagents.filter((s) => !s.done).length;
   return (
-    <motion.div layout layoutId={`run-${run.id}`} transition={{ type: "spring", stiffness: 500, damping: 40 }}>
+    <motion.div layout layoutId={`run-${run.id}`} transition={SPRING}>
       <div
         className={`group relative rounded-[var(--radius-l)] border bg-panel p-3.5 transition-colors hover:border-line-strong ${live ? "breathing border-transparent" : waiting ? "border-[color-mix(in_srgb,var(--wait)_45%,transparent)]" : "border-line"}`}
         style={{ boxShadow: live ? undefined : "var(--shadow)" }}

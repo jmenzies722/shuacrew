@@ -77,11 +77,15 @@ describe("liveReadyFrom", () => {
   // The shape `account/rateLimits/read` returned on 2026-10-03, right after the plan reset.
   const fresh = { ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1791664250 }, secondary: null, credits: { hasCredits: false, unlimited: false, balance: "0" }, spendControlReached: false, rateLimitReachedType: null } };
   it("is usable when Codex allows ordinary use", () => {
-    expect(liveReadyFrom(fresh)).toEqual({ usable: true, usedPercent: 0, resetsAt: 1791664250_000 });
+    expect(liveReadyFrom(fresh)).toEqual({ usable: true, usedPercent: 0, resetsAt: 1791664250_000, quota: { usedPercent: 0, resetsAt: 1791664250_000 } });
   });
   it("is not usable once the limit is reached, and says when it resets", () => {
     const spent = { ...fresh, ordinaryUsageAllowed: false, rateLimits: { ...fresh.rateLimits, primary: { ...fresh.rateLimits.primary, usedPercent: 100 }, rateLimitReachedType: "primary" } };
-    expect(liveReadyFrom(spent)).toEqual({ usable: false, usedPercent: 100, resetsAt: 1791664250_000 });
+    expect(liveReadyFrom(spent)).toEqual({ usable: false, usedPercent: 100, resetsAt: 1791664250_000, quota: { usedPercent: 100, resetsAt: 1791664250_000 } });
+  });
+  it("reads how close Codex is to running out from the busier window, not just the first", () => {
+    const weekly = { ...fresh, rateLimits: { ...fresh.rateLimits, primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791600000 }, secondary: { usedPercent: 93, windowDurationMins: 10080, resetsAt: 1791664250 } } };
+    expect(liveReadyFrom(weekly).quota).toEqual({ usedPercent: 93, resetsAt: 1791664250_000 });
   });
   it("is usable on bought credits even with the window used up", () => {
     const credits = { ...fresh, ordinaryUsageAllowed: false, rateLimits: { ...fresh.rateLimits, primary: { ...fresh.rateLimits.primary, usedPercent: 100 }, credits: { hasCredits: true, unlimited: false, balance: "20" } } };

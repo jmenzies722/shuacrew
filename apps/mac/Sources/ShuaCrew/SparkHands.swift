@@ -18,11 +18,30 @@ enum SparkHands {
 
     /// The app you're working in. Tapping the notch makes ShuaCrew the active app, so "the front app" would be
     /// ShuaCrew itself: keys typed into Spark's own panel, buttons searched for in ShuaCrew ("Typing isn't
-    /// registering"). Spark's hands always aim at the last app you used that isn't ShuaCrew.
+    /// registering"). So Shua aims at the window you can actually see on top (ScreenTarget): another app's, or
+    /// ShuaCrew's own main window — which has no `target` here (Shua uses its page controls for that).
     static var target: NSRunningApplication? {
+        if case .app(let pid, _) = aim() { return NSRunningApplication(processIdentifier: pid) }
+        return nil
+    }
+    /// Self-test only: resolve as if ShuaCrew were the active app (the notch took focus), without taking focus.
+    static var assumeShuaCrewInFront = false
+    /// Where Shua's eyes and hands are right now, from the real window stack (see ScreenTarget).
+    static func aim() -> ScreenTarget {
         watchApps()
-        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != Bundle.main.bundleIdentifier { return front }
-        return workApp.flatMap { $0.isTerminated ? nil : $0 }
+        let me = ProcessInfo.processInfo.processIdentifier
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let windows = list.map { w -> ScreenTarget.Window in
+            let b = w[kCGWindowBounds as String] as? [String: Double] ?? [:]
+            return ScreenTarget.Window(pid: Int32(w[kCGWindowOwnerPID as String] as? Int ?? 0), number: w[kCGWindowNumber as String] as? Int ?? 0,
+                                       layer: w[kCGWindowLayer as String] as? Int ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0,
+                                       alpha: w[kCGWindowAlpha as String] as? Double ?? 1, owner: w[kCGWindowOwnerName as String] as? String ?? "")
+        }
+        // ShuaCrew's real windows (its main window, Settings): titled, not panels. The notch and the buddy are panels.
+        let appWindows = Set(NSApp.windows.filter { $0.isVisible && !($0 is NSPanel) && $0.styleMask.contains(.titled) }.map(\.windowNumber))
+        let front = assumeShuaCrewInFront ? me : NSWorkspace.shared.frontmostApplication?.processIdentifier
+        return ScreenTarget.pick(frontPid: front, selfPid: me, selfAppWindows: appWindows, windows: windows,
+                                 lastWorkPid: workApp.flatMap { $0.isTerminated ? nil : $0.processIdentifier })
     }
     private static var workApp: NSRunningApplication?, watching: NSObjectProtocol?
     static func watchApps() {

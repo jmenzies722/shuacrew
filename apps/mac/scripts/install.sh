@@ -46,6 +46,7 @@ cat > "$STAGE/Contents/Info.plist" <<PLIST
   <key>NSRemindersFullAccessUsageDescription</key><string>So Spark can tell you what's on your list and add reminders when you ask. Read on this Mac only.</string>
   <key>NSContactsUsageDescription</key><string>So Spark knows who you mean ("email Sam", "what's Mia's number"). Looked up on this Mac only, never sent anywhere.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Only for the "Hey Spark" wake word, and only if you turn it on. Recognised on this Mac; nothing is sent anywhere.</string>
+  <key>NSAudioCaptureUsageDescription</key><string>So the notch's bars can move with the song you're playing. Only Music and Spotify, measured as levels on this Mac — never recorded, never sent.</string>
   <key>NSMicrophoneUsageDescription</key><string>So you can talk to Shua. Live calls send microphone audio to OpenAI; Classic transcription runs on this Mac.</string>
   <key>NSCameraUsageDescription</key><string>Only when you ask Shua to look through your camera. Frames stay on this Mac unless you ask Shua about them.</string>
   <key>NSPhotoLibraryUsageDescription</key><string>So Shua can find, sort and share your photos when you ask.</string>

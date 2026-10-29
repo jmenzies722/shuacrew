@@ -64,7 +64,7 @@
   border: 1.5px solid transparent !important;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 12%, transparent), 0 12px 32px -14px var(--accent-glow) !important;
   /* One turn as you start writing, then it rests: a ring that spun forever restyled the page every frame. */
-  animation: ring-turn 1.6s cubic-bezier(.3, .7, .3, 1) 1;
+  animation: ring-turn 1.6s var(--ease-out) 1;
 }
 .spk .chat-composer { --composer-fill: var(--sunken); }
 .terminal-ask { --composer-fill: var(--term-bg); }

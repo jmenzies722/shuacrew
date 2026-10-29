@@ -3,12 +3,11 @@ import { existsSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs
 import os from "node:os";
 import path from "node:path";
 import type { AnyEvent } from "@shuacrew/core";
-import type { Learning } from "./learning.js";
 import type { EventStore } from "./store.js";
 
 /**
  * Deleting a session means gone everywhere: its events (re-linked out of the log, one contentless run.deleted left),
- * what was made from it (flashcards, roadmap, study plan, fit check, library artifacts), the files it brought or made
+ * what was made from it (library artifacts), the files it brought or made
  * (uploads, its git worktree and shua/ branch), the agent's own transcript (Claude Code / Codex, matched by exact id)
  * and its action receipts. Files are only ever removed inside ShuaCrew's own folders, or by exact transcript id.
  */
@@ -22,13 +21,13 @@ export const ABOUT_A_SESSION: ReadonlySet<string> = new Set([
 ]);
 
 export interface ForgetDeps {
-  store: EventStore; home: string; learning?: Learning;
+  store: EventStore; home: string;
   library?: { forgetArtifacts(ids: string[]): void };
   /** Where agent transcripts live (defaults: ~/.codex, ~/.claude plus ShuaCrew's extra Claude accounts). */
   codexHome?: string; claudeDirs?: string[];
   git?: (args: string[]) => string;
 }
-export interface Forgotten { events: number; files: string[]; learning: number; artifacts: number; receipts: number }
+export interface Forgotten { events: number; files: string[]; artifacts: number; receipts: number }
 
 /** What a session left behind, read from its events (before they're purged). Pure: tested. */
 export function leftovers(events: AnyEvent[], home: string) {
@@ -43,24 +42,6 @@ export function leftovers(events: AnyEvent[], home: string) {
     if (e.kind === "run.worktree" && typeof b.path === "string") worktrees.push({ path: b.path, branch: String(b.branch ?? "") });
   }
   return { uploads: [...uploads], artifacts: [...artifacts], sessions, worktrees };
-}
-
-/** Learn's records made from the session: removed if they came from it, unlinked if they only pointed at it. */
-export function forgetInLearning(learning: Learning, run: string): number {
-  const before = JSON.stringify(learning.get());
-  learning.edit((s) => ({
-    ...s,
-    cards: s.cards.filter((c) => c.source.run !== run),
-    docs: s.docs.filter((d) => d.run !== run),
-    roadmaps: s.roadmaps.filter((r) => r.run !== run),
-    courses: s.courses.filter((c) => c.plan !== run).map((c) => ({ ...c, lessons: c.lessons.map((l) => (l.run === run ? { ...l, run: undefined } : l)) })),
-    certs: s.certs.map((c) => (c.plan === run ? { ...c, plan: undefined, steps: [] } : c)),
-    jobs: s.jobs.map((j) => (j.fit?.run === run ? { ...j, fit: undefined } : j)),
-    coach: Object.fromEntries(Object.entries(s.coach).filter(([, v]) => v.run !== run)),
-    studied: s.studied.filter((x) => x.run !== run),
-    drills: s.drills.filter((d) => d.run !== run),
-  }));
-  return before === JSON.stringify(learning.get()) ? 0 : 1;
 }
 
 /** Inside `root` for real (symlinks resolved), so nothing outside ShuaCrew's folders is ever removed. */
@@ -105,9 +86,8 @@ export function forgetRun(run: string, deps: ForgetDeps): Forgotten {
   }
   for (const f of left.sessions.flatMap((s) => transcriptsOf(s, home, deps))) remove(f);
   deps.library?.forgetArtifacts(left.artifacts);
-  const learning = deps.learning ? forgetInLearning(deps.learning, run) : 0;
   const receipts = store.forgetReceipts(run);
   const events = store.purgeRun(run, ABOUT_A_SESSION);
   store.append("run.deleted", {}, { run });
-  return { events, files, learning, artifacts: left.artifacts.length, receipts };
+  return { events, files, artifacts: left.artifacts.length, receipts };
 }

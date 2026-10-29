@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./themes.css";
 @import "@shuacrew/ui/tokens.css";
+@import "./design-tokens.css";
 
 @source "../../../packages/ui/src";
 
@@ -177,6 +178,8 @@ body {
   animation: shimmer 2.2s linear infinite;
 }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+/* How long it's been (WorkingFor): quiet, fixed-width digits, so a long turn visibly moves and never reads as stuck. */
+.working-for { margin-left: var(--space-2); font-size: var(--text-xs); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {
   .shimmer-text { animation: none; color: var(--text); background: none; }
   .stream-caret { animation: none; }
@@ -423,7 +426,7 @@ body {
 
 /* ── Crew floor ───────────────────────────────────────────────────────────────────────── */
 .crew-floor { display: flex; height: 100%; flex-direction: column; padding: 0 8px 8px; }
-.floor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 8px 14px; }
+.floor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px calc(var(--page-x) - 8px) 14px; }
 .floor-stat { display: inline-flex; align-items: baseline; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--panel); font-size: 12px; color: var(--text-3); line-height: 34px; }
 .floor-stat.is-live { border-color: color-mix(in srgb, var(--amber) 45%, var(--line-strong)); }
 .floor-stat.is-wait { border-color: color-mix(in srgb, var(--wait) 55%, var(--line-strong)); color: var(--wait); }
@@ -822,7 +825,7 @@ body {
 .needs-chip:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
 .getting-started { margin-top: 26px; border-radius: 16px; padding: 14px 14px 10px; background: color-mix(in srgb, var(--text) 2.5%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
 .gs-bar { flex: 1; height: 4px; margin: 0 6px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--text) 8%, transparent); }
-.gs-bar span { display: block; height: 100%; border-radius: inherit; background: var(--amber); transition: width .6s cubic-bezier(.2,.8,.2,1); }
+.gs-bar span { display: block; height: 100%; border-radius: inherit; background: var(--amber); transition: width .6s var(--ease-out); }
 .gs-step { display: flex; align-items: center; gap: 10px; border-radius: 9px; padding: 6px 8px; text-align: left; color: var(--text); transition: background .15s; }
 .gs-step:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 5%, transparent); }
 .gs-step.is-done { color: var(--text-3); }
@@ -875,7 +878,7 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 .vn-auto.is-on { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--venture, var(--ok)) 55%, var(--line-strong)); }
 .vn-auto-track { position: relative; width: 26px; height: 16px; border-radius: 999px; background: color-mix(in srgb, var(--text) 14%, transparent); transition: background .2s; }
 .vn-auto.is-on .vn-auto-track { background: var(--venture, var(--ok)); }
-.vn-auto-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .2s cubic-bezier(.2,.8,.2,1); }
+.vn-auto-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .2s var(--ease-out); }
 .vn-auto.is-on .vn-auto-knob { transform: translateX(10px); }
 .send-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 230px; border-radius: 12px; padding: 5px; background: var(--raised); box-shadow: 0 0 0 1px var(--line-strong), 0 20px 50px -20px rgba(0,0,0,.7); }
 [data-palette="frost"] .send-menu { background: rgba(20,20,23,.92); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
@@ -904,7 +907,7 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 /* Shua blinks now and then: a quick close and open, then a long rest. */
 .logo-mark.is-live .logo-core { animation: logo-blink 6.5s ease-in-out infinite; }
 @keyframes logo-blink { 0%, 93%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(.12); } }
-.hero-mark { transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+.hero-mark { transition: transform .5s var(--ease-out); }
 .hero-mark:hover { transform: translateY(-2px) scale(1.04); }
 .hero-mark:hover .logo-core { animation-duration: 2.4s; } /* Shua notices you */
 
@@ -914,7 +917,7 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 .rail-item > :not(.rail-active) { position: relative; z-index: 1; }
 
 /* Cards rise into place, one after another. */
-.stagger > * { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+.stagger > * { animation: rise .5s var(--ease-out) both; }
 .stagger > *:nth-child(2) { animation-delay: .04s; } .stagger > *:nth-child(3) { animation-delay: .08s; }
 .stagger > *:nth-child(4) { animation-delay: .12s; } .stagger > *:nth-child(5) { animation-delay: .16s; }
 .stagger > *:nth-child(6) { animation-delay: .2s; } .stagger > *:nth-child(7) { animation-delay: .24s; }
@@ -941,7 +944,7 @@ button.vn-site:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px 
 @keyframes sheen { from { background-position: 150% 0; } to { background-position: -60% 0; } }
 .milestone-icon { position: relative; display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 11px; color: #0b0b0c; background: linear-gradient(160deg, #fff, #b9bbc4); box-shadow: 0 0 24px rgba(255,255,255,.25); }
 .milestone-burst { position: absolute; left: 31px; top: 50%; width: 0; height: 0; pointer-events: none; }
-.milestone-burst i { position: absolute; width: 3px; height: 3px; border-radius: 999px; background: #fff; box-shadow: 0 0 6px #fff; animation: burst .9s cubic-bezier(.2,.8,.2,1) both; transform: rotate(var(--a)) translateX(0); opacity: 0; }
+.milestone-burst i { position: absolute; width: 3px; height: 3px; border-radius: 999px; background: #fff; box-shadow: 0 0 6px #fff; animation: burst .9s var(--ease-out) both; transform: rotate(var(--a)) translateX(0); opacity: 0; }
 @keyframes burst { 10% { opacity: 1; } to { transform: rotate(var(--a)) translateX(34px); opacity: 0; } }
 
 /* Small life everywhere: buttons lift, dialogs settle, live dots breathe. */

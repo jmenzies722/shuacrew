@@ -106,7 +106,7 @@ describe("the agents' tool server", () => {
     expect(init.result.serverInfo.name).toBe("shuacrew");
     expect((await rpc(app, token, { jsonrpc: "2.0", method: "notifications/initialized" })).statusCode).toBe(202);
     const list = (await rpc(app, token, { jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
-    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(["save_artifact", "search_library", "read_library", "list_artifacts"]);
+    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(["whats_happening", "save_artifact", "search_library", "read_library", "list_artifacts"]);
 
     const saved = (await rpc(app, token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "save_artifact", arguments: { title: "Landing page", content: "<h1>Calm money</h1>", filename: "landing.html" } } })).json();
     expect(saved.result.content[0].text).toMatch(/Saved "Landing page"/);

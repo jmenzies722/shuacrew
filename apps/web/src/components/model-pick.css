@@ -33,7 +33,7 @@
 .model-pick .model-pick-text b { color: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .model-pick-text small { font-size: 10.5px; line-height: 1.35; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .model-pick-row.is-on .model-pick-text small { color: color-mix(in srgb, var(--text) 62%, transparent); }
-.model-pick-check { color: var(--amber); animation: model-pick-tick .32s cubic-bezier(.3, 1.6, .5, 1) both; }
+.model-pick-check { color: var(--amber); animation: model-pick-tick .32s var(--spring) both; }
 @keyframes model-pick-tick { from { transform: scale(.4); opacity: 0; } }
 .model-pick-note { display: block; padding: 6px 8px 0; font-size: 10.5px; color: var(--text-3); }
 /* Before the first answer from the gateway: two shimmering placeholder rows. */

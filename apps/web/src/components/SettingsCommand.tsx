@@ -12,10 +12,9 @@ import "./settings-command.css";
 function useChecks() {
   const { value } = useGatewaySettings();
   const ws = useWorkspace();
-  const [extra, setExtra] = useState<{ backupAt: number | null; goal: boolean }>({ backupAt: null, goal: false });
+  const [extra, setExtra] = useState<{ backupAt: number | null }>({ backupAt: null });
   useEffect(() => {
-    void Promise.all([api<{ last?: { at?: number } | null }>("/api/backups").catch(() => null), api<{ profile: { goal: string } }>("/api/learning").catch(() => null)])
-      .then(([b, l]) => setExtra({ backupAt: b?.last?.at ?? null, goal: Boolean(l?.profile.goal) }));
+    void api<{ last?: { at?: number } | null }>("/api/backups").catch(() => null).then((b) => setExtra({ backupAt: b?.last?.at ?? null }));
   }, []);
   if (!value) return null;
   const v = value as unknown as { instructions: { global: string }; protectedPaths: string[]; caps: { maxMinutes: number | null; maxTokens: number | null }; router: unknown[]; hooks: { onDone: string; onFailed: string } };
@@ -27,7 +26,6 @@ function useChecks() {
     { id: "router", label: "Model router rules", done: v.router.length > 0, hint: "Cheap models for simple work." },
     { id: "backups", label: "Backup in the last 48h", done: extra.backupAt !== null && Date.now() - extra.backupAt < 48 * 3_600_000, hint: "Encrypted nightly backups." },
     { id: "hooks", label: "A hook on finish or fail", done: Boolean(v.hooks.onDone.trim() || v.hooks.onFailed.trim()), hint: "Automate what happens next." },
-    { id: "learn", label: "Career goal for Learning", done: extra.goal, hint: "Lessons pitched to where you're headed.", href: "/learn" },
   ];
 }
 
@@ -62,7 +60,7 @@ export function SettingsCommand({ go }: { go: (hash: string) => void }) {
       <div className="cmd-checks">
         <h3>Your setup</h3>
         <ul>{checks?.map((c) => <li key={c.id} className={c.done ? "is-done" : ""}><span className="cmd-tick">{c.done ? <Check size={11} /> : null}</span>{c.label}
-          {!c.done && <button type="button" onClick={() => (c.href ? (window.location.href = c.href) : go(c.id))}>Fix</button>}</li>)}</ul>
+          {!c.done && <button type="button" onClick={() => go(c.id)}>Fix</button>}</li>)}</ul>
         {next ? <p className="cmd-next"><Sparkles size={12} /> Next: {next.hint}</p> : <p className="cmd-next is-done"><Sparkles size={12} /> Fully set up.</p>}
       </div>
     </div>

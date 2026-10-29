@@ -35,6 +35,7 @@ import { CodeBlock, Markdown } from "./Markdown";
 import { KIND } from "../lib/kinds";
 import { useLive } from "../lib/live";
 import { ToolActivityCard } from "./ToolActivityCard";
+import { WorkingFor } from "./WorkingFor";
 import { PlanCard, Receipt } from "./TurnCards";
 type ToolServer = { name: string; url?: string; command?: string; brand?: { assetId: string | null; publisher: "official" | "community" | "unknown" } };
 
@@ -156,7 +157,7 @@ export function Thread({ items, working, empty, run }: { items: Item[]; working:
             <span />
             <span />
           </span>
-          <span className="shimmer-text">Thinking…</span>
+          <WorkingFor />
         </div>
       )}
       {pills.length > 0 && run && <FollowUps options={pills} run={run} />}

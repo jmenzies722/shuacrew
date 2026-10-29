@@ -52,7 +52,7 @@ it("a follow-up prepared ahead of time runs on that same process instead of star
   expect(rt.warmed).toBe(false); // used up, not kept
 });
 
-it("a turn that differs from what was prepared starts fresh; the spare stays for the turn it was made for", async () => {
+it("a turn that differs from what was prepared starts fresh, and the spare on the same thread steps aside (one writer per thread)", async () => {
   writeFileSync(log, "");
   const rt = new CodexRuntime({ binary: bin }); runtimes.push(rt);
   rt.prepare(spec({ ask: "", model: "model-a" }), process.env);
@@ -60,6 +60,17 @@ it("a turn that differs from what was prepared starts fresh; the spare stays for
   const reply = await turn(rt, spec({ model: "model-b" }));
   expect(spawns()).toHaveLength(2);
   expect(reply).toBe(`pid ${spawns()[1]} inputs 1`);
+  // Codex refuses a second app-server on a thread another still holds ("already has an active writer").
+  expect(rt.warmed).toBe(false);
+});
+
+it("a spare for a different conversation stays for the turn it was made for", async () => {
+  writeFileSync(log, "");
+  const rt = new CodexRuntime({ binary: bin }); runtimes.push(rt);
+  rt.prepare(spec({ ask: "", resume: "thread-other" }), process.env);
+  await new Promise((r) => setTimeout(r, 300));
+  await turn(rt, spec({ model: "model-b" }));
+  expect(spawns()).toHaveLength(2);
   expect(rt.warmed).toBe(true);
 });
 

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /** Widgets: small live views of real things (your Mac, your crew, your day) you can place in the top bar and in Spark. */
-export const WIDGETS = ["playing", "weather", "focus", "crew", "clock", "spend", "system", "learning", "note", "countdown"] as const;
+export const WIDGETS = ["playing", "weather", "focus", "crew", "clock", "spend", "system", "note", "countdown"] as const;
 export type WidgetId = (typeof WIDGETS)[number];
 export type Placement = "topbar" | "spark" | "notch";
 
@@ -13,7 +13,6 @@ export const WIDGET_INFO: Record<WidgetId, { name: string; blurb: string }> = {
   clock: { name: "Clocks", blurb: "Your time plus up to four places you work with." },
   spend: { name: "Today", blurb: "Tokens, cost and sessions so far today." },
   system: { name: "This Mac", blurb: "CPU load, memory, disk and battery, read locally." },
-  learning: { name: "Learning", blurb: "Cards due and your practice streak." },
   note: { name: "Scratch note", blurb: "A quick note that follows you between the app and Spark; send it to the crew." },
   countdown: { name: "Countdown", blurb: "Days until something that matters: a launch, an interview, a trip." },
 };

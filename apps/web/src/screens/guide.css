@@ -110,3 +110,5 @@
 :root[data-motion="reduced"] .guide-live i { animation: none; }
 .guide-setup li b { grid-column: 2; grid-row: 1; }
 .guide-setup li small { grid-column: 2; grid-row: 2; }
+
+:root[data-theme="light"] .guide-status .is-partial { color: #855c16; }

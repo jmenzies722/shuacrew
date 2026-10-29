@@ -17,6 +17,7 @@ import { Glyph, IconPicker } from "../lib/glyphs";
 import { CountUp } from "../lib/motion";
 import { PaneHeader } from "../components/Pane";
 import { StatStrip } from "../components/StatStrip";
+import { SPRING_TUCK } from "../lib/spring-easing";
 
 const STAGES: Array<{ id: VentureStage; label: string; hint: string }> = [
   { id: "idea", label: "Idea", hint: "Worth testing?" },
@@ -266,7 +267,7 @@ export function VenturePage() {
                 </div>
                 {goal !== undefined && (
                   <div className="vn-goal">
-                    <motion.span initial={{ width: 0 }} animate={{ width: `${goal * 100}%` }} transition={{ duration: 0.8, ease: [0.2, 0.8, 0.2, 1] }} />
+                    <motion.span initial={{ width: 0 }} animate={{ width: `${goal * 100}%` }} transition={SPRING_TUCK} />
                   </div>
                 )}
               </div>

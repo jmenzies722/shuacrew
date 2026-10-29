@@ -20,7 +20,7 @@
     linear-gradient(180deg, color-mix(in srgb, var(--panel) 70%, #0b0d13), color-mix(in srgb, var(--ink) 90%, #000)); }
 
 .s3-camera { position: absolute; inset: 0; perspective: 1700px; perspective-origin: 50% 18%; transform-origin: 50% 56%; transition: transform .35s var(--ease-out, ease); }
-.s3-world { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; transform: rotateX(var(--tilt)) rotateZ(var(--spin)); transition: --spin .7s cubic-bezier(.2, .8, .2, 1), --tilt .7s cubic-bezier(.2, .8, .2, 1); }
+.s3-world { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; transform: rotateX(var(--tilt)) rotateZ(var(--spin)); transition: --spin .7s var(--ease-out), --tilt .7s var(--ease-out); }
 .studio3d.is-dragging .s3-world { transition: none; }
 .s3-world * { box-sizing: border-box; }
 

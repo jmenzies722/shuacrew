@@ -69,6 +69,8 @@ export type RuntimeEvent =
   | { type: "plan"; steps: PlanStep[]; note?: string }
   /** The subscription's usage window is exhausted; `until` is when it lifts (ms since epoch). */
   | { type: "limited"; until: number; message: string; model?: string; credits?: boolean }
+  /** How much of the plan's usage window is spent (the busier window when there are two), as the provider reports it. */
+  | { type: "quota"; usedPercent: number; resetsAt?: number }
   | { type: "done"; text: string; durationMs?: number }
   | { type: "error"; message: string };
 
@@ -97,6 +99,18 @@ export interface Runtime {
    * so the turn itself begins at once. `run` is the turn as it will be, minus the ask. A no-op when it can't help.
    */
   prepare?(run: RunSpec, env: NodeJS.ProcessEnv): void;
+}
+
+/**
+ * Codex's rate-limit snapshot (`account/rateLimits/read` or `…/updated`) as one reading: the busier of its two windows.
+ * Undefined when it reports neither.
+ */
+export function quotaFrom(rateLimits: Record<string, any> | undefined): { usedPercent: number; resetsAt?: number } | undefined {
+  const windows = [rateLimits?.primary, rateLimits?.secondary].filter((w) => typeof w?.usedPercent === "number" && Number.isFinite(w.usedPercent));
+  if (!windows.length) return undefined;
+  const busiest = windows.reduce((a, b) => (b.usedPercent > a.usedPercent ? b : a));
+  const resetsAt = typeof busiest.resetsAt === "number" ? (busiest.resetsAt < 1e12 ? busiest.resetsAt * 1000 : busiest.resetsAt) : undefined;
+  return { usedPercent: Math.max(0, Math.min(100, busiest.usedPercent)), ...(resetsAt ? { resetsAt } : {}) };
 }
 
 /** Recognise a usage-window / rate-limit message and, when it says, when the window lifts. */

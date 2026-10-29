@@ -11,7 +11,7 @@
 .st-hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,.65)); }
 .st-cover { position: relative; display: grid; place-items: center; aspect-ratio: 1; width: 100%; padding: 0; border: 0; border-radius: 14px; overflow: hidden; cursor: pointer;
   background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 30%, #1a1a1f), #111); color: rgba(255,255,255,.6); box-shadow: 0 10px 30px -14px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.08);
-  transition: transform .25s cubic-bezier(.2,.9,.3,1.3), box-shadow .25s; }
+  transition: transform .25s var(--spring), box-shadow .25s; }
 .st-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .st-cover.is-big { border-radius: 16px; box-shadow: 0 24px 60px -20px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.1); }
 .st-hero.is-playing .st-cover.is-big { animation: st-breathe 4s ease-in-out infinite; }
@@ -67,7 +67,7 @@
 
 .st-sheet-wrap { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); animation: st-fade .18s ease both; }
 .st-sheet { position: relative; width: min(760px, 100%); max-height: min(82vh, 760px); overflow: auto; border-radius: 22px; border: 1px solid var(--line); background: var(--panel, #141418); isolation: isolate;
-  box-shadow: 0 40px 100px -30px rgba(0,0,0,.9); animation: st-rise .26s cubic-bezier(.2,.9,.3,1.15) both; }
+  box-shadow: 0 40px 100px -30px rgba(0,0,0,.9); animation: st-rise .26s var(--spring) both; }
 .st-sheet::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 260px; z-index: -1; background-image: var(--st-art, none); background-size: cover; background-position: center; filter: blur(50px) saturate(1.4); opacity: .4; }
 .st-sheet-close { position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(0,0,0,.35); color: #fff; cursor: pointer; }
 .st-sheet-head { display: grid; grid-template-columns: 180px 1fr; gap: 22px; align-items: end; padding: 26px 26px 18px; }

@@ -45,6 +45,7 @@ import "../alive.css"; // the accent gradient and the touches that make it feel 
 import "../onyx.css"; // last: the Onyx design language (Onyx and Porcelain palettes)
 import "../lib/look";
 import { installUiBridge } from "../lib/ui-bridge";
+import { SPRING_TUCK } from "../lib/spring-easing";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
@@ -59,7 +60,6 @@ export const NAV = [
   { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
   { to: "/activity", label: "Today", hint: "Everything at a glance", icon: Radar, key: "m", group: "Plan" },
   { to: "/library", label: "Library", hint: "What the crew made + knows", icon: LibraryBig, key: "l", group: "Brain" },
-  { to: "/learn", label: "Learn", hint: "Get measurably better, with Shua", icon: GraduationCap, key: "e", group: "Brain" },
   { to: "/memory", label: "Memory", hint: "Lessons and skills", icon: BookOpen, key: "y", group: "Brain" },
   { to: "/schedules", label: "Schedules", hint: "Runs while you're away", icon: CalendarClock, key: "c", group: "Brain" },
   { to: "/integrations", label: "Tools & Skills", hint: "MCP servers and skills", icon: Cable, key: "i", group: "Brain" },
@@ -151,7 +151,7 @@ function SparkSide() {
   // The panel takes its width at once (one reflow of the page beside it, not one per frame of a width spring) and its
   // contents slide in on the compositor (hub-nav.css). Shua mounts a frame later, so the panel answers ⌘J immediately.
   return <AnimatePresence initial={false}>{open && <motion.aside key="spark" className={`spark-side ${full ? "is-full" : ""}`} aria-label="Shua"
-    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } }} transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}>
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } }} transition={SPRING_TUCK}>
     <div className="spark-side-inner"><AfterFirstFrame><Buddy embedded page={page} full={full} onClose={() => { setSparkFull(false); setSparkPanel(false); }} /></AfterFirstFrame></div>
   </motion.aside>}</AnimatePresence>;
 }

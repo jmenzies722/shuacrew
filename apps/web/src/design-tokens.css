@@ -1,0 +1,60 @@
+/*
+ * One scale for everything the palettes don't decide: motion, radii, type, spacing, elevation, focus.
+ * Palettes (themes.css) set colour; designs (onyx.css and friends) may retune a radius, never the scale's shape.
+ * Reach for these instead of a one-off value: a new screen should look like it was always part of the app.
+ */
+:root {
+  /*
+   * Motion: the notch's own spring, everywhere. The Mac app animates the island with Core Animation's
+   * CASpringAnimation(perceptualDuration:bounce:); the page draws the same curve as CSS linear() (lib/spring-easing.ts,
+   * ISLAND_OPEN / ISLAND_TUCK). design-tokens.test.ts keeps these two strings equal to springCurve(), so changing the
+   * notch's spring means changing it there and pasting the new curve here.
+   *   --spring    things arriving, opening, lifting (a hair of overshoot)
+   *   --ease-out  things leaving, closing, settling (never overshoots)
+   */
+  --spring: linear(0, 0.0157, 0.0567, 0.1148, 0.1838, 0.2586, 0.3354, 0.4114, 0.4845, 0.5533, 0.6169, 0.6749, 0.7269, 0.7731, 0.8136, 0.8488, 0.879, 0.9047, 0.9263, 0.9443, 0.9591, 0.9712, 0.9808, 0.9885, 0.9944, 0.9989, 1.0022, 1.0045, 1.0061, 1.0071, 1.0076, 1.0077, 1.0076, 1.0073, 1.0068, 1.0063, 1.0057, 1.0051, 1.0045, 1.004, 1.0034, 1.0029, 1.0025, 1.0021, 1.0017, 1.0014, 1.0012, 1.0009, 1);
+  --ease-out: linear(0, 0.0163, 0.0576, 0.1145, 0.1805, 0.2504, 0.3211, 0.3899, 0.4555, 0.5168, 0.5733, 0.6249, 0.6714, 0.7132, 0.7504, 0.7834, 0.8125, 0.838, 0.8604, 0.8799, 0.8968, 0.9115, 0.9242, 0.9352, 0.9446, 0.9528, 0.9597, 0.9657, 0.9708, 0.9752, 0.979, 0.9822, 0.9849, 0.9872, 0.9892, 0.9908, 0.9922, 0.9934, 0.9945, 0.9953, 0.9961, 0.9967, 0.9972, 0.9976, 0.998, 0.9983, 0.9986, 0.9988, 1);
+  /* Loops (breathing, pulses) keep a symmetric ease: a spring has no "back". */
+  --ease-loop: cubic-bezier(.45, 0, .55, 1);
+  --t-fast: 120ms;   /* hover, press, colour */
+  --t-med: 220ms;    /* small things moving: chips, toggles, menus */
+  --t-slow: 420ms;   /* panels and sheets */
+  --t-spring: 600ms; /* the open spring, start to rest (ISLAND_OPEN) */
+
+  /* Radii: xs 4 · s · m · l · xl 16 · pill. A design sets s/m/l (Onyx: 6 · 8 · 12); the ends stay put. */
+  --radius-xs: 4px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* Type: the app is set small and tight; these are the only sizes a screen needs. */
+  --text-2xs: 10.5px; /* badges, kbd, timestamps */
+  --text-xs: 11.5px;  /* meta lines, captions */
+  --text-sm: 12.5px;  /* secondary UI, list detail */
+  --text-base: 13px;  /* body UI */
+  --text-md: 14px;    /* reading text, inputs */
+  --text-lg: 16px;    /* section titles */
+  --title-sm: 18px;
+  --title-md: 22px;
+  --title-lg: 30px;   /* page titles */
+  --title-weight: 650;
+  --label-weight: 560; /* small section labels: sentence case, this weight, --text-3 */
+
+  /* Spacing: a 4px grid. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --page-x: 32px;     /* every page's left and right padding, so titles line up from page to page */
+  --page-top: 32px;
+
+  /* Elevation (designs refine --lift and --float-shadow; these name the two levels). */
+  --elev-1: var(--lift, 0 1px 2px rgba(0, 0, 0, .25), 0 8px 24px -12px rgba(0, 0, 0, .55));
+  --elev-2: var(--float-shadow, 0 0 0 1px var(--line-strong), 0 2px 6px rgba(0, 0, 0, .3), 0 24px 64px -16px rgba(0, 0, 0, .7));
+
+  /* Focus: one ring for every control, in the accent, offset from the edge so it reads on any surface. */
+  --focus-ring-color: color-mix(in srgb, var(--amber) 80%, transparent);
+  --focus-ring: 0 0 0 2px var(--ink), 0 0 0 4px var(--focus-ring-color);
+}

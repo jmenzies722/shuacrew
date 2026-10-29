@@ -17,7 +17,7 @@
   --highlight: rgba(255, 255, 255, 0.05);
   --text: #ececee;
   --text-2: #a3a3aa;
-  --text-3: #74747c;
+  --text-3: #88888f; /* AA on --raised (was #74747c) */
   --idle: #5c5c63;
   --ok: #3fd18b;
   --bad: #ff6464;
@@ -55,7 +55,7 @@
   --highlight: rgba(255, 255, 255, 0.05);
   --text: #f2f2f4;
   --text-2: #a8a8b0;
-  --text-3: #6f6f78;
+  --text-3: #88888f; /* AA on --raised (was #6f6f78) */
   --idle: #6f6f78;
   --glass: rgba(12, 12, 14, 0.62);
   --term-bg: rgba(0, 0, 0, 0.55);
@@ -71,7 +71,7 @@
   --highlight: rgba(255, 255, 255, 0.05);
   --text: #e8e8ea;
   --text-2: #a1a1a8;
-  --text-3: #75757d;
+  --text-3: #8c8c94; /* AA on --raised (was #75757d) */
   --idle: #75757d;
   --glass: rgba(28, 28, 31, 0.78);
   --term-bg: #0f0f11;
@@ -87,7 +87,7 @@
   --highlight: rgba(255, 240, 220, 0.04);
   --text: #ece6de;
   --text-2: #a89f94;
-  --text-3: #7a7168;
+  --text-3: #8d8379; /* AA on --raised (was #7a7168) */
   --idle: #7a7168;
   --glass: rgba(22, 20, 18, 0.78);
   --term-bg: #0a0908;
@@ -103,7 +103,7 @@
   --highlight: rgba(160, 190, 255, 0.05);
   --text: #e4e9f4;
   --text-2: #98a3bb;
-  --text-3: #6b7690;
+  --text-3: #7d879f; /* AA on --raised (was #6b7690) */
   --idle: #6b7690;
   --glass: rgba(15, 22, 38, 0.78);
   --term-bg: #060a14;
@@ -121,11 +121,11 @@
   --highlight: rgba(255, 255, 255, 0.9);
   --text: #121214;
   --text-2: #4b4b53;
-  --text-3: #6a6a73;
+  --text-3: #64646d; /* AA on --raised (was #6a6a73) */
   --idle: #8a8a93;
-  --ok: #0e8a55;
-  --bad: #d23b35;
-  --wait: #b26a00;
+  --ok: #0a7347;
+  --bad: #c0322d;
+  --wait: #8f5500; /* status colours are text on chips too: AA on their own tint (were #0e8a55, #d23b35, #b26a00) */
   --glass: rgba(255, 255, 255, 0.85);
 }
 :root[data-theme][data-palette="paper"] {
@@ -138,7 +138,7 @@
   --highlight: rgba(255, 255, 255, 0.9);
   --text: #111113;
   --text-2: #4d4d55;
-  --text-3: #6b6b74;
+  --text-3: #64646d; /* AA on --raised (was #6b6b74) */
   --idle: #6b6b74;
   --glass: rgba(255, 255, 255, 0.8);
 }

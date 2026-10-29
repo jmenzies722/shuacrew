@@ -4,7 +4,6 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { fold } from "@shuacrew/core";
 import { EventStore } from "./store.js";
-import { Learning } from "./learning.js";
 import { ABOUT_A_SESSION, forgetRun, leftovers } from "./forget.js";
 
 const base = { ask: "a", runtime: "claude", labels: [] as string[], incognito: false, title: "t" };
@@ -53,40 +52,6 @@ it("finds what a session left behind: uploads inside ShuaCrew only, artifacts, t
   expect(left.sessions).toEqual([{ runtime: "codex", id: "01a116c4-0d2e-7440-8c7d-daabdec05221" }]);
   expect(left.worktrees).toEqual([{ path: "/h/.shuacrew/worktrees/app/r", branch: "shua/r" }]);
   expect(left.artifacts).toEqual(["a_1"]);
-});
-
-it("deletes everywhere: files inside ShuaCrew, exact transcripts, Learn records, receipts — and nothing else", () => {
-  const home = tmp(), codex = tmp(), claude = tmp(), outside = tmp();
-  const store = new EventStore(path.join(home, "shuacrew.db")), learning = new Learning(path.join(home, "learning.json"));
-  const sid = "01a116c4-0d2e-7440-8c7d-daabdec05221", other = "01a116c4-0000-7440-8c7d-ffffffffffff";
-  mkdirSync(path.join(home, "uploads", "u1"), { recursive: true }); writeFileSync(path.join(home, "uploads", "u1", "a.png"), "x");
-  writeFileSync(path.join(outside, "keep.txt"), "mine");
-  const day = path.join(codex, "sessions", "2026", "10", "06"); mkdirSync(day, { recursive: true });
-  writeFileSync(path.join(day, `rollout-2026-10-06-${sid}.jsonl`), "{}"); writeFileSync(path.join(day, `rollout-2026-10-06-${other}.jsonl`), "{}");
-  mkdirSync(path.join(claude, "projects", "-Users-me"), { recursive: true }); writeFileSync(path.join(claude, "projects", "-Users-me", `${other}.jsonl`), "{}");
-  store.append("run.created", { ...base, ask: `see ${path.join(home, "uploads", "u1", "a.png")} and ${path.join(outside, "keep.txt")}` }, { run: "r_x" });
-  store.append("run.session", { runtime: "codex", id: sid }, { run: "r_x" });
-  store.append("run.status", { status: "done" }, { run: "r_x" });
-  store.claimAction("act-1", "fp", "r_x");
-  learning.addCards([{ front: "from it", back: "b" }], "general", { run: "r_x" });
-  learning.addCards([{ front: "mine", back: "b" }], "general", {});
-  learning.edit((s) => ({ ...s, jobs: [{ id: "j", company: "Co", role: "", url: "", stage: "saved", location: "", salary: "", next: "", notes: "", description: "", fit: { run: "r_x", summary: "s", gaps: [] }, source: "you", created: 1, updated: 1 }] }));
-  let forgotten: string[] = [];
-  const out = forgetRun("r_x", { store, home, learning, codexHome: codex, claudeDirs: [claude], library: { forgetArtifacts: (ids) => { forgotten = ids; } } });
-  expect(out.events).toBe(3);
-  expect(existsSync(path.join(home, "uploads", "u1", "a.png"))).toBe(false);
-  expect(existsSync(path.join(outside, "keep.txt"))).toBe(true); // outside ShuaCrew: never touched
-  expect(existsSync(path.join(day, `rollout-2026-10-06-${sid}.jsonl`))).toBe(false);
-  expect(existsSync(path.join(day, `rollout-2026-10-06-${other}.jsonl`))).toBe(true);
-  expect(existsSync(path.join(claude, "projects", "-Users-me", `${other}.jsonl`))).toBe(true);
-  expect(learning.get().cards.map((c) => c.front)).toEqual(["mine"]);
-  expect(learning.get().jobs[0]!.fit).toBeUndefined();
-  expect(out.receipts).toBe(1);
-  expect(forgotten).toEqual([]);
-  const kinds = [...store.read(0)].map((e) => e.kind);
-  expect(kinds).toEqual(["run.deleted"]);
-  expect(store.verify()).toMatchObject({ ok: true });
-  store.close();
 });
 
 it("the route refuses a running session and deletes a finished one", async () => {

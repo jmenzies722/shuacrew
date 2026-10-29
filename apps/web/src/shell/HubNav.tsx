@@ -18,11 +18,12 @@ import { sparkVars } from "../lib/spark-color";
 import { toggleSparkPanel, useSparkPanel } from "../lib/spark-panel";
 import { SparkCharacter } from "../components/SparkCharacter";
 import "./hub-nav.css";
+import { SPRING, SPRING_TUCK } from "../lib/spring-easing";
 
 const PAGE_ICON: Record<string, typeof House> = {
   "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": Layers3, "/studio": Clapperboard,
   "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
-  "/library": Library, "/memory": Brain, "/learn": GraduationCap, "/teach": Presentation, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
+  "/library": Library, "/memory": Brain, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
 };
 const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, automations: CalendarClock, library: Library, system: Cpu } as const;
 const LAST = "shuacrew.hubs.last";
@@ -60,8 +61,8 @@ export function HubRail() {
   const item = (id: string, label: string, Icon: typeof House, onClick: () => void, title: string, b: { tone: string; n: number } | null = null) => {
     const on = here === id;
     return <button key={id} type="button" className={`hub ${on ? "is-on" : ""}`} aria-current={on ? "page" : undefined} onClick={onClick} aria-label={title}>
-      {on && <motion.span layoutId="hub-on" className="hub-on" transition={{ type: "spring", stiffness: 560, damping: 40 }} />}
-      {on && <motion.span layoutId="hub-bar" className="hub-bar" aria-hidden transition={{ type: "spring", stiffness: 520, damping: 36 }} />}
+      {on && <motion.span layoutId="hub-on" className="hub-on" transition={SPRING} />}
+      {on && <motion.span layoutId="hub-bar" className="hub-bar" aria-hidden transition={SPRING} />}
       <span className="hub-icon"><Icon size={19} strokeWidth={1.75} />{b && <em className={`hub-badge is-${b.tone}`}>{b.n}</em>}</span>
       {/* Icons only on the rail; the name slides out as a tooltip on hover or keyboard focus. */}
       <span className="hub-label" aria-hidden>{label}{title.includes("⌘") && <kbd>{title.slice(title.lastIndexOf("⌘"))}</kbd>}</span>
@@ -96,7 +97,7 @@ export function HubTabs() {
     {at.hub.tabs.map((tab) => {
       const on = tab === at.tab;
       return <Link key={tab.to} to={tab.to} aria-current={on ? "page" : undefined} className={`hub-tab ${on ? "is-on" : ""}`}>
-        {on && <motion.span layoutId={`hub-tab-${at.hub.id}`} className="hub-tab-on" initial={false} transition={ready ? { type: "spring", stiffness: 520, damping: 38 } : { duration: 0 }} />}
+        {on && <motion.span layoutId={`hub-tab-${at.hub.id}`} className="hub-tab-on" initial={false} transition={ready ? SPRING : { duration: 0 }} />}
         <span className="hub-tab-label">{tab.label}</span>
       </Link>;
     })}
@@ -237,7 +238,7 @@ function Section({ id, label, folded, onFold, action, badge, children }: { id: s
       <button type="button" className="side-section-label" aria-expanded={!folded} onClick={() => onFold(id)}>{label}<ChevronRight size={12} className="side-chev" />{badge && <em>{badge}</em>}</button>
       {action}
     </div>
-    <AnimatePresence initial={false}>{!folded && <motion.div key="body" className="side-section-body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}>{children}</motion.div>}</AnimatePresence>
+    <AnimatePresence initial={false}>{!folded && <motion.div key="body" className="side-section-body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={SPRING_TUCK}>{children}</motion.div>}</AnimatePresence>
   </div>;
 }
 
