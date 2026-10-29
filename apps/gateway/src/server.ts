@@ -6,6 +6,7 @@ import { workflowTeachingRoutes } from "./workflow-teaching-routes.js";
 import { z } from "zod";
 import { sessionSummaryRoutes } from "./session-summary-routes.js";
 import { teachingRoutes } from "./teaching-routes.js";
+import { explainBackRoutes } from "./explain-back-routes.js";
 /**
  * The HTTP + WebSocket surface.
  *
@@ -265,6 +266,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   sessionSummaryRoutes(app, {store,supervisor,runtimes:options.runtimes,home:path.dirname(store.path)});
   workflowTeachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes });
   teachingRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
+  explainBackRoutes(app, { home: path.dirname(store.path), runtimes: options.runtimes, supervisor });
   if (options.settings) settingsRoutes(app, { settings: options.settings, store: options.store, home: path.dirname(options.store.path), builtinProtected: options.builtinProtected ?? [], persona: (id) => options.crew?.persona(id), runtimes: () => [...options.runtimes.values()].map((r) => ({ id: r.id, authMode: r.authMode })) });
   observabilityRoutes(app, store);
   incomeRoutes(app, store);

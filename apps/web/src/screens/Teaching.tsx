@@ -9,6 +9,7 @@ import { Markdown } from "../components/Markdown";
 import { isMac } from "../lib/native";
 import "./teaching.css";
 import { ArchitectureCard } from "../components/ArchitectureCard";
+import { ExplainBack } from "../components/ExplainBack";
 import { parseVisual } from "../lib/visual";
 import type { ArchitectureLesson } from "../lib/notch-lesson";
 const id = () => `source_${crypto.randomUUID()}`;
@@ -216,6 +217,8 @@ export function Teaching({ compact = false, bare = false, initialQuestion = "", 
           New lesson
         </button>
       </header>}
+      {/* Explain back: learn from a session you finished, then prove it by explaining a step. */}
+      <ExplainBack compact={compact} />
       {/* Always mounted: both the toolbar's Import and the home's "Import a lesson" open it. */}
       <input
         hidden

@@ -2,6 +2,17 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { spawn } from "node:child_process";
 import { findBinary } from "./claude.js";
 import { RpcPeer } from "./codex.js";
+export type TeachingUsage = { model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; costUsd: number };
+function usageOf(result: { modelUsage?: Record<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number; costUSD: number }>; total_cost_usd?: number }, model: string): TeachingUsage {
+  const all = Object.entries(result.modelUsage ?? {});
+  const sum = (k: "inputTokens" | "outputTokens" | "cacheReadInputTokens" | "cacheCreationInputTokens") => all.reduce((n, [, u]) => n + (u[k] ?? 0), 0);
+  return {
+    model: all.length === 1 ? all[0]![0] : all.length ? all.map(([m]) => m).join("+") : model,
+    inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"),
+    cacheReadTokens: sum("cacheReadInputTokens"), cacheCreationTokens: sum("cacheCreationInputTokens"),
+    costUsd: result.total_cost_usd ?? all.reduce((n, [, u]) => n + (u.costUSD ?? 0), 0),
+  };
+}
 /** A tool-free structured turn on the existing Claude Code login. No separate API credentials. */
 export async function teachingCompletion(input: {
   prompt: string;
@@ -12,6 +23,8 @@ export async function teachingCompletion(input: {
   env: Record<string, string>;
   signal: AbortSignal;
   images: Array<{ mime: "image/png" | "image/jpeg" | "image/webp"; data: string }>;
+  /** Told what the turn cost, success or not: tokens summed over every model call, and the SDK's list-price estimate. */
+  onUsage?: (usage: TeachingUsage) => void;
 }): Promise<unknown> {
   input.signal.throwIfAborted();
   const abort = new AbortController(),
@@ -60,6 +73,7 @@ export async function teachingCompletion(input: {
     for await (const message of stream) {
       input.signal.throwIfAborted();
       if (message.type === "result") {
+        input.onUsage?.(usageOf(message, input.model));
         if (message.subtype !== "success")
           throw new Error(
             `Teaching model: ${message.subtype}${"errors" in message ? ` · ${message.errors.join("; ")}` : ""}`,

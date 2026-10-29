@@ -1,0 +1,165 @@
+/*
+ * Shua's board. A whiteboard in light mode (warm white, marker ink), a chalkboard in dark (slate, chalk). One accent
+ * — Shua's colour — marks what is being explained right now; everything already explained settles into ink.
+ * The window around it is transparent: only the board itself is drawn.
+ */
+html:has(.board-root), body:has(.board-root), #root:has(.board-root) { background: transparent !important; overflow: hidden; height: 100%; }
+
+.board-root {
+  --board-bg: #fbfaf7;
+  --board-grid: rgba(36, 39, 46, 0.07);
+  --board-edge: rgba(36, 39, 46, 0.12);
+  --board-ink: #2a2d34;
+  --board-muted: #6a6f7c;
+  --board-card: #ffffff;
+  --board-group: rgba(36, 39, 46, 0.035);
+  --board-accent-default: #2d6be4;
+  --board-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 30px 80px -28px rgba(20, 22, 28, 0.45), 0 2px 8px rgba(20, 22, 28, 0.12);
+  --accent: var(--board-accent, var(--board-accent-default));
+  position: fixed; inset: 0;
+  display: grid;
+  font-family: var(--font-ui, "Geist Variable", system-ui, sans-serif);
+  color: var(--board-ink);
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  .board-root {
+    --board-bg: #16181d;
+    --board-grid: rgba(233, 230, 223, 0.055);
+    --board-edge: rgba(233, 230, 223, 0.1);
+    --board-ink: #ebe7df;
+    --board-muted: #9ea3ad;
+    --board-card: #1e2128;
+    --board-group: rgba(233, 230, 223, 0.03);
+    --board-accent-default: #f3b64a;
+    --board-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 30px 90px -24px rgba(0, 0, 0, 0.75), 0 2px 10px rgba(0, 0, 0, 0.4);
+  }
+}
+.board-root.is-empty { display: none; }
+
+.board {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  margin: 0;
+  border-radius: 22px;
+  background-color: var(--board-bg);
+  background-image: radial-gradient(var(--board-grid) 1.1px, transparent 1.2px);
+  background-size: 22px 22px;
+  border: 1px solid var(--board-edge);
+  box-shadow: var(--board-shadow);
+  overflow: hidden;
+  animation: board-in var(--t-spring, 600ms) var(--spring, cubic-bezier(.2, .9, .25, 1.05)) both;
+}
+@keyframes board-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+
+/* ── header ─────────────────────────────────────────── */
+.board-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "kicker controls" "title controls" "scope controls";
+  column-gap: var(--space-4, 16px);
+  padding: 20px 22px 6px 26px;
+}
+.board-kicker {
+  grid-area: kicker;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--text-xs, 11.5px); font-weight: var(--label-weight, 560);
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+.board-head h1 {
+  grid-area: title;
+  margin: 4px 0 0;
+  font-size: var(--title-md, 22px); font-weight: var(--title-weight, 650);
+  letter-spacing: -0.012em; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.board-scope { grid-area: scope; margin: 4px 0 0; font-size: var(--text-xs, 11.5px); color: var(--board-muted); }
+.board-controls { grid-area: controls; align-self: start; display: flex; align-items: center; gap: 6px; }
+.board-controls button {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--board-edge); background: var(--board-card); color: var(--board-ink);
+  cursor: pointer;
+  transition: background var(--t-fast, 120ms), border-color var(--t-fast, 120ms), transform var(--t-fast, 120ms);
+}
+.board-controls button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, var(--board-edge)); }
+.board-controls button:active:not(:disabled) { transform: scale(0.94); }
+.board-controls button:disabled { opacity: 0.35; cursor: default; }
+.board-controls button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--board-bg), 0 0 0 4px color-mix(in srgb, var(--accent) 80%, transparent); }
+.board-controls .board-close { margin-left: 6px; }
+.board-count { min-width: 64px; text-align: center; font-size: var(--text-sm, 12.5px); color: var(--board-muted); font-variant-numeric: tabular-nums; }
+
+/* ── canvas ─────────────────────────────────────────── */
+.board-canvas { min-height: 0; padding: 8px 22px 4px; }
+.board-canvas svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.board-ink {
+  fill: none;
+  stroke: var(--board-ink);
+  stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: var(--len);
+  stroke-dashoffset: var(--len);
+  transition: stroke var(--t-slow, 420ms);
+}
+.board-ink.is-drawing { animation: board-draw var(--dur) linear var(--at) both; }
+@keyframes board-draw { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
+.is-now > .board-ink, .is-now .board-ink { stroke: var(--accent); }
+
+.board-pen { fill: var(--accent); opacity: 0; filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 70%, transparent)); pointer-events: none; }
+
+.board-group rect { fill: var(--board-group); stroke: var(--board-edge); stroke-width: 1.2; stroke-dasharray: 5 6; animation: board-fade 480ms ease-out var(--at, 0ms) both; }
+.board-group text { fill: var(--board-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; animation: board-fade 480ms ease-out var(--at, 0ms) both; }
+
+.board-node { cursor: pointer; outline: none; }
+.board-node-fill { fill: var(--board-card); opacity: 0; animation: board-fade 420ms ease-out var(--at, 0ms) both; transition: fill var(--t-med, 220ms); }
+.board-node.is-now .board-node-fill { fill: color-mix(in srgb, var(--accent) 9%, var(--board-card)); }
+.board-node:hover .board-node-fill, .board-node:focus-visible .board-node-fill { fill: color-mix(in srgb, var(--accent) 14%, var(--board-card)); }
+.board-node:focus-visible .board-ink { stroke: var(--accent); }
+.board-node-text { animation: board-fade 360ms ease-out var(--at, 0ms) both; }
+.board-node-icon { color: var(--board-muted); transition: color var(--t-slow, 420ms); }
+.board-node.is-now .board-node-icon { color: var(--accent); }
+.board-node-label { fill: var(--board-ink); font-size: 14.5px; font-weight: 600; letter-spacing: -0.005em; }
+.board-node-role { fill: var(--board-muted); font-size: 11.5px; }
+
+.board-edge-label { animation: board-fade 320ms ease-out var(--at, 0ms) both; }
+.board-edge-label rect { fill: var(--board-bg); stroke: var(--board-edge); stroke-width: 1; }
+.board-edge-label text { fill: var(--board-muted); font-size: 11.5px; font-weight: 500; }
+.board-edge.is-now .board-edge-label text { fill: var(--accent); }
+
+@keyframes board-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── caption ────────────────────────────────────────── */
+.board-caption {
+  display: grid; gap: 4px;
+  margin: 0 18px 18px;
+  padding: 14px 18px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--board-card) 88%, transparent);
+  border: 1px solid var(--board-edge);
+  backdrop-filter: blur(10px);
+}
+.board-caption small { font-size: var(--text-2xs, 10.5px); font-weight: 600; color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase; }
+.board-caption strong { font-size: var(--text-lg, 16px); font-weight: 650; letter-spacing: -0.01em; }
+.board-caption p {
+  margin: 0; max-width: 78ch;
+  font-size: var(--text-md, 14px); line-height: 1.5; color: color-mix(in srgb, var(--board-ink) 82%, var(--board-bg));
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.board-dots { display: flex; gap: 5px; margin-top: 6px; }
+.board-dots i { width: 18px; height: 3px; border-radius: 2px; background: var(--board-edge); transition: background var(--t-med, 220ms), width var(--t-med, 220ms); }
+.board-dots i[data-on="true"] { background: color-mix(in srgb, var(--accent) 45%, var(--board-edge)); }
+.board-dots i[data-now="true"] { width: 30px; background: var(--accent); }
+.board-followups { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.board-followups button {
+  border: 1px solid var(--board-edge); background: var(--board-bg); color: var(--board-ink);
+  border-radius: var(--radius-pill, 999px); padding: 6px 12px; font: inherit; font-size: var(--text-sm, 12.5px); cursor: pointer;
+}
+.board-followups button:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--board-edge)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .board, .board-ink.is-drawing, .board-group rect, .board-group text, .board-node-fill, .board-node-text, .board-edge-label { animation: none !important; }
+  .board-ink { stroke-dashoffset: 0; }
+  .board-node-fill, .board-node-text, .board-edge-label { opacity: 1; }
+}

@@ -556,3 +556,19 @@ describe("bringing something up on the iPhone", () => {
   });
 });
 
+
+describe("drawings as models actually write them", () => {
+  const size = { width: 1512, height: 982 };
+  const drawn = (text: string) => completedBlocks(text, size).filter((b) => b.kind === "draw").flatMap((b) => parseDraw(b.raw));
+  it("reads the keyed form Shua wrote (it used to draw nothing), pixels and all", () => {
+    const shapes = drawn('Stats.\n```draw [{"highlight":{"x":1000,"y":446,"w":130,"h":18,"label":"Efficiency stats"}},{"highlight":{"x":1000,"y":527,"w":130,"h":18,"label":"Four Factors"}}]```');
+    expect(shapes).toHaveLength(2);
+    expect(shapes[0]).toMatchObject({ shape: "highlight", label: "Efficiency stats", x: 0.6614, y: 0.4542 });
+  });
+  it("takes type or kind for the shape, and common names", () => {
+    expect(drawn('```draw [{"type":"rect","x":100,"y":100,"w":200,"h":50,"label":"here"},{"kind":"ellipse","x":0.5,"y":0.5,"r":0.05},{"type":"tick","x":0.2,"y":0.2},{"type":"note","x":0.4,"y":0.4,"label":"why"}]```').map((s) => s.shape)).toEqual(["box", "circle", "check", "text"]);
+  });
+  it("still drops what it can't draw", () => {
+    expect(drawn('```draw [{"type":"laser","x":0.1,"y":0.1},{"weird":[1,2]}]```')).toEqual([]);
+  });
+});

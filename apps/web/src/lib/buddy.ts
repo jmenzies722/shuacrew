@@ -173,11 +173,37 @@ const unit = (v: unknown) => typeof v === "number" && v >= 0 && v <= 1;
 const lab = (v: unknown) => (typeof v === "string" && v.trim() ? { label: v.trim().slice(0, 60) } : {});
 const st = (v: unknown) => (typeof v === "number" && v > 0 ? { stay: Math.min(300, Math.round(v)) } : {});
 /** A ```draw [...]``` block: up to 16 validated marks (fractions of the screen by now — pixels were converted). */
+const DRAW_SHAPES = new Set(["box", "circle", "arrow", "text", "spotlight", "highlight", "underline", "step", "check", "cross", "path", "card"]);
+const DRAW_ALIASES: Record<string, string> = { rect: "box", rectangle: "box", square: "box", ellipse: "circle", oval: "circle", ring: "circle", line: "arrow", note: "text", label: "text", number: "step", tick: "check", checkmark: "check", route: "path", marker: "highlight", mark: "highlight" };
+/**
+ * A drawing as the model wrote it, in the one shape the overlay reads ({"shape": …, …}). Measured: Shua wrote
+ * [{"highlight":{"x":1000,…}}] and nothing appeared, since only {"shape":"highlight",…} was read (and its pixels, one
+ * level down, were never converted either). Also takes {"type"|"kind": …} and common names (rect, ellipse, tick…).
+ */
+export function normalizeDraw(value: unknown): unknown[] {
+  const list = Array.isArray(value) ? value : value && typeof value === "object" && Array.isArray((value as { shapes?: unknown }).shapes) ? (value as { shapes: unknown[] }).shapes : [value];
+  return list.flatMap((item): unknown[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    let o = item as Record<string, unknown>;
+    const keys = Object.keys(o);
+    // {"highlight": {...}}: the name is the key.
+    if (keys.length === 1 && o[keys[0]!] && typeof o[keys[0]!] === "object" && !Array.isArray(o[keys[0]!])) o = { shape: keys[0], ...(o[keys[0]!] as Record<string, unknown>) };
+    const named = typeof o.shape === "string" ? o.shape : typeof o.type === "string" ? o.type : typeof o.kind === "string" ? o.kind : "";
+    const shape = DRAW_ALIASES[named.toLowerCase()] ?? named.toLowerCase();
+    if (!DRAW_SHAPES.has(shape)) return [];
+    const { type: _type, kind: _kind, ...rest } = o;
+    void _type; void _kind;
+    const out: Record<string, unknown> = { ...rest, shape };
+    if (shape === "text" && typeof out.text !== "string" && typeof out.label === "string") out.text = out.label;
+    return [out];
+  });
+}
+
 export function parseDraw(text: string): Shape[] {
   const m = /```draw\s*([\s\S]*?)```/i.exec(text);
   if (!m) return [];
   try {
-    const v = JSON.parse(m[1]!.trim()) as unknown, list = Array.isArray(v) ? v : [v], out: Shape[] = [];
+    const list = normalizeDraw(JSON.parse(m[1]!.trim()) as unknown), out: Shape[] = [];
     for (const raw of list) {
       const o = raw as Record<string, unknown>;
       // A picked target ("#12" / "T40") can stand in for coordinates: Spark draws around the real thing.
@@ -305,7 +331,10 @@ export function completedBlocks(text: string, size?: ShotSize | null): Array<{ k
     }
     const media = m[1]!.toLowerCase() === "act" ? mediaKeys(m[2]!) : null;
     if (media) { out.push({ key: `${m.index}:do`, kind: "do", raw: `\`\`\`do ${JSON.stringify(media)}\`\`\`` }); continue; }
-    out.push({ key: `${m.index}:${kind}`, kind, raw: size && /^(act|point|guide|draw|zoom)$/.test(kind) ? pixelsToFractions(m[0], kind, size) : m[0] });
+    // A drawing is put in its one readable shape first, so its pixels (wherever the model nested them) convert too.
+    let block = m[0];
+    if (m[1]!.toLowerCase() === "draw") { try { block = `\`\`\`draw ${JSON.stringify(normalizeDraw(JSON.parse(m[2]!.trim())))}\`\`\``; } catch { /* left as written: parseDraw reads nothing */ } }
+    out.push({ key: `${m.index}:${kind}`, kind, raw: size && /^(act|point|guide|draw|zoom)$/.test(kind) ? pixelsToFractions(block, kind, size) : block });
   }
   return out;
 }

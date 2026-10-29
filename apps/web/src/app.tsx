@@ -6,7 +6,7 @@ import "./workspace.css";
 import "./pristine.css";
 import "./craft.css";
 import { RouterProvider } from "@tanstack/react-router";
-import { StrictMode } from "react";
+import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { applyTheme, connect, useLive } from "./lib/live";
 import { folderPicked } from "./lib/native";
@@ -19,6 +19,8 @@ startFreshBuild(); // a new build reaches the open windows at their next quiet m
 startShuaRemote(); // and what you ask on the iPhone, the notch's Shua does
 import { router } from "./routes";
 import { Buddy } from "./screens/Buddy";
+// Shua's board window loads /board: just the whiteboard, loaded on its own so the rest of the app never pays for it.
+const BoardPage = lazy(() => import("./board/BoardPage"));
 import { protectKeyboardDelivery } from "./lib/keyboard-delivery";
 
 if (document.documentElement.dataset.shell === "mac") protectKeyboardDelivery(window);
@@ -73,6 +75,6 @@ void connect();
 // The Mac app's desktop buddy panel loads /buddy: just Spark, no workspace chrome.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {location.pathname === "/buddy" ? <Buddy /> : <RouterProvider router={router} />}
+    {location.pathname === "/buddy" ? <Buddy /> : location.pathname === "/board" ? <Suspense fallback={null}><BoardPage /></Suspense> : <RouterProvider router={router} />}
   </StrictMode>,
 );
