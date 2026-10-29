@@ -147,6 +147,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     crew,
     mcpServers: withLibrary,
     // Shua's quick turns: the connections you chose for it, plus ShuaCrew's own tools (what's happening, the library).
+    onAdopt: (from, to) => tools.alias(from, to), // a spare Shua session's tool access follows the conversation that took it
     sparkMcpServers: (runtime, run) => {
       const auth = `Bearer ${tools.tokenFor(run)}`;
       if (runtime === "codex") return { ...mcp.forCodex("spark"), [TOOL_SERVER]: { url: self, http_headers: { Authorization: auth } } };

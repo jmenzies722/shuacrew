@@ -11,6 +11,7 @@
  * single policy engine.
  */
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -507,19 +508,24 @@ export class ClaudeRuntime implements Runtime {
     const session = spare.opening ? await spare.opening : spare.session;
     if (!session || session.dead) return undefined;
     clearTimeout(session.idle);
+    if (session.origin) run.adopted?.(session.origin); // its tool access now answers for this conversation
+    session.origin = undefined;
     return session;
   }
 
   /** Open the next spare in the background (one at a time; a differently shaped one replaces it). Never throws. */
   private refillSpare(run: RunSpec, env: Record<string, string | undefined>, account: string): void {
-    if (this.closedForGood) return;
-    const key = this.spareKey(run, account);
+    // Only with the spare's own tool access (mcpFor): opened with this conversation's servers, the next conversation's
+    // ShuaCrew tool calls would count as this one's.
+    if (this.closedForGood || !run.mcpFor) return;
+    const id = `r_spare-${randomUUID().slice(0, 8)}`;
+    const shape: RunSpec = { ...run, id, ask: "", resume: undefined, mcpServers: run.mcpFor(id), mcpFor: undefined, adopted: undefined };
+    const key = this.spareKey(shape, account);
     if (this.spare?.key === key && (this.spare.opening || !this.spare.session.dead)) return;
     if (this.spare && !this.spare.opening) this.spare.session.close();
-    const shape: RunSpec = { ...run, id: "spare", ask: "", resume: undefined };
     const entry: NonNullable<ClaudeRuntime["spare"]> = { key, session: undefined as unknown as WarmSession };
     entry.opening = this.openWarm(shape, PREPARING, env, account).then(async (session) => {
-      entry.session = session; entry.opening = undefined;
+      entry.session = session; entry.opening = undefined; session.origin = id;
       session.idle = setTimeout(() => { session.close(); if (this.spare === entry) this.spare = undefined; }, 15 * 60_000);
       if (this.spare !== entry) { session.close(); return undefined; } // replaced while it opened
       await session.ready?.catch(() => undefined);
@@ -606,6 +612,8 @@ interface WarmSession {
   account: string;
   /** Claude Code launched and initialised (its init handshake answered). */
   ready?: Promise<unknown>;
+  /** The id it was opened as when that isn't the conversation's (a spare): handed over on adoption. */
+  origin?: string;
   idle?: NodeJS.Timeout;
   close(): void;
   interrupt(): Promise<void>;

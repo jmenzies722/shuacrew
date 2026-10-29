@@ -26,6 +26,11 @@ export interface RunSpec {
   disableNativeAgents?: boolean;
   /** MCP servers installed in ShuaCrew. Bearer headers stay in the gateway. Codex/Claude use a map; ACP uses a list. */
   mcpServers?: Record<string, unknown> | unknown[];
+  /** Lean only: these same tool servers, authorised as another id — for a spare session opened ahead of the next
+   *  conversation, whose own tool access must not be this conversation's. */
+  mcpFor?(id: string): Record<string, unknown> | unknown[] | undefined;
+  /** A warm session opened as `from` (a spare) now carries this conversation: its tool access is re-pointed here. */
+  adopted?(from: string): void;
   /** Claude Code plugins to load (ShuaCrew's skills live in one). Other runtimes ignore this. */
   plugins?: Array<{ type: "local"; path: string; skipMcpDiscovery?: boolean }>;
   /**

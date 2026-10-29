@@ -120,6 +120,14 @@ export class ToolServer {
     return token;
   }
 
+  /** A spare session opened as `from` now carries `to`: its token answers for `to` from here on. */
+  alias(from: string, to: string): void {
+    const token = this.byRun.get(from);
+    if (!token) return;
+    this.tokens.set(token, to);
+    this.byRun.delete(from);
+  }
+
   runFor(authorization: string | undefined): string | undefined {
     const token = /^Bearer\s+(\S+)$/i.exec(authorization ?? "")?.[1];
     return token ? this.tokens.get(token) : undefined;

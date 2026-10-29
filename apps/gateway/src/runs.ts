@@ -103,6 +103,8 @@ export interface SupervisorOptions {
   mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
   /** The MCP servers you've let Spark use, for its quick turns (Claude only). */
   sparkMcpServers?: (runtime: string, run: string) => Record<string, unknown> | undefined;
+  /** A spare warm session opened as `from` was adopted by run `to` (re-point its tool access). */
+  onAdopt?: (from: string, to: string) => void;
   /** Told to every fresh conversation (what ShuaCrew's own tools are for). */
   toolHint?: string;
   /** Claude Code plugins for a runtime (ShuaCrew's installed skills). */
@@ -249,7 +251,7 @@ export class Supervisor {
     // Shaped exactly as its run.created will be, so the turn's thread matches the one started here.
     const created = { labels: spec.labels ?? [], model: spec.model, effort: spec.effort, member: routed.member ? spec.member : undefined, venture: spec.venture };
     const { lean, model, effort, disableNativeAgents, mcpServers } = this.threadShape(id, created, runtime);
-    runtime.prepare({ lean, id, ask: "", cwd: this.options.workspace, model, effort, disableNativeAgents, mcpServers, plugins: lean ? undefined : this.options.plugins?.(runtime.id), system: lean ? undefined : this.instructions(id, created, runtime) }, agentEnv(process.env, runtime.authMode)); // a lean (Shua) turn carries no extra instructions, so neither does its warmed thread
+    runtime.prepare({ lean, id, ask: "", cwd: this.options.workspace, model, effort, disableNativeAgents, mcpServers, ...this.spareHooks(lean, id, runtime), plugins: lean ? undefined : this.options.plugins?.(runtime.id), system: lean ? undefined : this.instructions(id, created, runtime) }, agentEnv(process.env, runtime.authMode)); // a lean (Shua) turn carries no extra instructions, so neither does its warmed thread
     return id;
   }
 
@@ -380,6 +382,12 @@ export class Supervisor {
    * The parts of a turn that shape the agent's conversation (model, effort, tools): one definition, used by the turn
    * itself and by prepare(), so a connection opened ahead of time always matches the turn it's for.
    */
+  /** Shua's spare sessions: the same tools under the spare's own id, and that id handed to the run that adopts it. */
+  private spareHooks(lean: boolean, runId: string, runtime: Runtime): Pick<RunSpec, "mcpFor" | "adopted"> {
+    if (!lean) return {};
+    return { mcpFor: (id) => this.options.sparkMcpServers?.(runtime.id, id), adopted: (from) => this.options.onAdopt?.(from, runId) };
+  }
+
   private threadShape(runId: string, spec: { labels: string[]; model?: string; effort?: string }, runtime: Runtime) {
     const model = this.pickModel(runtime.id, this.modelFor(runId, runtime.id, spec.model));
     const selectedRoute = this.store.forRun(runId).findLast(e => e.kind === "run.routed" && e.body.effort !== undefined);
@@ -517,6 +525,7 @@ export class Supervisor {
       system,
       context: separate ? recalled : undefined,
       mcpServers,
+      ...this.spareHooks(lean, runId, runtime),
       plugins: lean ? undefined : this.options.plugins?.(runtime.id),
     };
     this.rememberPrompt(runId, { at: Date.now(), turn, runtime: runtime.id, model, effort, resumed: Boolean(resume), system: run.system ?? "", ask: run.ask, tools: Object.keys((run.mcpServers ?? {}) as object) });
