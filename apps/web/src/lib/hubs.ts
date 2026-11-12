@@ -1,14 +1,16 @@
-/** The app's map: six sections and secondary tools, each a small set of tabs. Every screen lives in exactly one hub. */
+/**
+ * The app's map: four sections — Home, then what Shua knows (Intelligence), what runs without you (Autopilot) and who
+ * does the work (Crew) — and everything else folded under More. Every screen lives in exactly one hub.
+ */
 export interface HubTab { to: string; label: string; also?: string[] }
-export interface Hub { id: "home" | "crew" | "build" | "automations" | "library" | "system"; label: string; hint: string; tabs: HubTab[] }
+export interface Hub { id: "home" | "intelligence" | "autopilot" | "crew" | "system"; label: string; hint: string; tabs: HubTab[] }
 
 export const HUBS: Hub[] = [
   { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions"] }, { to: "/activity", label: "Today" }] },
-  { id: "build", label: "Projects", hint: "From idea to shipped", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/board", label: "Board", also: ["/review", "/runs"] }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }] },
+  { id: "intelligence", label: "Intelligence", hint: "What Shua knows, and how well it works", tabs: [{ to: "/memory", label: "Memory" }, { to: "/library", label: "Library" }, { to: "/observability", label: "Insights", also: ["/developer", "/insights"] }] },
+  { id: "autopilot", label: "Autopilot", hint: "What runs without you", tabs: [{ to: "/schedules", label: "Schedules" }, { to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/board", label: "Board", also: ["/review", "/runs"] }] },
   { id: "crew", label: "Crew", hint: "Your studio, live", tabs: [{ to: "/floor", label: "Studio floor" }, { to: "/crew", label: "Agents" }, { to: "/rooms", label: "Rooms" }] },
-  { id: "automations", label: "Automations", hint: "Teach once, reuse carefully", tabs: [{ to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/schedules", label: "Schedules" }] },
-  { id: "library", label: "Library", hint: "Everything worth keeping", tabs: [{ to: "/library", label: "Artifacts & knowledge" }, { to: "/memory", label: "Memory" }] },
-  { id: "system", label: "All tools", hint: "Connections and controls", tabs: [{ to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/observability", label: "Insights", also: ["/developer", "/insights"] }, { to: "/usage", label: "Usage" }, { to: "/terminal", label: "Terminal" }] },
+  { id: "system", label: "More", hint: "Projects, tools and the numbers", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }, { to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/usage", label: "Usage" }, { to: "/terminal", label: "Terminal" }] },
 ];
 export const PRIMARY_HUBS = HUBS.filter(hub => hub.id !== "system");
 

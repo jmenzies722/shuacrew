@@ -5,7 +5,7 @@ import type { RunView } from "@shuacrew/core/projections";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { since } from "@shuacrew/ui";
-import { Activity, BookMarked, ChevronRight, BookOpen, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, Hammer, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Search, Settings, ShieldCheck, SquareKanban, SquarePen, SquareTerminal, Trash2, Users } from "lucide-react";
+import { Activity, BookMarked, ChevronRight, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Search, Settings, ShieldCheck, SquareKanban, SquarePen, SquareTerminal, Trash2, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, PRIMARY_HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
 import { isTopLevelWork, scopeRuns } from "../lib/crew";
@@ -25,7 +25,7 @@ const PAGE_ICON: Record<string, typeof House> = {
   "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
   "/library": Library, "/memory": Brain, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
 };
-const ICON = { home: House, crew: Users, build: Hammer, know: BookOpen, automations: CalendarClock, library: Library, system: Cpu } as const;
+const ICON: Record<Hub["id"], typeof House> = { home: House, intelligence: Brain, autopilot: CalendarClock, crew: Users, system: Cpu };
 const LAST = "shuacrew.hubs.last";
 const readLast = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(LAST) ?? "{}"); } catch { return {}; } };
 
@@ -37,7 +37,7 @@ function useRemember(path: string) {
   }, [path]);
 }
 
-/** The rail: five hubs and Settings, labelled, with what's live on each. ⌘1–⌘5 jump between them. */
+/** The rail: four hubs, More and Settings, labelled, with what's live on each. ⌘1–⌘4 jump between them. */
 export function HubRail() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -76,7 +76,7 @@ export function HubRail() {
     <button type="button" className="rail-new" onClick={() => void navigate({ to: "/" }).then(() => window.dispatchEvent(new Event("shuacrew:compose")))} title="New session  ⌘N" aria-label="New session"><SquarePen size={16} strokeWidth={1.8} /></button>
     <span className="rail-sep" aria-hidden />
     {PRIMARY_HUBS.map((hub, i) => item(hub.id, hub.label, ICON[hub.id], () => go(hub), `${hub.label} — ${hub.hint}  ⌘${i + 1}`, badge(hub.id)))}
-    {item("system", "Tools", Cpu, () => go(HUBS.find(h => h.id === "system")!), "All tools")}
+    {item("system", "More", Cpu, () => go(HUBS.find(h => h.id === "system")!), "More — projects, tools and the numbers")}
     <span className="hub-spacer" />
     {item("guide", "Guide", BookOpenText, () => void navigate({ to: "/guide" }), "Guide — everything ShuaCrew can do")}
     {item("settings", "Settings", Settings, () => void navigate({ to: "/settings" }), "Settings  ⌘,")}
@@ -112,7 +112,8 @@ export function useSidebarWide() { return useLive((s) => s.appearance.navigation
 const LIVE = new Set(["running", "planning", "queued", "awaiting_approval"]);
 /** How many sessions show before "Show more", and whether the Sessions / Tools sections are folded (remembered). */
 const SESSIONS_SHORT = 8, SESSIONS_LONG = 40;
-const ORDER = "shuacrew.side.order";
+// v2: the sections became Home, Intelligence, Autopilot, Crew (2026-11); an order saved for the old six would bury the new two.
+const ORDER = "shuacrew.side.order.v2";
 const FOLD = "shuacrew.side.folded";
 const readFolded = (): Record<string, boolean> => { try { return JSON.parse(localStorage.getItem(FOLD) ?? "{}"); } catch { return {}; } };
 /** The sidebar's width: drag its edge (Notion-style), double-click the edge to reset. */
@@ -158,7 +159,7 @@ export function HubSidebar() {
   const working = Object.values(runs).filter((r) => r.status === "running" || r.status === "planning").length;
   const count = (id: Hub["id"]) => (id === "home" ? waiting : id === "crew" ? working : 0);
   const [folded, setFolded] = useState(readFolded), [more, setMore] = useState(false);
-  // Your order: drag a section to move it. ⌘1…⌘6 follow what you see.
+  // Your order: drag a section to move it. ⌘1…⌘4 follow what you see.
   const [order, setOrder] = useState<string[]>(() => { try { const v = JSON.parse(localStorage.getItem(ORDER) ?? "[]"); return Array.isArray(v) ? v : []; } catch { return []; } });
   const ordered = useMemo(() => [...PRIMARY_HUBS].sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99)), [order]);
   const [dragging, setDragging] = useState<string | null>(null), [over, setOver] = useState<string | null>(null);
@@ -208,7 +209,7 @@ export function HubSidebar() {
           {selected && hub.tabs.length > 1 && <div className="side-children">{hub.tabs.map((tab) => <Link key={tab.to} to={tab.to} className={`side-row side-child ${at?.tab === tab && !path.startsWith("/sessions/") ? "is-on" : ""}`} aria-current={at?.tab === tab ? "page" : undefined}><span>{tab.label}</span></Link>)}</div>}
         </div>; })}
       </div>
-      <Section id="tools" label="Tools" folded={folded.tools ?? here !== "system"} onFold={fold}>
+      <Section id="tools" label="More" folded={folded.tools ?? here !== "system"} onFold={fold}>
         {tools.tabs.map((tab) => <Link key={tab.to} to={tab.to} className={`side-row ${at?.tab === tab ? "is-on" : ""}`}><span>{tab.label}</span></Link>)}
       </Section>
       <Section id="sessions" label="Sessions" folded={!!folded.sessions} onFold={fold} badge={folded.sessions && liveCount ? `${liveCount} live` : undefined}

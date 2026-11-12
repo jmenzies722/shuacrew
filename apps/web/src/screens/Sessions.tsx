@@ -10,7 +10,6 @@ import { localDay } from "@shuacrew/core/projections";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
-  Bug,
   CheckCircle2,
   ChevronDown,
   CircleStop,
@@ -30,7 +29,6 @@ import {
   Cable,
   Sparkles,
   SquareTerminal,
-  Telescope,
   Users,
   X,
   Zap,
@@ -66,6 +64,7 @@ import { DEFAULT_WORKSPACE, getWorkspace, saveWorkspace } from "../lib/workspace
 import { getPower, savePower, usePower, type Preset } from "../lib/power";
 import { parseChatAction } from "../lib/chat-actions";
 import { groupSessions, sessionStatus } from "../lib/session-list";
+import { HomePulse } from "../components/HomePulse";
 
 interface RuntimeInfo {
   id: string;
@@ -507,19 +506,12 @@ function NewSession() {
   const runs = useLive(s => s.crew.runs), scope = useLive(s => s.scope);
   const recent = useMemo(() => recentWork(runs, scope), [runs, scope]);
   const [terminal, setTerminal] = useTerminal();
-  const [seed, setSeed] = useState<{ text: string; n: number }>({ text: "", n: 0 });
-  const ideas = [
-    { icon: CheckCircle2, label: "Review changes", hint: "What's risky before you commit", text: "Review uncommitted changes in my personal projects under ~/Developer/projects and tell me what's risky" },
-    { icon: Bug, label: "Fix a failing test", hint: "Find one, fix it, prove it", text: "Find a failing test in one of my projects and fix it" },
-    { icon: Telescope, label: "Catch me up", hint: "What changed in your repos today", text: "Summarise what changed in my repos today" },
-    { icon: Sparkles, label: "Plan what’s next", hint: "Three things worth building", text: "Look at my most recent project and suggest the next three things to build" },
-  ];
   return (
     <section className="sheet hero-sheet home-workbench flex min-h-0 min-w-0 flex-col" aria-label="New session">
       <div className="hero min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="hero-stack">
           <div className="hero-core">
-          {/* A conversation first: the greeting, the box, a few ways in. What needs you, recent work and your day sit just below. */}
+          {/* A conversation first: the greeting, the box, then the pulse (intelligence, autopilot, speed). What needs you, recent work and your day sit just below. */}
           <div className="hero-ask">
             <div className="hero-mark">
               <LogoMark size={44} />
@@ -527,16 +519,8 @@ function NewSession() {
             <h1 className="hero-title">What should we build{scope ? ` in ${scope.split("/").filter(Boolean).pop()}` : ""}?</h1>
             <p className="hero-sub">{dayGreeting()}. Claude or Codex takes it in its own branch and asks before anything risky.</p>
             <HeroPulse />
-            <Composer seed={seed} hero />
-            <div className="hero-ideas stagger">
-              {ideas.map(({ icon: Icon, text, label, hint }) => (
-                <button key={text} onClick={() => setSeed((s) => ({ text, n: s.n + 1 }))} className="hero-idea" title={text}>
-                  <i className="hero-idea-icon"><Icon size={15} /></i>
-                  <span className="hero-idea-text"><b>{label}</b><small>{hint}</small></span>
-                  <ArrowUpRight size={14} className="hero-idea-go" aria-hidden />
-                </button>
-              ))}
-            </div>
+            <Composer hero />
+            <HomePulse />
           </div>
           <div className="hero-below">
             <NeedsYou />

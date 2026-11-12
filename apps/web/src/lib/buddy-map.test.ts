@@ -1,11 +1,15 @@
 import { expect, it } from "vitest";
-import { HUBS } from "./hubs";
+import { HUBS, locate } from "./hubs";
 import { SHUACREW_PAGES, parseActions, shuacrewNow } from "./buddy";
 
 it("Spark's map of ShuaCrew covers every page in the navigation (add a page, and Spark must learn it)", () => {
   const known = new Set(SHUACREW_PAGES.map((p) => p.path));
   for (const hub of HUBS) for (const tab of hub.tabs) expect(known, `${hub.label} → ${tab.label} (${tab.to})`).toContain(tab.to);
   expect(known).toContain("/settings");
+});
+
+it("names the same section for each page as the sidebar does (so Shua says where things really are)", () => {
+  for (const page of SHUACREW_PAGES) expect(page.hub, page.path).toBe(locate(page.path)?.hub.label ?? "");
 });
 
 it("go only opens real ShuaCrew pages; radio only takes real commands", () => {

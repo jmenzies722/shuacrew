@@ -1,0 +1,28 @@
+/* Home's pulse: three quiet cards under the box. Each one carries its section's colour (the sidebar's hues), one big
+   number, one line of what it is, one line of context. No fills at rest; the colour lives in the label. */
+.home-pulse { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+@media (max-width: 900px) { .home-pulse { grid-template-columns: 1fr; } }
+
+.home-pulse .hp-card {
+  --hub: var(--text-3);
+  position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 12px 14px 13px; border: 1px solid var(--line); border-radius: 12px;
+  text-align: left; color: var(--text-2); text-decoration: none;
+  transition: background-color .15s, border-color .15s;
+}
+.home-pulse .hp-card.is-intelligence { --hub: #38bdf8; }
+.home-pulse .hp-card.is-autopilot { --hub: #facc15; }
+.home-pulse .hp-card.is-speed { --hub: #34d399; }
+.home-pulse .hp-card:hover { background: var(--studio-hover, color-mix(in srgb, var(--text) 5%, transparent)); border-color: var(--line-strong); }
+.home-pulse .hp-card:focus-visible { outline: 2px solid var(--hub); outline-offset: 2px; }
+
+.home-pulse .hp-label { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; color: color-mix(in srgb, var(--hub) 80%, var(--text-2)); }
+.home-pulse .hp-go { margin-left: auto; color: var(--text-3); opacity: 0; transform: translate(-2px, 2px); transition: opacity .15s, transform .15s; }
+.home-pulse .hp-card:hover .hp-go { opacity: 1; transform: none; }
+
+.home-pulse .hp-value { margin-top: 4px; font-size: 20px; line-height: 1.15; font-weight: 640; letter-spacing: -.015em; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-pulse .hp-detail { font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-pulse .hp-sub { font-size: 11.5px; line-height: 1.4; color: var(--text-3); }
+.home-pulse .hp-card.is-bad .hp-sub { color: var(--red, #f87171); }
+
+@media (prefers-reduced-motion: reduce) { .home-pulse .hp-card, .home-pulse .hp-go { transition: none; } }

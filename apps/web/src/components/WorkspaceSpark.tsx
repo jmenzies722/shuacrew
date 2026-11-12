@@ -13,7 +13,7 @@ export const contexts: Record<string, [string, string, string]> = {
   "/floor": ["Studio floor", "Find the next handoff", "Help me understand my crew's current work and identify the next useful handoff. Use available recorded status; ask me if anything is missing."],
   "/studio": ["Creative studio", "Set the mood", "Help me choose a focus routine and a soundscape for the work I want to do next."],
   "/ventures": ["Projects", "Pressure-test an idea", "Help me pressure-test a venture idea: the user problem, smallest useful product, and an experiment I can run this week."],
-  "/playbooks": ["Automations", "Make it repeatable", "Help me turn a recurring workflow into a playbook with clear steps, verification, and a stopping point."],
+  "/playbooks": ["Playbooks", "Make it repeatable", "Help me turn a recurring workflow into a playbook with clear steps, verification, and a stopping point."],
   "/specs": ["Specs", "Draw the architecture", "Help me design an app architecture. Ask which project, then produce a clear Mermaid diagram, component responsibilities, and implementation steps."],
   "/board": ["Board", "Unblock the work", "Help me identify blocked work and choose the smallest action that moves it forward. Ask for the task details you need."],
   "/schedules": ["Schedules", "Design a routine", "Help me design a useful recurring routine with a clear trigger, output, and review point. Prepare the plan before enabling anything."],

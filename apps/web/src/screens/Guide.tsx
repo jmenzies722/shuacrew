@@ -18,37 +18,34 @@ const HUBS: HubSection[] = [
   { id: "home", hub: "Hub 1 · ⌘1", title: "Home: talk to the crew, see your day", features: [
     { title: "Chat-first sessions", where: "Home › Sessions", to: "/", body: "Describe what you want and the crew does it. As they work, you see each file read, each command run and each diff, with the text streaming in as it's written.",
       points: ["Fork a conversation, queue follow-ups, search in a chat, jump around with the minimap", "Attach files, photos, voice and video", "Review and merge in the chat, push and open a PR", <><b>Race:</b> send the same task to Claude and Codex, each in its own branch, and keep the better result</>] },
+    { title: "The pulse", where: "Home › Sessions", to: "/", body: "Three cards under the box, each one measured number: Intelligence (which brain answers right now, what the crew has learned), Autopilot (what runs next on its own, how the last day went) and Speed (how fast Shua starts talking, how often its on-screen steps work). Nothing measured yet says so." },
     { title: "Your day, in one place", where: "Home › Today", to: "/activity", body: <>A morning brief with the weather, a plan and your meetings (if you connect your calendar). <b>Start my day</b> turns on Flow and the radio and shows the first thing that needs you.</>,
       points: ["Approve or deny crew requests right there", "From 6pm, an evening recap (“Your day, wrapped”) that becomes your journal", "Streaks and achievements, counted only from real work"] },
   ] },
-  { id: "build", hub: "Hub 2 · ⌘2", title: "Projects: what you build and what it earns", features: [
-    { title: "Idea to revenue", where: "Projects › Projects", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
-    { title: "The Board", where: "Projects › Board", to: "/board", body: "Five lanes covering all your runs. Each run has a detail page, a review cockpit with inline comments sent back to the agent, a merge queue and a replay of what the terminal did." },
-    { title: "Specs", where: "Projects › Specs", to: "/specs", body: "Write down what you want built before anyone starts, so the crew builds against your spec instead of guessing." },
-    { title: "Studio", where: "Projects › Creative studio", to: "/studio", body: "Your Apple Music, album first: what's playing big, lit by its cover; your albums on shelves (full albums, recently added, on repeat, rediscover); search across your whole library; one tap plays a whole record. Ask Shua to pick an album for right now, or tell you the story behind one." },
+  { id: "intelligence", hub: "Hub 2 · ⌘2", title: "Intelligence: what Shua knows, and how well it works", features: [
+    { title: "Memory", where: "Intelligence › Memory", to: "/memory", body: "Lessons stay only if they keep proving useful. The crew suggests new skills and you approve them. A recall check keeps memory accurate." },
+    { title: "Library", where: "Intelligence › Library", to: "/library", body: "Everything the crew makes, plus the knowledge you add, all searchable by you and by every agent. Documents preview their own pages. It's stored privately on your Mac." },
+    { title: "Insights", where: "Intelligence › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
   ] },
-  { id: "crew", hub: "Hub 3 · ⌘3", title: "Crew: your team, live", intro: "A crew is a set of standing team members, each with its own persona, specialty, ongoing conversation and lessons learned. ShuaCrew sends each request to the member best suited to it.", features: [
+  { id: "autopilot", hub: "Hub 3 · ⌘3", title: "Autopilot: what runs without you", features: [
+    { title: "Schedules & routines", where: "Autopilot › Schedules", to: "/schedules", body: "Recurring work you switch on once:",
+      points: ["Weekday 8:30 crew standup", "Weekly growth review, competitor watch, personal wiki", "Nightly scoring of new ideas", "Webhooks, heartbeats and script-only jobs"] },
+    { title: "Multi-phase work", where: "Autopilot › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
+    { title: "The Board", where: "Autopilot › Board", to: "/board", body: "Five lanes covering all your runs. Each run has a detail page, a review cockpit with inline comments sent back to the agent, a merge queue and a replay of what the terminal did." },
+  ] },
+  { id: "crew", hub: "Hub 4 · ⌘4", title: "Crew: your team, live", intro: "A crew is a set of standing team members, each with its own persona, specialty, ongoing conversation and lessons learned. ShuaCrew sends each request to the member best suited to it.", features: [
     { title: "Crew HQ", where: "Crew › Studio floor", to: "/floor", body: "Your crew at their workstations. See who is working, follow live handoffs, and select an agent to explore their latest activity." },
     { title: "Hire and review", where: "Crew › Agents", to: "/crew", body: "Hire from templates (designer, data analyst, DevOps, writer, legal, tutor) or create your own. A performance review shows each member's completed and failed work, success rate, typical time, token use and lessons." },
     { title: "Rooms", where: "Crew › Rooms", to: "/rooms", body: "Shared spaces where several members work on the same thing, with one composer, searchable history and a live activity feed. Archiving a room hides it but keeps its history." },
   ] },
-  { id: "know", hub: "Hub 4 · ⌘4", title: "Learn: get measurably better, with Shua", features: [
-  ] },
-  { id: "automations", hub: "Hub 5 · ⌘5", title: "Automations: teach once, reuse carefully", features: [
-    { title: "Multi-phase work", where: "Automations › Playbooks", to: "/playbooks", body: "Longer projects run by the crew in phases. After each phase the crew pauses for your review, and you can approve from anywhere." },
-    { title: "Schedules & routines", where: "Automations › Schedules", to: "/schedules", body: "Recurring work you switch on once:",
-      points: ["Weekday 8:30 crew standup", "Weekly growth review, competitor watch, personal wiki", "Nightly scoring of new ideas", "Webhooks, heartbeats and script-only jobs"] },
-  ] },
-  { id: "library", hub: "Hub 6 · ⌘6", title: "Library: everything worth keeping", features: [
-    { title: "Library", where: "Library › Artifacts & knowledge", to: "/library", body: "Everything the crew makes, plus the knowledge you add, all searchable by you and by every agent. Documents preview their own pages. It's stored privately on your Mac." },
-    { title: "Memory", where: "Library › Memory", to: "/memory", body: "Lessons stay only if they keep proving useful. The crew suggests new skills and you approve them. A recall check keeps memory accurate." },
-  ] },
-  { id: "system", hub: "Tools", title: "Tools: connections, guardrails and the numbers", features: [
-    { title: "Tools & skills", where: "Tools › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
-    { title: "Policy & audit", where: "Tools › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
-    { title: "Insights", where: "Tools › Insights", to: "/observability", body: "Live activity, usage and developer views: activity graphs, a tool leaderboard, run outcomes and an API explorer. Health alerts warn you when memory, disk, the voice engine or a runtime has a problem. Costs a provider doesn't report say “Not reported” rather than $0." },
-    { title: "Usage", where: "Tools › Usage", to: "/usage", body: "How many tokens, carried by which plan, when you work and where it went: a week you can scrub day by day, today against your own usual day, and a map of your heaviest sessions. Recorded numbers only; subscriptions have no per-token bill." },
-    { title: "Terminal", where: "Tools › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
+  { id: "system", hub: "More", title: "More: projects, tools and the numbers", features: [
+    { title: "Idea to revenue", where: "More › Projects", to: "/ventures", body: "Each startup idea moves through a five-stage pipeline, and ShuaCrew suggests the next move at each stage. You can publish a site with a real waitlist." },
+    { title: "Specs", where: "More › Specs", to: "/specs", body: "Write down what you want built before anyone starts, so the crew builds against your spec instead of guessing." },
+    { title: "Studio", where: "More › Creative studio", to: "/studio", body: "Your Apple Music, album first: what's playing big, lit by its cover; your albums on shelves (full albums, recently added, on repeat, rediscover); search across your whole library; one tap plays a whole record. Ask Shua to pick an album for right now, or tell you the story behind one." },
+    { title: "Tools & skills", where: "More › Tools & Skills", to: "/integrations", body: "Real MCP servers and skills your crew can use, shown as cards. ShuaCrew also brings its own tools, such as radio control for agents." },
+    { title: "Policy & audit", where: "More › Policy & Audit", to: "/policy", body: "Decide what agents may do on their own and what needs your OK, including protected folders and quiet hours. Every decision is recorded in a tamper-evident log you can verify." },
+    { title: "Usage", where: "More › Usage", to: "/usage", body: "How many tokens, carried by which plan, when you work and where it went: a week you can scrub day by day, today against your own usual day, and a map of your heaviest sessions. Recorded numbers only; subscriptions have no per-token bill." },
+    { title: "Terminal", where: "More › Terminal", to: "/terminal", body: "A real terminal that keeps running in the background, with command blocks (each marked green or red), history, search and split panes. Type what you want in plain English and it writes the command for you.",
       points: ["Save commands you use often as snippets, then run or insert them in one click", "Open a new terminal in Home, a project or a recent folder", "Filter your history; copy any command's output; hand a failure to the crew to fix", <><kbd>⌘T</kbd> new terminal, <kbd>⌘D</kbd> split, <kbd>⌘⇧H</kbd> history and snippets</>] },
   ] },
 ];
@@ -71,12 +68,10 @@ function useHubLive(): Record<string, string> {
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   return {
     home: `${plural(runs.filter((r) => r.createdAt >= today.getTime()).length, "session")} today`,
-    build: plural(Object.keys(crew.ventures ?? {}).length, "project"),
+    intelligence: plural(Object.keys(crew.artifacts ?? {}).length + Object.keys(crew.knowledge ?? {}).length, "item"),
+    autopilot: books === null ? "" : plural(books, "playbook"),
     crew: `${plural(Object.keys(crew.members).length, "agent")}${working ? ` · ${working} working` : ""}`,
-    know: "",
-    automations: books === null ? "" : plural(books, "playbook"),
-    library: plural(Object.keys(crew.artifacts ?? {}).length + Object.keys(crew.knowledge ?? {}).length, "item"),
-    system: `${plural(Object.keys(crew.approvals).length, "approval")} waiting`,
+    system: `${plural(Object.keys(crew.ventures ?? {}).length, "project")} · ${plural(Object.keys(crew.approvals).length, "approval")} waiting`,
   };
 }
 
