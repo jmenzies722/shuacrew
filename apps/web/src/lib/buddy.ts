@@ -64,23 +64,23 @@ export type Action =
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
   { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky. The composer shows live what the agent is doing" },
   { path: "/activity", name: "Today", hub: "Home", about: "the user's day: the sky and morning brief, a 6am–midnight ribbon of every moment, today in numbers (sessions, shipped, tokens, focus, streak), what needs them" },
-  { path: "/ventures", name: "Projects", hub: "Projects", about: "business ideas and what they earn: income this month, a first-dollar quest, an idea forge, and a pipeline (idea → validating → building → launching → earning)" },
-  { path: "/board", name: "Board", hub: "Projects", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
-  { path: "/specs", name: "Specs", hub: "Projects", about: "plan a feature before code: requirements → design → tasks, each approved, tasks land on the Board as sessions" },
-  { path: "/studio", name: "Creative studio", hub: "Projects", about: "the user's Apple Music, album first: what's playing, shelves of their albums, search their library" },
+  { path: "/ventures", name: "Projects", hub: "More", about: "business ideas and what they earn: income this month, a first-dollar quest, an idea forge, and a pipeline (idea → validating → building → launching → earning)" },
+  { path: "/board", name: "Board", hub: "Autopilot", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
+  { path: "/specs", name: "Specs", hub: "More", about: "plan a feature before code: requirements → design → tasks, each approved, tasks land on the Board as sessions" },
+  { path: "/studio", name: "Creative studio", hub: "More", about: "the user's Apple Music, album first: what's playing, shelves of their albums, search their library" },
   { path: "/floor", name: "Studio floor", hub: "Crew", about: "the crew live in a 3D room you can turn (camera buttons Studio / Above / Close): agents at their desks, walking to you when they need you; each agent's current step, heartbeat and today's numbers, and a box to hand any agent work" },
   { path: "/crew", name: "Agents", hub: "Crew", about: "the AI crew members (role, model, voice, memory, lessons); create, edit or hand work to one" },
   { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
-  { path: "/playbooks", name: "Playbooks", hub: "Automations", about: "repeatable multi-phase work the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
-  { path: "/schedules", name: "Schedules", hub: "Automations", about: "work that runs on its own: schedules, webhooks and heartbeats" },
-  { path: "/library", name: "Library", hub: "Library", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
-  { path: "/memory", name: "Memory", hub: "Library", about: "what every agent has learned: lessons, preferences, corrections, skills" },
-  { path: "/integrations", name: "Tools & Skills", hub: "Tools", about: "MCP connections (Notion, GitHub…), which ones Shua may use by voice, and Claude Code skills" },
-  { path: "/policy", name: "Policy & Audit", hub: "Tools", about: "what agents may do: a live tester ('why would this be allowed?') on the real engine, decisions over time, the guardrails in force, every rule, and the tamper-evident audit chain" },
-  { path: "/observability", name: "Insights", hub: "Tools", about: "health, what's running or waiting, throughput, reply speed (typical and slowest) and recent activity" },
-  { path: "/usage", name: "Usage", hub: "Tools", about: "tokens by day and by plan (Claude, Codex), today against a usual day, weekly rhythm, and which sessions used the most" },
-  { path: "/terminal", name: "Terminal", hub: "Tools", about: "a real terminal on the Mac, with an agent that can help" },
-  { path: "/developer", name: "Developer", hub: "Tools", about: "gateway health, live activity, tool leaderboard, event and prompt inspectors, API explorer, logs" },
+  { path: "/playbooks", name: "Playbooks", hub: "Autopilot", about: "repeatable multi-phase work the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
+  { path: "/schedules", name: "Schedules", hub: "Autopilot", about: "work that runs on its own: schedules, webhooks and heartbeats" },
+  { path: "/library", name: "Library", hub: "Intelligence", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
+  { path: "/memory", name: "Memory", hub: "Intelligence", about: "what every agent has learned: lessons, preferences, corrections, skills" },
+  { path: "/integrations", name: "Tools & Skills", hub: "More", about: "MCP connections (Notion, GitHub…), which ones Shua may use by voice, and Claude Code skills" },
+  { path: "/policy", name: "Policy & Audit", hub: "More", about: "what agents may do: a live tester ('why would this be allowed?') on the real engine, decisions over time, the guardrails in force, every rule, and the tamper-evident audit chain" },
+  { path: "/observability", name: "Insights", hub: "Intelligence", about: "health, what's running or waiting, throughput, reply speed (typical and slowest) and recent activity" },
+  { path: "/usage", name: "Usage", hub: "More", about: "tokens by day and by plan (Claude, Codex), today against a usual day, weekly rhythm, and which sessions used the most" },
+  { path: "/terminal", name: "Terminal", hub: "More", about: "a real terminal on the Mac, with an agent that can help" },
+  { path: "/developer", name: "Developer", hub: "Intelligence", about: "gateway health, live activity, tool leaderboard, event and prompt inspectors, API explorer, logs" },
   { path: "/guide", name: "Guide", hub: "", about: "the ShuaCrew guide: the user's setup live, every hub and feature (searchable), shortcuts and what is not finished; open it when someone asks how ShuaCrew works" },
   { path: "/settings", name: "Settings", hub: "", about: "appearance, Shua, workspace, access, agents, automation, safety, notifications, mobile and system (updates, backups); each section shows what it's set to now" },
 ];
@@ -1025,7 +1025,7 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
 }
 
 /** Deliberate instruction version, stable across bundler renaming and unrelated UI builds. */
-export const SPARK_RULES = "spark-2026-10-06-brief-targets-shuacrew-ui-v1";
+export const SPARK_RULES = "spark-2026-11-12-four-sections-v1";
 
 /**
  * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to

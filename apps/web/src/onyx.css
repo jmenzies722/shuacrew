@@ -444,11 +444,9 @@
 /* ── Every section, its own light ─────────────────────────────────────────────────────────────── */
 .workspace-card { position: relative; isolation: isolate; }
 .workspace-card[data-hub="home"] { --hub: #60a5fa; }
-.workspace-card[data-hub="build"] { --hub: #34d399; }
+.workspace-card[data-hub="intelligence"] { --hub: #38bdf8; }
 .workspace-card[data-hub="crew"] { --hub: #818cf8; }
-.workspace-card[data-hub="know"] { --hub: #f59e0b; }
-.workspace-card[data-hub="automations"] { --hub: #facc15; }
-.workspace-card[data-hub="library"] { --hub: #38bdf8; }
+.workspace-card[data-hub="autopilot"] { --hub: #facc15; }
 .workspace-card[data-hub="system"] { --hub: #a3a3a3; }
 .hub-glow { position: absolute; z-index: -1; inset: 0 0 auto 0; height: 340px; pointer-events: none; border-radius: inherit; overflow: hidden;
   background: radial-gradient(60% 100% at 18% -10%, color-mix(in srgb, var(--hub, transparent) 13%, transparent), transparent 70%),
