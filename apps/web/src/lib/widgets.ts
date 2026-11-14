@@ -59,9 +59,9 @@ export function parseWidgets(value: unknown): WidgetPrefs {
 }
 
 /** The widgets shown in one place, in your order. */
-/** Widgets that no longer exist as a surface (the lofi radio moved out; music lives in Studio). Kept in saved
- * preferences so nothing else shifts, but never shown or offered. */
-export const RETIRED: ReadonlySet<WidgetId> = new Set<WidgetId>(["playing"]);
+/** Widgets that no longer exist as a surface (the lofi radio moved out; the weather chip went with the 2026-11 cleanup:
+ * the bar is for work). Kept in saved preferences so nothing else shifts, but never shown or offered. */
+export const RETIRED: ReadonlySet<WidgetId> = new Set<WidgetId>(["playing", "weather"]);
 export function placed(prefs: WidgetPrefs, where: Placement): WidgetId[] {
   const on = new Set(prefs[where]);
   return prefs.order.filter((id) => on.has(id) && !RETIRED.has(id));

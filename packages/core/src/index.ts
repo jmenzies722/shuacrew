@@ -10,3 +10,4 @@ export * from "./intelligence.js";
 
 export * from "./teaching.js";
 export * from "./session-naming.js";
+export * from "./verification.js";

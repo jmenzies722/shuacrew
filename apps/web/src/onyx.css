@@ -444,7 +444,7 @@
 /* ── Every section, its own light ─────────────────────────────────────────────────────────────── */
 .workspace-card { position: relative; isolation: isolate; }
 .workspace-card[data-hub="home"] { --hub: #60a5fa; }
-.workspace-card[data-hub="intelligence"] { --hub: #38bdf8; }
+.workspace-card[data-hub="knowledge"] { --hub: #38bdf8; }
 .workspace-card[data-hub="crew"] { --hub: #818cf8; }
 .workspace-card[data-hub="autopilot"] { --hub: #facc15; }
 .workspace-card[data-hub="system"] { --hub: #a3a3a3; }

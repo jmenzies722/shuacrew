@@ -121,32 +121,6 @@ export function CommandPalette() {
                     ))}
                   </Group>
                 )}
-                {Object.values(plays).some((p) => p.status === "waiting") && (
-                  <Group heading="Waiting for your review">
-                    {Object.values(plays)
-                      .filter((p) => p.status === "waiting")
-                      .map((p) => {
-                        const phase = p.phases.find((x) => x.status === "review");
-                        return (
-                          <Item key={p.id} value={`review ${p.title} ${phase?.name ?? ""}`} onSelect={() => go(`/plays/${p.id}`)}>
-                            <Glyph name={p.emoji} fallback={p.playbook} label={p.name} size={14} className="shrink-0 text-fg-3" />
-                            <span className="truncate">{phase?.name ?? "Review"} · {p.title}</span>
-                            <span className="ml-auto text-[11px] text-amber">review</span>
-                          </Item>
-                        );
-                      })}
-                  </Group>
-                )}
-                {Object.keys(ventures).length > 0 && (
-                  <Group heading="Ventures">
-                    {Object.values(ventures).map((v) => (
-                      <Item key={v.id} value={`venture ${v.name} ${v.pitch}`} onSelect={() => go(`/ventures/${v.id}`)}>
-                        <Glyph name={v.emoji} fallback="sprout" label={v.name} size={14} className="shrink-0 text-fg-3" /> {v.name}
-                        <span className="ml-auto text-[11px] text-fg-3">{v.stage}</span>
-                      </Item>
-                    ))}
-                  </Group>
-                )}
                 <Group heading="Actions">
                   <Item value="launch new run" onSelect={() => openLaunch(query)}>
                     Launch a run <span className="ml-auto"><Kbd>⌘N</Kbd></span>
@@ -157,7 +131,6 @@ export function CommandPalette() {
                   <Item value="hud developer live overlay toggle" onSelect={() => (saveWorkspace({ hud: !getWorkspace().hud }), close())}>
                     {getWorkspace().hud ? "Hide" : "Show"} live HUD <span className="ml-auto"><Kbd>⌥⇧H</Kbd></span>
                   </Item>
-                  <Item value="new crew room" onSelect={() => go("/rooms")}>New crew room</Item>
                   {([["events", "Open event inspector"], ["gateway-log", "Open gateway log"], ["storage", "Show storage use"], ["snippets", "Edit snippets"], ["presets", "Edit launch presets"], ["budget", "Set daily token budget"], ["session-defaults", "Set new session defaults"], ["transfer", "Export or import settings"]] as const).map(([hash, label]) => (
                     <Item key={hash} value={`settings ${label} ${hash}`} onSelect={() => (void navigate({ to: "/settings", hash }), close())}>{label}</Item>
                   ))}
@@ -193,7 +166,7 @@ export function CommandPalette() {
                         <span className="truncate">{r.title}</span>
                         <span className="ml-auto flex items-center gap-2">
                           <span className="mono text-[11px] text-fg-3">{r.runtime}</span>
-                          <StatusPill status={r.status} />
+                          <StatusPill status={r.status} verification={r.verification} />
                         </span>
                       </Item>
                     ))}

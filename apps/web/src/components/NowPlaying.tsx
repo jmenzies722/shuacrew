@@ -69,7 +69,6 @@ export function PlayingTile({ ctx }: { ctx: WidgetCtx }) {
       {stoppable && <button type="button" className="tb-btn" disabled={busy} onClick={() => void stop()} title="Stop this session"><Square size={12} /> Stop</button>}
       {skip && <button type="button" className="tb-btn" onClick={() => ctx.go(crew.runs[skip.id] ? `/sessions/${skip.id}` : "/activity")} title="What's next"><SkipForward size={12} /> Next</button>}
       {track.id && <button type="button" className="tb-btn" onClick={() => ctx.go(`/sessions/${track.id}`)}>Open</button>}
-      <button type="button" className="tb-btn" onClick={() => ctx.go("/studio")}>Studio</button>
     </div>
   </div>;
 }

@@ -155,7 +155,7 @@
    Each section keeps its own colour (the same hues as its pages): a tinted icon at rest, a soft wash when you're
    there. No rules or bars — nothing crosses the text. Sub-pages sit indented under their section's label. */
 .side-page[data-hub="home"] { --hub: #60a5fa; }
-.side-page[data-hub="intelligence"] { --hub: #38bdf8; }
+.side-page[data-hub="knowledge"] { --hub: #38bdf8; }
 .side-page[data-hub="crew"] { --hub: #818cf8; }
 .side-page[data-hub="autopilot"] { --hub: #facc15; }
 .side .side-row { height: 30px; border-radius: 8px; font-size: 13.5px; letter-spacing: -.005em; transition: background-color .15s, color .15s; }

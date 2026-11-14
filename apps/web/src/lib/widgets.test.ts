@@ -16,8 +16,8 @@ describe("widgets", () => {
     expect(parseWidgets({ countdown: { label: "x", date: "soon" } }).countdown).toBeNull();
   });
   it("places in your order and moves", () => {
-    const p = parseWidgets({ order: ["focus", "weather", ...WIDGETS], topbar: ["weather", "focus"] });
-    expect(placed(p, "topbar")).toEqual(["focus", "weather"]);
+    const p = parseWidgets({ order: ["focus", "crew", "weather", ...WIDGETS], topbar: ["weather", "crew", "focus"] });
+    expect(placed(p, "topbar")).toEqual(["focus", "crew"]); // weather is retired: saved, but never shown
     expect(moveWidget(["a", "b", "c"] as never, "c" as never, -1)).toEqual(["a", "c", "b"]);
     expect(moveWidget(["a", "b"] as never, "a" as never, -1)).toEqual(["a", "b"]);
   });

@@ -20,12 +20,7 @@ import { SparkCharacter } from "../components/SparkCharacter";
 import "./hub-nav.css";
 import { SPRING, SPRING_TUCK } from "../lib/spring-easing";
 
-const PAGE_ICON: Record<string, typeof House> = {
-  "/": MessageSquare, "/activity": CalendarDays, "/crew": Users, "/rooms": DoorOpen, "/floor": Layers3, "/studio": Clapperboard,
-  "/ventures": Rocket, "/playbooks": BookMarked, "/specs": FileText, "/board": SquareKanban, "/schedules": CalendarClock,
-  "/library": Library, "/memory": Brain, "/integrations": Plug, "/policy": ShieldCheck, "/observability": Activity, "/terminal": SquareTerminal,
-};
-const ICON: Record<Hub["id"], typeof House> = { home: House, intelligence: Brain, autopilot: CalendarClock, crew: Users, system: Cpu };
+const ICON: Record<Hub["id"], typeof House> = { home: House, knowledge: Library, autopilot: CalendarClock, crew: Users, system: Cpu };
 const LAST = "shuacrew.hubs.last";
 const readLast = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(LAST) ?? "{}"); } catch { return {}; } };
 
@@ -41,7 +36,7 @@ function useRemember(path: string) {
 export function HubRail() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const here = locate(path)?.hub.id ?? (path.startsWith("/settings") ? "settings" : path.startsWith("/guide") ? "guide" : "");
+  const here = locate(path)?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
   const prefs = useCompanion(), sparkOpen = useSparkPanel(), name = companionName(prefs);
@@ -78,7 +73,6 @@ export function HubRail() {
     {PRIMARY_HUBS.map((hub, i) => item(hub.id, hub.label, ICON[hub.id], () => go(hub), `${hub.label} — ${hub.hint}  ⌘${i + 1}`, badge(hub.id)))}
     {item("system", "More", Cpu, () => go(HUBS.find(h => h.id === "system")!), "More — projects, tools and the numbers")}
     <span className="hub-spacer" />
-    {item("guide", "Guide", BookOpenText, () => void navigate({ to: "/guide" }), "Guide — everything ShuaCrew can do")}
     {item("settings", "Settings", Settings, () => void navigate({ to: "/settings" }), "Settings  ⌘,")}
   </nav>;
 }
@@ -139,7 +133,7 @@ export function sidebarGroups(runs: SideRun[], now = Date.now()): Array<{ title:
 export function HubSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : path.startsWith("/guide") ? "guide" : "");
+  const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
   const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
   const runs = useLive((s) => s.crew.runs), scope = useLive((s) => s.scope);
   const connection = useLive((s) => s.connection);
@@ -221,7 +215,6 @@ export function HubSidebar() {
     </div>
     <div className="side-foot">
       <span className={`side-conn is-${connection}`} title={connection === "live" ? "Gateway live" : connection === "connecting" ? "Connecting to the gateway" : "Gateway offline"}><i />{connection === "live" ? "Live" : connection === "connecting" ? "Connecting" : "Offline"}</span>
-      <button type="button" className={`side-foot-btn ${here === "guide" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/guide" })} title="Guide — everything ShuaCrew can do" aria-label="Guide"><BookOpenText size={15} strokeWidth={1.8} /></button>
       <button type="button" className={`side-foot-btn ${here === "settings" ? "is-on" : ""}`} onClick={() => void navigate({ to: "/settings" })} title="Settings  ⌘," aria-label="Settings"><Settings size={15} strokeWidth={1.8} /></button>
     </div>
     <div className="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onPointerDown={drag} onDoubleClick={resetWidth} title="Drag to resize · double-click to reset" />

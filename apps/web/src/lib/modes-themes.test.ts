@@ -23,7 +23,7 @@ it("theme codes round-trip and can only set valid values", () => {
   expect(() => decodeTheme("hello", { appearance: DEFAULT_APPEARANCE, look: DEFAULT_LOOK })).toThrow(/SHUA1/);
 });
 
-it("round-trips the Obsidian palette without replacing existing themes", () => {
- const back=decodeTheme(encodeTheme({...DEFAULT_APPEARANCE,palette:"obsidian",dark:"obsidian"},DEFAULT_LOOK),{appearance:DEFAULT_APPEARANCE,look:DEFAULT_LOOK});
- expect(back.appearance.palette).toBe("obsidian");expect(back.appearance.dark).toBe("obsidian");
+it("folds a shared theme's retired palette into Dark", () => {
+ const back=decodeTheme(encodeTheme({...DEFAULT_APPEARANCE,palette:"obsidian" as never,dark:"obsidian" as never},DEFAULT_LOOK),{appearance:DEFAULT_APPEARANCE,look:DEFAULT_LOOK});
+ expect(back.appearance.palette).toBe("onyx");expect(back.appearance.dark).toBe("onyx");
 });

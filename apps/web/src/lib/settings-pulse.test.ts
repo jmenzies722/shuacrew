@@ -16,7 +16,7 @@ const pulse: Pulse = {
 const input = { pulse, appearance: { ...DEFAULT_APPEARANCE, accent: "coral" as const }, companion: { name: "Shua", placement: "notch" as const, control: "auto" as const }, budget: 500_000, now };
 
 it("says what each section is set to, in one line", () => {
-  expect(sectionSummary("appearance", input).text).toBe("Onyx at night, Porcelain by day · Coral");
+  expect(sectionSummary("appearance", input).text).toBe("Dark at night, Light by day · Coral");
   expect(sectionSummary("shua", input).text).toBe("Shua lives in your notch · acts on its own");
   expect(sectionSummary("workspace", input).text).toBe("Comfortable · Enter sends · 500k daily budget");
   expect(sectionSummary("automation", input).text).toBe("2 schedules set up");

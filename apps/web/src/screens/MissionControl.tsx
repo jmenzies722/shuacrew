@@ -84,7 +84,7 @@ export function MissionControl() {
               {finished.length === 0 && <div className="px-4 py-6 text-center text-[12.5px] text-fg-3">Finished work settles here.</div>}
               {finished.map((run) => (
                 <Link key={run.id} to="/sessions/$id" params={{ id: run.id }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-raised">
-                  <StatusPill status={run.status} />
+                  <StatusPill status={run.status} verification={run.verification} />
                   <span className="min-w-0 flex-1 truncate text-[13px]">{run.title}</span>
                   <span className="mono text-[11px] text-fg-3">{run.runtime}</span>
                   <span className="mono w-14 text-right text-[11px] tabular-nums text-fg-2">{formatTokens(run.usage.inputTokens + run.usage.outputTokens)}</span>

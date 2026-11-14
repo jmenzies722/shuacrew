@@ -106,6 +106,8 @@ export const bodies = {
   "tool.returned": z.object({ id: z.string(), ok: z.boolean(), output: z.string().default(""), durationMs: z.number().optional() }),
   "file.changed": z.object({ path: z.string(), change: z.enum(["added", "modified", "deleted"]).default("modified") }),
   "check.ran": z.object({ command: z.string(), exitCode: z.number(), output: z.string().default("") }),
+  /** The verdict on a turn that changed code (verification.ts): was the last edit followed by a passing check? `nudged`: the gateway had already asked the agent for proof. */
+  "verify.decided": z.object({ turn: z.number().int(), state: z.enum(["verified", "failing", "unverified"]), files: z.number().int(), command: z.string().optional(), nudged: z.boolean().default(false) }),
   "subagent.started": z.object({ id: z.string(), name: z.string(), task: z.string() }),
   "subagent.finished": z.object({ id: z.string(), ok: z.boolean(), summary: z.string().default("") }),
   "checkpoint.created": z.object({ turn: z.number().int(), commit: z.string().optional(), note: z.string().default("") }),

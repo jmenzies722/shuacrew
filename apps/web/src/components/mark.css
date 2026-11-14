@@ -1,0 +1,16 @@
+/* The mark. Bare: text colour. On its tile: the tile is the text colour and the S is the page, so it inverts with the theme. */
+.shua-mark { display: inline-block; vertical-align: middle; overflow: visible; }
+.shua-mark-s { stroke: currentColor; }
+.shua-mark-dot { fill: currentColor; transform-origin: 45px 17px; transform-box: view-box; }
+.shua-mark.is-tile .shua-mark-tile { fill: var(--mark-tile, var(--text)); }
+.shua-mark.is-tile .shua-mark-s { stroke: var(--mark-glyph, var(--panel)); }
+.shua-mark.is-tile .shua-mark-dot { fill: var(--mark-glyph, var(--panel)); }
+
+/* The dot carries state; everything else stays still. */
+.shua-mark.is-live .shua-mark-dot { fill: var(--mark-live, #2383e2); animation: shua-mark-breathe 1.6s var(--ease-loop, ease-in-out) infinite; }
+.shua-mark.is-wait .shua-mark-dot { fill: var(--wait, #d9730d); }
+.shua-mark.is-ok .shua-mark-dot { fill: var(--ok, #448361); }
+.shua-mark.is-bad .shua-mark-dot { fill: var(--bad, #d44c47); }
+@keyframes shua-mark-breathe { 50% { transform: scale(.62); opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .shua-mark.is-live .shua-mark-dot { animation: none; } }
+:root[data-motion="reduced"] .shua-mark.is-live .shua-mark-dot, :root[data-idle] .shua-mark.is-live .shua-mark-dot { animation: none; }

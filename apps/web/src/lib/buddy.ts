@@ -47,8 +47,6 @@ export type Action =
   | { type: "system"; what: "dark_mode" | "sleep_display" | "volume" | "volume_up" | "volume_down" | "mute" | "lock" | "screenshot" | "wifi" | "bluetooth" | "night_shift" | "browser_js" | "bluetooth_device" | "empty_trash"; on?: boolean; level?: number; device?: string }
   | { type: "shortcut"; name: string }
   | { type: "settings"; changes: SparkChanges }
-  | { type: "venture"; name: string; pitch?: string; validate?: boolean }
-  | { type: "playbook"; playbook: string; idea?: string; venture?: string }
   | { type: "remember"; text: string }
   /** Everything going on in ShuaCrew, read from the gateway: working, waiting and why, finished, failed, usage, next. */
   | { type: "brief"; since?: "today" | "hour" | "morning" }
@@ -64,24 +62,19 @@ export type Action =
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
   { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky. The composer shows live what the agent is doing" },
   { path: "/activity", name: "Today", hub: "Home", about: "the user's day: the sky and morning brief, a 6am–midnight ribbon of every moment, today in numbers (sessions, shipped, tokens, focus, streak), what needs them" },
-  { path: "/ventures", name: "Projects", hub: "More", about: "business ideas and what they earn: income this month, a first-dollar quest, an idea forge, and a pipeline (idea → validating → building → launching → earning)" },
-  { path: "/board", name: "Board", hub: "Autopilot", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
+  { path: "/board", name: "Board", hub: "Home", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
   { path: "/specs", name: "Specs", hub: "More", about: "plan a feature before code: requirements → design → tasks, each approved, tasks land on the Board as sessions" },
-  { path: "/studio", name: "Creative studio", hub: "More", about: "the user's Apple Music, album first: what's playing, shelves of their albums, search their library" },
-  { path: "/floor", name: "Studio floor", hub: "Crew", about: "the crew live in a 3D room you can turn (camera buttons Studio / Above / Close): agents at their desks, walking to you when they need you; each agent's current step, heartbeat and today's numbers, and a box to hand any agent work" },
+  { path: "/floor", name: "Live", hub: "Crew", about: "the crew at work, live: each session's current step and subagents, anything waiting on you, a timeline of the last minutes, and a feed of every step as it happens" },
   { path: "/crew", name: "Agents", hub: "Crew", about: "the AI crew members (role, model, voice, memory, lessons); create, edit or hand work to one" },
-  { path: "/rooms", name: "Rooms", hub: "Crew", about: "group chats where several crew members work a problem together" },
-  { path: "/playbooks", name: "Playbooks", hub: "Autopilot", about: "repeatable multi-phase work the crew runs with gates: validate-idea, landing-page, mvp, launch, growth-review" },
   { path: "/schedules", name: "Schedules", hub: "Autopilot", about: "work that runs on its own: schedules, webhooks and heartbeats" },
-  { path: "/library", name: "Library", hub: "Intelligence", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
-  { path: "/memory", name: "Memory", hub: "Intelligence", about: "what every agent has learned: lessons, preferences, corrections, skills" },
+  { path: "/library", name: "Library", hub: "Knowledge", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
+  { path: "/memory", name: "Memory", hub: "Knowledge", about: "what every agent has learned: lessons, preferences, corrections, skills" },
   { path: "/integrations", name: "Tools & Skills", hub: "More", about: "MCP connections (Notion, GitHub…), which ones Shua may use by voice, and Claude Code skills" },
   { path: "/policy", name: "Policy & Audit", hub: "More", about: "what agents may do: a live tester ('why would this be allowed?') on the real engine, decisions over time, the guardrails in force, every rule, and the tamper-evident audit chain" },
-  { path: "/observability", name: "Insights", hub: "Intelligence", about: "health, what's running or waiting, throughput, reply speed (typical and slowest) and recent activity" },
+  { path: "/observability", name: "Insights", hub: "More", about: "health, what's running or waiting, throughput, reply speed (typical and slowest) and recent activity" },
   { path: "/usage", name: "Usage", hub: "More", about: "tokens by day and by plan (Claude, Codex), today against a usual day, weekly rhythm, and which sessions used the most" },
   { path: "/terminal", name: "Terminal", hub: "More", about: "a real terminal on the Mac, with an agent that can help" },
-  { path: "/developer", name: "Developer", hub: "Intelligence", about: "gateway health, live activity, tool leaderboard, event and prompt inspectors, API explorer, logs" },
-  { path: "/guide", name: "Guide", hub: "", about: "the ShuaCrew guide: the user's setup live, every hub and feature (searchable), shortcuts and what is not finished; open it when someone asks how ShuaCrew works" },
+  { path: "/developer", name: "Developer", hub: "More", about: "gateway health, live activity, tool leaderboard, event and prompt inspectors, API explorer, logs" },
   { path: "/settings", name: "Settings", hub: "", about: "appearance, Shua, workspace, access, agents, automation, safety, notifications, mobile and system (updates, backups); each section shows what it's set to now" },
 ];
 /** What the app holds right now, for Spark to answer from (names only — never invented). */
@@ -93,12 +86,10 @@ export function shuacrewNow(input: { members: Array<{ name: string; role?: strin
     input.members.length ? `Crew members: ${input.members.map((m) => (m.role ? `${m.name} (${m.role})` : m.name)).join(", ")}.` : "No crew members yet.",
     input.ventures.length ? `Ventures: ${input.ventures.slice(0, 12).join(", ")}.` : "",
     `Radio: ${input.radio.on ? `playing ${input.radio.on}` : "off"}${input.radio.stations.length ? `; stations: ${input.radio.stations.slice(0, 10).join(", ")}` : ""}.`,
-    'Take them to a page: ```do [{"type":"go","path":"/floor"}]``` (the Studio floor; /studio is the music page). INSIDE SHUACREW ITSELF never use screen clicks, point or the Dock — a look reads other apps\' controls, not ShuaCrew\'s (when ShuaCrew\'s own window is on top the look says IN FRONT: ShuaCrew). Open the page with go, then press its buttons, tabs and links by their visible names with ui, and type into its fields with ui + text, in one do block: ```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"},{"type":"ui","press":"Studio"}]``` · ```do [{"type":"go","path":"/integrations"},{"type":"ui","press":"Find a tool","text":"stripe"}]```. ui never presses anything that deletes, approves, merges or sends — use the crew actions or ask them. Music is Apple Music only (the user retired the lofi radio): use media, never radio.',
+    'Take them to a page: ```do [{"type":"go","path":"/floor"}]``` (the crew, live). INSIDE SHUACREW ITSELF never use screen clicks, point or the Dock — a look reads other apps\' controls, not ShuaCrew\'s (when ShuaCrew\'s own window is on top the look says IN FRONT: ShuaCrew). Open the page with go, then press its buttons, tabs and links by their visible names with ui, and type into its fields with ui + text, in one do block: ```do [{"type":"go","path":"/floor"},{"type":"ui","press":"Above"},{"type":"ui","press":"Studio"}]``` · ```do [{"type":"go","path":"/integrations"},{"type":"ui","press":"Find a tool","text":"stripe"}]```. ui never presses anything that deletes, approves, merges or sends — use the crew actions or ask them. Music is Apple Music only (the user retired the lofi radio): use media, never radio.',
   ].filter(Boolean).join("\n");
 }
 
-/** The playbooks Spark can start by id (the built-in library). */
-export const PLAYBOOKS = ["validate-idea", "landing-page", "mvp", "launch", "growth-review"] as const;
 
 /** What you can change about Spark just by asking it ("talk faster", "be the fox", "call yourself Nova"). */
 export interface SparkChanges {
@@ -503,8 +494,6 @@ function toAction(v: unknown): Action | null {
     }
     case "shortcut": { const name = str(o.name, 120); return name ? { type: "shortcut", name } : null; }
     case "settings": { const changes = parseChanges(o.changes); return changes ? { type: "settings", changes } : null; }
-    case "venture": { const name = str(o.name, 60), pitch = str(o.pitch, 300); return name ? { type: "venture", name, ...(pitch ? { pitch } : {}), ...(o.validate === true ? { validate: true } : {}) } : null; }
-    case "playbook": { const playbook = (PLAYBOOKS as readonly string[]).includes(o.playbook as string) ? (o.playbook as string) : null; const idea = str(o.idea, 300), venture = str(o.venture, 80); return playbook ? { type: "playbook", playbook, ...(idea ? { idea } : {}), ...(venture ? { venture } : {}) } : null; }
     case "remember": { const text = str(o.text, 500); return text ? { type: "remember", text } : null; }
     case "brief": { const since = ["today", "hour", "morning"].includes(o.since as string) ? (o.since as "today" | "hour" | "morning") : undefined; return { type: "brief", ...(since ? { since } : {}) }; }
     // Long names happen (a session's whole title); text types into the field of that name instead of pressing it.
@@ -547,8 +536,6 @@ export function describeAction(a: Action): string {
     case "system": return { dark_mode: "Dark mode", sleep_display: "Sleep display", volume: `Volume to ${a.level}%`, volume_up: "Volume up", volume_down: "Volume down", mute: a.on === false ? "Unmute" : "Mute", lock: "Lock your Mac", screenshot: "Take a screenshot", wifi: `Wi-Fi ${a.on === false ? "off" : "on"}`, bluetooth: `Bluetooth ${a.on === false ? "off" : "on"}`, night_shift: a.on === undefined ? "Toggle Night Shift" : `Night Shift ${a.on ? "on" : "off"}`, browser_js: "Let Shua work inside web pages (Allow JavaScript from Apple Events)", bluetooth_device: `${a.on === false ? "Disconnect" : "Connect"} ${a.device ?? "the device"}`, empty_trash: "Empty the Trash" }[a.what];
     case "shortcut": return `Run “${a.name}”`;
     case "settings": return `Updated: ${Object.keys(a.changes).join(", ")}`;
-    case "venture": return `Venture: ${a.name}`;
-    case "playbook": return `Playbook: ${a.playbook.replace(/-/g, " ")}`;
     case "remember": return "Taught the crew";
     case "brief": return "Caught up on everything";
     case "ui": return a.text !== undefined ? `Type “${a.text.slice(0, 40)}” into “${a.press}” in ShuaCrew` : `Press “${a.press}” in ShuaCrew`;
@@ -777,8 +764,6 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     'More actions: media {command: play|pause|toggle|next|previous|mute|volume_up|volume_down|volume (level 0-100)|play_query (query: song/artist/album/playlist) | open_query (open an artist, album or search without playing), app?: "Music"|"Spotify"} · system {what: dark_mode (on?: true|false) | sleep_display} · shortcut {name} runs one of their macOS Shortcuts' + (persona.shortcuts?.length ? ` (theirs: ${persona.shortcuts.slice(0, 40).join(", ")})` : "") + ".",
     [
       "YOU ARE THEIR PERSONAL ASSISTANT FOR EVERYTHING — life, money, building. You run their whole ShuaCrew workspace. Act, don't just advise. Exact blocks (copy the shape):",
-      'Money or business idea → create it and start validating at once: ```do [{"type":"venture","name":"Leash","pitch":"Subscription app for dog walkers: scheduling, payments, trust","validate":true}]```',
-      'Run a plan with the crew: ```do [{"type":"playbook","playbook":"landing-page","idea":"…"}]``` (playbook: validate-idea | landing-page | mvp | launch | growth-review)',
       'Building software, writing code in a repo, or a long written report they asked the crew to produce: ```do [{"type":"crew","ask":"…a clear, complete brief…","title":"Short task-specific title"}]```. Always supply a concise 3–7 word title describing the goal, not the first sentence of the prompt or the crew member name. If the user explicitly names or quotes a session title, preserve that title exactly and retain their naming instruction in the brief. Ordinary quoted task content is not a title instruction. Questions, facts, news, prices, comparisons, recommendations and "look it up": search yourself right now (WebSearch/WebFetch) and answer — never hand those to the crew. NOT for showing, teaching or doing things on screen: that is YOUR job (below).',
       "YOU STAY WITH THEM. When they want to learn, find, set up or do something on their Mac or a website, YOU walk them through it yourself, live, one step at a time (guide), or do it for them (act) when they ask you to: never hand that to the crew, never say you can't, never stop after one step. After each step you'll get a fresh screenshot automatically; give the next step until it's done, then the done block. If something unexpected shows up, adapt and keep going. Every block runs the instant you write it, so never write one you're unsure of and then correct it — decide first. Precision over speed: not sure where a control lives, what a site's flow is, or which setting does it? One quick WebSearch first, then act exactly. To type, first click the exact field (in a browser address bar: key cmd+l); the result tells you what the field now reads — check it, and never type text that's already there.",
       'SIRI-STYLE on their Mac: system {"what":"volume","level":40} · {"what":"volume_up"} · {"what":"volume_down"} · {"what":"mute","on":true|false} · {"what":"lock"} · {"what":"screenshot"} · {"what":"wifi","on":true|false} · {"what":"bluetooth","on":true|false} · {"what":"night_shift","on":true|false} (Night Shift is the warm evening colour — NOT dark mode) · connect a paired device {"what":"bluetooth_device","device":"AirPods"} / disconnect it with "on":false (use their words: "AirPods", "headset", "mouse" — it finds the paired one and asks if several fit) (you CAN — never send them to Settings for these) · {"what":"empty_trash"} (asks first) · iMessage a contact {"type":"mac","op":"send_message","to":"Mom","text":"Running 10 min late"} (you CAN send texts now — ShuaCrew reads it back and asks them yes/no before it goes; write the exact text they asked for) · FaceTime {"type":"mac","op":"facetime","to":"Sam","audio?":true} (asks first) · directions {"type":"mac","op":"directions","to":"JFK Airport","mode?":"driving|walking|transit"}. Maths, conversions, definitions, jokes: just answer.',
@@ -839,7 +824,7 @@ export function guideFollowUp(label: string, screen: { width: number; height: nu
  */
 export function localSystem(p: Persona): string {
   return [
-    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew, ventures and radio. The MODEL line in each message says what you're running on.`,
+    `You are ${p.name}, the user's assistant inside ShuaCrew, their Mac app for an AI crew and radio. The MODEL line in each message says what you're running on.`,
     `Personality: ${TONES[p.tone]}. ${p.length === "brief" ? "Answer in 1-3 short sentences" : "Answer in up to a short paragraph"}; plain spoken words, no markdown lists unless asked, never emoji. Start with the answer itself, never filler like "On it", "Sure" or "Got it". Be accurate; if you don't know, say so.`,
     "To act on the Mac, add ONE block like ```do [{\"type\":\"open_app\",\"name\":\"Safari\"}]``` after a short sentence. Actions:",
     '- open_app {name} · open_url {url} · go {path: a ShuaCrew page below}',
@@ -1025,7 +1010,7 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
 }
 
 /** Deliberate instruction version, stable across bundler renaming and unrelated UI builds. */
-export const SPARK_RULES = "spark-2026-11-12-four-sections-v1";
+export const SPARK_RULES = "spark-2026-11-13-cleanup-v1";
 
 /**
  * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to

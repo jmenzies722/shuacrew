@@ -39,6 +39,7 @@ import { workHabits } from "./work-habits.js";
 import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, type GatewaySettingsValue } from "./settings.js";
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
+import { VERIFY_BY, nextTurnBy, verifyAsk, verifyDecision } from "@shuacrew/core/verification";
 import { selectIntelligence } from "./intelligence.js";
 import type { LatencyBook } from "./latency.js";
 import { inputDigest } from "./mobile/digest.js";
@@ -495,7 +496,8 @@ export class Supervisor {
     const turn = this.turns(runId) + 1;
     const spoken = this.currentAsk(runId, spec.ask);
     const ask = this.expand(spoken);
-    this.rec("turn.started", { turn, text: spoken, by: "you" }, { run: runId });
+    // A turn that only answers the gateway's own request for proof is marked as such (core/verification.ts).
+    this.rec("turn.started", { turn, text: spoken, by: nextTurnBy(this.store.forRun(runId)) }, { run: runId });
     const started = Date.now();
     const attemptSeq = this.store.head;
     const policy = this.policyFor(runId, cwd);
@@ -636,6 +638,19 @@ export class Supervisor {
               { turn, route: { runtime: runtime.id, model, effort }, durationMs: Date.now() - started, backendSession: this.backendSession(runId, runtime.id) },
               { run: runId },
             );
+            // Done means verified (core/verification.ts): a top-level session that changed code must have run a check
+            // after its last edit. If it hasn't, it is asked once to prove it, and the verdict after that turn stands.
+            // Shua's own turns, a task's steps and crew rooms are not sessions you review, so they are left alone.
+            {
+              const proof = spec.repo && !spec.parent && !lean && !spec.labels.includes("crew-room") ? verifyDecision(this.store.forRun(runId)) : null;
+              if (proof && proof.state !== "none") this.rec("verify.decided", { turn, state: proof.state, files: proof.files, command: proof.command, nudged: proof.nudged }, { run: runId });
+              if (proof?.nudge) {
+                // Still this run's turn (it is active), so the request waits; the `finally` below queues the next turn for it.
+                this.enqueueFollowUp(runId, verifyAsk(proof), VERIFY_BY);
+                ended = true;
+                break;
+              }
+            }
             // A top-level run with changes goes to review; a task's step is just done (the task is reviewed).
             this.setStatus(runId, spec.repo && !spec.parent && this.changedFiles(runId) ? "reviewing" : "done");
             ended = true;

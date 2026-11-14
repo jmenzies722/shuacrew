@@ -99,7 +99,7 @@ export function Review() {
           <h1 className="mt-0.5 flex items-center gap-2 text-[16px] font-semibold">
             {diff ? `${diff.files.length} file${diff.files.length === 1 ? "" : "s"} changed` : noBranch ? "Nothing to review" : error ? "Couldn't load the changes" : "Loading changes…"}
             {diff && <Chip mono>{diff.branch} → {diff.base}</Chip>}
-            {run && <StatusPill status={run.status} reason={run.statusReason} />}
+            {run && <StatusPill status={run.status} reason={run.statusReason} verification={run.verification} />}
           </h1>
         </div>
         <div className="ml-auto flex items-center gap-2">

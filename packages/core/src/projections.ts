@@ -43,6 +43,8 @@ export interface RunView {
   failedTools: number;
   files: string[];
   checks: Array<{ command: string; passed: boolean; seq: number }>;
+  /** Whether the code this session last changed was proven by a check (verification.ts). Absent: nothing to verify, or a turn is in progress. */
+  verification?: { state: "verified" | "failing" | "unverified"; turn: number; files: number; command?: string; nudged: boolean };
   pendingApprovals: string[];
   /** Lesson ids this run was given. The text lives in memory. */
   lessons: string[];
@@ -509,6 +511,7 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         run.turns = Math.max(run.turns, event.body.turn);
         run.ticker = "";
         run.tail = "";
+        run.verification = undefined; // a new turn: the verdict is whatever is true when it ends
       }
       break;
     case "agent.delta":
@@ -541,6 +544,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       break;
     case "check.ran":
       if (run) run.checks.push({ command: event.body.command, passed: event.body.exitCode === 0, seq: event.seq });
+      break;
+    case "verify.decided":
+      if (run) run.verification = { state: event.body.state, turn: event.body.turn, files: event.body.files, ...(event.body.command ? { command: event.body.command } : {}), nudged: event.body.nudged };
       break;
     case "subagent.started":
       if (run) run.subagents.push({ id: event.body.id, name: event.body.name, task: event.body.task, done: false });

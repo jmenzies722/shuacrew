@@ -53,16 +53,32 @@ const LABEL: Record<string, string> = {
 };
 
 /** A status with its colour, its shape and its word. */
-export function StatusPill({ status, reason }: { status: string; reason?: string }) {
-  const tone = toneOf(status);
+/** The verdict on a session's last code change (core/verification.ts): was it followed by a passing check? */
+export interface Verification { state: "verified" | "failing" | "unverified"; command?: string; nudged?: boolean }
+
+/**
+ * How a session at rest is labelled once it has a verdict: "Done" stops being a claim and becomes what was proven.
+ * Null while it is still working, or when there was nothing to verify (an answer, docs only).
+ */
+export function verdictOf(status: string, verification?: Verification | null): { label: string; tone: Tone; title: string } | null {
+  if (!verification || !["done", "reviewing", "merged"].includes(status)) return null;
+  const check = verification.command ?? "a check";
+  if (verification.state === "verified") return { label: "Verified", tone: "ok", title: `${check} passed after the last edit${verification.nudged ? " (asked for proof once)" : ""}` };
+  if (verification.state === "failing") return { label: "Checks failing", tone: "bad", title: `${check} failed after the last edit${verification.nudged ? ", and still failed when asked to fix it" : ""}` };
+  return { label: "Unverified", tone: "wait", title: `Code changed and nothing checked it${verification.nudged ? ", even after being asked for proof" : ""}` };
+}
+
+export function StatusPill({ status, reason, verification }: { status: string; reason?: string; verification?: Verification | null }) {
+  const verdict = verdictOf(status, verification);
+  const tone = verdict?.tone ?? toneOf(status);
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
       style={{ color: TONE_VAR[tone], background: `color-mix(in srgb, ${TONE_VAR[tone]} 13%, transparent)` }}
-      title={reason}
+      title={verdict?.title ?? reason}
     >
       <StatusGlyph tone={tone} />
-      {LABEL[status] ?? status}
+      {verdict?.label ?? LABEL[status] ?? status}
     </span>
   );
 }

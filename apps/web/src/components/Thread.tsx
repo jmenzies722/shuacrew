@@ -1,3 +1,4 @@
+import { VERIFY_BY } from "@shuacrew/core/verification";
 import { Button, Chip, formatTokens } from "@shuacrew/ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -372,6 +373,12 @@ function LivePlan({ item }: { item: Extract<Item, { kind: "plan" }> }) {
 
 /** What you asked — copy it, or edit it and send it again. */
 function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
+  // ShuaCrew's own request for proof (core/verification.ts) is not something you said: a quiet note, with the wording a click away.
+  if (item.by === VERIFY_BY) return <details className="verify-note"><summary>ShuaCrew asked for proof before calling this done</summary><p>{item.text}</p></details>;
+  return <OwnMessage item={item} />;
+}
+
+function OwnMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
   const { run, working } = useContext(ThreadContext);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);

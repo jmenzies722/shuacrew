@@ -2,16 +2,16 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { shuaLook } from "./shua-look";
 
-it("renders your Shua as self-contained markup the phone can show, and the gateway accepts", () => {
+it("renders Shua's mark as self-contained markup the phone can show, and the gateway accepts", () => {
   const look = shuaLook();
   expect(look.name).toBe("Shua");
-  expect(look.markup.startsWith("<span")).toBe(true);
-  expect(look.markup).toContain("spark-character");
-  expect(look.markup).toContain("mood-idle");
-  expect(look.markup).toContain("<svg");
+  expect(look.markup.startsWith("<svg")).toBe(true);
+  expect(look.markup).toContain("shua-mark");
+  expect(look.markup).toContain("is-idle");
+  expect(look.markup).not.toMatch(/spark-character|ch-robot/); // no character any more
   // Tests stub CSS imports; the real file is what the build embeds, so it's the one checked against the gateway's rules.
-  const realCss = readFileSync(new URL("../components/spark-character.css", import.meta.url), "utf8");
-  expect(realCss).toContain(".mood-sleepy");
+  const realCss = readFileSync(new URL("../components/mark.css", import.meta.url), "utf8");
+  expect(realCss).toContain(".shua-mark.is-live");
   expect(/@import|url\(\s*["']?(?!#|data:image\/svg)|expression\(|<\/?style/i.test(realCss)).toBe(false);
   // The gateway's rules (apps/gateway/src/shua-look.ts): nothing that could run or load.
   expect(/<script|<iframe|<object|<embed|<foreignObject|\son\w+\s*=|javascript:|href\s*=\s*["']?(?!#)/i.test(look.markup)).toBe(false);

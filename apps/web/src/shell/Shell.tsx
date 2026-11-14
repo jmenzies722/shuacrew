@@ -10,7 +10,7 @@ import { Bell, BookOpen, Cable, CalendarClock, FileText, Folder, House, KanbanSq
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LogoMark, Milestones, useSpotlight } from "../lib/motion";
+import { LogoMark, useSpotlight } from "../lib/motion";
 import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
@@ -20,12 +20,10 @@ import { CommandPalette } from "./CommandPalette";
 import { KeymapOverlay } from "./KeymapOverlay";
 import { LaunchSheet } from "./LaunchSheet";
 import { VoiceConversationHost } from "../components/VoiceConversation";
-import { CompanionHost } from "../components/Companion";
 import { DevHud } from "../components/DevHud";
 import { budgetUse, useWorkspace } from "../lib/workspace-prefs";
 import { getPower, savePower, usePower } from "../lib/power";
 import { navKey } from "../lib/keys";
-import { WinsHost } from "../components/Wins";
 import { SoundsHost } from "../components/Sounds";
 import { StatusIsland } from "../components/TopBarWidgets";
 import { SparkCharacter } from "../components/SparkCharacter";
@@ -43,20 +41,18 @@ import "../components/settings-command.css";
 import "../components/surfaces.css";
 import "../alive.css"; // the accent gradient and the touches that make it feel lit
 import "../onyx.css"; // the Onyx design language (Onyx and Porcelain palettes)
-import "../studio.css"; // last: Studio, the premium layer over every palette
+import "../studio.css"; // Studio, the calm layer over every palette
+import "../notion.css"; // the Notion design language (colour, type, radius, the window frame)
+import "../screens/notch-notion.css"; // last of all: the notch in the same language (it loads with this shell, after Buddy's own layers)
 import "../lib/look";
 import { installUiBridge } from "../lib/ui-bridge";
 import { SPRING_TUCK } from "../lib/spring-easing";
 
 export const NAV = [
   { to: "/", label: "Sessions", hint: "Talk to the crew", icon: MessagesSquare, key: "s", group: "Work" },
-  { to: "/studio", label: "Creative studio", hint: "Your Apple Music, album first", icon: Disc3, key: "j", group: "Work" },
-  { to: "/ventures", label: "Projects", hint: "What you build and what it earns", icon: Rocket, key: "v", group: "Work" },
-  { to: "/crew", label: "Crew", hint: "Your standing team", icon: Users, key: "r", group: "Work" },
-  { to: "/rooms", label: "Rooms", hint: "Shared conversation and real delegation", icon: MessagesSquare, key: "g", group: "Work" },
-  { to: "/floor", label: "Studio floor", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
+  { to: "/crew", label: "Agents", hint: "Who takes the work, and on which model", icon: Users, key: "r", group: "Work" },
+  { to: "/floor", label: "Live", hint: "Every agent, live", icon: Waypoints, key: "f", group: "Work" },
   { to: "/terminal", label: "Terminal", hint: "Your shells + ask the crew", icon: SquareTerminal, key: "t", group: "Work" },
-  { to: "/playbooks", label: "Playbooks", hint: "Idea → shipped, in phases", icon: ListChecks, key: "w", group: "Plan" },
   { to: "/specs", label: "Specs", hint: "Requirements → tasks", icon: FileText, key: "p", group: "Plan" },
   { to: "/board", label: "Board", hint: "Every session by stage", icon: KanbanSquare, key: "b", group: "Plan" },
   { to: "/activity", label: "Today", hint: "Everything at a glance", icon: Radar, key: "m", group: "Plan" },
@@ -68,7 +64,6 @@ export const NAV = [
   { to: "/observability", label: "Insights", hint: "Health, speed and what needs you", icon: Activity, key: "o", group: "System" },
   { to: "/usage", label: "Usage", hint: "Tokens, speed and limits", icon: BarChart3, key: "u", group: "System" },
   { to: "/developer", label: "Developer", hint: "Gateway diagnostics and audit integrity", icon: SquareTerminal, key: "d", group: "System" },
-  { to: "/guide", label: "Guide", hint: "Everything ShuaCrew can do", icon: BookOpen, key: "h", group: "System" },
   { to: "/settings", label: "Settings", hint: "Agents, look, data", icon: Settings, key: ",", group: "System" },
 ] as const;
 
@@ -117,16 +112,12 @@ export function Shell() {
         </motion.div>
         </div>
         <SparkSide />
-        {/* In the Mac app Shua lives on the desktop (over every app), so the in-window one steps aside. */}
-        {document.documentElement.dataset.shell !== "mac" && <CompanionHost />}
       </main>
-      <Milestones />
       <CommandPalette />
       <LaunchSheet />
       <ApprovalToasts />
       <KeymapOverlay />
       <VoiceConversationHost />
-      <WinsHost />
       <SoundsHost />
       <RadioHost />
       <AutomationsHost />

@@ -35,7 +35,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
           <div className="min-w-0 flex-1">
             <div className={`text-[13.5px] font-medium text-fg ${compact ? "line-clamp-2" : "truncate"}`}>{run.title}</div>
             <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-fg-3">
-              {compact && <StatusPill status={run.status} reason={run.statusReason} />}
+              {compact && <StatusPill status={run.status} reason={run.statusReason} verification={run.verification} />}
               {/* A narrow board column has room for one short name ("sonnet-5"), not runtime · full model · branch. */}
               {compact ? <span className="mono truncate" title={[run.runtime, run.model, run.worktree?.branch].filter(Boolean).join(" · ")}>{shortModel(run.model) ?? run.runtime}</span> : <>
                 <span className="mono">{run.runtime}</span>
@@ -44,7 +44,7 @@ export const AgentCard = memo(function AgentCard({ run, compact = false }: { run
               </>}
             </div>
           </div>
-          {!compact && <StatusPill status={run.status} reason={run.statusReason} />}
+          {!compact && <StatusPill status={run.status} reason={run.statusReason} verification={run.verification} />}
         </div>
 
         {!compact && (

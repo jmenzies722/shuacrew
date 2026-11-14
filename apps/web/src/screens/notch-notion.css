@@ -1,0 +1,127 @@
+/*
+ * The notch, in the Notion language (2026-11-13). It is hardware, so it stays true black in either mode; what changes
+ * is everything on it. It reads like a dark page that hangs from the camera housing:
+ *
+ *   rows, not cards     updates, approvals and tools are rows split by hairlines; nothing sits in a bordered box
+ *   one signal colour   blue means Shua or the crew is live; amber means something waits on you; the rest is white
+ *                       and grey. No glow, no gradient wash, no tinted icon tiles.
+ *   a toolbar, not toys the dock is a row of small square buttons under a hairline, the way a document's toolbar is
+ *   calm motion         the island still springs open (that is the hardware's gesture); nothing inside it floats,
+ *                       breathes or lifts on hover
+ *
+ * Loaded after every other notch layer (Shell.tsx, last), so these win without !important except where an older
+ * rule used it. Selectors start at .buddy, the notch page's root.
+ */
+.buddy {
+  --n-ink: #000;
+  --n-raised: #141414;
+  --n-line: rgba(255, 255, 255, .09);
+  --n-text: #ededec;
+  --n-text-2: #a3a3a0;
+  --n-text-3: #7a7a77;
+  --n-blue: #4a9ef0;
+  --n-amber: #e0a050;
+  --n-hover: rgba(255, 255, 255, .07);
+  --n-glow: transparent;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+/* ── The island: flat black. The light that bled from under it is gone. ───────────────────────── */
+.buddy .shua-island-shape { background: var(--n-ink); }
+.buddy .shua-island.is-open .shua-island-shape, .buddy.is-docked .shua-island.is-open .shua-island-shape { box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 18px 40px -20px rgba(0, 0, 0, .7); border-radius: 0 0 18px 18px; }
+.buddy .shua-island.is-open .notch-aura { display: none; }
+.buddy .notch-aura i { filter: blur(10px); background: var(--n-blue) !important; }
+.buddy .notch-aura b { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--n-blue) 50%, transparent); }
+
+/* ── The ears: a white instrument on the left, one signal dot on the right. ───────────────────── */
+.buddy .notch-equalizer { color: var(--n-text); filter: none; }
+.buddy .notch-equalizer > i { background: currentColor; border-radius: 2px; }
+.buddy .notch-equalizer.is-idle > i { opacity: .45; }
+.buddy .notch-equalizer:is(.is-listening, .is-speaking, .is-working, .is-watching) { color: var(--n-blue); }
+.buddy .notch-equalizer.is-attention { color: var(--n-amber); }
+.buddy .notch-equalizer.is-attention > i { background: currentColor; }
+.buddy .shua-island-ear.is-face:hover .notch-equalizer { filter: none; }
+.buddy .shua-island-ear em { font-style: normal; font-size: 11.5px; font-weight: 500; letter-spacing: 0; color: var(--n-text-2); }
+.buddy .shua-island-ear em.is-wait { color: var(--n-amber); }
+.buddy .shua-island-ear em.is-live { color: var(--n-blue); }
+.buddy .shua-island-dot { width: 6px; height: 6px; background: var(--n-text-3); box-shadow: none; animation: none; }
+.buddy .shua-island.is-live .shua-island-dot { background: var(--n-blue); }
+
+/* ── The body: a page of rows. ────────────────────────────────────────────────────────────────── */
+.buddy .shua-island-body, .buddy.is-docked .shua-island-body { padding: 4px 14px 10px; gap: 0; color: var(--n-text); font-size: 13px; }
+.buddy .shua-island-body > * { border-bottom: 1px solid var(--n-line); padding-top: 10px; padding-bottom: 10px; }
+.buddy .shua-island-body > *:last-child, .buddy .shua-island-body > .isl-dock { border-bottom: 0; }
+.buddy .shua-island-hint { font-size: 12.5px; color: var(--n-text-2); letter-spacing: 0; }
+
+/* Updates, errors and approvals: a label, a title, a line, an action. No box. */
+.buddy :is(.notch-update, .notch-error, .notch-update-peek, .spark-nook-stuck) { display: grid; gap: 4px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--n-line); border-radius: 0; background: transparent; background-image: none; box-shadow: none; text-align: left; color: var(--n-text); }
+.buddy .notch-update header span, .buddy .isl-kicker { font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--n-text-3); }
+.buddy .notch-update.is-wait header span, .buddy .notch-update.is-bad header span { color: var(--n-amber); }
+.buddy .isl-kicker i { width: 6px; height: 6px; box-shadow: none; animation: none; }
+.buddy .notch-update :is(strong, h3, h4, b) { font-size: 14px; font-weight: 600; letter-spacing: 0; color: var(--n-text); }
+.buddy .notch-update p, .buddy .notch-error { font-size: 13px; line-height: 1.45; color: var(--n-text-2); }
+.buddy .notch-error { grid-auto-flow: column; grid-template-columns: 1fr auto; align-items: start; }
+.buddy :is(.notch-update, .notch-error) button { border: 0; background: transparent; box-shadow: none; color: var(--n-text-3); border-radius: 6px; }
+.buddy :is(.notch-update, .notch-error) button:hover { background: var(--n-hover); color: var(--n-text); transform: none; }
+.buddy .notch-update :is(.notch-update-open, .notch-update-decide button) { display: flex; align-items: center; justify-content: space-between; height: 32px; margin-top: 6px; padding: 0 10px; font-size: 13px; font-weight: 500; color: var(--n-text); background: rgba(255, 255, 255, .06); border-radius: 6px; }
+.buddy .notch-update :is(.notch-update-open, .notch-update-decide button):hover { background: rgba(255, 255, 255, .1); }
+.buddy .notch-update-decide button.is-allow { background: var(--n-blue); color: #fff; }
+
+/* ── The dock: a toolbar under a hairline. ────────────────────────────────────────────────────── */
+.buddy .isl-dock { gap: 2px; min-height: 32px; margin: 0; padding: 8px 0 0; border: 0; }
+.buddy .shua-island-body > .isl-dock:first-child { padding-top: 2px; }
+.buddy .shua-island-body > :empty { display: none; }
+.buddy .shua-island-body > *:has(+ .isl-dock) { border-bottom: 1px solid var(--n-line); }
+.buddy .isl-btn { width: 32px; height: 32px; border-radius: 7px; border: 0; background: transparent; box-shadow: none; color: var(--n-text-2); transition: background .12s, color .12s; animation: none !important; }
+.buddy .isl-btn:hover { background: var(--n-hover); color: var(--n-text); transform: none; }
+.buddy .isl-btn:active { transform: none; background: rgba(255, 255, 255, .11); }
+.buddy .isl-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--n-blue) 60%, transparent); }
+.buddy .isl-btn.is-on { color: var(--n-blue); background: color-mix(in srgb, var(--n-blue) 16%, transparent); box-shadow: none; }
+.buddy .isl-btn.is-talk.is-holding { color: #fff; background: var(--n-blue); }
+.buddy .isl-chip { height: 28px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; font-size: 12.5px; font-weight: 500; color: var(--n-text-2); }
+.buddy .isl-chip svg { color: var(--n-text-3); }
+.buddy .isl-chip:hover { background: var(--n-hover); color: var(--n-text); }
+.buddy .isl-dock.is-typing .isl-type, .buddy .isl-type { height: 34px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .07); box-shadow: none; animation: none; }
+.buddy .isl-type:focus-within { box-shadow: 0 0 0 2px color-mix(in srgb, var(--n-blue) 55%, transparent); }
+.buddy .isl-type input { font-size: 13.5px; color: var(--n-text); }
+.buddy .isl-type input::placeholder { color: var(--n-text-3); }
+
+/* ── More: tools as rows, quick actions as plain buttons. ─────────────────────────────────────── */
+.buddy .assistant-deck { font-family: inherit; font-size: 13px; color: var(--n-text); }
+.buddy .assistant-eyebrow { font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--n-text-3); }
+.buddy .assistant-deck-primary :is(strong, h2, h3) { font-size: 16px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: var(--n-text); }
+.buddy .assistant-key { border: 1px solid var(--n-line); border-radius: 4px; background: transparent; box-shadow: none; font-size: 11.5px; color: var(--n-text-2); }
+.buddy .deck-status { font-size: 12.5px; color: var(--n-text-2); }
+.buddy .deck-tiles { gap: 2px; }
+.buddy .deck-tile { grid-template-columns: 22px 1fr; column-gap: 10px; padding: 8px; border: 0; border-radius: 8px; background: transparent; background-image: none; transition: background .12s; }
+.buddy .deck-tile::after { display: none; }
+.buddy .deck-tile:hover { background: var(--n-hover); border: 0; transform: none; }
+.buddy .deck-tile:active { transform: none; }
+.buddy .deck-tile i { width: 22px; height: 22px; border-radius: 0; color: var(--n-text-2); background: transparent; box-shadow: none; }
+.buddy .deck-tile:is(.is-live, .is-on) i { color: var(--n-blue); }
+.buddy .deck-tile:is(.is-wait, .is-needs, .is-missing) i { color: var(--n-amber); }
+.buddy .deck-tile b { font-size: 13.5px; font-weight: 500; letter-spacing: 0; color: var(--n-text); }
+.buddy .deck-tile :is(small, span) { font-size: 12px; color: var(--n-text-3); }
+.buddy .deck-pills { gap: 2px; padding-top: 6px; border-top: 1px solid var(--n-line); }
+.buddy .deck-pills button { height: 28px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; font-size: 12.5px; font-weight: 500; color: var(--n-text-2); }
+.buddy .deck-pills button svg { color: var(--n-text-3); }
+.buddy .deck-pills button:hover { background: var(--n-hover); color: var(--n-text); transform: none; }
+
+/* Live work in the notch: one line each, a dot that says its state. */
+.buddy .notch-activity { font-size: 12.5px; color: var(--n-text-2); background: transparent; border: 0; box-shadow: none; border-radius: 6px; }
+.buddy .notch-activity.is-live { color: var(--n-blue); }
+.buddy .notch-activity.is-wait { color: var(--n-amber); }
+.buddy .notch-task-dot { width: 6px; height: 6px; box-shadow: none; animation: none; }
+
+@media (prefers-reduced-motion: reduce) { .buddy .isl-btn, .buddy .deck-tile { transition: none; } }
+
+/* Older layers reach these with three classes; match them. */
+.buddy.is-docked .shua-island .notch-error { display: flex; align-items: flex-start; gap: 10px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--n-line); border-radius: 0; background: transparent; color: var(--n-text-2); font-size: 13px; line-height: 1.45; }
+.buddy.is-docked .shua-island .notch-error::before { content: ""; flex: none; width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--n-amber); }
+.buddy.is-docked .shua-island .notch-error button { padding: 4px; color: var(--n-text-3); border-radius: 6px; }
+.buddy .shua-island-body > :is(.spark-nook-live, .spark-nook-media, .spark-nook-mission, .notch-update, .spark-nook-stuck, .notch-lesson-summary, .spark-nook-timers) { border: 0; border-bottom: 1px solid var(--n-line); border-radius: 0; background: transparent; background-image: none; box-shadow: none; padding: 10px 2px; }
+
+/* The island never carries a wash of colour, in any state (older layers add one per state and per glow setting). */
+.buddy .shua-island:is(.is-open, .is-live, .is-rest) .shua-island-shape, .buddy.is-docked .shua-island:is(.is-open, .is-live, .is-rest) .shua-island-shape { background: var(--n-ink); background-image: none; }
+.buddy .shua-island .shua-island-shape::after, .buddy.is-docked[data-notch-glow] .shua-island:is(.is-open, .is-live, .is-rest) .shua-island-shape::after { background: none; display: none; }
+.buddy .shua-island-body { background: var(--n-ink); background-image: none; }

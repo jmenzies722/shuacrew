@@ -120,13 +120,6 @@ export function performNow(a: Action | (Act & { color?: string }), active: () =>
     return { ok: true, message: b.headline };
   })().catch((e: Error) => ({ ok: false, message: `Couldn't read ShuaCrew: ${e.message}` }));
   if (a.type === "timer") { const { type: _, ...op } = a; return Promise.resolve(timerOp(op)); }
-  if (a.type === "venture") return api<{ id: string }>("/api/ventures", { body: { name: a.name, pitch: a.pitch ?? "" } }).then(async (v) => {
-    if (a.validate) await api("/api/plays", { body: { playbook: "validate-idea", inputs: { idea: a.pitch || a.name }, venture: v.id } });
-    post({ type: "buddyOpen", path: `/ventures/${v.id}` });
-    return { ok: true, message: a.validate ? `${a.name}: validating now` : `${a.name} created` };
-  }, (e: Error) => ({ ok: false, message: e.message }));
-  if (a.type === "playbook") return api<{ id: string }>("/api/plays", { body: { playbook: a.playbook, inputs: a.idea ? { idea: a.idea } : {}, ...(a.venture ? { venture: a.venture } : {}) } })
-    .then((p) => { post({ type: "buddyOpen", path: `/plays/${p.id}` }); return { ok: true, message: `${a.playbook.replace(/-/g, " ")} started` }; }, (e: Error) => ({ ok: false, message: e.message }));
   if (a.type === "run") return (async () => {
     // Your ShuaCrew policy decides first: denied never runs. In "Just do it" (auto) Spark only stops for what it must
     // ask you about (a push, a send, a delete: assistantMustAsk) and asks out loud; "Ask each step" asks every time.

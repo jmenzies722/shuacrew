@@ -13,7 +13,6 @@ import { describe } from "../shell/CommandPalette";
 import { Glyph } from "../lib/glyphs";
 import { CrewWorkspace } from "../components/CrewWorkspace";
 import { selectRooms } from "../lib/room-view";
-import { CrewStudio3D } from "../components/CrewStudio3D";
 import { isTopLevelWork } from "../lib/crew";
 import { PaneHeader } from "../components/Pane";
 import { SPRING } from "../lib/spring-easing";
@@ -134,7 +133,7 @@ export function CrewFloor() {
   return (
     <div className="crew-floor">
       <header className="floor-head">
-        <PaneHeader eyebrow="Crew" icon={Layers3} title="Studio floor"
+        <PaneHeader eyebrow="Crew" icon={Layers3} title="Live"
           status={waiting ? `${waiting} waiting on you${working ? ` · ${working} at work` : ""}` : working ? `${working} at work · ${perMinute} step${perMinute === 1 ? "" : "s"} in the last minute` : "Everyone's at their desk. Hand work over from Agents and watch it happen here."}
           tone={waiting ? "wait" : working ? "live" : "idle"} />
       </header>
@@ -142,7 +141,6 @@ export function CrewFloor() {
       <div className="floor-body">
         <section className="floor-pods" aria-label="Agents">
           {!!Object.keys(rooms).length && <div className="mb-5"><label className="text-[12px] text-fg-3">Room workspace <select className="ml-2 rounded-lg border border-line bg-panel px-3 py-2" value={roomId} onChange={e => setRoomId(e.target.value)}><option value="">All activity below</option>{Object.values(rooms).filter(room => !scope || room.repo === scope).map(room => <option key={room.id} value={room.id}>{room.title}</option>)}</select></label>{rooms[roomId] && <div className="mt-3 max-h-[520px] overflow-auto rounded-2xl border border-line"><CrewWorkspace room={rooms[roomId]} /></div>}</div>}
-          <CrewStudio3D runs={runs} activity={activity} approvals={approvals} now={now} />
           {onFloor.length === 0 ? null : (
             <div className="pods-grid">
               <AnimatePresence initial={false}>

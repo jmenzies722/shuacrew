@@ -1,16 +1,18 @@
 /**
- * The app's map: four sections — Home, then what Shua knows (Intelligence), what runs without you (Autopilot) and who
- * does the work (Crew) — and everything else folded under More. Every screen lives in exactly one hub.
+ * The app's map: Home (your sessions and your day), Knowledge (what the crew has learned and made), Autopilot (what
+ * runs without you) and Crew (who is working, live) — with the few system pages folded under More. Every screen lives
+ * in exactly one hub. The Board and the Agents page are still routes (deep links and the command palette reach them)
+ * but are no longer places in the sidebar: Home filters sessions by status, and agents are being redesigned.
  */
 export interface HubTab { to: string; label: string; also?: string[] }
-export interface Hub { id: "home" | "intelligence" | "autopilot" | "crew" | "system"; label: string; hint: string; tabs: HubTab[] }
+export interface Hub { id: "home" | "knowledge" | "autopilot" | "crew" | "system"; label: string; hint: string; tabs: HubTab[] }
 
 export const HUBS: Hub[] = [
-  { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions"] }, { to: "/activity", label: "Today" }] },
-  { id: "intelligence", label: "Intelligence", hint: "What Shua knows, and how well it works", tabs: [{ to: "/memory", label: "Memory" }, { to: "/library", label: "Library" }, { to: "/observability", label: "Insights", also: ["/developer", "/insights"] }] },
-  { id: "autopilot", label: "Autopilot", hint: "What runs without you", tabs: [{ to: "/schedules", label: "Schedules" }, { to: "/playbooks", label: "Playbooks", also: ["/plays"] }, { to: "/board", label: "Board", also: ["/review", "/runs"] }] },
-  { id: "crew", label: "Crew", hint: "Your studio, live", tabs: [{ to: "/floor", label: "Studio floor" }, { to: "/crew", label: "Agents" }, { to: "/rooms", label: "Rooms" }] },
-  { id: "system", label: "More", hint: "Projects, tools and the numbers", tabs: [{ to: "/ventures", label: "Projects" }, { to: "/specs", label: "Specs" }, { to: "/studio", label: "Creative studio" }, { to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/usage", label: "Usage" }, { to: "/terminal", label: "Terminal" }] },
+  { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions", "/board", "/review", "/runs"] }, { to: "/activity", label: "Today" }] },
+  { id: "knowledge", label: "Knowledge", hint: "What the crew has learned and made", tabs: [{ to: "/memory", label: "Memory" }, { to: "/library", label: "Library" }] },
+  { id: "autopilot", label: "Autopilot", hint: "What runs without you", tabs: [{ to: "/schedules", label: "Schedules" }] },
+  { id: "crew", label: "Crew", hint: "Who is working, and on what", tabs: [{ to: "/floor", label: "Live", also: ["/crew"] }] },
+  { id: "system", label: "More", hint: "Tools, guardrails and the numbers", tabs: [{ to: "/observability", label: "Insights", also: ["/developer", "/insights"] }, { to: "/usage", label: "Usage" }, { to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/specs", label: "Specs" }, { to: "/terminal", label: "Terminal" }] },
 ];
 export const PRIMARY_HUBS = HUBS.filter(hub => hub.id !== "system");
 

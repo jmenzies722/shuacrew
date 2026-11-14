@@ -3,10 +3,10 @@ import { appRoute, paneAnnouncement } from "./pane-model";
 
 describe("pane boundaries", () => {
   it("only links to existing application route shapes", () => {
-    expect(appRoute("/rooms/room-123")).toBe("/rooms/room-123");
+    expect(appRoute("/sessions/r_123")).toBe("/sessions/r_123");
     expect(appRoute("/settings")).toBe("/settings");
-    expect(appRoute("/studio")).toBe("/studio");
-    for (const path of ["https://example.com", "//example.com", "/not-a-pane", "/rooms/../settings", "/rooms/%2fsecret", "/rooms/a/b", "/library/missing"]) {
+    expect(appRoute("/floor")).toBe("/floor");
+    for (const path of ["https://example.com", "//example.com", "/not-a-pane", "/sessions/../settings", "/sessions/%2fsecret", "/sessions/a/b", "/library/missing", "/rooms/room-123", "/ventures/v1", "/plays/p1", "/studio", "/guide"]) {
       expect(appRoute(path)).toBeNull();
     }
   });

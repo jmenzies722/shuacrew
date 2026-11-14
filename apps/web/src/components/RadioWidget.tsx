@@ -25,7 +25,7 @@ export function RadioTile({ ctx }: { ctx: WidgetCtx }) {
   return <div className="rw-tile">
     <div className="rw-now">
       <span className={`rw-art ${r.playing ? "is-on" : ""}`} style={art ? { backgroundImage: `url(${art})` } : undefined}>{!art && <RadioIcon size={18} />}</span>
-      <button type="button" className="rw-text" onClick={() => ctx.go("/studio")} title="Open ShuaCrew Radio"><b>{title}</b><small>{r.playing ? "On air · " : ""}{sub}</small></button>
+      <button type="button" className="rw-text" title="ShuaCrew Radio"><b>{title}</b><small>{r.playing ? "On air · " : ""}{sub}</small></button>
       <button type="button" className="rw-btn is-main" aria-label={r.playing ? "Pause" : "Play"} onClick={() => (r.track || r.live ? toggle() : void playStation(choices[0]?.id ?? ""))} disabled={!choices.length && !r.track && !r.live}>{r.playing ? <Pause size={15} /> : <Play size={15} />}</button>
       <button type="button" className="rw-btn" aria-label="Next" onClick={() => void next()} disabled={!r.track && !r.live}><SkipForward size={14} /></button>
     </div>

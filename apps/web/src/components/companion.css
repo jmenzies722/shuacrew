@@ -1,4 +1,3 @@
-.spark-art { display:block; width:64px; height:64px; flex-shrink:0; background-image:url('/companion/spark-atlas.png'); background-size:700% 300%; background-repeat:no-repeat; }
 .companion-dock { flex-shrink:0; border-top:1px solid var(--line); background:var(--panel); padding:6px 20px; display:flex; flex-wrap:wrap; gap:12px; justify-content:flex-end; align-items:center; }
 .companion-widget { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .companion-trigger { display:flex; align-items:center; text-align:left; gap:8px; border-radius:12px; }

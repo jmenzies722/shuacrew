@@ -106,7 +106,7 @@ function RunHeader({ run }: { run: RunView }) {
         </div>
         <h1 className="mt-1 truncate text-[18px] font-semibold tracking-[-0.015em]">{run.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <StatusPill status={run.status} reason={run.statusReason} />
+          <StatusPill status={run.status} reason={run.statusReason} verification={run.verification} />
           <Chip mono>{run.runtime}{run.model ? ` · ${run.model}` : ""}</Chip>
           {run.worktree && (
             <Chip mono title={run.worktree.path}>

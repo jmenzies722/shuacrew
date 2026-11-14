@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inScope, pauseClock, policyLine, scopeRuns, recentWork } from "./crew";
+import { inScope, pauseClock, policyLine, scopeRuns, recentWork, sessionsInLane, laneCounts, SESSION_LANES } from "./crew";
 import type { RunView } from "@shuacrew/core/projections";
 
 const run = (id: string, repo?: string, parent?: string): RunView =>
@@ -43,4 +43,22 @@ it("resumes only visible top-level work in the current project, newest first", (
   };
   expect(recentWork(runs, "/repos/app").map(r => r.id)).toEqual(["b", "a"]);
   expect(recentWork(runs, "/repos/app", 1).map(r => r.id)).toEqual(["b"]);
+});
+
+it("filters Home's session list by the Board's lanes, and counts each lane", () => {
+  const runs = {
+    a: { ...run("a", "/repos/app"), updatedAt: 10, status: "running" as const },
+    b: { ...run("b", "/repos/app"), updatedAt: 20, status: "done" as const },
+    c: { ...run("c", "/repos/app"), updatedAt: 30, status: "awaiting_approval" as const },
+    d: { ...run("d", "/repos/app"), updatedAt: 40, status: "failed" as const },
+    child: { ...run("child", "/repos/app", "a"), status: "running" as const },
+    other: { ...run("other", "/repos/other"), status: "running" as const },
+  };
+  expect(SESSION_LANES.map((l) => l.id)).toEqual(["all", "queued", "running", "awaiting", "reviewing", "done"]);
+  expect(sessionsInLane(runs, "/repos/app", "all").map((r) => r.id)).toEqual(["d", "c", "b", "a"]);
+  expect(sessionsInLane(runs, "/repos/app", "running").map((r) => r.id)).toEqual(["a"]); // not the child, not another project
+  expect(sessionsInLane(runs, "/repos/app", "awaiting").map((r) => r.id)).toEqual(["c"]);
+  expect(sessionsInLane(runs, "/repos/app", "done").map((r) => r.id)).toEqual(["d", "b"]); // failed sits with done, as on the Board
+  expect(sessionsInLane(runs, "/repos/app", "done", 1).map((r) => r.id)).toEqual(["d"]);
+  expect(laneCounts(runs, "/repos/app")).toEqual({ all: 4, queued: 0, running: 1, awaiting: 1, reviewing: 0, done: 2 });
 });

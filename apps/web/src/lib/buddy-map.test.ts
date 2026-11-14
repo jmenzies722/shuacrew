@@ -13,7 +13,8 @@ it("names the same section for each page as the sidebar does (so Shua says where
 });
 
 it("go only opens real ShuaCrew pages; radio only takes real commands", () => {
-  expect(parseActions('```do [{"type":"go","path":"/studio"}]```')).toEqual([{ type: "go", path: "/studio" }]);
+  expect(parseActions('```do [{"type":"go","path":"/floor"}]```')).toEqual([{ type: "go", path: "/floor" }]);
+  expect(parseActions('```do [{"type":"go","path":"/studio"}]```')).toEqual([]); // removed pages are no longer real
   expect(parseActions('```do [{"type":"go","path":"/settings#voice"}]```')).toEqual([{ type: "go", path: "/settings#voice" }]);
   expect(parseActions('```do [{"type":"go","path":"https://evil.example"}]```')).toEqual([]);
   expect(parseActions('```do [{"type":"radio","cmd":"play","station":"lofi jazz"}]```')).toEqual([{ type: "radio", cmd: "play", station: "lofi jazz" }]);
@@ -33,7 +34,7 @@ it("keeps Spark's local prompt compact and identical from call to call (so it ca
   expect(a).toBe(b);
   expect(a.length).toBeLessThan(5600); // ~1,300 tokens, read once and cached, versus ~3,300 re-read for the full prompt
   expect(a).toMatch(/radio/i);
-  expect(a).toMatch(/```do/); expect(a).toMatch(/Studio/); expect(a).toMatch(/AI Platform Engineer/);
+  expect(a).toMatch(/```do/); expect(a).toMatch(/Live \/floor/); expect(a).toMatch(/AI Platform Engineer/);
   const ask = localAsk("what time is it?", { now: new Date(2026, 8, 26, 9, 5) });
   expect(ask.split("\n\n[screen]")[0]).toBe("what time is it?"); // the chat shows only the question
   expect(ask).toMatch(/Saturday/);

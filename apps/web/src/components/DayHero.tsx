@@ -88,7 +88,6 @@ export function DayHero() {
   const plan: Array<{ icon: typeof Play; label: string; value: string; go: () => void; tone: "wait" | "live" | "ok" | "idle" }> = [
     { icon: CheckCircle2, label: "Needs you", value: approvals.length ? `${approvals.length} decision${approvals.length === 1 ? "" : "s"}` : "Nothing waiting", tone: approvals.length ? "wait" : "ok", go: () => void navigate({ to: "/board" }) },
     { icon: Loader2, label: "In progress", value: running.length ? `${running.length} session${running.length === 1 ? "" : "s"} working` : "Crew is idle", tone: running.length ? "live" : "idle", go: () => void navigate({ to: "/board" }) },
-    { icon: Briefcase, label: "Venture", value: venture ? `${venture.name} · ${venture.stage}` : ventures.length ? "All earning" : "No ventures yet", tone: venture ? "live" : "idle", go: () => void navigate({ to: "/ventures" }) },
   ];
 
   // Order: who/when, then the brief, then what you can act on; streaks, badges and the standup sit quietly underneath.

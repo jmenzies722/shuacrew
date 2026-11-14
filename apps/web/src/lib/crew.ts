@@ -1,3 +1,4 @@
+import { COLUMNS } from "@shuacrew/core/projections";
 import type { RunView } from "@shuacrew/core/projections";
 
 export function repoName(repo?: string): string {
@@ -60,4 +61,22 @@ export function recentWork(runs: Record<string, RunView>, scope: string | null, 
     .filter(r => isTopLevelWork(r, runs) && !("archived" in r && r.archived))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, Math.max(0, limit));
+}
+
+/**
+ * Home's session list, filtered the way the Board used to lay sessions out: "all", or one of the Board's lanes
+ * (queued, running, awaiting, reviewing, done). The lanes come from COLUMNS, so the two can never disagree.
+ */
+export const SESSION_LANES: Array<{ id: string; title: string }> = [{ id: "all", title: "All" }, ...COLUMNS.map((c) => ({ id: c.id, title: c.id === "awaiting" ? "Needs you" : c.title }))];
+export function sessionsInLane(runs: Record<string, RunView>, scope: string | null, lane: string, limit = 8): RunView[] {
+  const statuses = COLUMNS.find((c) => c.id === lane)?.statuses;
+  return Object.values(scopeRuns(runs, scope))
+    .filter((r) => isTopLevelWork(r, runs) && !("archived" in r && r.archived) && (!statuses || statuses.includes(r.status)))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, Math.max(0, limit));
+}
+/** How many sessions sit in each lane, for the filter's counts. */
+export function laneCounts(runs: Record<string, RunView>, scope: string | null): Record<string, number> {
+  const all = sessionsInLane(runs, scope, "all", Infinity);
+  return Object.fromEntries(SESSION_LANES.map((l) => [l.id, l.id === "all" ? all.length : all.filter((r) => COLUMNS.find((c) => c.id === l.id)!.statuses.includes(r.status)).length]));
 }

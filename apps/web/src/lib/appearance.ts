@@ -2,10 +2,16 @@
  * How ShuaCrew looks: a palette (surfaces and text) and an accent. "Follow system" pairs a dark
  * palette with a light one. Applied as attributes on <html>; themes.css does the rest.
  */
-export type PaletteId = "onyx" | "porcelain" | "obsidian" | "pristine" | "frost" | "graphite" | "carbon" | "midnight" | "daylight" | "paper" | "sand";
-/** Palettes folded into a near-identical one: a saved choice moves to its twin instead of snapping back to the default. */
-const RETIRED: Record<string, PaletteId> = { night: "midnight", cursor: "frost" };
-export type AccentId = "azure" | "iris" | "amber" | "mono" | "blue" | "green" | "coral";
+export type PaletteId = "onyx" | "porcelain";
+/**
+ * One look, two modes (notion.css). The nine older palettes fold into the mode they belonged to, so a saved choice
+ * lands on Dark or Light instead of snapping back to the default. The ids stay "onyx" and "porcelain": saved
+ * preferences and the design layer keyed on them ([data-design="onyx"]) keep working.
+ */
+const RETIRED: Record<string, PaletteId> = {
+  night: "onyx", cursor: "onyx", obsidian: "onyx", pristine: "onyx", frost: "onyx", graphite: "onyx", carbon: "onyx", midnight: "onyx",
+  daylight: "porcelain", paper: "porcelain", sand: "porcelain",
+};
 
 export interface Palette {
   id: PaletteId;
@@ -17,18 +23,11 @@ export interface Palette {
 }
 
 export const PALETTES: Palette[] = [
-  { id: "onyx", name: "Onyx", mode: "dark", blurb: "Editor-grade neutral black, lit edges", swatch: ["#0e0e10", "#151517", "#1c1c1f", "#ececee"] },
-  { id: "porcelain", name: "Porcelain", mode: "light", blurb: "Onyx's light twin: soft white, crisp ink", swatch: ["#f5f5f6", "#ffffff", "#f0f0f2", "#121214"] },
-  { id: "obsidian", name: "Obsidian", mode: "dark", blurb: "Black glass, blue-violet light", swatch: ["#07080b", "#0e1017", "#181c27", "#f1f3fa"] },
-  { id: "pristine", name: "Pristine", mode: "dark", blurb: "Graphite layers, hairline edges", swatch: ["#0c0c0e", "#131316", "#19191d", "#ededf0"] },
-  { id: "frost", name: "Frost Black", mode: "dark", blurb: "Frosted glass on true black", swatch: ["#050506", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "#f2f2f4"] },
-  { id: "graphite", name: "Graphite", mode: "dark", blurb: "Soft neutral grey", swatch: ["#161618", "#1c1c1f", "#242428", "#e8e8ea"] },
-  { id: "carbon", name: "Carbon", mode: "dark", blurb: "Warm black", swatch: ["#0f0e0c", "#161412", "#1e1b18", "#ece6de"] },
-  { id: "midnight", name: "Midnight", mode: "dark", blurb: "Deep navy", swatch: ["#0a0f1c", "#0f1626", "#151e33", "#e4e9f4"] },
-  { id: "daylight", name: "Daylight", mode: "light", blurb: "Cool, crisp light", swatch: ["#f4f5f7", "#ffffff", "#f7f8fa", "#111418"] },
-  { id: "paper", name: "Paper", mode: "light", blurb: "Clean neutral white", swatch: ["#f7f7f8", "#ffffff", "#f3f3f5", "#111113"] },
-  { id: "sand", name: "Sand", mode: "light", blurb: "Warm light", swatch: ["#f6f3ec", "#fdfbf7", "#f0ebe1", "#1e1a14"] },
+  { id: "onyx", name: "Dark", mode: "dark", blurb: "Soft black page, warm grey sidebar", swatch: ["#202020", "#191919", "#252525", "#e3e3e1"] },
+  { id: "porcelain", name: "Light", mode: "light", blurb: "White page, warm grey sidebar", swatch: ["#f7f7f5", "#ffffff", "#f4f4f2", "#37352f"] },
 ];
+
+export type AccentId = "azure" | "iris" | "amber" | "mono" | "blue" | "green" | "coral";
 
 export const ACCENTS: Array<{ id: AccentId; name: string; dark: string; light: string }> = [
   { id: "azure", name: "Azure", dark: "#5aa9ff", light: "#1f6feb" },
@@ -51,7 +50,7 @@ export interface Appearance {
   motion: "system" | "reduced" | "full";
   /** The full sidebar (threads and places in one column, the Codex way), or the slim rail with icons or labels. */
   navigation: "sidebar" | "icons" | "labels";
-  startPage: "/" | "/floor" | "/activity" | "/ventures" | "/board";
+  startPage: "/" | "/floor" | "/activity" | "/board";
   sendShortcut: "enter" | "modifier-enter" | "button-only";
   spellcheck: "on" | "off";
   turnMap: "show" | "hide";
@@ -62,14 +61,14 @@ export const DEFAULT_APPEARANCE: Appearance = { palette: "system", dark: "onyx",
 
 export function normalizeAppearance(value: unknown): Appearance {
   const raw = { ...(value && typeof value === "object" ? value as Record<string, unknown> : {}) };
-  for (const key of ["palette", "dark"] as const) if (typeof raw[key] === "string" && RETIRED[raw[key]]) raw[key] = RETIRED[raw[key]];
+  for (const key of ["palette", "dark", "light"] as const) if (typeof raw[key] === "string" && RETIRED[raw[key]]) raw[key] = RETIRED[raw[key]];
   const choices: Record<keyof Appearance, readonly string[]> = {
     palette: ["system", ...PALETTES.map((p) => p.id)],
     dark: PALETTES.filter((p) => p.mode === "dark").map((p) => p.id),
     light: PALETTES.filter((p) => p.mode === "light").map((p) => p.id),
     accent: ACCENTS.map((a) => a.id), density: ["comfortable", "compact"],
     reading: ["small", "default", "large"], motion: ["system", "reduced", "full"],
-    navigation: ["sidebar", "icons", "labels"], startPage: ["/", "/floor", "/activity", "/ventures", "/board"],
+    navigation: ["sidebar", "icons", "labels"], startPage: ["/", "/floor", "/activity", "/board"],
     sendShortcut: ["enter", "modifier-enter", "button-only"], spellcheck: ["on", "off"], turnMap: ["show", "hide"],
   };
   return Object.fromEntries(Object.entries(choices).map(([key, allowed]) => [key,
@@ -92,49 +91,6 @@ export function migrateToSidebar(a: Appearance, saved: boolean, store: Pick<Stor
   return saved && a.navigation === "icons" ? { ...a, navigation: "sidebar" } : a;
 }
 
-export function migrateToPristine(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
-  let done = false; try { const d = store.getItem("shuacrew.design"); done = d === "pristine" || d === "onyx"; } catch { /* ignore */ }
-  if (!saved || done) return a;
-  const next = { ...a };
-  if (next.dark === "frost") next.dark = "pristine";
-  if (next.palette === "frost") next.palette = "pristine";
-  if (next.accent === "amber") next.accent = "iris";
-  try { store.setItem("shuacrew.design", "pristine"); } catch { /* the move is cosmetic; never lose your settings over it */ }
-  return next;
-}
-
-/**
- * The Onyx redesign, once: a setup still on the previous defaults (Pristine, Daylight, Iris) moves to Onyx, Porcelain
- * and Azure. A palette or accent you picked yourself stays exactly as it is.
- */
-export function migrateToOnyx(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
-  let done = false; try { done = store.getItem("shuacrew.design") === "onyx"; } catch { /* ignore */ }
-  if (!saved || done) return a;
-  const next = { ...a };
-  if (next.dark === "pristine") next.dark = "onyx";
-  if (next.light === "daylight") next.light = "porcelain";
-  if (next.palette === "pristine") next.palette = "onyx";
-  if (next.palette === "daylight") next.palette = "porcelain";
-  if (next.accent === "iris") next.accent = "azure";
-  try { store.setItem("shuacrew.design", "onyx"); } catch { /* cosmetic */ }
-  return next;
-}
-
-/**
- * Onyx in the Mac app, once (2026-10-05): the redesign only shows on Onyx/Porcelain, and a palette picked before it
- * kept people off it entirely. Your palette moves to Onyx (dark) and Porcelain (light) one time; your accent stays,
- * and anything you pick after this sticks. A separate key, so the Pristine move never re-runs.
- */
-export function migrateOnyxEverywhere(a: Appearance, saved: boolean, store: Pick<Storage, "getItem" | "setItem"> = localStorage): Appearance {
-  let done = false; try { done = store.getItem("shuacrew.design.onyx-mac") === "1"; } catch { /* ignore */ }
-  if (!saved || done) return a;
-  const mode = (id: string) => PALETTES.find(p => p.id === id)?.mode;
-  const next = { ...a, dark: "onyx" as PaletteId, light: "porcelain" as PaletteId };
-  if (next.palette !== "system") next.palette = mode(next.palette) === "light" ? "porcelain" : "onyx";
-  try { store.setItem("shuacrew.design.onyx-mac", "1"); } catch { /* cosmetic */ }
-  return next;
-}
-
 export function loadAppearance(): Appearance {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Appearance> | null;
@@ -143,10 +99,9 @@ export function loadAppearance(): Appearance {
     const base = normalizeAppearance(saved);
     if (!saved && legacy === "dark") base.palette = "onyx";
     if (!saved && legacy === "light") base.palette = "porcelain";
-    const migrated = migrateToSidebar(migrateOnyxEverywhere(migrateToOnyx(migrateToPristine(base, Boolean(saved)), Boolean(saved)), Boolean(saved)), Boolean(saved));
-    // A migration marks itself done, so its result must be kept now: the app reads appearance more than once at
-    // startup, and the second read would otherwise see "done" and hand back the old palette.
-    if (saved && JSON.stringify(migrated) !== JSON.stringify(base)) saveAppearance(migrated);
+    const migrated = migrateToSidebar(base, Boolean(saved));
+    // A retired palette folds into Dark or Light (normalizeAppearance); keep that, so the saved value is one that exists.
+    if (saved && (JSON.stringify(migrated) !== JSON.stringify(base) || saved.palette !== migrated.palette || saved.dark !== migrated.dark || saved.light !== migrated.light)) saveAppearance(migrated);
     return migrated;
   } catch {
     return DEFAULT_APPEARANCE;

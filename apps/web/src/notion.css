@@ -1,0 +1,260 @@
+/*
+ * Notion: ShuaCrew's design language (2026-11-13). The app reads like a document workspace, not a dashboard:
+ *
+ *   window   one tinted sidebar that runs the full height, flush to the edge; no gutters, no floating cards
+ *   page     the white (or near-black) sheet that fills everything else; content sits on it directly
+ *   type     the system sans, big bold page titles, body set comfortably; hierarchy comes from weight and size
+ *   edges    hairlines and small radii (4 · 6 · 8); nothing glows, nothing has a gradient, shadows only on menus
+ *   colour   warm greys for everything; blue is the one accent (links, focus, primary actions, live work);
+ *            green / amber / red only ever mean done / waiting / failed
+ *
+ * Loaded last (Shell.tsx), after studio.css. Selectors carry :root[data-theme][data-palette] so they win over every
+ * earlier layer for either palette. Colours are set here per mode; the two palettes (Dark, Light) share everything else.
+ */
+
+/* ── Tokens ───────────────────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] {
+  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: var(--font-ui);
+  --radius-xs: 3px; --radius-s: 4px; --radius-m: 6px; --radius-l: 8px; --radius-xl: 10px;
+  --radius-card: 8px; --frame-radius: 0px; --studio-radius: 8px;
+  --gutter: 0px; --gutter-top: 0px;
+  --title-lg: 32px; --title-md: 22px; --title-sm: 18px; --title-weight: 700; --label-weight: 500;
+  --text-base: 14px; --text-sm: 13px; --text-md: 15px;
+  --page-x: 48px; --page-top: 36px;
+
+  --n-hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --n-press: color-mix(in srgb, var(--text) 10%, transparent);
+  --n-selected: color-mix(in srgb, var(--text) 7%, transparent);
+  --studio-hover: var(--n-hover); --studio-press: var(--n-press); --studio-selected: var(--n-selected);
+  --side-hover: var(--n-hover); --active-bg: var(--n-selected);
+  --mark-live: var(--amber);
+
+  /* Nothing glows: the edges and lifts older layers lean on become plain hairlines. */
+  --edge: inset 0 0 0 1px var(--line); --edge-strong: inset 0 0 0 1px var(--line-strong);
+  --lift: none; --studio-raise: 0 0 0 1px var(--line);
+  --accent-2: var(--amber); --accent-3: var(--amber); --accent-grad: var(--amber);
+  --accent-grad-soft: var(--amber-soft); --accent-glow: transparent; --accent-text: var(--amber-text);
+  --focus-ring-color: color-mix(in srgb, var(--amber) 55%, transparent);
+  --focus-ring: 0 0 0 2px var(--focus-ring-color);
+}
+:root[data-theme="light"][data-palette] {
+  --ink: #f7f7f5;      /* the sidebar and the window behind it */
+  --panel: #ffffff;    /* the page */
+  --raised: #f4f4f2;   /* inputs, chips, code, quiet fills */
+  --sunken: #efefed;
+  --line: rgba(55, 53, 47, 0.09);
+  --line-strong: rgba(55, 53, 47, 0.16);
+  --highlight: transparent;
+  --text: #37352f;
+  --text-2: #5f5e5b;
+  --text-3: #73726e;
+  --idle: #a5a4a0;
+  --ok: #2f7a56; --bad: #c4423d; --wait: #a8650b;
+  --glass: rgba(255, 255, 255, 0.94);
+  --term-bg: #fbfbfa; --term-head: #f4f4f2; --term-line: rgba(55, 53, 47, 0.09);
+  --float-shadow: 0 0 0 1px rgba(15, 15, 15, 0.05), 0 3px 6px rgba(15, 15, 15, 0.1), 0 9px 24px rgba(15, 15, 15, 0.2);
+  --amber-text: #0b6bcb;
+}
+:root[data-theme="dark"][data-palette] {
+  --ink: #202020;
+  --panel: #191919;
+  --raised: #252525;
+  --sunken: #151515;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --highlight: transparent;
+  --text: #e3e3e1;
+  --text-2: #a8a8a5;
+  --text-3: #8a8a87;
+  --idle: #5a5a5a;
+  --ok: #58b383; --bad: #e5645f; --wait: #d99a4e;
+  --glass: rgba(37, 37, 37, 0.96);
+  --term-bg: #161616; --term-head: #1d1d1d; --term-line: rgba(255, 255, 255, 0.08);
+  --float-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 3px 6px rgba(0, 0, 0, 0.3), 0 9px 24px rgba(0, 0, 0, 0.5);
+  --amber-text: #5aa8f0;
+}
+/* The accent: blue by default, the same in both modes. The other accents stay as they were. */
+:root[data-theme][data-palette][data-accent="azure"] { --amber: #2383e2; --amber-soft: rgba(35, 131, 226, 0.12); --on-accent: #ffffff; }
+
+/* ── Base ─────────────────────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] body { font-family: var(--font-ui); font-size: 14px; letter-spacing: 0; -webkit-font-smoothing: antialiased; color: var(--text); background: var(--ink); }
+:root[data-theme][data-palette] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
+:root[data-theme][data-palette] ::selection { background: color-mix(in srgb, var(--amber) 28%, transparent); }
+:root[data-theme][data-palette] :is(.living-bg, .hub-glow, .hero-aurora, .cr-trace, .hub-bar) { display: none !important; }
+:root[data-theme][data-palette] kbd { font-family: var(--font-ui); font-size: 11px; color: var(--text-3); background: transparent; border: 0; box-shadow: none; padding: 0 2px; }
+
+/* ── The window: a full-height sidebar and a page ─────────────────────────────────────────────── */
+:root[data-theme][data-palette] .workspace-frame { background: var(--ink); grid-template-rows: 44px 1fr; gap: 0; padding: 0; }
+:root[data-theme][data-palette] .workspace-frame::before { content: ""; grid-area: 1 / 2 / 3 / 3; background: var(--panel); box-shadow: -1px 0 0 var(--line); pointer-events: none; }
+:root[data-theme][data-palette] .workspace-frame > header { grid-area: 1 / 1 / 2 / 3; background: transparent; border: 0; box-shadow: none; }
+:root[data-theme][data-palette] .workspace-frame > :is(.side, .rail-wrap) { grid-area: 2 / 1 / 3 / 2; }
+:root[data-theme][data-palette] .workspace-frame > main { grid-area: 2 / 2 / 3 / 3; padding: 0; gap: 0; }
+:root[data-theme][data-palette] .workspace-card { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+:root[data-theme][data-palette] .workspace-scene { background: transparent; }
+
+/* ── Top bar: where you are, and what's live. Quiet text, no chips. ───────────────────────────── */
+:root[data-theme][data-palette] .workspace-frame > header :is(button, a) { border-radius: var(--radius-s); }
+:root[data-theme][data-palette] .workspace-frame > header :is(.tb-chip, .tb-btn, .tb-icon-btn, .spark-btn) { background: transparent; border: 0; box-shadow: none; color: var(--text-2); font-size: 13px; font-weight: 400; height: 28px; }
+:root[data-theme][data-palette] .workspace-frame > header :is(.tb-chip, .tb-btn, .tb-icon-btn, .spark-btn, button):hover { background: var(--n-hover); color: var(--text); }
+:root[data-theme][data-palette] .tb-center > button { background: var(--raised); border: 0; border-radius: var(--radius-m); height: 28px; font-size: 13px; }
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] .side { background: transparent; padding: 0 6px 6px; border: 0; }
+:root[data-theme][data-palette] .side .side-row,
+:root[data-theme][data-palette] .side-row { height: 30px; border-radius: var(--radius-m); padding: 0 8px; gap: 8px; font-size: 14px; font-weight: 500; letter-spacing: 0; color: var(--text-2); background: transparent; box-shadow: none; }
+:root[data-theme][data-palette] .side .side-row:hover { background: var(--n-hover); color: var(--text-2); }
+:root[data-theme][data-palette] .side .side-page { --hub: var(--text-3); }
+:root[data-theme][data-palette] .side .side-page .side-ico,
+:root[data-theme][data-palette] .side .side-ico { color: var(--text-3); }
+:root[data-theme][data-palette] .side .side-page > .side-row:is(.is-on, .is-open),
+:root[data-theme][data-palette] .side .side-row.is-on { background: var(--n-selected); color: var(--text); font-weight: 600; }
+:root[data-theme][data-palette] .side .side-page > .side-row.is-open { background: transparent; }
+:root[data-theme][data-palette] .side .side-page > .side-row:is(.is-on, .is-open) .side-ico { color: var(--text); }
+:root[data-theme][data-palette] .side .side-children { margin: 0 0 2px; }
+:root[data-theme][data-palette] .side .side-children .side-row.side-child { height: 28px; padding-left: 36px !important; font-size: 14px; font-weight: 400; color: var(--text-2); }
+:root[data-theme][data-palette] .side .side-children .side-row.side-child.is-on { background: var(--n-selected); color: var(--text); font-weight: 500; }
+:root[data-theme][data-palette] .side .side-new { font-weight: 500; color: var(--text-2); background: transparent; border: 0; box-shadow: none; }
+:root[data-theme][data-palette] .side .side-row em { font-style: normal; font-size: 11px; font-weight: 600; min-width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: var(--radius-s); padding: 0 5px; background: var(--n-selected); color: var(--text-2); box-shadow: none; animation: none; }
+:root[data-theme][data-palette] .side .side-row em.is-wait { background: color-mix(in srgb, var(--wait) 16%, transparent); color: var(--wait); }
+:root[data-theme][data-palette] .side .side-row em.is-live { background: var(--amber-soft); color: var(--amber-text); }
+:root[data-theme][data-palette] .side-section { margin-top: 14px; }
+:root[data-theme][data-palette] .side-section-label { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); padding: 0 8px; height: 26px; border-radius: var(--radius-s); }
+:root[data-theme][data-palette] .side-section-label:hover { background: var(--n-hover); color: var(--text-2); }
+:root[data-theme][data-palette] .side-day h4 { font-size: 11.5px; font-weight: 500; color: var(--text-3); text-transform: none; letter-spacing: 0; padding: 8px 8px 2px; }
+:root[data-theme][data-palette] .side-run a { height: 28px; border-radius: var(--radius-m); padding: 0 8px; font-size: 13.5px; color: var(--text-2); }
+:root[data-theme][data-palette] .side-run a:hover { background: var(--n-hover); color: var(--text); }
+:root[data-theme][data-palette] .side-run.is-on a { background: var(--n-selected); color: var(--text); font-weight: 500; }
+:root[data-theme][data-palette] .side-run small { color: var(--text-3); font-size: 11.5px; }
+:root[data-theme][data-palette] .side-dot { width: 6px; height: 6px; box-shadow: none; }
+:root[data-theme][data-palette] .side-dot.is-done { background: var(--idle); opacity: .6; }
+:root[data-theme][data-palette] .side-dot.is-live { background: var(--amber); }
+:root[data-theme][data-palette] .side-foot { border-top: 1px solid var(--line); padding: 6px 2px 0; }
+:root[data-theme][data-palette] .side-foot-btn { border-radius: var(--radius-s); color: var(--text-3); }
+:root[data-theme][data-palette] .side-foot-btn:hover, :root[data-theme][data-palette] .side-foot-btn.is-on { background: var(--n-hover); color: var(--text); }
+:root[data-theme][data-palette] .side-conn { font-size: 12px; color: var(--text-3); }
+:root[data-theme][data-palette] .side-spark-av .shua-mark { border-radius: 5px; }
+
+/* The folded rail keeps the same quiet language. */
+:root[data-theme][data-palette] .hub-rail .hub { border-radius: var(--radius-m); color: var(--text-3); }
+:root[data-theme][data-palette] .hub-rail .hub:hover { background: var(--n-hover); color: var(--text); }
+:root[data-theme][data-palette] .hub-rail .hub.is-on { color: var(--text); }
+:root[data-theme][data-palette] .hub-rail .hub-on { background: var(--n-selected); border-radius: var(--radius-m); box-shadow: none; }
+:root[data-theme][data-palette] :is(.rail-shua, .rail-new) { background: transparent; border: 0; box-shadow: none; border-radius: var(--radius-m); }
+:root[data-theme][data-palette] :is(.rail-shua, .rail-new):hover { background: var(--n-hover); }
+
+/* Tabs across the top of a section (rail mode): underlined text, not pills. */
+:root[data-theme][data-palette] .hub-tabs { border-bottom: 1px solid var(--line); background: transparent; padding: 0 var(--page-x); gap: 4px; }
+:root[data-theme][data-palette] .hub-tab { border-radius: var(--radius-s); color: var(--text-2); font-size: 14px; font-weight: 500; }
+:root[data-theme][data-palette] .hub-tab.is-on { color: var(--text); }
+:root[data-theme][data-palette] .hub-tab-on { background: transparent; border-radius: 0; box-shadow: inset 0 -2px 0 var(--text); }
+
+/* ── The page: a title, then content, directly on the sheet ───────────────────────────────────── */
+:root[data-theme][data-palette] .pane-header { border: 0; background: transparent; padding-bottom: 12px; }
+:root[data-theme][data-palette] :is(.pane-header, .cr-head) h1 { font-family: var(--font-ui); font-size: var(--title-lg); line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+:root[data-theme][data-palette] .pane-eyebrow { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-3); }
+:root[data-theme][data-palette] :is(.pane-desc, .cr-status) { font-size: 14px; color: var(--text-2); }
+:root[data-theme][data-palette] .cr-status i { width: 7px; height: 7px; box-shadow: none; animation: none; }
+:root[data-theme][data-palette] .pane-body { max-width: 980px; }
+:root[data-theme][data-palette] .pane-body.pane-body-wide { max-width: 1280px; }
+
+/* Cards become blocks: a hairline, a small radius, the page's own colour. No lift, no sheen. */
+:root[data-theme][data-palette] :is(.settings-card, .card, .sheet, .cr-card, .cr-panel, .td-card, .td-sky, .td-readouts, .aw, .hp-card, .lesson-card, .pod, .venture-card, .lib-card, .mem-card, .tool-card, .room-card, .play-card, .spec-card, .usage-card, .obs-card) {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: none; background-image: none; backdrop-filter: none;
+}
+:root[data-theme][data-palette] :is(.settings-card, .card, .cr-card, .cr-panel, .td-card, .td-sky, .aw, .pod)::before,
+:root[data-theme][data-palette] :is(.settings-card, .card, .cr-card, .cr-panel, .td-card, .td-sky, .aw, .pod)::after { display: none; }
+:root[data-theme][data-palette] .sheet.hero-sheet { border: 0; border-radius: 0; }
+
+/* Controls. */
+:root[data-theme][data-palette] :is(input[type="text"], input[type="search"], input[type="number"], input:not([type]), textarea, select) { border-radius: var(--radius-m); font-family: var(--font-ui); }
+:root[data-theme][data-palette] :is(input, textarea, select):focus-visible { outline: none; box-shadow: var(--focus-ring); }
+:root[data-theme][data-palette] :is(button, a, [role="button"]):focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ── Home ─────────────────────────────────────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] .hero-title { font-family: var(--font-ui); font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+:root[data-theme][data-palette] .hero-sub { font-size: 15px; color: var(--text-2); }
+:root[data-theme][data-palette] .hero-pulse { font-size: 13px; color: var(--text-3); }
+:root[data-theme][data-palette] .hero-mark { margin-bottom: 14px; }
+:root[data-theme][data-palette] .home-section-heading h2 { font-size: 14px; font-weight: 600; }
+:root[data-theme][data-palette] .home-recent-row { border-radius: var(--radius-m); border: 0; border-bottom: 1px solid var(--line); background: transparent; }
+:root[data-theme][data-palette] .home-recent-row:hover { background: var(--n-hover); }
+:root[data-theme][data-palette] .home-pulse .hp-card { border-radius: var(--radius-l); }
+:root[data-theme][data-palette] .home-pulse .hp-label { color: var(--text-2); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+:root[data-theme][data-palette] .home-pulse .hp-label > svg:first-child { color: var(--hub); }
+:root[data-theme][data-palette] .home-pulse .hp-value { font-size: 20px; font-weight: 700; }
+
+/* ── Status, the only place colour speaks ─────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] .pulse-dot { box-shadow: none; }
+
+/* ── Labels are sentence case, everywhere ─────────────────────────────────────────────────────── */
+:root[data-theme][data-palette] *:not(kbd) { text-transform: none !important; }
+:root[data-theme][data-palette] :is([class*="tracking-"], [class*="uppercase"], .aw-label, .batch-sub, .brief-title, .day-hero-date, .isl-kicker, .model-pick-label, .pane-eyebrow, .pb-eyebrow, .ph-kicker, .rx-kicker, .recs-head, .rail-label, .side-section-label, .spark-h, .td-sky-top, .term-folders-head, .term-side-head, .type-pick-label, .vn-h, .wel-name, .guide-toc h4, .cmd h3, .prompt-inspector h4, .prose-agent h5, .teach-lessons h2) { letter-spacing: 0 !important; }
+:root[data-theme][data-palette] :is(.side-section-label, .side-section-head button) { font-size: 12px; font-weight: 500 !important; color: var(--text-3); }
+
+/* ── The composer: the one raised object, but only just ───────────────────────────────────────── */
+:root[data-theme][data-palette] :is(.chat-composer, .composer-box) { border-radius: var(--radius-xl); }
+:root[data-theme][data-palette] .composer-box { background: var(--panel); border: 1px solid var(--line-strong); box-shadow: 0 1px 2px rgba(15, 15, 15, .04), 0 4px 12px rgba(15, 15, 15, .04); }
+:root[data-theme][data-palette] .composer-box:focus-within { border-color: color-mix(in srgb, var(--amber) 55%, var(--line-strong)); box-shadow: 0 0 0 3px var(--amber-soft); }
+:root[data-theme][data-palette] .composer-box :is(button, [role="button"], select) { border-radius: var(--radius-m); }
+:root[data-theme][data-palette] .composer-send-ring { display: none; }
+
+/* ── Tags and status pills: small tinted rectangles ───────────────────────────────────────────── */
+:root[data-theme][data-palette] :is(.status-pill, .pill, .tag, .chip, .badge, .issue-chip, [class*="rounded-full"]:is(span, em, small)) { border-radius: var(--radius-s); }
+:root[data-theme][data-palette] .pulse-dot, :root[data-theme][data-palette] :is(i, b, span)[class*="rounded-full"]:empty { border-radius: 999px; }
+
+/* ── The page's assistant: one quiet button, bottom right, like a margin note ─────────────────── */
+:root[data-theme][data-palette] .workspace-companion { position: fixed; right: 20px; bottom: 20px; z-index: 30; padding: 0; margin: 0; border: 0; background: transparent; height: auto; min-height: 0; width: auto; display: block; }
+:root[data-theme][data-palette] .workspace-suggestion { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 8px; border-radius: 999px; border: 0; background: var(--panel); color: var(--text-2); font-size: 13px; font-weight: 500; box-shadow: var(--float-shadow); animation: none; }
+:root[data-theme][data-palette] .workspace-suggestion:hover { color: var(--text); background: var(--raised); }
+:root[data-theme][data-palette] .workspace-suggestion::before, :root[data-theme][data-palette] .workspace-suggestion::after { display: none; }
+:root[data-theme][data-palette] .workspace-suggestion .shua-mark { border-radius: 5px; }
+
+/* ── Top bar status: text, not a bordered chip ────────────────────────────────────────────────── */
+:root[data-theme][data-palette] :is(.status-island, .si, .tb-status) { background: transparent; border: 0; box-shadow: none; }
+:root[data-theme][data-palette] .workspace-frame > header [class*="border"] { border-color: transparent; }
+:root[data-theme][data-palette] .workspace-frame > header { color: var(--text-2); font-size: 13px; }
+
+/* ── Menus, popovers, dialogs: the only things that float ─────────────────────────────────────── */
+:root[data-theme][data-palette] :is([role="menu"], [role="dialog"], [role="listbox"], .popover, .menu, .tb-pop, .cmdk, .palette) { border-radius: var(--radius-xl); border: 0; box-shadow: var(--float-shadow); background: var(--panel); backdrop-filter: none; }
+:root[data-theme="dark"][data-palette] :is([role="menu"], [role="dialog"], [role="listbox"], .popover, .menu, .tb-pop, .cmdk, .palette) { background: var(--raised); }
+:root[data-theme][data-palette] :is([role="menuitem"], [role="option"]) { border-radius: var(--radius-s); }
+
+/* Rules that outrank an earlier layer's !important or two-attribute selectors. */
+:root[data-theme][data-palette][data-design] .hero-sheet .composer-box { border-radius: var(--radius-xl) !important; padding: 14px 14px 10px 16px; }
+:root[data-theme][data-palette][data-design] :is(.hero-title, .guide-hero h1, .spk-hello h2) { font-family: var(--font-ui); font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+:root[data-theme][data-palette] .island-pill { border-radius: var(--radius-m); background: transparent; box-shadow: none; border: 0; height: 28px; font-size: 13px; }
+:root[data-theme][data-palette] .island-pill:hover, :root[data-theme][data-palette] .island-pill.is-open { background: var(--n-hover); box-shadow: none; }
+:root[data-theme][data-palette] .side-run { height: 28px; border-radius: var(--radius-m); font-size: 13.5px; }
+
+/* The page is always the page colour: older layers repaint it per section and per mode. */
+:root[data-theme][data-palette] .workspace-card { background: var(--panel) !important; background-image: none !important; }
+:root[data-theme][data-palette] :is(.workspace-scene, .pane-scroll, .today, .crew-floor, .rx, .board, .settings-page, .lib, .guide) { background: transparent; }
+:root[data-theme][data-palette][data-design] .sessions-layout .sheet[aria-label="Conversation"] .composer-box { border-radius: var(--radius-xl) !important; padding: 12px 12px 8px 14px; }
+:root[data-theme][data-palette][data-design] .composer-box.chat-composer.chat-composer { --cmp-radius: var(--radius-xl); background: var(--panel); }
+:root[data-theme][data-palette][data-design] .composer-box button[type="submit"] { border-radius: var(--radius-m); width: 30px; height: 30px; }
+:root[data-theme][data-palette][data-design] .island-pill { box-shadow: none !important; border-radius: var(--radius-m); }
+:root[data-theme][data-palette][data-design] .island-pill:hover { box-shadow: none !important; background: var(--n-hover) !important; }
+:root[data-theme][data-palette][data-design] :is(.island-panel, .tb-panel) { border-radius: var(--radius-xl); animation: none; }
+:root[data-theme][data-palette] { --float: var(--panel); --hover-bg: var(--n-hover); }
+:root[data-theme="dark"][data-palette] { --float: var(--raised); }
+
+/* Hand-off box on Agents: the same quiet composer as everywhere else. */
+:root[data-theme][data-palette] .cd-box { background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-xl); box-shadow: 0 1px 2px rgba(15, 15, 15, .04); }
+:root[data-theme][data-palette] .cd-box :is(button[type="submit"], .cd-send) { border-radius: var(--radius-m); }
+
+/* Home's session filter: the Board's lanes as quiet text tabs. */
+:root[data-theme][data-palette] .home-section-heading { align-items: center; gap: 12px; }
+:root[data-theme][data-palette] .home-filter { display: flex; gap: 2px; margin-left: auto; }
+:root[data-theme][data-palette] .home-filter button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-3); font-size: 13px; font-weight: 500; }
+:root[data-theme][data-palette] .home-filter button:hover { background: var(--n-hover); color: var(--text-2); }
+:root[data-theme][data-palette] .home-filter button.is-on { background: var(--n-selected); color: var(--text); }
+:root[data-theme][data-palette] .home-filter em { font-style: normal; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* The gateway's request for proof, in a session: a margin note, not a message from you. */
+:root[data-theme][data-palette] .verify-note { margin: 22px 0 0; font-size: 13px; color: var(--text-3); }
+:root[data-theme][data-palette] .verify-note summary { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; padding: 4px 8px; margin-left: -8px; border-radius: var(--radius-s); }
+:root[data-theme][data-palette] .verify-note summary::-webkit-details-marker { display: none; }
+:root[data-theme][data-palette] .verify-note summary::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--wait); }
+:root[data-theme][data-palette] .verify-note summary:hover { background: var(--n-hover); color: var(--text-2); }
+:root[data-theme][data-palette] .verify-note p { margin: 6px 0 0; padding: 8px 12px; border-left: 2px solid var(--line-strong); color: var(--text-2); line-height: 1.5; }

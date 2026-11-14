@@ -49,7 +49,7 @@ import { shouldSend } from "../lib/composer-keys";
 import { canRemoveSession, removeSession } from "../lib/session-removal";
 import { SessionRemovalConfirmation } from "../components/SessionRemoval";
 import { useSidebarWide } from "../shell/HubNav";
-import { pauseClock, scopeRuns, recentWork } from "../lib/crew";
+import { pauseClock, scopeRuns, sessionsInLane, laneCounts, SESSION_LANES } from "../lib/crew";
 import { useLive } from "../lib/live";
 import { Dictation } from "../components/Dictation";
 import { ReplayBar } from "../components/Replay";
@@ -269,7 +269,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
     <section key={run.id} className="sheet thread-enter flex min-h-0 flex-col" aria-label="Conversation">
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
         <h1 className="min-w-0 truncate text-[14px] font-semibold">{run.title}</h1>
-        <StatusPill status={run.status} />
+        <StatusPill status={run.status} verification={run.verification} />
         {run.permission === "auto" && (
           <span className="shrink-0 text-[11.5px] text-amber" title="This session approves what policy would ask about. Deny rules still apply.">
             Autopilot
@@ -320,7 +320,7 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
           </div>
         </div>
       ) : run.labels.includes("crew-room") ? (
-        <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This is a crew-room source conversation. <Link to="/rooms/$id" params={{ id: run.labels.find(label => label.startsWith("room:"))?.slice(5) ?? "" }}>Continue in the crew room →</Link></div>
+        <div className="shrink-0 px-4 pb-4 text-sm text-fg-3">This conversation came from a crew room. Rooms were removed; reply here to continue it.</div>
       ) : (
         <Composer key={`composer-${run.id}`} run={run} />
       )}
@@ -504,7 +504,9 @@ function IconButton({ title, onClick, active, children }: { title: string; onCli
 
 function NewSession() {
   const runs = useLive(s => s.crew.runs), scope = useLive(s => s.scope);
-  const recent = useMemo(() => recentWork(runs, scope), [runs, scope]);
+  const [lane, setLane] = useState("all");
+  const recent = useMemo(() => sessionsInLane(runs, scope, lane, lane === "all" ? 6 : 12), [runs, scope, lane]);
+  const counts = useMemo(() => laneCounts(runs, scope), [runs, scope]);
   const [terminal, setTerminal] = useTerminal();
   return (
     <section className="sheet hero-sheet home-workbench flex min-h-0 min-w-0 flex-col" aria-label="New session">
@@ -524,16 +526,26 @@ function NewSession() {
           </div>
           <div className="hero-below">
             <NeedsYou />
-            <section className="home-recent" aria-label="Recent work">
-              <div className="home-section-heading"><h2>Pick up where you left off</h2><span>{scope ? scope.split("/").filter(Boolean).pop() : "Recent work"}</span></div>
+            <section className="home-recent" aria-label="Sessions">
+              <div className="home-section-heading">
+                <h2>{scope ? `Sessions in ${scope.split("/").filter(Boolean).pop()}` : "Sessions"}</h2>
+                {/* The Board's lanes, as a filter: one list instead of a second screen. */}
+                <div className="home-filter" role="tablist" aria-label="Filter sessions by status">
+                  {SESSION_LANES.filter((l) => l.id === "all" || l.id === lane || counts[l.id]! > 0).map((l) => (
+                    <button key={l.id} type="button" role="tab" aria-selected={lane === l.id} className={lane === l.id ? "is-on" : ""} onClick={() => setLane(l.id)}>
+                      {l.title}{l.id !== "all" && counts[l.id]! > 0 && <em>{counts[l.id]}</em>}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {recent.length ? recent.map(run => (
                 <Link key={run.id} to="/sessions/$id" params={{ id: run.id }} className="home-recent-row">
                   <History size={16} aria-hidden />
                   <span className="home-recent-copy"><strong>{run.title}</strong><small>{folderOf(run)} · {FRIENDLY[run.runtime] ?? run.runtime}</small></span>
-                  <StatusPill status={run.status} />
+                  <StatusPill status={run.status} verification={run.verification} />
                   <ArrowUpRight size={15} aria-hidden />
                 </Link>
-              )) : <p className="home-recent-empty">Your sessions will appear here as you work.</p>}
+              )) : <p className="home-recent-empty">{lane === "all" ? "Your sessions will appear here as you work." : "Nothing here right now."}</p>}
             </section>
             <TodayBriefing />
           </div>
@@ -863,10 +875,7 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
           setError(list.length ? list.map((m) => `@${m.id} ${m.name} · ${m.role}${m.delegatable ? " · rooms" : ""}`).join("   ") : "No crew yet — try /agent Nova as Researcher");
           setText(""); return;
         }
-        if (action.kind === "room") {
-          const r = await api<{ id: string }>("/api/rooms", { body: { title: action.title, coordinator: action.members[0], members: action.members } });
-          setText(""); void navigate({ to: "/rooms/$id", params: { id: r.id } }); return;
-        }
+        if (action.kind === "room") { setText(""); setError("Rooms were removed. Start a session and name who should take it with @."); return; }
         if (action.kind === "effort") { setEffort(action.value); setText(""); setError(`Effort for this session: ${action.value || "auto"}.`); return; }
         if (action.kind === "budget") { saveWorkspace({ dailyTokenBudget: action.tokens }); setText(""); setError(action.tokens ? `Daily budget set to ${action.tokens.toLocaleString()} tokens.` : "Daily budget off."); return; }
         if (action.kind === "flow") { savePower({ flow: !getPower().flow }); setText(""); return; }
@@ -1325,19 +1334,13 @@ function NeedsYou() {
   const approvals = useLive((s) => s.crew.approvals);
   const runs = useLive((s) => s.crew.runs);
   const navigate = useNavigate();
-  const gates = Object.values(plays).filter((p) => p.status === "waiting");
   const asks = Object.values(approvals);
-  if (!gates.length && !asks.length) return null;
+  if (!asks.length) return null;
   return (
     <div className="needs-you">
       <span className="needs-dot" />
       <span className="text-[12px] font-semibold text-fg">Needs you</span>
       <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-        {gates.slice(0, 3).map((p) => (
-          <button key={p.id} className="needs-chip" onClick={() => navigate({ to: "/plays/$id", params: { id: p.id } })}>
-            <Glyph name={p.emoji} fallback={p.playbook} label={p.name} size={11} /> {p.phases.find((x) => x.status === "review")?.name ?? "Review"} <span className="text-fg-3">· {p.title.split(" — ")[1] ?? p.name}</span>
-          </button>
-        ))}
         {asks.slice(0, 3).map((a) => (
           <button key={a.id} className="needs-chip" onClick={() => a.run && navigate({ to: "/sessions/$id", params: { id: a.run } })}>
             <ShieldCheck size={11} className="text-wait" /> Allow {a.tool}? <span className="text-fg-3">· {(a.run && runs[a.run]?.title) || "session"}</span>
@@ -1372,7 +1375,6 @@ function GettingStarted() {
   if (hidden || !extra) return null;
   const steps = [
     { done: members > 0, label: "Add your crew", hint: "Researcher, Engineer, Designer, Marketer, Operator", to: "/crew" },
-    { done: ventures > 0, label: "Start a venture", hint: "Your idea, from validation to revenue", to: "/ventures" },
     { done: extra.tools > 0, label: "Connect a tool", hint: "Playwright, Stripe, Linear, Supabase…", to: "/integrations" },
     { done: extra.skills > 0, label: "Install a skill", hint: "docx, pdf, frontend-design…", to: "/integrations", hash: "skills" },
     { done: extra.service, label: "Keep it always on", hint: "pnpm service install", to: "/settings" },
