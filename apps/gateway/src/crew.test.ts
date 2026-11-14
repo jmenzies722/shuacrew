@@ -110,7 +110,7 @@ describe('personal assistant brain: Codex first, Claude as backup', () => {
  const world=(codexStart?:Runtime['start'])=>{
   const store=new EventStore(':memory:');
   const codex=Object.assign(new MockRuntime({pace:0}),{id:'codex'},codexStart?{start:codexStart}:{}),claude=Object.assign(new MockRuntime({pace:0}),{id:'claude'});
-  const supervisor=new Supervisor(store,new Map<string,Runtime>([['codex',codex],['claude',claude]]),{workspace:mkdtempSync(path.join(os.tmpdir(),'shua-provider-')),roots:[]});
+  const supervisor=new Supervisor(store,new Map<string,Runtime>([['codex',codex],['claude',claude]]),{assistantBrains:['codex','claude'],workspace:mkdtempSync(path.join(os.tmpdir(),'shua-provider-')),roots:[]});
   cleanups.push(()=>{supervisor.shutdown();store.close();});
   return {store,supervisor};
  };
@@ -146,7 +146,7 @@ describe('personal assistant brain: Codex first, Claude as backup', () => {
  });
  it('fails once, without bouncing, when both brains break',async()=>{
   const store=new EventStore(':memory:');const broken:Runtime['start']=async function*(){yield {type:'error',message:'network unreachable'};};
-  const supervisor=new Supervisor(store,new Map<string,Runtime>([['codex',Object.assign(new MockRuntime({pace:0}),{id:'codex',start:broken})],['claude',Object.assign(new MockRuntime({pace:0}),{id:'claude',start:broken})]]),{workspace:mkdtempSync(path.join(os.tmpdir(),'shua-provider-')),roots:[]});
+  const supervisor=new Supervisor(store,new Map<string,Runtime>([['codex',Object.assign(new MockRuntime({pace:0}),{id:'codex',start:broken})],['claude',Object.assign(new MockRuntime({pace:0}),{id:'claude',start:broken})]]),{assistantBrains:['codex','claude'],workspace:mkdtempSync(path.join(os.tmpdir(),'shua-provider-')),roots:[]});
   cleanups.push(()=>{supervisor.shutdown();store.close();});
   const id=supervisor.launch({ask:'hi',labels:['buddy']});
   await until(()=>fold(store.read(0)).runs[id]?.status==='failed');
@@ -158,7 +158,7 @@ describe('backlog: parked until you start it', () => {
  const make=()=>{
   const store=new EventStore(':memory:');
   const mock=Object.assign(new MockRuntime({pace:0}),{id:'mock'});
-  const supervisor=new Supervisor(store,new Map<string,Runtime>([['mock',mock]]),{workspace:mkdtempSync(path.join(os.tmpdir(),'shua-backlog-')),roots:[]});
+  const supervisor=new Supervisor(store,new Map<string,Runtime>([['mock',mock]]),{assistantBrains:['codex','claude'],workspace:mkdtempSync(path.join(os.tmpdir(),'shua-backlog-')),roots:[]});
   cleanups.push(()=>{supervisor.shutdown();store.close();});
   return {store,supervisor};
  };

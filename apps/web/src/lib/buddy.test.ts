@@ -556,3 +556,34 @@ describe("bringing something up on the iPhone", () => {
   });
 });
 
+
+import { chainOf, describeAct } from "./buddy";
+describe("hover and drag", () => {
+  const shot = { width: 1000, height: 500 };
+  const read = (block: string) => parseActs(completedBlocks(block, shot).find((b) => b.kind === "act")!.raw);
+
+  it("reads a hover and a drag given in screenshot pixels, as fractions of the screen", () => {
+    expect(read('```act {"type":"hover","x":500,"y":250,"label":"File menu"}```')).toEqual([{ type: "hover", x: 0.5, y: 0.5, label: "File menu" }]);
+    expect(read('```act {"type":"drag","from":[100,100],"to":[900,400],"label":"report.pdf"}```')).toEqual([{ type: "drag", from: [0.1, 0.2], to: [0.9, 0.8], label: "report.pdf" }]);
+    expect(describeAct({ type: "hover", x: 0.5, y: 0.5, label: "File menu" })).toBe("Hover over “File menu”");
+    expect(describeAct({ type: "drag", from: [0.1, 0.2], to: [0.9, 0.8], label: "report.pdf" })).toBe("Drag “report.pdf”");
+  });
+
+  it("refuses a drag with nowhere to go, or a hover with no spot", () => {
+    expect(parseActs('```act {"type":"drag","from":[0.4,0.4],"to":[0.4,0.4],"label":"x"}```')).toEqual([]);
+    expect(parseActs('```act {"type":"drag","from":[0.4],"to":[0.5,0.5],"label":"x"}```')).toEqual([]);
+    expect(parseActs('```act {"type":"hover","label":"menu"}```')).toEqual([]);
+  });
+
+  it("runs a hover or drag alone, because what it aims at needs a fresh look first", () => {
+    const hover = { type: "hover" as const, x: 0.5, y: 0.5, label: "menu" }, press = { type: "press" as const, label: "Save" };
+    expect(chainOf([hover, press])).toEqual({ run: [hover], later: [press] });
+    expect(chainOf([press, { type: "drag", from: [0.1, 0.1], to: [0.5, 0.5], label: "card" }]).run).toEqual([press]);
+  });
+
+  it("tells Shua it can hover and drag when it may control the screen", () => {
+    const prompt = buddyPrompt("move the file to Desktop", { width: 1000, height: 500 }, { name: "Shua", tone: "direct", length: "brief", control: "auto" });
+    expect(prompt).toMatch(/"type":"hover"/);
+    expect(prompt).toMatch(/"type":"drag","from"/);
+  });
+});

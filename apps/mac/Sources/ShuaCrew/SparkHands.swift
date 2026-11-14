@@ -130,9 +130,42 @@ enum SparkHands {
             let amount = max(-30, min(30, Int(a["amount"] as? Double ?? -5)))
             CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(amount), wheel2: 0, wheel3: 0)?.post(tap: .cghidEventTap)
             return (true, "Scrolled \(amount < 0 ? "down" : "up")")
+        case "hover":
+            guard let x = num("x"), let y = num("y") else { return (false, "No place to hover.") }
+            let p = eventPoint(x: x, y: y, on: screen)
+            // Two moves a few pixels apart: many apps open a hover menu only on movement, not on a pointer that appears.
+            move(to: CGPoint(x: p.x - 3, y: p.y - 3)); usleep(40_000); move(to: p)
+            usleep(350_000) // long enough for a tooltip or hover menu to open before the next look
+            return (true, "Hovered over \((a["label"] as? String).map { "“\($0)”" } ?? "the spot")")
+        case "drag":
+            guard let f = a["from"] as? [Double], let t = a["to"] as? [Double], f.count == 2, t.count == 2,
+                  f.allSatisfy({ (0...1).contains($0) }), t.allSatisfy({ (0...1).contains($0) }) else { return (false, "No start or end to drag between.") }
+            drag(from: eventPoint(x: f[0], y: f[1], on: screen), to: eventPoint(x: t[0], y: t[1], on: screen))
+            return (true, "Dragged \((a["label"] as? String).map { "“\($0)”" } ?? "it")")
         default:
             return (false, "Shua can't do that.")
         }
+    }
+
+    private static func move(to p: CGPoint) {
+        CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+    }
+
+    /// A drag the way a hand does it: press, a short hold so the app notices, a smooth path, a pause, then let go.
+    /// Without the hold and the in-between moves, Finder, sliders and web drag-and-drop treat it as a click.
+    static func drag(from a: CGPoint, to b: CGPoint) {
+        move(to: a); usleep(60_000)
+        CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: a, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(150_000)
+        let steps = max(8, min(40, Int(hypot(b.x - a.x, b.y - a.y) / 12)))
+        for i in 1...steps {
+            let t = Double(i) / Double(steps), eased = t * t * (3 - 2 * t)
+            let p = CGPoint(x: a.x + (b.x - a.x) * eased, y: a.y + (b.y - a.y) * eased)
+            CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+            usleep(12_000)
+        }
+        usleep(120_000) // a drop target often highlights first; letting go at once can land before it is ready
+        CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: b, mouseButton: .left)?.post(tap: .cghidEventTap)
     }
 
     static func click(at p: CGPoint, right: Bool, count: Int) {

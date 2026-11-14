@@ -130,7 +130,7 @@ describe("runs", () => {
     const free: Runtime = { ...base, id: "claude", label: "free", models: [{ id: "t", label: "t", tier: "balanced" as const }], async *start() { asks.push("claude"); yield { type: "done", text: "4" }; } };
     const store = new EventStore();
     cleanups.push(() => store.close());
-    const supervisor = new Supervisor(store, new Map([["codex", capped], ["claude", free]]), { workspace: os.tmpdir(), failover: true });
+    const supervisor = new Supervisor(store, new Map([["codex", capped], ["claude", free]]), { assistantBrains: ["codex", "claude"], workspace: os.tmpdir(), failover: true });
     cleanups.push(() => supervisor.shutdown());
     const id = supervisor.launch({ ask: "what is 2 plus 2", runtime: "codex", model: "s", labels: ["buddy"] });
     await until(() => state(store).runs[id]?.status === "done");

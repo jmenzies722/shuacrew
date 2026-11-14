@@ -72,7 +72,7 @@ export const sparkHooks: {
 export function perform(a: Action | (Act & { color?: string }), opts: { confirmed?: boolean; requestId?: string; active?: () => boolean } = {}): Promise<{ ok: boolean; message: string; run?: string }> {
   if (opts.active && !opts.active()) return Promise.resolve({ ok: false, message: "Canceled before execution" });
   if (opts.requestId) return performOnce(a, opts);
-  const isAct = ["press", "click", "type", "key", "scroll", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
+  const isAct = ["press", "click", "type", "key", "scroll", "hover", "drag", "done"].includes(a.type); // mouse & keyboard steps; everything else is an action
   // Deleting can't be undone: it waits for your yes, whatever the control mode — and with nobody to ask, it doesn't.
   if (!isAct && !opts.confirmed && isDestructive(a as Action)) return (async () => {
     const title = "ref" in a ? crewTitle(a.ref) : "";

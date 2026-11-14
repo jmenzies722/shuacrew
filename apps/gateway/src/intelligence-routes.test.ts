@@ -15,7 +15,7 @@ async function world() {
     models: [{ id: `${id}-model`, label: id, tier: "fast" }],
     async status() { return { installed: true, signedIn: true, detail: "ready", overridingKeys: [] }; },
     async *start() { yield { type: "done", text: "answer" }; } });
-  const store = new EventStore(":memory:"); const supervisor = new Supervisor(store, runtimes, { workspace: os.tmpdir() });
+  const store = new EventStore(":memory:"); const supervisor = new Supervisor(store, runtimes, { assistantBrains: ["codex", "claude"], workspace: os.tmpdir() });
   const { app } = await createServer({ store, supervisor, runtimes });
   cleanup.push(() => store.close(), () => supervisor.shutdown(), () => app.close());
   return { app, store, supervisor, runtimes };

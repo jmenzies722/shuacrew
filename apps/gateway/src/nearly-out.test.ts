@@ -19,7 +19,7 @@ function world(codexStart?: Runtime["start"]) {
   const store = new EventStore(":memory:");
   const codex = Object.assign(new MockRuntime({ pace: 0 }), { id: "codex" }, codexStart ? { start: codexStart } : {});
   const claude = Object.assign(new MockRuntime({ pace: 0 }), { id: "claude" });
-  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", codex], ["claude", claude]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-nearly-")), roots: [], failover: true });
+  const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", codex], ["claude", claude]]), { assistantBrains: ["codex", "claude"], workspace: mkdtempSync(path.join(os.tmpdir(), "shua-nearly-")), roots: [], failover: true });
   cleanups.push(() => { supervisor.shutdown(); store.close(); });
   return { store, supervisor };
 }
@@ -106,5 +106,20 @@ describe("whats_happening", () => {
     expect(text).toMatch(/claude: usage not reported yet/);
     expect(sessionNow(state, id)).toContain("Asked: Write the launch post");
     expect(sessionNow(state, "r_nope")).toMatch(/No session/);
+  });
+});
+
+describe("Shua starts on its fastest brain", () => {
+  it("starts on Claude by default, even when Codex was asked for, and Codex covers when Claude is nearly out", () => {
+    const store = new EventStore(":memory:");
+    const codex = Object.assign(new MockRuntime({ pace: 0 }), { id: "codex" }), claude = Object.assign(new MockRuntime({ pace: 0 }), { id: "claude" });
+    const supervisor = new Supervisor(store, new Map<string, Runtime>([["codex", codex], ["claude", claude]]), { workspace: mkdtempSync(path.join(os.tmpdir(), "shua-first-")), roots: [], failover: true });
+    cleanups.push(() => { supervisor.shutdown(); store.close(); });
+    expect(created(store, supervisor.launch({ ask: "Hello", labels: ["buddy"], hold: true }))).toMatchObject({ runtime: "claude" });
+    expect(created(store, supervisor.launch({ ask: "Hello", runtime: "codex", labels: ["buddy"], hold: true }))).toMatchObject({ runtime: "claude" });
+    supervisor.usageReading("claude", { usedPercent: 95 });
+    expect(created(store, supervisor.launch({ ask: "Hello again", labels: ["buddy"], hold: true }))).toMatchObject({ runtime: "codex" });
+    // Work sessions are not Shua: they keep the agent they were given.
+    expect(created(store, supervisor.launch({ ask: "Fix the bug", runtime: "codex", hold: true }))).toMatchObject({ runtime: "codex" });
   });
 });

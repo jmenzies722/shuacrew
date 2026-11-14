@@ -872,11 +872,12 @@ final class Buddy: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationD
             let current = { [weak self] in self?.actionGeneration == generation }
             let screen = lookedAt(action["screen"]) ?? NSScreen.screens[0]
             switch action["type"] as? String {
-            case "click", "type", "key", "scroll":
+            case "click", "type", "key", "scroll", "hover", "drag":
                 // You see Spark's cursor travel to the spot and land; the real click happens as it lands.
                 var lead = 0.1
-                if action["type"] as? String == "click", let x = action["x"] as? Double, let y = action["y"] as? Double {
-                    lead = pointer.show(on: screen, x: x, y: y, label: action["label"] as? String ?? "", color: action["color"] as? String, from: launchPoint()) + 0.12
+                let aim: (Double, Double)? = { if let f = action["from"] as? [Double], f.count == 2 { return (f[0], f[1]) }; if let x = action["x"] as? Double, let y = action["y"] as? Double { return (x, y) }; return nil }()
+                if ["click", "hover", "drag"].contains(action["type"] as? String ?? ""), let aim {
+                    lead = pointer.show(on: screen, x: aim.0, y: aim.1, label: action["label"] as? String ?? "", color: action["color"] as? String, from: launchPoint()) + 0.12
                 }
                 watchForStop()
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, lead)) { [weak self] in

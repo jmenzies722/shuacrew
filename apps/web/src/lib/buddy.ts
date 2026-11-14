@@ -128,6 +128,10 @@ export type Act =
   | { type: "type"; text: string; label: string }
   | { type: "key"; keys: string; label: string }
   | { type: "scroll"; x?: number; y?: number; amount: number; label: string }
+  /** Rest the pointer on a spot without clicking: opens hover menus, shows tooltips and hidden buttons. */
+  | { type: "hover"; x: number; y: number; label: string }
+  /** Press at `from`, move to `to`, let go: move a file, a slider, a window, a card, a selection. */
+  | { type: "drag"; from: [number, number]; to: [number, number]; label: string }
   | { type: "done"; summary: string };
 
 /** A ```point {"x":0..1,"y":0..1,"label":"…"}``` block (normalized to the screenshot), validated. */
@@ -330,7 +334,7 @@ export function mediaKeys(body: string): Array<{ type: "media"; command: string 
 }
 
 
-const ACT_KINDS = new Set(["press", "click", "type", "key", "scroll", "done"]);
+const ACT_KINDS = new Set(["press", "click", "type", "key", "scroll", "hover", "drag", "done"]);
 /** The screen steps inside a do block, as act objects, and the do-actions around them; null when there are none. */
 export function slippedActs(body: string): { acts: Array<Record<string, unknown>>; rest: unknown[] } | null {
   let v: unknown;
@@ -599,6 +603,13 @@ function toAct(o: Record<string, unknown>): Act | null {
       case "type": return typeof o.text === "string" && o.text.length > 0 && o.text.length <= 2000 ? { type: "type", text: o.text, label } : null;
       case "key": return typeof o.keys === "string" && /^[a-z0-9⌘⇧⌥⌃+ ,./\-=\[\]]{1,40}$/i.test(o.keys) ? { type: "key", keys: o.keys, label } : null;
       case "scroll": { const amount = Math.max(-30, Math.min(30, Math.round(Number(o.amount) || -5))); return { type: "scroll", amount, label, ...(unit(o.x) && unit(o.y) ? { x: o.x as number, y: o.y as number } : {}) }; }
+      case "hover": return unit(o.x) && unit(o.y) ? { type: "hover", x: o.x as number, y: o.y as number, label } : null;
+      case "drag": {
+        const pt = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && unit(v[0]) && unit(v[1]) ? [v[0] as number, v[1] as number] : null);
+        const from = pt(o.from), to = pt(o.to);
+        // A drag that goes nowhere is a click by another name; refuse it rather than guess which was meant.
+        return from && to && Math.hypot(to[0] - from[0], to[1] - from[1]) > 0.002 ? { type: "drag", from, to, label } : null;
+      }
       case "done": return { type: "done", summary: typeof o.summary === "string" ? o.summary.slice(0, 200) : "" };
       default: return null;
     }
@@ -618,6 +629,8 @@ export function describeAct(a: Act): string {
     case "type": return `Type “${a.text.length > 40 ? `${a.text.slice(0, 40)}…` : a.text}”`;
     case "key": return `Press ${a.keys}`;
     case "scroll": return `Scroll ${a.amount < 0 ? "down" : "up"}`;
+    case "hover": return `Hover over ${a.label ? `“${a.label}”` : "there"}`;
+    case "drag": return `Drag ${a.label ? `“${a.label}”` : "it"}`;
     case "done": return "Done";
   }
 }
@@ -795,7 +808,7 @@ export function buddyPrompt(question: string, screen: { width: number; height: n
     ].filter(Boolean).join("\n") : "",
     persona.voice ? "This is a live voice conversation: reply like you're talking — short, natural, no lists or headings unless asked, one question back at most." : "",
     persona.control && persona.control !== "off" && screen
-      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name (or by its number from the controls list, {"type":"press","target":"#12","label":"Send"} — exact even when two controls share a name), type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Screen steps go only in act blocks, never inside a do block. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. One of two controls with the same name (two Reply buttons), or a listed control you'd otherwise click by position: click it by its number, \`\`\`act {"type":"click","target":"#12","label":"Reply"}\`\`\` — it lands on that control's exact frame even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"}). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
+      ? `COMPUTER CONTROL — you can use their mouse and keyboard. For a task inside an app (click a button, fill a form, navigate a site, send something): a short sentence, then one act block. Chain named steps: press by name (or by its number from the controls list, {"type":"press","target":"#12","label":"Send"} — exact even when two controls share a name), type into a named field and keys run back to back from one array, each found fresh as it runs — e.g. \`\`\`act [{"type":"press","label":"Search"},{"type":"type","label":"Search","text":"shuacrew\\n"}]\`\`\` (up to 6). A click or scroll by position goes alone, because you need a fresh look first. Screen steps go only in act blocks, never inside a do block. Anything that didn't run is reported back to you as NOT RUN — never say a step happened unless its result says so. WEB PAGES: the [web …] controls are read from the page itself, so press {label} and type {label, text} act on the exact element — prefer them over clicks by position, and never type into a web field with the keyboard. If page control is blocked, ask them once ("Want me to let myself work inside Chrome pages?") and on yes: do [{"type":"system","what":"browser_js"}]. SMALL OR UNLABELLED TARGETS (icons, tiny text, squares on a board): look closer first with \`\`\`zoom {"x":…,"y":…,"w":…,"h":…}\`\`\` (pixels of this screenshot) — you get that region at full resolution; coordinates stay in this screenshot. BEST when the target has a visible name (a button, menu item, tab, link): \`\`\`act {"type":"press","label":"Send"}\`\`\` — found by name in the app, so it works even if the window moved. One of two controls with the same name (two Reply buttons), or a listed control you'd otherwise click by position: click it by its number, \`\`\`act {"type":"click","target":"#12","label":"Reply"}\`\`\` — it lands on that control's exact frame even if the window moved. Otherwise by position, in screenshot pixels: \`\`\`act {"type":"click","x":812,"y":440,"label":"Send button"}\`\`\` (also: {"type":"click",…,"double":true} · {"type":"type","text":"…","label":"…"} — click the field first · {"type":"key","keys":"cmd+l","label":"…"} · {"type":"scroll","x":…,"y":…,"amount":-5,"label":"…"} · {"type":"hover","x":…,"y":…,"label":"…"} — rest the pointer there to open a hover menu or reveal a hidden button, then look · {"type":"drag","from":[x,y],"to":[x,y],"label":"…"} — press, move and let go: move a file or card, set a slider, resize or select a range). After each step you get a fresh screenshot and OCR; check it worked, then the next step. Use OCR positions for exact targets. Finish with \`\`\`act {"type":"done","summary":"what you did"}\`\`\`. Never type passwords or payment details, never confirm purchases, deletions or sending money without them saying so in this conversation. Prefer do-actions (open_app/open_url/media) when they achieve the same thing in one go.`
       : persona.control && persona.control !== "off" ? "Mouse and keyboard work needs fresh screen evidence. A missing screenshot does not mean screen access is off. Use the current SCREEN STATE; never invent a permission problem." : "You can't click or type inside other apps: SHOW them instead (point, guide, draw).",
     screen
       ? [

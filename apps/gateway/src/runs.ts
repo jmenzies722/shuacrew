@@ -87,6 +87,8 @@ interface Waiting {
 }
 
 export interface SupervisorOptions {
+  /** Shua's brains, first choice first (default ASSISTANT_BRAINS: Claude, then Codex). */
+  assistantBrains?: string[];
   /** First-word wait per model on Spark's turns: Auto picks the fastest model strong enough for the ask. */
   latency?: LatencyBook;
   /** Gateway-enforced settings (~/.shuacrew/settings.json). */
@@ -129,6 +131,7 @@ export class Supervisor {
   /** A brain that just broke mid-turn (crash, sign-out, network): Spark skips it until then. Memory only — a restart retries. */
   private assistantDown = new Map<string, number>();
   readonly worktrees = new Worktrees();
+  private get brains(): string[] { return this.options.assistantBrains ?? ASSISTANT_BRAINS; }
   private runtimeSnapshots = new Map<string, { status: RuntimeStatus; models?: string[] }>();
   /** The latest usage reading per agent, as the provider reported it (memory only: a restart reads it again). */
   private quota = new Map<string, { usedPercent: number; resetsAt?: number; at: number }>();
@@ -156,7 +159,7 @@ export class Supervisor {
   }
   updateRuntimeStatus(id: string, status: RuntimeStatus, models?: string[]) { this.runtimeSnapshots.set(id, { status, models }); }
   intelligence(request: IntelligenceRequest) {
-    // Spark's Auto follows its brain order (Codex, then Claude), so the page and launch() never disagree on who answers.
+    // Spark's Auto follows its brain order (Claude, then Codex), so the page and launch() never disagree on who answers.
     if (request.purpose === "conversation" && request.mode === "auto" && !request.preferredRuntime && !request.preferredModel && request.speed !== "fastest") {
       const brain = this.assistantRuntime();
       if (brain) request = { ...request, preferredRuntime: brain };
@@ -922,7 +925,7 @@ export class Supervisor {
     const why = credits ? `${what} needs usage credits on your plan` : `${what} is out until ${when(until)}`;
     const buddy = created?.kind === "run.created" && created.body.labels.includes("buddy");
     const other =
-      buddy ? (otherMoves < 2 ? ASSISTANT_BRAINS.find((id) => id !== runtime && this.assistantUsable(id)) : undefined)
+      buddy ? (otherMoves < 2 ? this.brains.find((id) => id !== runtime && this.assistantUsable(id)) : undefined)
       : this.options.failover && otherMoves < 2
         ? failoverCandidates(this.options.settings?.().failoverOrder ?? [], [...this.runtimes.keys()].filter((r) => r !== "mock" && r !== "local") /* the local model has no tools: never hand it crew work */, runtime).find((r) => this.limitedUntil(r) < Date.now() && !this.allModelsLimited(r))
         : undefined;
@@ -1064,9 +1067,9 @@ export class Supervisor {
   }
 
   /** The brain a new Spark conversation starts on: one with room first (Codex near the end of its usage window hands
-   *  over to Claude before it's cut off), then any that answers; when both are down, the one you'd wait for. */
+   *  over before it's cut off), then any that answers; when both are down, the one you'd wait for. */
   private assistantRuntime(): string | undefined {
-    return ASSISTANT_BRAINS.find((id) => this.assistantUsable(id) && !this.nearlyOut(id)) ?? ASSISTANT_BRAINS.find((id) => this.assistantUsable(id)) ?? ASSISTANT_BRAINS.find((id) => this.runtimes.has(id));
+    return this.brains.find((id) => this.assistantUsable(id) && !this.nearlyOut(id)) ?? this.brains.find((id) => this.assistantUsable(id)) ?? this.brains.find((id) => this.runtimes.has(id));
   }
 
   /**
@@ -1084,9 +1087,9 @@ export class Supervisor {
 
   /** A queued Spark turn never waits on a down brain while the other is free. A working brain keeps the conversation (no recap churn). */
   private keepAssistantUp(run: string, current: string): string {
-    if (!ASSISTANT_BRAINS.includes(current)) return current;
+    if (!this.brains.includes(current)) return current;
     if (this.assistantUsable(current) && !this.nearlyOut(current)) return current;
-    const other = ASSISTANT_BRAINS.find((id) => id !== current && this.assistantUsable(id) && (!this.nearlyOut(id) || !this.assistantUsable(current)));
+    const other = this.brains.find((id) => id !== current && this.assistantUsable(id) && (!this.nearlyOut(id) || !this.assistantUsable(current)));
     if (!other) return current;
     const reason = this.assistantUsable(current) ? this.nearlyOutWhy(current, other) : `${current} isn't answering — ${other} is covering`;
     this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason }, { run });
@@ -1095,10 +1098,10 @@ export class Supervisor {
 
   /** A Spark turn that broke on one brain is retried once on the other, with a recap; true if it moved. */
   private assistantFailover(run: string, runtime: string, message: string): boolean {
-    if (!ASSISTANT_BRAINS.includes(runtime) || !shouldFallBack(message)) return false;
+    if (!this.brains.includes(runtime) || !shouldFallBack(message)) return false;
     const turn = this.turns(run);
     const movedThisTurn = this.store.forRun(run).some((e) => e.kind === "run.routed" && / is covering$/.test(e.body.reason) && this.turnAt(run, e.seq) === turn);
-    const other = ASSISTANT_BRAINS.find((id) => id !== runtime && this.assistantUsable(id));
+    const other = this.brains.find((id) => id !== runtime && this.assistantUsable(id));
     if (movedThisTurn || !other) return false;
     this.assistantDown.set(runtime, Date.now() + ASSISTANT_COOLDOWN_MS);
     this.rec("run.routed", { runtime: other, model: this.coverModel(run, other), reason: `${runtime} failed (${message.slice(0, 120)}) — ${other} is covering` }, { run });
@@ -1306,7 +1309,7 @@ export class Supervisor {
   followUp(run: string, text: string, by = "you", requestId?: string, selection?: {runtime:string;model?:string;effort?:string}): string {
     const created = this.store.forRun(run).find(e => e.kind === "run.created");
     if (created?.kind === "run.created" && created.body.labels.includes("crew-room")) throw new Error("Continue this conversation in its crew room, not the source session.");
-    if (created?.kind === "run.created" && created.body.labels.includes("buddy") && [...this.runtimes.keys()].some(id=>id!=="mock") && !ASSISTANT_BRAINS.includes(selection?.runtime ?? this.currentRuntime(run,created.body.runtime))) throw new Error("The personal assistant runs on Codex, with Claude as its backup.");
+    if (created?.kind === "run.created" && created.body.labels.includes("buddy") && [...this.runtimes.keys()].some(id=>id!=="mock") && !this.brains.includes(selection?.runtime ?? this.currentRuntime(run,created.body.runtime))) throw new Error("The personal assistant runs on Codex, with Claude as its backup.");
     if (selection) {
       const runtime = this.runtimes.get(selection.runtime);
       if (!runtime || (selection.model && !runtime.models.some(m => m.id === selection.model))) throw new Error("That model is not available for the selected agent.");
@@ -1477,7 +1480,12 @@ export class Supervisor {
 }
 
 /** Spark's brains, in order: Codex first, Claude as the backup when Codex isn't working. */
-const ASSISTANT_BRAINS = ["codex", "claude"];
+/**
+ * Shua's brains, first choice first. Claude leads because it starts talking far sooner in a conversation (measured
+ * 2026-11-13 on this Mac, Shua's real prompt, warmed as the notch warms it: Claude Sonnet first word 1.8 s new, 1.1 s
+ * follow-up; Codex 4.5 s and 2.5-4.9 s). Codex covers when Claude is down or near the end of its usage window.
+ */
+const ASSISTANT_BRAINS = ["claude", "codex"];
 /** An agent at this share of its usage window or more is "about to run out": new turns go to one with room. */
 export const NEARLY_OUT = 90;
 /** A usage reading older than this says nothing about now (readings refresh during turns and every few minutes). */
