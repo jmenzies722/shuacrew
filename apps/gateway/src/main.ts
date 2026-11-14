@@ -36,6 +36,8 @@ import { createServer } from "./server.js";
 import { EventStore } from "./store.js";
 import { nativeBridgeSource } from "./mobile/native-config.js";
 import { GatewaySettings } from "./settings.js";
+import { Knowledge } from "./knowledge.js";
+import { PersonalSetup } from "./personal-setup.js";
 import { tidyCodexThreads } from "./codex-privacy.js";
 import { agentEnv } from "@shuacrew/core";
 
@@ -134,8 +136,16 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   const builtinProtected = [path.join(os.homedir(), "Nectar-Work"), path.join(os.homedir(), "Developer/work")];
   // Seeded from this Mac's own Spark history, then kept current turn by turn.
   const latency = new LatencyBook().seed(store.read());
+  // What ShuaCrew knows about you: plain files, seeded once from your setup answers and this Mac's account name.
+  const knowledge = new Knowledge(path.join(home, "knowledge"), () => {
+    let setup: { goal?: string; weeklyHours?: number | null; incomePath?: string } = {};
+    try { setup = new PersonalSetup(path.join(home, "personal-setup.json")).get(); } catch { /* unreadable setup: seed without it */ }
+    return { firstName: macFirstName(), goal: setup.goal, weeklyHours: setup.weeklyHours, incomePath: setup.goal ? setup.incomePath : undefined };
+  });
+  try { knowledge.ensure(); } catch (error) { console.error(`knowledge store unavailable: ${(error as Error).message}`); }
   const supervisor = new Supervisor(store, runtimes, {
     latency,
+    profile: (lean) => { try { return knowledge.profile(lean ? 1200 : 3000); } catch { return undefined; } },
     settings: () => settings.get(),
     roots: [path.join(os.homedir(), "Developer/projects"), path.join(os.homedir(), "Developer/learn")],
     protectedFolders: builtinProtected,
@@ -194,6 +204,7 @@ export async function boot(options: { port?: number; host?: string } = {}) {
     token: process.env.SHUACREW_TOKEN,
     webRoot: process.env.SHUACREW_WEB ?? path.resolve(here, "../../web/dist"),
     version: VERSION,
+    knowledge,
     autonomy,
     memory,
     mcp,
@@ -231,6 +242,9 @@ export async function boot(options: { port?: number; host?: string } = {}) {
   briefing?.schedule();
   backups.schedule();
   autonomy.scheduler.sync();
+  // What was missed while the gateway was off runs now; the same check every few minutes covers a Mac that slept.
+  autonomy.scheduler.catchUp();
+  setInterval(() => { try { autonomy.scheduler.catchUp(); } catch (error) { console.error(`schedule catch-up failed: ${(error as Error).message}`); } }, 5 * 60_000).unref();
   autonomy.heartbeats.sync();
   memory.schedule();
   await app.listen({ port, host });

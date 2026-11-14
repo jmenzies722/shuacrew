@@ -15,6 +15,7 @@ import { repoName } from "../lib/crew";
 import { api } from "../lib/api";
 import { watchTitleBar } from "../lib/native";
 import { selectLiveRuns, useLive } from "../lib/live";
+import { useInboxCount } from "../lib/inbox";
 import { ApprovalToasts } from "./ApprovalToasts";
 import { CommandPalette } from "./CommandPalette";
 import { KeymapOverlay } from "./KeymapOverlay";
@@ -165,10 +166,10 @@ function TopBar() {
   const navigate = useNavigate();
   const connection = useLive((s) => s.connection);
   // Narrow selectors: a streamed token must not re-render the top bar.
-  const crewApprovals = useLive((s) => s.crew.approvals), crewLimited = useLive((s) => s.crew.limited), crewToday = useLive((s) => s.crew.today);
+  const crewLimited = useLive((s) => s.crew.limited), crewToday = useLive((s) => s.crew.today);
+  const waiting = useInboxCount();
   const runningCount = useLive((s) => selectLiveRuns(s.crew).filter((r) => r.status === "running" || r.status === "planning").length);
   const setPalette = useLive((s) => s.setPalette);
-  const approvals = Object.values(crewApprovals).sort((a, b) => a.seq - b.seq);
   const running = runningCount;
   const limited = Object.entries(crewLimited).filter(([, l]) => !l.credits); // "needs credits" isn't a window; the model picker says it
   useEffect(() => (bar.current ? watchTitleBar(bar.current) : undefined), []);
@@ -197,13 +198,13 @@ function TopBar() {
         tokens={formatTokens(crewToday.day === new Date().toISOString().slice(0, 10) ? crewToday.tokens : 0)} />
       <SparkButton />
       <button
-        onClick={() => approvals[0]?.run && navigate({ to: "/sessions/$id", params: { id: approvals[0].run } })}
+        onClick={() => void navigate({ to: "/inbox" })}
         className="relative grid h-8 w-8 place-items-center rounded-[8px] text-fg-3 hover:bg-panel hover:text-fg"
-        title={approvals.length ? `${approvals.length} waiting on you` : "Nothing needs you"}
-        aria-label={approvals.length ? `${approvals.length} approvals waiting` : "No approvals waiting"}
+        title={waiting ? `Inbox: ${waiting} waiting on you` : "Inbox: nothing needs you"}
+        aria-label={waiting ? `Inbox, ${waiting} waiting on you` : "Inbox, nothing waiting"}
       >
         <Bell size={16} />
-        {approvals.length > 0 && <span className="absolute right-0.5 top-0.5 min-w-[16px] rounded-full bg-amber px-1 text-center text-[10px] font-bold leading-4 text-[var(--on-accent)]">{approvals.length}</span>}
+        {waiting > 0 && <span className="absolute right-0.5 top-0.5 min-w-[16px] rounded-full bg-amber px-1 text-center text-[10px] font-bold leading-4 text-[var(--on-accent)]">{waiting}</span>}
       </button>
     </header>
   );

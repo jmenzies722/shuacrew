@@ -7,7 +7,7 @@ import type { FastifyInstance } from "fastify";
 
 const SAVE = 'Save it with: curl -s -X POST http://127.0.0.1:7420/api/library/artifacts -H "X-ShuaCrew: 1" -H "Content-Type: application/json" -d \'{"title":"<title>","filename":"<slug>.md","content":"<markdown>"}\' (build the JSON with python3 -c "import json; …" so quotes are escaped).';
 
-export interface Routine { id: string; name: string; when: string; about: string; ask: string }
+export interface Routine { id: string; name: string; when: string; about: string; ask: string; catchUp?: boolean }
 export const ROUTINES: Routine[] = [
   { id: "weekly-growth", name: "Weekly growth report", when: "fri 5pm", about: "Fridays at 5pm: what you learned, practised and shipped this week, and what to focus on next.",
     ask: ["Write my weekly growth report.",
@@ -25,17 +25,24 @@ export const ROUTINES: Routine[] = [
       "1. Projects: list ~/Developer/projects (skip anything under ~/Developer/work or ~/Nectar-Work — never read those).",
       "2. For each project with git activity in the last 30 days: read its README, recent commits (git log --since=30.days --oneline) and top-level layout. Write: what it is, how to run and test it, key decisions (from commit messages), current state, and next steps.",
       `3. One page per project titled "Wiki — <project>". ${SAVE}`, "Don't change any files in the projects; read only."].join("\n") },
+  { id: "nightly-notes", name: "Nightly notes", when: "daily 9pm", catchUp: true, about: "Every night at 9: Shua reads the day's sessions and suggests what is worth remembering about you. Each suggestion waits in your Inbox; nothing is added until you accept it.",
+    ask: ["Suggest notes about me from today's work. You only suggest; you never edit my notes.",
+      "1. What I already have: curl -s http://127.0.0.1:7420/api/knowledge -H \"X-ShuaCrew: 1\" — five files (me, projects, commitments, people, style).",
+      "2. Today: curl -s http://127.0.0.1:7420/api/snapshot -H \"X-ShuaCrew: 1\" — .runs updated in the last 24 hours: what I asked for (ask) and how it ended (status, verification). Skip sessions labelled buddy, review or learning.",
+      "3. Pick at most five lasting facts that are NOT already in the files and that I stated or that the work plainly shows: a goal, a project's status or deadline, something I promised, a person I work with, a preference about how work is done. Not a summary of the day, not a guess, never a key, password or token.",
+      `4. Suggest each one: curl -s -X POST http://127.0.0.1:7420/api/notes -H "X-ShuaCrew: 1" -H "Content-Type: application/json" -d '{"file":"<me|projects|commitments|people|style>","text":"<one line, under 400 characters>","why":"<which session it came from>"}' (build the JSON with python3 -c "import json; …" so quotes are escaped).`,
+      "If nothing today is worth keeping, suggest nothing and say so. Change no files."].join("\n") },
 ];
 
-interface ScheduleStore { list(): Array<{ id: string }>; set(input: { id?: string; name?: string; when: string; ask?: string }): unknown; remove(id: string): unknown }
+interface ScheduleStore { list(): Array<{ id: string }>; set(input: { id?: string; name?: string; when: string; ask?: string; catchUp?: boolean }): unknown; remove(id: string): unknown }
 
 export function routineRoutes(app: FastifyInstance, scheduler: ScheduleStore) {
-  app.get("/api/routines", async () => ROUTINES.map(({ ask: _ask, ...r }) => ({ ...r, on: scheduler.list().some((s) => s.id === r.id) })));
+  app.get("/api/routines", async () => ROUTINES.map(({ ask: _ask, catchUp: _catchUp, ...r }) => ({ ...r, on: scheduler.list().some((s) => s.id === r.id) })));
   app.post<{ Params: { id: string }; Body: { on?: boolean } }>("/api/routines/:id", async (req, reply) => {
     const r = ROUTINES.find((x) => x.id === req.params.id);
     if (!r) return reply.code(404).send({ error: "no such routine" });
     const on = req.body?.on === true, exists = scheduler.list().some((s) => s.id === r.id);
-    if (on && !exists) scheduler.set({ id: r.id, name: r.name, when: r.when, ask: r.ask });
+    if (on && !exists) scheduler.set({ id: r.id, name: r.name, when: r.when, ask: r.ask, catchUp: r.catchUp });
     if (!on && exists) scheduler.remove(r.id);
     return { id: r.id, on };
   });

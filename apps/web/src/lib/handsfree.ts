@@ -66,6 +66,26 @@ export function frameAction(event: "start" | "end" | "discard" | undefined, f: {
 /** A sentence that sounds finished lets the turn end sooner (0.75 s instead of 1.1 s). */
 export const endsSentence = (caption: string) => /[.?!]["')\]]?\s*$/.test(caption.trim());
 
+/**
+ * Words a spoken thought almost never ends on: joining words, fillers, articles, "my"/"your", "to"/"of". Kept narrow
+ * on purpose. Pronouns, verbs and most prepositions are left out, because they end plenty of complete questions
+ * ("what time is it", "who is that for"), and waiting on those would make every answer slower.
+ */
+const TRAILING = /(?:^|[\s,])(and|but|so|or|because|cause|also|plus|if|when|while|which|um+|uh+|er+|hmm+|the|a|an|to|of|my|your|our|their|let me|going to|kind of|sort of)[,…\s]*$/i;
+/** How a pause reads, from the words heard so far: a finished sentence, a thought left hanging, or neither. */
+export function pauseKind(caption: string): "finished" | "hanging" | "open" {
+  const text = caption.trim();
+  if (!text) return "open";
+  if (/(,|…|\.\.\.|—|-)\s*$/.test(text) || TRAILING.test(text)) return "hanging"; // checked first: "so…" is not an ending
+  return endsSentence(text) ? "finished" : "open";
+}
+/**
+ * How long a silence ends your turn. A finished sentence is answered quickly; a thought left hanging ("so what I
+ * want is…", "and then", a trailing comma) gets time to be finished, so a pause to think is not an interruption.
+ */
+export const END_MS = { finished: 750, open: 1100, hanging: 2400 } as const;
+export const endAfterMs = (caption: string): number => END_MS[pauseKind(caption)];
+
 /** Just its name ("Okay, Spark.", "Hey Shua"): getting its attention, not a request. */
 export function wakeOnly(text: string, names = ["spark", "shua"]): boolean {
   const t = text.toLowerCase().replace(/[.!?,…]+/g, " ").replace(/\s+/g, " ").trim();
@@ -292,7 +312,7 @@ export class HandsFree {
       if (this.speaking && out && !this.state.speaking) this.coupling = learnCoupling(this.coupling, rms, out);
       const echo = this.speaking && this.outputLevel ? out * this.coupling : undefined;
       const talkBefore = this.state.talk;
-      const r = vadStep(this.state, rms, frameMs, endsSentence(this.lastCaption) ? { ...VAD, endMs: 750 } : VAD, this.speaking, echo);
+      const r = vadStep(this.state, rms, frameMs, { ...VAD, endMs: endAfterMs(this.lastCaption) }, this.speaking, echo);
       this.state = r.state;
       if (this.turn && this.state.speaking) {
         if (this.spec && this.spec.talk !== this.state.talk) this.spec = null; // you carried on: that guess is stale

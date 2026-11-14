@@ -19,7 +19,11 @@
     "./policy-types": "./src/policy-types.ts",
     "./cadence": "./src/cadence.ts",
     "./teaching": "./src/teaching.ts",
-    "./verification": "./src/verification.ts"
+    "./verification": "./src/verification.ts",
+    "./roles": "./src/roles.ts",
+    "./review": "./src/review.ts",
+    "./race": "./src/race.ts",
+    "./inbox": "./src/inbox.ts"
   },
   "dependencies": {
     "zod": "^4.6.5"

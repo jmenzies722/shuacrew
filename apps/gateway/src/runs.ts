@@ -10,7 +10,7 @@
  *     one burst.
  */
 import { randomUUID } from "node:crypto";
-import { mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { execFile, execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -40,6 +40,9 @@ import { failoverCandidates, inQuietHours, matchRoute, standingInstructions, typ
 import { expandAsk } from "./chat-commands.js";
 import { queuedMessages } from "@shuacrew/core/queue";
 import { VERIFY_BY, nextTurnBy, verifyAsk, verifyDecision } from "@shuacrew/core/verification";
+import { REVIEW_BY, parseReview, reviewAsk, reviewFollowUp } from "@shuacrew/core/review";
+import { ROLES, readOnlyRules } from "@shuacrew/core/roles";
+import { judgeRace, type RaceStanding } from "@shuacrew/core/race";
 import { selectIntelligence } from "./intelligence.js";
 import type { LatencyBook } from "./latency.js";
 import { inputDigest } from "./mobile/digest.js";
@@ -100,6 +103,8 @@ export interface SupervisorOptions {
   crew?: { get(id: string): { runtime?: string; model?: string } | undefined; persona(id: string): string | undefined; agentsFor?(runtime: string, exclude?: string): RunSpec["agents"] };
   /** Lessons and skills for a conversation that is starting. */
   memory?: { systemFor(run: string, ask: string, options?: { skills?: boolean }): string | undefined; skills?: () => Array<{ name: string; body: string; status?: string }> };
+  /** What ShuaCrew knows about you (knowledge.ts), as context for a prompt: a short form for Shua's quick turns, a fuller one for sessions. */
+  profile?: (lean: boolean) => string | undefined;
   /** Installed MCP servers, already shaped for that runtime. */
   mcpServers?: (runtime: string, run: string) => Record<string, unknown> | unknown[];
   /** The MCP servers you've let Spark use, for its quick turns (Claude only). */
@@ -319,6 +324,132 @@ export class Supervisor {
     });
   }
 
+  /**
+   * A race (core/race.ts): the same task to two providers at once, each in its own branch. When both are at rest
+   * the one that proved its change wins; equals are left for you to choose between.
+   */
+  race(spec: { ask: string; repo: string; title?: string; effort?: string; approveAll?: boolean; runtimes?: [string, string] }): { race: string; runs: [string, string] } {
+    if (!spec.ask.trim()) throw new Error("Say what to race on.");
+    if (!spec.repo) throw new Error("A race needs a project: each side works in its own branch of it.");
+    const able = [...this.runtimes.keys()].filter((id) => id !== "local" && id !== "mock" && this.roomy(id));
+    const pair = spec.runtimes ?? (able.length >= 2 ? [able[0]!, able[1]!] as [string, string] : undefined);
+    if (!pair || pair[0] === pair[1] || !pair.every((id) => this.runtimes.has(id))) throw new Error(able.length === 1 ? `A race needs two providers with room; only ${able[0]} has it right now.` : "A race needs two providers with room, and none has it right now.");
+    const race = `race_${randomUUID().slice(0, 8)}`;
+    // Each side is named for who runs it, so the two are told apart in every list.
+    const short = (spec.title?.trim() || spec.ask.trim().split("\n")[0]!).slice(0, 60);
+    const named = (runtime: string) => `Race · ${({ claude: "Claude", codex: "Codex" } as Record<string, string>)[runtime] ?? runtime} · ${short}`;
+    const runs = pair.map((runtime) => this.launch({ ask: spec.ask, repo: spec.repo, title: named(runtime), runtime, effort: spec.effort, approveAll: spec.approveAll, labels: ["race", `race:${race}`] })) as [string, string];
+    this.rec("race.joined", { race, rival: runs[1], rivalRuntime: pair[1] }, { run: runs[0] });
+    this.rec("race.joined", { race, rival: runs[0], rivalRuntime: pair[0] }, { run: runs[1] });
+    return { race, runs };
+  }
+
+  /** One side of a race came to rest: once both have, say who got further (once). */
+  private raceSettled(run: string): void {
+    const mine = this.store.forRun(run);
+    const joined = mine.find((e) => e.kind === "race.joined");
+    if (joined?.kind !== "race.joined" || mine.some((e) => e.kind === "race.decided")) return;
+    const atRest = (id: string) => ["reviewing", "done", "merged", "failed", "cancelled"].includes(this.status(id) ?? "");
+    if (!atRest(run) || !atRest(joined.body.rival)) return;
+    const standing = (id: string): RaceStanding => {
+      const events = this.store.forRun(id), created = events.find((e) => e.kind === "run.created"), proof = verifyDecision(events);
+      return { run: id, runtime: this.currentRuntime(id, created?.kind === "run.created" ? created.body.runtime : ""), status: this.status(id) ?? "failed", files: proof.files, ...(proof.state === "none" ? {} : { verification: proof.state }), ...(proof.command ? { command: proof.command } : {}) };
+    };
+    const result = judgeRace(standing(run), standing(joined.body.rival));
+    for (const id of [run, joined.body.rival]) this.rec("race.decided", { race: joined.body.race, winner: result.winner, reason: result.reason }, { run: id });
+  }
+
+  /**
+   * A second opinion before you merge (core/review.ts): another agent — the other provider when one has room —
+   * reads this session's diff and either passes it or lists what must be fixed, which goes back to the session as
+   * one request. The reviewer is given the diff as text and no repository, and its edits are refused by policy, so
+   * it cannot change the work it is judging.
+   */
+  async review(run: string): Promise<{ reviewRun: string; runtime: string }> {
+    const status = this.status(run);
+    if (!status) throw new Error(`no run ${run}`);
+    if (this.active.has(run) || ["queued", "planning", "running", "awaiting_approval"].includes(status)) throw new Error("Wait for this turn to finish before asking for a review.");
+    const events = this.store.forRun(run);
+    const created = events.find((e) => e.kind === "run.created");
+    const tree = events.find((e) => e.kind === "run.worktree");
+    if (created?.kind !== "run.created" || tree?.kind !== "run.worktree") throw new Error("Only a session with its own branch can be reviewed.");
+    if (created.body.labels.includes("review")) throw new Error("A review is not itself reviewed.");
+    const pending = events.findLast((e) => e.kind === "review.requested" || e.kind === "review.reported");
+    if (pending?.kind === "review.requested" && !isFinished(this.status(pending.body.reviewRun) ?? "failed")) throw new Error("A review of this session is already running.");
+    const diff = await this.worktrees.diff(tree.body.path, tree.body.base);
+    if (!diff.trim()) throw new Error("Nothing to review: this session's branch has no changes.");
+    const current = this.currentRuntime(run, created.body.runtime);
+    // Another provider sees what the first one missed; with only one available, a fresh conversation still helps.
+    const runtime = [...this.runtimes.keys()].find((id) => id !== current && id !== "local" && id !== "mock" && this.roomy(id)) ?? current;
+    const proof = verifyDecision(events);
+    const reviewRun = this.launch({
+      ask: reviewAsk({ ask: created.body.ask, base: tree.body.base, diff, proof: proof.state === "verified" ? `${proof.command ?? "a check"} passed after the last edit.` : proof.state === "failing" ? `${proof.command ?? "a check"} failed after the last edit.` : proof.state === "unverified" ? "nothing checked the change after the last edit." : "no code file changed, so nothing was checked." }),
+      runtime,
+      title: `Review: ${created.body.title}`.slice(0, 120),
+      labels: ["review", `review-of:${run}`],
+    });
+    this.rec("review.requested", { reviewRun, runtime }, { run });
+    return { reviewRun, runtime };
+  }
+
+  /** A review session ended: record what it said on the session it reviewed, and pass on any fixes it asked for. */
+  private reviewFinished(reviewRun: string, status: "done" | "failed"): void {
+    const events = this.store.forRun(reviewRun);
+    const created = events.find((e) => e.kind === "run.created");
+    const target = created?.kind === "run.created" ? created.body.labels.find((l) => l.startsWith("review-of:"))?.slice("review-of:".length) : undefined;
+    if (created?.kind !== "run.created" || !target || !this.status(target)) return;
+    if (this.store.forRun(target).some((e) => e.kind === "review.reported" && e.body.reviewRun === reviewRun)) return; // said once
+    const runtime = this.currentRuntime(reviewRun, created.body.runtime);
+    const said = status === "done" ? [...events].reverse().find((e) => e.kind === "agent.message" && e.body.final) : undefined;
+    const text = said?.kind === "agent.message" ? said.body.text : "";
+    const { state, findings } = status === "done" ? parseReview(text) : { state: "unclear" as const, findings: "" };
+    this.rec("review.reported", { reviewRun, runtime, state, text: (text || "The reviewer stopped before it finished.").slice(0, 20_000) }, { run: target });
+    // Fixes go back only to a session that can still take them; you decide what happens with an unclear reply.
+    if (state === "changes" && !["merged", "cancelled", "failed"].includes(this.status(target)!)) {
+      const name = ({ claude: "Claude", codex: "Codex" } as Record<string, string>)[runtime] ?? runtime;
+      this.enqueueFollowUp(target, reviewFollowUp(name, findings), REVIEW_BY);
+    }
+  }
+
+  private rewinding = new Set<string>();
+  /**
+   * Put a session's files back as they were when a turn ended. Nothing is lost: the rewind is itself a checkpoint on
+   * the session's branch (so you can rewind the rewind), and the agent is told on its next turn.
+   */
+  async rewind(run: string, to: number | { commit: string }): Promise<{ turn: number; commit: string }> {
+    const status = this.status(run);
+    if (!status) throw new Error(`no run ${run}`);
+    if (this.active.has(run) || this.rewinding.has(run) || ["queued", "planning", "running", "awaiting_approval"].includes(status)) throw new Error("Wait for this turn to finish before rewinding.");
+    if (status === "merged") throw new Error("This session is already merged; undo it in your repository instead.");
+    const events = this.store.forRun(run);
+    const tree = events.find((e) => e.kind === "run.worktree");
+    if (tree?.kind !== "run.worktree") throw new Error("This session has no files of its own to rewind.");
+    // A turn means "as it was when that turn ended" (its last checkpoint); a commit names one exact checkpoint, which
+    // is how a rewind is itself undone. Only this session's own checkpoints can be named.
+    const target = typeof to === "number"
+      ? [...events].reverse().find((e) => e.kind === "checkpoint.created" && e.body.turn <= to && e.body.commit && !e.body.note.startsWith("Rewound to"))
+      : events.find((e) => e.kind === "checkpoint.created" && e.body.commit === to.commit);
+    if (target?.kind !== "checkpoint.created" || !target.body.commit) throw new Error(typeof to === "number" ? `No checkpoint at or before turn ${to}.` : "That checkpoint does not belong to this session.");
+    this.rewinding.add(run);
+    try {
+      await this.worktrees.rollback(tree.body.path, target.body.commit);
+      const commit = await this.worktrees.checkpoint(tree.body.path, `rewind to turn ${target.body.turn}`);
+      this.rec("run.rewound", { turn: target.body.turn, commit: target.body.commit }, { run });
+      this.rec("checkpoint.created", { turn: this.turns(run), commit, note: `Rewound to turn ${target.body.turn}` }, { run });
+      return { turn: target.body.turn, commit };
+    } finally { this.rewinding.delete(run); }
+  }
+
+  /** What an agent must be told when its files were rewound since it last worked: its memory of them is stale. */
+  private rewindNote(run: string): string {
+    let rewound: number | undefined;
+    for (const e of this.store.forRun(run)) {
+      if (e.kind === "turn.completed") rewound = undefined;
+      else if (e.kind === "run.rewound") rewound = e.body.turn;
+    }
+    return rewound === undefined ? "" : `Note from ShuaCrew: since your last turn, this session's files were put back to how they were at the end of turn ${rewound}. Changes made after that are no longer in the working tree (they are still in git history). Re-read any file before relying on what you remember of it.\n\n---\n\n`;
+  }
+
   /** Take back a queued message before its turn starts. */
   withdraw(run: string, id: string): void {
     if (!this.unanswered(run, true).some((f) => f.id === id)) throw new Error("that message has already been answered");
@@ -375,8 +506,27 @@ export class Supervisor {
   // ── running ──────────────────────────────────────────────────────────────────────────
 
   /** A fresh conversation's standing instructions (with `recalled` lessons where the runtime takes them here). */
+  /**
+   * The project's own check (`.shuacrew/merge-check`, the same one a merge runs), run by the gateway in the session's
+   * folder. Read from the main repository, never from the session's branch, so an agent cannot weaken the check that
+   * judges it. Returns false when the project declares none.
+   */
+  private async runDeclaredCheck(runId: string, repo: string, cwd: string): Promise<boolean> {
+    let command = "";
+    try { const file = path.join(repo, ".shuacrew", "merge-check"); if (existsSync(file)) command = readFileSync(file, "utf8").trim(); } catch { /* unreadable: none */ }
+    if (!command) return false;
+    const result = await new Promise<{ code: number; output: string }>((resolve) => {
+      execFile("/bin/sh", ["-c", command], { cwd, timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+        const code = !error ? 0 : typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : 1;
+        resolve({ code, output: `${stdout}${stderr}`.trim() });
+      });
+    });
+    this.rec("check.ran", { command, exitCode: result.code, output: result.output.slice(-4000) }, { run: runId });
+    return true;
+  }
+
   private instructions(runId: string, spec: { labels: string[]; repo?: string; member?: string; venture?: string }, runtime: Runtime, recalled?: string): string | undefined {
-    return [this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, recalled, this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined;
+    return [this.options.profile?.(false), this.options.settings ? standingInstructions(this.options.settings(), spec.repo) : undefined, spec.member ? this.options.crew?.persona(spec.member) : undefined, spec.venture ? this.options.ventureBrief?.(spec.venture) : undefined, recalled, this.options.toolHint, this.options.runHint?.(runId), spec.labels.includes("crew-room") ? undefined : workHabits(runtime.id)].filter(Boolean).join("\n\n") || undefined;
   }
 
   /**
@@ -516,7 +666,9 @@ export class Supervisor {
       lean,
       id: runId,
       // A fork's first turn carries the conversation it branched from; a moved run gets a recap.
-      ask: moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : spec.forkOf && turn === 1 ? `${spec.ask}\n\n---\n\n${ask}` : ask,
+      // Shua's quick turns take no system prompt, so a conversation that is starting carries what is known about you
+      // with its first ask (the transcript still shows only what you said).
+      ask: (lean && !resume && this.options.profile?.(true) ? `${this.options.profile(true)}\n\n---\n\n` : "") + (lean ? "" : this.rewindNote(runId)) + (moved ? `${this.recap(runId)}\n\n---\n\n${ask}` : spec.forkOf && turn === 1 ? `${spec.ask}\n\n---\n\n${ask}` : ask),
       cwd,
       model,
       effort,
@@ -642,7 +794,10 @@ export class Supervisor {
             // after its last edit. If it hasn't, it is asked once to prove it, and the verdict after that turn stands.
             // Shua's own turns, a task's steps and crew rooms are not sessions you review, so they are left alone.
             {
-              const proof = spec.repo && !spec.parent && !lean && !spec.labels.includes("crew-room") ? verifyDecision(this.store.forRun(runId)) : null;
+              let proof = spec.repo && !spec.parent && !lean && !spec.labels.includes("crew-room") ? verifyDecision(this.store.forRun(runId)) : null;
+              // Cheapest proof first: when the project says how it is checked, the gateway runs that itself (no model
+              // call). The agent is asked only if it fails, or if the project declares no check.
+              if (proof?.nudge && spec.repo && await this.runDeclaredCheck(runId, spec.repo, cwd)) proof = verifyDecision(this.store.forRun(runId));
               if (proof && proof.state !== "none") this.rec("verify.decided", { turn, state: proof.state, files: proof.files, command: proof.command, nudged: proof.nudged }, { run: runId });
               if (proof?.nudge) {
                 // Still this run's turn (it is active), so the request waits; the `finally` below queues the next turn for it.
@@ -989,15 +1144,20 @@ export class Supervisor {
       protected: [...(this.options.protectedFolders ?? []), ...(settings?.protectedPaths ?? [])],
       ...(settings ? { protectedBranches: [...new Set(["main", "master", ...settings.git.protectedBranches])] } : {}),
     });
+    // A role that must not write (a reviewer) is refused every edit, in its own layer: the strictest verdict wins,
+    // so no mode, standing rule or approve-all can loosen it.
+    const created = this.store.forRun(run).find((e) => e.kind === "run.created");
+    const role: Layer[] = created?.kind === "run.created" && created.body.labels.includes("review") ? [{ name: "app", rules: readOnlyRules(ROLES.reviewer) }] : [];
     return {
       ctx,
       // Autonomous (the default): end to end, malicious refused, only the irreversible asks — and not even that on
       // Autopilot. Supervised: anything not known to be safe asks.
       layers: () => settings?.autonomy === "autonomous"
-        ? [{ name: "global", rules: autonomousRules(this.standingRules(), { confirm: !this.approveAll.has(run) }) }]
+        ? [{ name: "global", rules: autonomousRules(this.standingRules(), { confirm: !this.approveAll.has(run) }) }, ...role]
         : [
           { name: "global", rules: [...defaultRules(), ...this.standingRules()] },
           { name: "run", rules: this.approveAll.has(run) ? [allowAll()] : [] },
+          ...role,
         ],
     };
   }
@@ -1218,7 +1378,8 @@ export class Supervisor {
     if (this.halted) return;
     if (this.status(run) === status && !reason) return;
     this.rec("run.status", { status, reason }, { run });
-    if (status === "done" || status === "failed") this.runHook(run, status);
+    if (status === "done" || status === "failed") { this.runHook(run, status); this.reviewFinished(run, status); }
+    if (["reviewing", "done", "merged", "failed", "cancelled"].includes(status)) this.raceSettled(run);
   }
 
   /** The last 50 prompts exactly as sent — in memory only, gone on restart (Developer → Prompt inspector). */

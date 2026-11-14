@@ -63,14 +63,20 @@ export function verifyAsk(decision: VerifyDecision): string {
     : `Before this is done: you changed ${changed} and ran no check afterwards. Run the project's tests (or the narrowest check that exercises what you changed) now and report the result. If no check applies, say in one line what you verified and how; do not claim it is verified without running something.`;
 }
 
-/** Who the next turn is by: the gateway's proof request when that is all that is queued, otherwise you. */
+/**
+ * Who the next turn is by. When everything queued for it came from one automatic source (the gateway's proof
+ * request, a reviewer's findings) the turn is by that source; as soon as you have said anything too, it is yours.
+ */
 export function nextTurnBy(events: AnyEvent[]): string {
-  let verify = 0, other = 0;
+  let authors = new Set<string>();
   const withdrawn = new Set<string>();
   for (const e of events) if (e.kind === "run.followup.withdrawn") withdrawn.add(e.body.id);
   for (const e of events) {
-    if (e.kind === "turn.started") { verify = 0; other = 0; }
-    else if (e.kind === "run.followup" && !(e.body.id && withdrawn.has(e.body.id))) { if (e.body.by === VERIFY_BY) verify++; else other++; }
+    if (e.kind === "turn.started") authors = new Set();
+    else if (e.kind === "run.followup" && !(e.body.id && withdrawn.has(e.body.id))) authors.add(e.body.by);
   }
-  return verify > 0 && other === 0 ? VERIFY_BY : "you";
+  const [only] = authors;
+  return authors.size === 1 && only && AUTOMATIC.has(only) ? only : "you";
 }
+/** Sources that queue a turn on their own. Anything else (you, a room's results) is a turn of yours. */
+const AUTOMATIC = new Set([VERIFY_BY, "review"]);

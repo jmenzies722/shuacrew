@@ -8,6 +8,7 @@ import { since } from "@shuacrew/ui";
 import { Activity, BookMarked, ChevronRight, BookOpenText, Brain, CalendarClock, CalendarDays, Circle, Clapperboard, Cpu, DoorOpen, FileText, GraduationCap, House, Layers3, Library, MessageSquare, PanelLeftClose, PanelLeftOpen, Plug, Plus, Presentation, Rocket, Search, Settings, ShieldCheck, SquareKanban, SquarePen, SquareTerminal, Trash2, Users } from "lucide-react";
 import { useLive } from "../lib/live";
 import { HUBS, PRIMARY_HUBS, hubEntry, locate, type Hub } from "../lib/hubs";
+import { useInboxCount } from "../lib/inbox";
 import { isTopLevelWork, scopeRuns } from "../lib/crew";
 import { groupSessions } from "../lib/session-list";
 import { canRemoveSession, removeSession } from "../lib/session-removal";
@@ -37,7 +38,7 @@ export function HubRail() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const here = locate(path)?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
-  const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
+  const waiting = useInboxCount();
   const working = useLive((s) => Object.values(s.crew.runs).filter((r) => r.status === "running" || r.status === "planning").length);
   const prefs = useCompanion(), sparkOpen = useSparkPanel(), name = companionName(prefs);
   useRemember(path);
@@ -134,7 +135,7 @@ export function HubSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const at = locate(path), here = at?.hub.id ?? (path.startsWith("/settings") ? "settings" : "");
-  const waiting = useLive((s) => Object.keys(s.crew.approvals).length);
+  const waiting = useInboxCount();
   const runs = useLive((s) => s.crew.runs), scope = useLive((s) => s.scope);
   const connection = useLive((s) => s.connection);
   const setPalette = useLive((s) => s.setPalette);

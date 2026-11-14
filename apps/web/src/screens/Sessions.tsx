@@ -65,6 +65,7 @@ import { getPower, savePower, usePower, type Preset } from "../lib/power";
 import { parseChatAction } from "../lib/chat-actions";
 import { groupSessions, sessionStatus } from "../lib/session-list";
 import { HomePulse } from "../components/HomePulse";
+import { RaceResult, ReviewPass } from "../components/ReviewPass";
 
 interface RuntimeInfo {
   id: string;
@@ -270,6 +271,8 @@ function Chat({ id, changes, onToggleChanges }: { id: string; changes: boolean; 
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
         <h1 className="min-w-0 truncate text-[14px] font-semibold">{run.title}</h1>
         <StatusPill status={run.status} verification={run.verification} />
+        <RaceResult run={run} />
+        <ReviewPass run={run} />
         {run.permission === "auto" && (
           <span className="shrink-0 text-[11.5px] text-amber" title="This session approves what policy would ask about. Deny rules still apply.">
             Autopilot
@@ -901,7 +904,15 @@ function Composer({ run, seed, hero }: { run?: RunView; seed?: { text: string; n
         return;
       }
       const common = { repo: repo || undefined, runtime: runtime || undefined, model: model || undefined };
+      if (race && !task && repo) {
+        // In a project the gateway runs the race: each side in its own branch, and the proof decides (core/race.ts).
+        const { runs: sides } = await api<{ race: string; runs: [string, string] }>("/api/race", { body: { ask: message, repo, effort: effort || undefined, approveAll: auto || undefined } });
+        setText(""); setFiles([]); setRace(false);
+        navigate({ to: "/sessions/$id", params: { id: sides[0] } });
+        return;
+      }
       if (race && !task) {
+        // Without a project there are no branches to compare, so it is two plain sessions side by side and no verdict.
         const tag = `race:${Date.now().toString(36)}`, short = message.split("\n")[0]!.slice(0, 60);
         const [first] = await Promise.all((["claude", "codex"] as const).map((rt) => launchRun({ ask: message, repo: repo || undefined, runtime: rt, effort: effort || undefined, approveAll: auto, title: `Race · ${rt === "claude" ? "Claude" : "Codex"} · ${short}`, labels: [tag] })));
         setText(""); setFiles([]); setRace(false);

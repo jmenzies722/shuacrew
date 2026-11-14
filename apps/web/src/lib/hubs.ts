@@ -8,8 +8,8 @@ export interface HubTab { to: string; label: string; also?: string[] }
 export interface Hub { id: "home" | "knowledge" | "autopilot" | "crew" | "system"; label: string; hint: string; tabs: HubTab[] }
 
 export const HUBS: Hub[] = [
-  { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions", "/board", "/review", "/runs"] }, { to: "/activity", label: "Today" }] },
-  { id: "knowledge", label: "Knowledge", hint: "What the crew has learned and made", tabs: [{ to: "/memory", label: "Memory" }, { to: "/library", label: "Library" }] },
+  { id: "home", label: "Home", hint: "Your sessions and your day", tabs: [{ to: "/", label: "Sessions", also: ["/sessions", "/board", "/review", "/runs"] }, { to: "/inbox", label: "Inbox" }, { to: "/activity", label: "Today" }] },
+  { id: "knowledge", label: "Knowledge", hint: "What the crew has learned and made", tabs: [{ to: "/profile", label: "About you" }, { to: "/memory", label: "Memory" }, { to: "/library", label: "Library" }] },
   { id: "autopilot", label: "Autopilot", hint: "What runs without you", tabs: [{ to: "/schedules", label: "Schedules" }] },
   { id: "crew", label: "Crew", hint: "Who is working, and on what", tabs: [{ to: "/floor", label: "Live", also: ["/crew"] }] },
   { id: "system", label: "More", hint: "Tools, guardrails and the numbers", tabs: [{ to: "/observability", label: "Insights", also: ["/developer", "/insights"] }, { to: "/usage", label: "Usage" }, { to: "/integrations", label: "Tools & Skills" }, { to: "/policy", label: "Policy & Audit" }, { to: "/specs", label: "Specs" }, { to: "/terminal", label: "Terminal" }] },

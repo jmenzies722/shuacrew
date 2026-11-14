@@ -61,12 +61,14 @@ export type Action =
 /** Every page in ShuaCrew and what it's for — the map Shua carries so it can explain the app and take you anywhere. */
 export const SHUACREW_PAGES: Array<{ path: string; name: string; hub: string; about: string }> = [
   { path: "/", name: "Sessions", hub: "Home", about: "chat with the crew; every task is a session that works in its own git branch and asks before anything risky. The composer shows live what the agent is doing" },
+  { path: "/inbox", name: "Inbox", hub: "Home", about: "everything waiting on the user, in one list: approvals to answer, sessions that failed or whose checks fail, code nobody verified, races and reviews only they can decide, notes Shua suggests keeping about them (added only when they accept), and verified work ready to merge" },
   { path: "/activity", name: "Today", hub: "Home", about: "the user's day: the sky and morning brief, a 6am–midnight ribbon of every moment, today in numbers (sessions, shipped, tokens, focus, streak), what needs them" },
   { path: "/board", name: "Board", hub: "Home", about: "every session by status: queued (with a backlog that waits for the user), running, awaiting them, reviewing, done" },
   { path: "/specs", name: "Specs", hub: "More", about: "plan a feature before code: requirements → design → tasks, each approved, tasks land on the Board as sessions" },
   { path: "/floor", name: "Live", hub: "Crew", about: "the crew at work, live: each session's current step and subagents, anything waiting on you, a timeline of the last minutes, and a feed of every step as it happens" },
   { path: "/crew", name: "Agents", hub: "Crew", about: "the AI crew members (role, model, voice, memory, lessons); create, edit or hand work to one" },
   { path: "/schedules", name: "Schedules", hub: "Autopilot", about: "work that runs on its own: schedules, webhooks and heartbeats" },
+  { path: "/profile", name: "About you", hub: "Knowledge", about: "plain notes about the user that Shua and every session read: who they are, their projects, commitments, people and writing style; the user edits them here" },
   { path: "/library", name: "Library", hub: "Knowledge", about: "everything the crew made and the user's knowledge: reports, pages, specs, images (searchable)" },
   { path: "/memory", name: "Memory", hub: "Knowledge", about: "what every agent has learned: lessons, preferences, corrections, skills" },
   { path: "/integrations", name: "Tools & Skills", hub: "More", about: "MCP connections (Notion, GitHub…), which ones Shua may use by voice, and Claude Code skills" },
@@ -1010,7 +1012,7 @@ export function progressLine(events: ReadonlyArray<{ kind: string; body?: unknow
 }
 
 /** Deliberate instruction version, stable across bundler renaming and unrelated UI builds. */
-export const SPARK_RULES = "spark-2026-11-13-cleanup-v1";
+export const SPARK_RULES = "spark-2026-11-13-inbox-v1";
 
 /**
  * Spark's native Mac actions (the ```do``` vocabulary from its own prompt), for Live's hands: the same shapes go to

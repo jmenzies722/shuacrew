@@ -1,25 +1,8 @@
 import { VERIFY_BY } from "@shuacrew/core/verification";
+import { REVIEW_BY } from "@shuacrew/core/review";
 import { Button, Chip, formatTokens } from "@shuacrew/ui";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  Bot,
-  Brain,
-  Check,
-  ChevronRight,
-  CircleX,
-  Copy,
-  FilePen,
-  FilePlus2,
-  FileText,
-  GitCommitHorizontal,
-  Globe,
-  ListTree,
-  LoaderCircle,
-  Search,
-  ShieldAlert,
-  SquareTerminal,
-  Wrench,
-} from "lucide-react";
+import { Bot, Brain, Check, ChevronRight, CircleX, Copy, FilePen, FilePlus2, FileText, GitCommitHorizontal, Globe, ListTree, LoaderCircle, Search, ShieldAlert, SquareTerminal, Wrench, Undo2 } from "lucide-react";
 import type { RunView } from "@shuacrew/core/projections";
 import { BookmarkPlus, Columns2, GitFork, Pencil, RotateCcw, Rows2, Sparkles, X } from "lucide-react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -372,9 +355,44 @@ function LivePlan({ item }: { item: Extract<Item, { kind: "plan" }> }) {
 }
 
 /** What you asked — copy it, or edit it and send it again. */
+/**
+ * A checkpoint in a session: the files as they were at that moment. Any earlier one can be rewound to (two clicks,
+ * because it changes files); the rewind is itself a checkpoint, so it can be undone the same way.
+ */
+function CheckpointRow({ step }: { step: Extract<Item, { kind: "checkpoint" }> }) {
+  const { run, working } = useContext(ThreadContext);
+  const [stage, setStage] = useState<"" | "confirm" | "busy">("");
+  const [error, setError] = useState("");
+  const rewound = step.note.startsWith("Rewound to");
+  const latest = run?.checkpoints.at(-1)?.seq === step.seq;
+  const can = Boolean(run?.worktree && step.commit && !working && !latest && run.status !== "merged");
+  const rewind = async () => {
+    if (!run || !step.commit) return;
+    setStage("busy"); setError("");
+    try { await api(`/api/runs/${run.id}/rewind`, { body: { commit: step.commit } }); setStage(""); }
+    catch (e) { setError((e as Error).message); setStage(""); }
+  };
+  return (
+    <div className="checkpoint-row group flex items-center gap-2 py-0.5 text-[11.5px] text-fg-3">
+      <GitCommitHorizontal size={13} />
+      {rewound ? step.note : "Checkpoint"} {step.commit && <span className="mono text-fg-2">{step.commit.slice(0, 7)}</span>}
+      {can && stage === "" && <button type="button" className="checkpoint-act" onClick={() => setStage("confirm")} title="Put this session's files back as they were here. Later work stays in history.">Rewind files to here</button>}
+      {stage === "confirm" && <span className="checkpoint-confirm" role="group" aria-label="Confirm rewind">
+        Put the files back as they were here? Later work stays in history.
+        <button type="button" className="is-go" onClick={() => void rewind()}>Rewind</button>
+        <button type="button" onClick={() => setStage("")}>Cancel</button>
+      </span>}
+      {stage === "busy" && <span>Rewinding…</span>}
+      {error && <span className="text-bad" role="alert">{error}</span>}
+    </div>
+  );
+}
+
 function UserMessage({ item }: { item: Extract<Item, { kind: "ask" }> }) {
   // ShuaCrew's own request for proof (core/verification.ts) is not something you said: a quiet note, with the wording a click away.
   if (item.by === VERIFY_BY) return <details className="verify-note"><summary>ShuaCrew asked for proof before calling this done</summary><p>{item.text}</p></details>;
+  // A reviewer's findings, passed on by the gateway (core/review.ts): also not something you said.
+  if (item.by === REVIEW_BY) return <details className="verify-note" open><summary>A reviewer asked for changes</summary><p style={{ whiteSpace: "pre-wrap" }}>{item.text}</p></details>;
   return <OwnMessage item={item} />;
 }
 
@@ -563,6 +581,14 @@ function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
     setBusy("retry");
     await followUp(run.id, "Try that again — take a different approach this time.").finally(() => setBusy(""));
   };
+  const [rewindError, setRewindError] = useState("");
+  const rewind = async () => {
+    if (!run) return;
+    setBusy("rewind"); setRewindError("");
+    try { await api(`/api/runs/${run.id}/rewind`, { body: { turn: item.turn } }); }
+    catch (e) { setRewindError((e as Error).message); }
+    finally { setBusy(""); }
+  };
   const fork = async () => {
     if (!run) return;
     setBusy("fork");
@@ -607,6 +633,13 @@ function Finished({ item }: { item: Extract<Item, { kind: "finished" }> }) {
           <button onClick={() => void fork()} disabled={busy !== ""} title="Branch a new session from this point">
             <GitFork size={12} /> Fork from here
           </button>
+          {/* Rewind: only where there is something later to undo, and only for a session with files of its own. */}
+          {run?.worktree && run.status !== "merged" && item.turn < run.turns && (busy === "rewind?"
+            ? <><button onClick={() => void rewind()} title="Put the files back as they were when this turn ended. Later work stays in history."><Undo2 size={12} /> Confirm rewind</button><button onClick={() => setBusy("")}>Cancel</button></>
+            : <button onClick={() => setBusy("rewind?")} disabled={busy !== ""} title="Put this session's files back as they were when this turn ended. Later work stays in history, and the rewind can be undone.">
+                <Undo2 size={12} /> Rewind files to here
+              </button>)}
+          {rewindError && <span className="text-bad" role="alert">{rewindError}</span>}
         </span>
       )}
     </div>
@@ -741,12 +774,7 @@ function StepRow({ step }: { step: Step }) {
         </div>
       );
     case "checkpoint":
-      return (
-        <div className="flex items-center gap-2 py-0.5 text-[11.5px] text-fg-3">
-          <GitCommitHorizontal size={13} />
-          Checkpoint {step.commit && <span className="mono text-fg-2">{step.commit.slice(0, 7)}</span>}
-        </div>
-      );
+      return <CheckpointRow step={step} />;
   }
 }
 

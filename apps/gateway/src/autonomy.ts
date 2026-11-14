@@ -42,14 +42,23 @@ export interface ScheduleView {
   project?: string;
   runtime?: string;
   paused: boolean;
+  /** Run once, late, if its time passed while nothing was running to start it. Off unless you turn it on. */
+  catchUp?: boolean;
+  /** When it was last saved: nothing before this counts as missed. */
+  setAt?: number;
   lastFired?: number;
   lastOk?: boolean;
   lastRun?: string;
   next: number[];
 }
 
+/** How late a missed run is still worth doing. Past this the next scheduled time is close enough. */
+export const CATCH_UP_WINDOW_MS = 12 * 3_600_000;
+
 export class Scheduler {
   private jobs = new Map<string, Cron>();
+  /** Schedules being started right now by the clock or by catch-up, so the two can never start one twice. */
+  private starting = new Set<string>();
 
   constructor(
     private store: EventStore,
@@ -58,7 +67,7 @@ export class Scheduler {
   ) {}
 
   /** Add or change a schedule from words or cron. Throws with an example on anything unreadable. */
-  set(input: { id?: string; name?: string; when: string; ask?: string; script?: string; project?: string; runtime?: string; paused?: boolean }): ScheduleView {
+  set(input: { id?: string; name?: string; when: string; ask?: string; script?: string; project?: string; runtime?: string; paused?: boolean; catchUp?: boolean }): ScheduleView {
     const cadence = parseCadence(input.when);
     new Cron(cadence.cron, { timezone: cadence.timezone, paused: true }).stop(); // validates, including the timezone
     if (!input.ask?.trim() && !input.script?.trim()) throw new Error("a schedule needs an ask for an agent, or a script");
@@ -73,6 +82,7 @@ export class Scheduler {
       project: input.project,
       runtime: input.runtime,
       paused: input.paused ?? false,
+      catchUp: input.catchUp,
     });
     this.sync();
     return this.list().find((s) => s.id === id)!;
@@ -90,6 +100,7 @@ export class Scheduler {
         const prior = views.get(e.body.id);
         const merged = { ...prior, ...Object.fromEntries(Object.entries(e.body).filter(([, v]) => v !== undefined)) } as ScheduleView;
         merged.paused = e.body.paused ?? prior?.paused ?? false;
+        merged.setAt = e.at;
         views.set(e.body.id, merged);
       } else if (e.kind === "schedule.removed") views.delete(e.body.id);
       else if (e.kind === "schedule.fired") {
@@ -119,8 +130,36 @@ export class Scheduler {
     }
     for (const schedule of wanted.values()) {
       this.jobs.get(schedule.id)?.stop();
-      this.jobs.set(schedule.id, new Cron(schedule.cron, { timezone: schedule.timezone, protect: true }, () => void this.fire(schedule.id)));
+      this.jobs.set(schedule.id, new Cron(schedule.cron, { timezone: schedule.timezone, protect: true }, () => this.auto(schedule.id)));
     }
+  }
+
+  /** Started by the clock or by catch-up (never by you): one at a time per schedule. */
+  private auto(id: string): void {
+    if (this.starting.has(id)) return;
+    this.starting.add(id);
+    void this.fire(id).catch(() => undefined).finally(() => this.starting.delete(id));
+  }
+
+  /**
+   * Run what was missed. A schedule that asks for it (`catchUp`) and whose time passed while nothing could start it
+   * (the gateway was off, the Mac asleep) runs once now: only its most recent missed time, only if that was within
+   * the last 12 hours, and never for a time before the schedule was last saved or resumed. Called at start and every
+   * few minutes, so waking the Mac is enough.
+   */
+  catchUp(now = Date.now()): string[] {
+    const started: string[] = [];
+    for (const s of this.list()) {
+      if (!s.catchUp || s.paused || this.starting.has(s.id)) continue;
+      const since = Math.max(s.lastFired ?? 0, s.setAt ?? now, now - CATCH_UP_WINDOW_MS);
+      let due: Date | null = null;
+      try { due = new Cron(s.cron, { timezone: s.timezone, paused: true }).nextRun(new Date(since)); } catch { continue; }
+      // A minute's grace: a run the clock is about to start (or just did) is not a missed one.
+      if (!due || due.getTime() > now - 60_000) continue;
+      started.push(s.id);
+      this.auto(s.id);
+    }
+    return started;
   }
 
   async fire(id: string): Promise<string | undefined> {

@@ -20,7 +20,8 @@ async function gateway() {
   // Port 0: the OS picks a free one, so tests never collide with a running gateway.
   const door = new PhoneDoor({ app, hub, home, port: 0, host: () => "127.0.0.1", every: 60_000 });
   phonePairingRoutes(app, door, home);
-  cleanups.push(() => door.close(), () => app.close(), () => store.close());
+  // The supervisor stops before the store closes: a session still finishing must not reach a closed database.
+  cleanups.push(() => door.close(), () => app.close(), () => supervisor.shutdown(), () => store.close());
   return { app, door, home };
 }
 const ip = (address: string, internal = false) => ({ address, family: "IPv4", internal, netmask: "255.192.0.0", mac: "00:00:00:00:00:00", cidr: null }) as os.NetworkInterfaceInfo;

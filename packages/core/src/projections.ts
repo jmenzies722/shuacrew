@@ -45,6 +45,10 @@ export interface RunView {
   checks: Array<{ command: string; passed: boolean; seq: number }>;
   /** Whether the code this session last changed was proven by a check (verification.ts). Absent: nothing to verify, or a turn is in progress. */
   verification?: { state: "verified" | "failing" | "unverified"; turn: number; files: number; command?: string; nudged: boolean };
+  /** This session's race against another provider on the same task (race.ts). `outcome` is absent while either is still working. */
+  race?: { id: string; rival: string; rivalRuntime: string; outcome?: "won" | "lost" | "open"; reason?: string };
+  /** The latest review pass by a second agent on this session's change (review.ts; not your own review, which is `review`). Cleared when you ask for something new. */
+  reviewPass?: { state: "running" | "passed" | "changes" | "unclear"; runtime: string; run: string; text?: string };
   pendingApprovals: string[];
   /** Lesson ids this run was given. The text lives in memory. */
   lessons: string[];
@@ -215,6 +219,8 @@ export interface CrewState {
   backup?: { file: string; bytes: number; at: number; error?: string };
   runs: Record<string, RunView>;
   approvals: Record<string, ApprovalView>;
+  /** Notes an agent suggested for your knowledge files, until you accept or dismiss them. */
+  suggestions?: Record<string, { id: string; file: string; text: string; why: string; run: string | null; at: number }>;
   limited: Record<string, { until: number; message: string; credits?: boolean; seq?: number; retrying?: boolean }>;
   today: { day: string; tokens: number; costUsd: number | null; records?: number; runs: number };
 }
@@ -512,7 +518,26 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
         run.ticker = "";
         run.tail = "";
         run.verification = undefined; // a new turn: the verdict is whatever is true when it ends
+        if (event.body.by === "you") run.reviewPass = undefined; // you asked for something new: the old review pass is about old work
       }
+      break;
+    case "note.suggested":
+      (state.suggestions ??= {})[event.body.id] = { id: event.body.id, file: event.body.file, text: event.body.text, why: event.body.why, run: event.run, at: event.at };
+      break;
+    case "note.resolved":
+      if (state.suggestions) delete state.suggestions[event.body.id];
+      break;
+    case "race.joined":
+      if (run) run.race = { id: event.body.race, rival: event.body.rival, rivalRuntime: event.body.rivalRuntime };
+      break;
+    case "race.decided":
+      if (run?.race) run.race = { ...run.race, outcome: event.body.winner === null ? "open" : event.body.winner === run.id ? "won" : "lost", reason: event.body.reason };
+      break;
+    case "review.requested":
+      if (run) run.reviewPass = { state: "running", runtime: event.body.runtime, run: event.body.reviewRun };
+      break;
+    case "review.reported":
+      if (run) run.reviewPass = { state: event.body.state, runtime: event.body.runtime, run: event.body.reviewRun, text: event.body.text };
       break;
     case "agent.delta":
       // Chunks end mid-sentence (keep the space) or on a newline (keep the line before it).
@@ -544,6 +569,9 @@ export function apply(state: CrewState, event: AnyEvent): CrewState {
       break;
     case "check.ran":
       if (run) run.checks.push({ command: event.body.command, passed: event.body.exitCode === 0, seq: event.seq });
+      break;
+    case "run.rewound":
+      if (run) run.verification = undefined; // the verdict was about files that are no longer there
       break;
     case "verify.decided":
       if (run) run.verification = { state: event.body.state, turn: event.body.turn, files: event.body.files, ...(event.body.command ? { command: event.body.command } : {}), nudged: event.body.nudged };

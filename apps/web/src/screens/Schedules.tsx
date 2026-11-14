@@ -18,6 +18,8 @@ interface Schedule {
   ask?: string;
   script?: string;
   paused: boolean;
+  /** Runs once, late, when its time passed while the Mac was asleep or ShuaCrew was off. */
+  catchUp?: boolean;
   lastFired?: number;
   lastOk?: boolean;
   lastRun?: string;
@@ -82,6 +84,7 @@ export function Schedules() {
                   {s.name}
                   {s.script && <Chip mono>script · no model</Chip>}
                   {s.paused && <Chip>paused</Chip>}
+                  {s.catchUp && !s.paused && <Chip>runs if missed</Chip>}
                 </div>
                 <div className="mono mt-0.5 text-[11.5px] text-fg-3">
                   {s.cron}
@@ -110,6 +113,10 @@ export function Schedules() {
                 </Button>
                 <Button size="s" variant="ghost" onClick={async () => (await api("/api/schedules", { body: { id: s.id, name: s.name, when: s.cron + (s.timezone ? ` ${s.timezone}` : ""), ask: s.ask, script: s.script, paused: !s.paused } }), refresh())}>
                   {s.paused ? "Resume" : "Pause"}
+                </Button>
+                <Button size="s" variant="ghost" title={s.catchUp ? "If the Mac is asleep or ShuaCrew is off at its time, this runs once when it can (within 12 hours). Click to stop that." : "If the Mac is asleep or ShuaCrew is off at its time, this is skipped until the next time. Click to have it run once when it can instead."}
+                  onClick={async () => (await api("/api/schedules", { body: { id: s.id, name: s.name, when: s.cron + (s.timezone ? ` ${s.timezone}` : ""), ask: s.ask, script: s.script, paused: s.paused, catchUp: !s.catchUp } }), refresh())}>
+                  {s.catchUp ? "Skip if missed" : "Run if missed"}
                 </Button>
                 <Button size="s" variant="danger" onClick={async () => (await api(`/api/schedules/${s.id}`, { method: "DELETE" }), refresh())}>
                   Delete

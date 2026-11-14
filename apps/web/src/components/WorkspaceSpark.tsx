@@ -15,6 +15,8 @@ export const contexts: Record<string, [string, string, string]> = {
   "/board": ["Board", "Unblock the work", "Help me identify blocked work and choose the smallest action that moves it forward. Ask for the task details you need."],
   "/schedules": ["Schedules", "Design a routine", "Help me design a useful recurring routine with a clear trigger, output, and review point. Prepare the plan before enabling anything."],
   "/library": ["Library", "Connect the ideas", "Help me connect what I have made and learned into something useful for my current project. Ask which artifacts to use."],
+  "/inbox": ["Inbox", "Clear my inbox", "Go through what is waiting on me, most blocking first. For each item say in one line what it is and what you would do, then ask me before acting on anything."],
+  "/profile": ["About you", "Help me fill this in", "Help me write my About me notes. Ask me five short questions about my goals, projects and how I like to work, then draft the text for me to paste in."],
   "/memory": ["Memory", "Keep the lesson", "Help me turn a recent experience into a concise reusable lesson. Ask me what happened and what I would change."],
   "/integrations": ["Tools & skills", "Choose the right tools", "Help me choose tools and skills for my workflow. Explain what each needs access to and how I can verify it works."],
   "/policy": ["Policy & audit", "Explain my guardrails", "Help me understand the app's agent permissions and approval workflow. Use actual configured policy when available and distinguish it from suggestions."],

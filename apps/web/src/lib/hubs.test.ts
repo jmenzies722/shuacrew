@@ -5,6 +5,7 @@ it("puts every screen in exactly one hub", () => {
   expect(locate("/")?.hub.id).toBe("home");
   expect(locate("/sessions/r_1")?.tab.label).toBe("Sessions");
   expect(locate("/activity")?.tab.label).toBe("Today");
+  expect(locate("/inbox")).toMatchObject({ hub: { id: "home" }, tab: { label: "Inbox" } });
   expect(locate("/usage")?.tab.label).toBe("Usage");
   expect(locate("/developer")?.hub.id).toBe("system");
   expect(locate("/settings")).toBeNull();
@@ -15,15 +16,16 @@ it("puts every screen in exactly one hub", () => {
 
 it("reopens a hub where you left it", () => {
   const knowledge = HUBS.find((h) => h.id === "knowledge")!;
-  expect(hubEntry(knowledge, {})).toBe("/memory");
+  expect(hubEntry(knowledge, {})).toBe("/profile");
   expect(hubEntry(knowledge, { knowledge: "/library" })).toBe("/library");
-  expect(hubEntry(knowledge, { knowledge: "/schedules" })).toBe("/memory"); // not this hub's
+  expect(hubEntry(knowledge, { knowledge: "/schedules" })).toBe("/profile"); // not this hub's
 });
 
 it("has four primary places, and the removed ones are gone", () => {
   expect(HUBS.filter(h => h.id !== "system").map(h => h.label)).toEqual(["Home", "Knowledge", "Autopilot", "Crew"]);
   expect(locate("/floor")?.hub.id).toBe("crew");
   expect(locate("/memory")?.hub.id).toBe("knowledge");
+  expect(locate("/profile")?.tab.label).toBe("About you");
   expect(locate("/library")?.hub.id).toBe("knowledge");
   expect(locate("/schedules")?.hub.id).toBe("autopilot");
   // Projects, playbooks, rooms, the music page and the guide were removed (2026-11-13).

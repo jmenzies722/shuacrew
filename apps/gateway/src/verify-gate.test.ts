@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fold } from "@shuacrew/core";
@@ -78,6 +78,32 @@ it("a session that changed code and checked nothing is asked once to prove it, a
   expect(store.forRun(run).flatMap((e) => (e.kind === "verify.decided" ? [`${e.body.state}/${e.body.nudged}`] : []))).toEqual(["unverified/false", "verified/true"]);
   expect(view(run)?.verification).toMatchObject({ state: "verified", turn: 2, nudged: true });
   expect(view(run)?.status).toBe("reviewing");
+});
+
+/** A repo whose main branch declares how it is checked. */
+function declared(command: string) {
+  const dir = repo();
+  mkdirSync(path.join(dir, ".shuacrew"));
+  writeFileSync(path.join(dir, ".shuacrew", "merge-check"), `${command}\n`);
+  return dir;
+}
+
+it("when the project declares its check, the gateway runs it itself and costs no extra agent turn", async () => {
+  const { store, supervisor, asks, view, settled, quiet } = world([[edit()]]);
+  const run = supervisor.launch({ ask: "Add a clock module", runtime: "mock", repo: declared("echo all 12 tests pass") });
+  await settled(run, 1);
+  await quiet();
+  expect(asks).toHaveLength(1); // no proof request: the agent was never asked
+  expect(view(run)?.verification).toMatchObject({ state: "verified", command: "echo all 12 tests pass", nudged: false });
+  expect(store.forRun(run).find((e) => e.kind === "check.ran")?.body).toMatchObject({ exitCode: 0, output: "all 12 tests pass" });
+});
+
+it("a declared check that fails goes back to the agent once, with what failed", async () => {
+  const { supervisor, asks, view, settled } = world([[edit()], [check()]]);
+  const run = supervisor.launch({ ask: "Add a clock module", runtime: "mock", repo: declared("echo 1 failing; exit 3") });
+  await settled(run, 2);
+  expect(asks[1]).toMatch(/your last check failed \(echo 1 failing; exit 3\)/);
+  expect(view(run)?.verification).toMatchObject({ state: "verified", turn: 2, nudged: true });
 });
 
 it("asks only once: a session that still proves nothing ends unverified instead of looping", async () => {

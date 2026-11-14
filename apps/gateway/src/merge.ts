@@ -11,6 +11,9 @@ import path from "node:path";
 import type { EventStore } from "./store.js";
 import type { Worktrees } from "./worktrees.js";
 
+/** How long after you asked a merge is still finished on restart. */
+const RECOVER_WITHIN_MS = 24 * 3_600_000;
+
 export class MergeQueue {
   private queue: string[] = [];
   private busy = false;
@@ -27,6 +30,26 @@ export class MergeQueue {
     this.store.append("merge.queued", { position }, { run });
     void this.drain();
     return position;
+  }
+
+  /**
+   * After a restart: the queue is rebuilt from the log. A merge you asked for that neither landed nor failed is
+   * queued again, in the order you asked, unless the session has moved on since (a new turn, a rejection, a cancel)
+   * or you asked more than a day ago: an old merge never lands by surprise.
+   * Landing is safe to repeat: the rebase and the fast-forward are no-ops when they already happened.
+   */
+  recover(now = Date.now()): string[] {
+    const last = new Map<string, { kind: string; seq: number; at: number }>();
+    for (const kind of ["merge.queued", "merge.landed", "merge.failed"] as const) {
+      for (const e of this.store.ofKinds(kind)) if (e.run && (last.get(e.run)?.seq ?? 0) < e.seq) last.set(e.run, { kind, seq: e.seq, at: e.at });
+    }
+    const stranded = [...last].filter(([, at]) => at.kind === "merge.queued" && now - at.at <= RECOVER_WITHIN_MS).sort((a, b) => a[1].seq - b[1].seq).filter(([run, at]) => {
+      const since = this.store.forRun(run).filter((e) => e.seq > at.seq);
+      return !since.some((e) => e.kind === "turn.started" || (e.kind === "run.status" && ["merged", "failed", "cancelled"].includes(e.body.status)) || e.kind === "run.archived");
+    }).map(([run]) => run).filter((run) => !this.queue.includes(run));
+    this.queue.push(...stranded);
+    if (stranded.length) void this.drain();
+    return stranded;
   }
 
   get pending(): string[] {

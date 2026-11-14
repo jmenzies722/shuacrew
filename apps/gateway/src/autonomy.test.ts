@@ -132,6 +132,57 @@ describe("schedules", () => {
   });
 });
 
+describe("missed schedules", () => {
+  const HOUR = 3_600_000;
+  /** A script job is the cheapest thing to count: each run appends one line. */
+  const job = (w: ReturnType<typeof world>, over: { catchUp?: boolean; paused?: boolean } = {}) => {
+    const out = path.join(w.workspace, "ran.log");
+    const scheduler = new Scheduler(w.store, w.supervisor, w.workspace);
+    cleanups.push(() => scheduler.stop());
+    const s = scheduler.set({ name: "nightly", when: "daily 9pm", script: `echo ran >> ${out}`, ...over });
+    const fired = () => [...w.store.read(0)].filter((e) => e.kind === "schedule.fired").length;
+    // The first 9pm after it was saved, in this machine's timezone: the time that gets "missed" below.
+    const due = scheduler.preview(s.cron, s.timezone, 1)[0]!;
+    return { scheduler, fired, due, id: s.id };
+  };
+
+  it("runs once when its time passed while nothing could start it, and not again", async () => {
+    const w = world();
+    const { scheduler, fired, due, id } = job(w, { catchUp: true });
+    expect(scheduler.catchUp(due - 60_000)).toEqual([]); // not due yet
+    expect(scheduler.catchUp(due + 30_000)).toEqual([]); // the clock is about to start it: not missed
+    expect(scheduler.catchUp(due + 2 * HOUR)).toEqual([id]); // the Mac woke two hours late
+    expect(scheduler.catchUp(due + 2 * HOUR)).toEqual([]); // already starting: never twice
+    await until(() => fired() === 1);
+    expect(scheduler.catchUp(Date.now() + 60_000)).toEqual([]); // it ran: nothing is owed
+  });
+
+  it("leaves it for the next time when it is too late, paused, or not asked for", async () => {
+    const w = world();
+    const late = job(w, { catchUp: true });
+    expect(late.scheduler.catchUp(late.due + 13 * HOUR)).toEqual([]); // 12 hours is the limit; tonight's run is close enough
+    const off = job(world());
+    expect(off.scheduler.catchUp(off.due + 2 * HOUR)).toEqual([]); // catch-up is off unless you turn it on
+    const paused = job(world(), { catchUp: true, paused: true });
+    expect(paused.scheduler.catchUp(paused.due + 2 * HOUR)).toEqual([]);
+    expect(late.fired() + off.fired() + paused.fired()).toBe(0);
+  });
+
+  it("never counts a time before the schedule was saved or resumed, and keeps the choice through a pause", () => {
+    const w = world();
+    const scheduler = new Scheduler(w.store, w.supervisor, w.workspace);
+    cleanups.push(() => scheduler.stop());
+    const past = new Date(Date.now() - 5 * 60_000);
+    const s = scheduler.set({ name: "just missed", when: `${past.getMinutes()} ${past.getHours()} * * *`, script: "true", catchUp: true });
+    expect(scheduler.catchUp()).toEqual([]); // today's time passed five minutes before it existed
+    scheduler.set({ id: s.id, when: s.cron, script: s.script, paused: true }); // what the Pause button sends: no catchUp field
+    scheduler.set({ id: s.id, when: s.cron, script: s.script, paused: false });
+    expect(scheduler.list()[0]).toMatchObject({ catchUp: true, paused: false });
+    expect(scheduler.catchUp()).toEqual([]); // resuming does not make it owe the run it was paused for
+    expect([...w.store.read(0)].some((e) => e.kind === "schedule.fired")).toBe(false);
+  });
+});
+
 describe("webhooks", () => {
   it("starts a run for a correctly signed delivery and refuses forged or stale ones", async () => {
     const { store, supervisor, workspace } = world();

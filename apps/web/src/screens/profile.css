@@ -1,0 +1,18 @@
+/* About you: five notes on a page. Each is a heading, a line saying what it is for, the text, and a save row. */
+.profile-files { display: grid; gap: 28px; padding-bottom: 80px; }
+.profile-file header h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+.profile-file header p { margin-top: 2px; font-size: 13px; color: var(--text-3); }
+.profile-file textarea {
+  display: block; width: 100%; margin-top: 10px; padding: 10px 12px; resize: vertical;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-m, 6px); background: var(--panel);
+  color: var(--text); font: 14px/1.55 var(--font-ui); tab-size: 2;
+}
+.profile-file textarea:focus-visible { outline: none; border-color: color-mix(in srgb, var(--amber) 55%, var(--line-strong)); box-shadow: 0 0 0 3px var(--amber-soft); }
+.profile-file footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 12.5px; color: var(--text-3); }
+.profile-file footer .is-bad { color: var(--bad); }
+.profile-file footer button {
+  height: 28px; padding: 0 12px; border: 0; border-radius: var(--radius-m, 6px);
+  background: var(--amber); color: var(--on-accent, #fff); font-size: 13px; font-weight: 500;
+}
+.profile-file footer button:disabled { background: var(--raised); color: var(--text-3); }
+.profile-file footer button:not(:disabled):hover { filter: brightness(1.06); }

@@ -1,0 +1,14 @@
+/* The review pass in a session header: a quiet button before, a verdict after. */
+.review-pass { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--radius-s, 4px); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.review-pass:hover { background: var(--n-hover, color-mix(in srgb, var(--text) 6%, transparent)); color: var(--text); }
+.review-pass.is-ask { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.review-pass:disabled { opacity: .6; }
+.review-pass i { width: 6px; height: 6px; border-radius: 50%; background: var(--idle); }
+.review-pass.is-live i { background: var(--amber); animation: review-pass-breathe 1.6s ease-in-out infinite; }
+.review-pass.is-ok i { background: var(--ok); }
+.review-pass.is-wait i { background: var(--wait); }
+.review-pass small { color: var(--text-3); font-size: 11.5px; font-weight: 400; }
+.review-pass-error { font-size: 12px; color: var(--bad); }
+@keyframes review-pass-breathe { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .review-pass.is-live i { animation: none; } }
+:root[data-motion="reduced"] .review-pass.is-live i { animation: none; }

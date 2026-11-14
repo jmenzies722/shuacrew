@@ -11,3 +11,7 @@ export * from "./intelligence.js";
 export * from "./teaching.js";
 export * from "./session-naming.js";
 export * from "./verification.js";
+export * from "./roles.js";
+export * from "./review.js";
+export * from "./race.js";
+export * from "./inbox.js";

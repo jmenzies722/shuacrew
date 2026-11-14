@@ -74,9 +74,13 @@ export class Worktrees {
     return git(worktree, "rev-parse", "HEAD");
   }
 
-  /** Put the worktree's files back as they were at a checkpoint. The history keeps both. */
+  /**
+   * Put the worktree's files back exactly as they were at a checkpoint: changed files restored, and files created
+   * since then removed (`checkout <commit> -- .` would have left those behind). The history keeps both.
+   */
   async rollback(worktree: string, commit: string): Promise<void> {
-    await git(worktree, "checkout", commit, "--", ".");
+    await git(worktree, "add", "-A"); // anything not yet committed becomes tracked, so restore can remove it too
+    await git(worktree, "restore", `--source=${commit}`, "--staged", "--worktree", "--", ".");
     await git(worktree, "clean", "-fd");
   }
 

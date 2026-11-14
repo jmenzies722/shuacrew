@@ -1,0 +1,1 @@
+pnpm install --frozen-lockfile --prefer-offline --silent && pnpm typecheck && npx vitest run

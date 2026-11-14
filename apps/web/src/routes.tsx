@@ -7,6 +7,8 @@ const Board = lazyRouteComponent(() => import("./screens/Board"), "Board");
 const MissionControl = lazyRouteComponent(() => import("./screens/MissionControl"), "MissionControl");
 const Today = lazyRouteComponent(() => import("./screens/Today"), "Today");
 const Memory = lazyRouteComponent(() => import("./screens/Memory"), "Memory");
+const Profile = lazyRouteComponent(() => import("./screens/Profile"), "Profile");
+const Inbox = lazyRouteComponent(() => import("./screens/Inbox"), "Inbox");
 const Schedules = lazyRouteComponent(() => import("./screens/Schedules"), "Schedules");
 const TerminalPage = lazyRouteComponent(() => import("./screens/TerminalPage"), "TerminalPage");
 const CrewFloor = lazyRouteComponent(() => import("./screens/CrewFloor"), "CrewFloor");
@@ -27,6 +29,7 @@ const root = createRootRoute({ component: Shell });
 const routes = [
   createRoute({ getParentRoute: () => root, path: "/", component: Sessions }),
   createRoute({ getParentRoute: () => root, path: "/sessions/$id", component: Sessions }),
+  createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/activity", component: Today }),
   createRoute({ getParentRoute: () => root, path: "/terminal", component: TerminalPage }),
   createRoute({ getParentRoute: () => root, path: "/floor", component: CrewFloor }),
@@ -41,6 +44,7 @@ const routes = [
   createRoute({ getParentRoute: () => root, path: "/specs", component: Specs }),
   createRoute({ getParentRoute: () => root, path: "/schedules", component: Schedules }),
   createRoute({ getParentRoute: () => root, path: "/memory", component: Memory }),
+  createRoute({ getParentRoute: () => root, path: "/profile", component: Profile }),
   createRoute({ getParentRoute: () => root, path: "/integrations", component: Integrations }),
   createRoute({ getParentRoute: () => root, path: "/policy", component: Policy }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),

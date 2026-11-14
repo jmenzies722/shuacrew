@@ -37,6 +37,8 @@ import { registerPolicyAndUpdates, repoRootFrom } from "./policy-updates.js";
 import { registerBrief } from "./brief.js";
 import { registerShuaJournal } from "./shua-journal.js";
 import { registerShuaLook } from "./shua-look.js";
+import { registerKnowledge, type Knowledge } from "./knowledge.js";
+import { Notes, registerNotes } from "./notes.js";
 import { registerShuaRemote } from "./shua-remote.js";
 import { registerPresence } from "./presence.js";
 import { promisify } from "node:util";
@@ -87,6 +89,8 @@ import { observabilityRoutes } from "./observability.js";
 import { mobileRoutes, type MobileRoutesSource } from "./mobile/routes.js";
 
 export interface ServerOptions {
+  /** What ShuaCrew knows about you (knowledge.ts). When given, the app can read and edit the files. */
+  knowledge?: Knowledge;
   /** Test seam for Spark for Chrome's answers (defaults to the claude CLI). */
   webAsk?: import("./terminal-ai.js").Ask;
   settings?: GatewaySettings;
@@ -153,6 +157,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
 
   const app = Fastify({ logger: false, bodyLimit: 4 * 1024 * 1024, forceCloseConnections: true });
   const merges = new MergeQueue(store, supervisor.worktrees);
+  merges.recover(); // a merge you asked for before a restart still happens
   // Keep the raw body: webhook signatures are computed over the exact bytes that were sent.
   app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
     (request as FastifyRequest & { rawBody?: string }).rawBody = String(body);
@@ -542,6 +547,32 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
     const run = state.runs[request.params.id];
     if (!run) return reply.code(404).send({ error: "no such session" });
     return { id: supervisor.fork(run.id, Math.max(1, Math.floor(Number(request.body?.turn ?? run.turns)))) };
+  });
+
+  // The same task to two providers at once, each in its own branch; proof decides (core/race.ts).
+  app.post<{ Body: { ask?: string; repo?: string; title?: string; effort?: string; approveAll?: boolean } }>("/api/race", async (request, reply) => {
+    const b = request.body ?? {};
+    try { return supervisor.race({ ask: String(b.ask ?? ""), repo: String(b.repo ?? ""), ...(b.title ? { title: String(b.title) } : {}), ...(typeof b.effort === "string" && b.effort ? { effort: b.effort } : {}), ...(b.approveAll === true ? { approveAll: true } : {}) }); }
+    catch (error) { return reply.code(409).send({ error: (error as Error).message }); }
+  });
+
+  // Ask a second agent to review a session's change before you merge it (core/review.ts).
+  app.post<{ Params: { id: string } }>("/api/runs/:id/review-pass", async (request, reply) => {
+    const run = state.runs[request.params.id];
+    if (!run) return reply.code(404).send({ error: "no such session" });
+    try { return await supervisor.review(run.id); }
+    catch (error) { return reply.code(409).send({ error: (error as Error).message }); }
+  });
+
+  // Put a session's files back as they were when a turn ended (the rewind is itself a checkpoint, so nothing is lost).
+  app.post<{ Params: { id: string }; Body: { turn?: number; commit?: string } }>("/api/runs/:id/rewind", async (request, reply) => {
+    const run = state.runs[request.params.id];
+    if (!run) return reply.code(404).send({ error: "no such session" });
+    const commit = typeof request.body?.commit === "string" && /^[0-9a-f]{7,64}$/.test(request.body.commit) ? request.body.commit : undefined;
+    const turn = Math.floor(Number(request.body?.turn));
+    if (!commit && (!Number.isFinite(turn) || turn < 1)) return reply.code(400).send({ error: "Say which checkpoint or turn to rewind to." });
+    try { return await supervisor.rewind(run.id, commit ? { commit } : turn); }
+    catch (error) { return reply.code(409).send({ error: (error as Error).message }); }
   });
 
   // A file a session mentions, for the side panel. Only inside that session's worktree or repo,
@@ -969,6 +1000,12 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
   registerBrief(app, { state, schedules: () => auto?.scheduler.list() ?? [] });
   // Every step Shua takes on screen and whether it worked, so its accuracy is measured.
   if (options.store.path !== ":memory:") { registerShuaJournal(app, path.dirname(options.store.path)); registerShuaLook(app, path.dirname(options.store.path)); }
+  if (options.knowledge) {
+    registerKnowledge(app, options.knowledge);
+    const notes = new Notes(store, () => state, options.knowledge);
+    registerNotes(app, notes);
+    if (options.tools) options.tools.notes = notes;
+  }
   // Shua from your iPhone: asks relayed to the Mac's own Shua in the notch.
   registerShuaRemote(app, undefined, store, options.uploads);
   registerPresence(app); // at the desk or out: which device speaks
@@ -989,7 +1026,7 @@ export async function createServer(options: ServerOptions): Promise<{ app: Fasti
         return fail(reply, error);
       }
     });
-    app.post<{ Body: { id?: string; name?: string; when?: string; ask?: string; script?: string; project?: string; runtime?: string; paused?: boolean } }>(
+    app.post<{ Body: { id?: string; name?: string; when?: string; ask?: string; script?: string; project?: string; runtime?: string; paused?: boolean; catchUp?: boolean } }>(
       "/api/schedules",
       async (request, reply) => {
         try {

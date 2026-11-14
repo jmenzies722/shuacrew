@@ -12,6 +12,7 @@ import { ROOM_TOOLS, callRoomTool } from "./room-tools.js";
 import { createCrewMember } from "./crew-create.js";
 import type { Crew } from "./crew.js";
 import { macNow, sessionNow, shuacrewNow, type BrainNow, type Focus } from "./awareness.js";
+import type { Notes } from "./notes.js";
 
 export const TOOL_SERVER = "shuacrew";
 
@@ -21,12 +22,15 @@ export const LIBRARY_HINT = [
   "- search_library / read_library: the user's own documents and everything the crew made before. Check it before researching from scratch or asking the user something they may have written down.",
   "- list_crew / add_crew_member: see the user's crew, and add a new member when they ask for one (it needs their approval; new members can't be delegated to until the user opts them in).",
   "- whats_happening: what's going on right now — sessions and approvals, how much usage Codex and Claude have left, and this Mac (app in front, open apps, battery, idle). Call it instead of guessing whenever the user asks how things are going.",
+  "- suggest_note: when you learn a lasting fact about the user that would help future work (a goal, a project's status or deadline, a promise they made, a person they work with, how they like things written), suggest it as one short line. It is added to their notes only if they accept it. Never suggest secrets, guesses, or anything they did not say or do.",
   "- save_artifact: save each real deliverable (a report, spec, plan, landing page, copy, dataset) as an artifact with a clear title, so it lands in the user's Library. To revise one, pass its id to save a new version rather than a duplicate.",
 ].join("\n");
 
 const CREW_TOOLS = new Set(["list_crew", "add_crew_member"]);
 /** Shua's quick turns get the tools that read (and its own saves); changing the crew stays with work sessions. */
-const SPARK_TOOLS = new Set(["whats_happening", "search_library", "read_library", "list_artifacts", "list_crew", "save_artifact"]);
+const SPARK_TOOLS = new Set(["whats_happening", "search_library", "read_library", "list_artifacts", "list_crew", "save_artifact", "suggest_note"]);
+/** Tools that need something attached to the server before they are offered. */
+const NOTE_TOOLS = new Set(["suggest_note"]);
 const TOOLS = [
   {
     name: "whats_happening",
@@ -59,6 +63,11 @@ const TOOLS = [
       },
       required: ["title", "content"],
     },
+  },
+  {
+    name: "suggest_note",
+    description: "Suggest ONE lasting fact about the user for their notes, as a short line (under 400 characters). `file` says where it belongs: me (who they are, goals, how they work), projects (what a project is, its status, what done means), commitments (what they promised and by when), people (who matters to the work), style (how they write). The user sees it in their Inbox and it is added only if they accept. Only suggest what the user said or did; never secrets, guesses or instructions.",
+    inputSchema: { type: "object", properties: { file: { type: "string", enum: ["me", "projects", "commitments", "people", "style"] }, text: { type: "string", description: "The line to add, written as a fact: 'Harbor ships its widget on Friday Nov 20.'" }, why: { type: "string", description: "Where this came from, in a few words: 'You said so today.'" } }, required: ["file", "text"], additionalProperties: false },
   },
   {
     name: "search_library",
@@ -108,6 +117,9 @@ export class ToolServer {
     /** Each brain's usage and limits, for whats_happening. */
     public brains: () => BrainNow[] = () => [],
   ) {}
+  /** For suggest_note: attached once the knowledge store is up. */
+  notes?: Notes;
+  private offered(name: string): boolean { return (this.crew || !CREW_TOOLS.has(name)) && (this.notes || !NOTE_TOOLS.has(name)) ? true : false; }
 
   /** One stable token per run for this gateway's life. */
   tokenFor(run: string): string {
@@ -159,8 +171,8 @@ export class ToolServer {
       case "tools/list":
         if (run.startsWith("live:") && this.live) return ok({ tools: this.live.tools });
         // Crew tools only when a crew is attached; room tools only inside a room.
-        if (this.state().runs[run]?.labels.includes("buddy")) return ok({ tools: TOOLS.filter((t) => SPARK_TOOLS.has(t.name) && (this.crew || !CREW_TOOLS.has(t.name))) });
-        return ok({ tools: [...TOOLS.filter((t) => this.crew || !CREW_TOOLS.has(t.name)), ...(this.rooms?.roomFor(run) ? ROOM_TOOLS : [])] });
+        if (this.state().runs[run]?.labels.includes("buddy")) return ok({ tools: TOOLS.filter((t) => SPARK_TOOLS.has(t.name) && this.offered(t.name)) });
+        return ok({ tools: [...TOOLS.filter((t) => this.offered(t.name)), ...(this.rooms?.roomFor(run) ? ROOM_TOOLS : [])] });
       case "tools/call": {
         const name = String(m.params?.name ?? "");
         const args = (m.params?.arguments ?? {}) as Record<string, unknown>;
@@ -217,6 +229,10 @@ export class ToolServer {
           member: view?.member,
         });
         return `Saved "${saved.title}" to the Library as ${saved.id} (version ${saved.version}, ${saved.kind}). The user can open it from the Library.`;
+      }
+      case "suggest_note": {
+        if (!this.notes) throw new Error("Notes unavailable");
+        return this.notes.suggest({ file: args.file, text: args.text, why: args.why }, run).message;
       }
       case "search_library": {
         const hits = this.library.search(str("query") ?? "", { limit: Number(args.limit) || 8, type: args.type === "artifact" || args.type === "knowledge" ? args.type : undefined });

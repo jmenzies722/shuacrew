@@ -1,0 +1,42 @@
+/* Inbox: one quiet list in sections. A row is a dot (its state), what it is, why, when, and the one thing to do. */
+.inbox { display: grid; gap: 30px; padding-bottom: 80px; }
+.inbox-empty { padding: 36px 0; color: var(--text-3); font-size: 14px; }
+.inbox section > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.inbox section > header h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+.inbox section > header span { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.inbox section > header p { margin-left: auto; font-size: 12.5px; color: var(--text-3); }
+.inbox ul { list-style: none; margin: 0; padding: 0; }
+.inbox li + li { border-top: 1px solid var(--line); }
+.inbox-row, .inbox-note { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px; padding: 10px 8px; margin: 0 -8px; border-radius: var(--radius-m, 6px); color: inherit; text-decoration: none; }
+a.inbox-row:hover { background: var(--n-hover, var(--raised)); }
+a.inbox-row:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.inbox-note { align-items: start; grid-template-columns: 8px minmax(0, 1fr) auto; row-gap: 8px; }
+.inbox-note .inbox-dot { margin-top: 13px; }
+.inbox-note time { margin-top: 9px; }
+.inbox-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.inbox-dot.is-wait { background: var(--amber); }
+.inbox-dot.is-bad { background: var(--bad); }
+.inbox-dot.is-ok { background: var(--ok, #4a9d6f); }
+.inbox-dot.is-idle { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.inbox-main { display: grid; gap: 1px; min-width: 0; }
+.inbox-main b { font-size: 14px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-main small { font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-note .inbox-main small { white-space: normal; }
+.inbox-main small a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
+.inbox-main small .is-bad { color: var(--bad); }
+.inbox-row time, .inbox-note time { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.inbox-row em { font-style: normal; font-size: 12.5px; font-weight: 500; color: var(--text-2); padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius-m, 6px); }
+a.inbox-row:hover em { color: var(--text); border-color: var(--text-3); }
+.inbox-note textarea { display: block; width: 100%; padding: 7px 10px; resize: none; border: 1px solid var(--line-strong); border-radius: var(--radius-m, 6px); background: var(--panel); color: var(--text); font: 14px/1.5 var(--font-ui); }
+.inbox-note textarea:focus-visible { outline: none; border-color: color-mix(in srgb, var(--amber) 55%, var(--line-strong)); box-shadow: 0 0 0 3px var(--amber-soft); }
+.inbox-answer { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.inbox-answer button { height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m, 6px); background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; }
+.inbox-answer button:hover:not(:disabled) { background: var(--n-hover, var(--raised)); color: var(--text); }
+.inbox-answer button.is-primary { border-color: transparent; background: var(--amber); color: var(--on-accent, #fff); }
+.inbox-answer button.is-primary:hover:not(:disabled) { background: var(--amber); color: var(--on-accent, #fff); filter: brightness(1.06); }
+.inbox-answer button:disabled { opacity: .55; }
+@media (max-width: 640px) {
+  .inbox section > header p { display: none; }
+  .inbox-row { grid-template-columns: 8px minmax(0, 1fr) auto; }
+  .inbox-row time { display: none; }
+}

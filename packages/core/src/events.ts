@@ -77,6 +77,8 @@ export const bodies = {
   /** ask stops for approval; auto lets those through. A deny still wins. */
   "run.permission": z.object({ mode: z.enum(["ask", "auto"]) }),
   "run.worktree": z.object({ path: z.string(), branch: z.string(), base: z.string() }),
+  /** You put the session's files back as they were when `turn` ended (`commit` is that turn's checkpoint). */
+  "run.rewound": z.object({ turn: z.number().int(), commit: z.string() }),
   "run.routed": route.extend({ reason: z.string() }),
   "run.priority": z.object({ priority: z.number() }),
   // Put away: gone from every list, still in the audit chain.
@@ -106,6 +108,18 @@ export const bodies = {
   "tool.returned": z.object({ id: z.string(), ok: z.boolean(), output: z.string().default(""), durationMs: z.number().optional() }),
   "file.changed": z.object({ path: z.string(), change: z.enum(["added", "modified", "deleted"]).default("modified") }),
   "check.ran": z.object({ command: z.string(), exitCode: z.number(), output: z.string().default("") }),
+  /** An agent suggests adding `text` to one of your knowledge files (gateway/knowledge.ts). Nothing is written until you accept. */
+  "note.suggested": z.object({ id: z.string(), file: z.enum(["me", "projects", "commitments", "people", "style"]), text: z.string(), why: z.string().default("") }),
+  /** You accepted (it was added to the file) or dismissed a suggested note. */
+  "note.resolved": z.object({ id: z.string(), accepted: z.boolean() }),
+  /** This session is one of two given the same task at once (race.ts); `rival` is the other. */
+  "race.joined": z.object({ race: z.string(), rival: z.string(), rivalRuntime: z.string() }),
+  /** Both sessions of a race are at rest: `winner` is the one that got further, or null when they stand equal. */
+  "race.decided": z.object({ race: z.string(), winner: z.string().nullable(), reason: z.string() }),
+  /** A second agent was asked to review this session's change (review.ts); `reviewRun` is its own session. */
+  "review.requested": z.object({ reviewRun: z.string(), runtime: z.string() }),
+  /** What the reviewer said: passed, changes wanted (its findings went back to this session), or a reply that didn't follow the shape. */
+  "review.reported": z.object({ reviewRun: z.string(), runtime: z.string(), state: z.enum(["passed", "changes", "unclear"]), text: z.string().default("") }),
   /** The verdict on a turn that changed code (verification.ts): was the last edit followed by a passing check? `nudged`: the gateway had already asked the agent for proof. */
   "verify.decided": z.object({ turn: z.number().int(), state: z.enum(["verified", "failing", "unverified"]), files: z.number().int(), command: z.string().optional(), nudged: z.boolean().default(false) }),
   "subagent.started": z.object({ id: z.string(), name: z.string(), task: z.string() }),
@@ -335,6 +349,8 @@ export const bodies = {
     project: z.string().optional(),
     runtime: RuntimeId.optional(),
     paused: z.boolean().optional(),
+    /** Run once, late, when its time passed while the gateway was off or the Mac asleep (autonomy.ts catchUp). */
+    catchUp: z.boolean().optional(),
   }),
   "schedule.removed": z.object({ id: z.string() }),
   "webhook.set": z.object({ id: z.string(), name: z.string(), ask: z.string(), project: z.string().optional(), runtime: RuntimeId.optional(), paused: z.boolean().default(false) }),
